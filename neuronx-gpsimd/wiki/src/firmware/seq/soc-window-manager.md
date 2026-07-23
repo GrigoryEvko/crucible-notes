@@ -24,7 +24,7 @@ that compare *and rewrite* the address. This is the same shape as the
 [run-state machine](run-state.md)'s SUNDA-vs-CAYMAN CSR-aperture shift: the
 firmware interface is frozen; the register block underneath changes.
 
-Everything below is **byte-pinned to a shipped artifact this session**. The
+Everything below is **byte-pinned to a shipped artifact**. The
 anchor image is the carved `CAYMAN_NX_POOL_DEBUG` device firmware extracted from
 `libnrtucode.a` (member `img_CAYMAN_NX_POOL_DEBUG_IRAM_contents.c.o` for code,
 `…_DRAM_contents.c.o` for strings). The carve is byte-identical to the sibling
@@ -46,11 +46,12 @@ Where the prompt-level report disagrees with the disassembly, **the binary
 wins**, and an in-place **CORRECTION** says so (see §5, the memw fence).
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string/JSON-field read from a shipped image this session;
+`OBSERVED` = a byte/string/JSON-field read from a shipped image;
 `INFERRED` = reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited
 cross-page anchor; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK**
 (counter-intuitive but real), **GOTCHA** (a reimplementation trap),
-**CORRECTION** (overturns a naive reading), **NOTE**.
+**CORRECTION** (overturns a naive reading), **NOTE**. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 ---
 
@@ -60,7 +61,7 @@ The manager is a **device-resident** Xtensa construct linked into every NX
 sequencer engine image — not the host, and not the customop Q7-compute library.
 Its functions were located by their DRAM-string loads (the `const16` DRAM-string
 idiom, §3). The DRAM `.rodata` carries a tight cluster of file names and format
-strings; every offset below was re-read this session directly from the carved
+strings; every offset below is read directly from the carved
 `CAYMAN_NX_POOL_DEBUG_DRAM` bytes (`DRAM_VA = off + 0x80000`):
 
 | DRAM off | string | role |
@@ -78,8 +79,7 @@ strings; every offset below was re-read this session directly from the carved
 | `0x001247` | `R: update_window: num=%d, xt_addr=0x%llx, soc_addr=0x%llx, u_mask=0x%llx, l_mask=0x%llx` | update_window (re-point) log |
 | `0x00129f` | `soc2xt_addr` | `xt_window.hpp` soc→xt accessor |
 
-`[ALL HIGH/OBSERVED — read directly from the carved DEBUG DRAM bytes this
-session.]`
+`[ALL HIGH/OBSERVED — read directly from the carved DEBUG DRAM bytes.]`
 
 The two `program_window` strings are the most telling artifact in the file. One
 logs the **abstract** view `(num, vld, xt_addr, soc_addr, u_mask, l_mask)` — the
@@ -109,7 +109,7 @@ generation — the central finding of this page.
 
 Register file `tpb_xt_local_reg.json` (CAYMAN/MARIANA/MARIANA_PLUS/MAVERICK).
 The block is APB, `AddrWidth 16` (a `0x10000` aperture), and its bundle-array
-table — read directly from the JSON this session — is:
+table — read directly from the JSON — is:
 
 | Bundle | base (`AddressOffset`) | stride (`BundleSizeInBytes`) | count (`ArraySize`) |
 | ------ | ---------------------- | ---------------------------- | ------------------- |
@@ -134,7 +134,7 @@ from the JSON:
 | `+0x18` | `replace_hi` | `value[25:0]` = `replace_value[63:32]` |
 
 `[ALL HIGH/OBSERVED — the bundle table and every per-window bitfield read from
-`tpb_xt_local_reg.json` this session.]`
+`tpb_xt_local_reg.json`.]`
 
 **Address widths, read precisely from the bit ranges:** `mask` and `match` are
 each a **20-bit field spanning address bits `[39:20]`** (`_lo` supplies `[31:20]`,
@@ -169,7 +169,7 @@ firmware honours this byte-for-byte (§5).
 
 Register file `tpb_nx_local_reg.json` (SUNDA only). Note the bundle is named
 **NX-local**, not XT-local — the gen rename. Everything sits in one `0x10000`
-bundle; the window registers, read from the JSON this session:
+bundle; the window registers, read from the JSON:
 
 | register | offset | field | windows |
 | -------- | ------ | ----- | ------- |
@@ -196,7 +196,7 @@ the low-NX space; a request inside a window's NX slice resolves to
 | firmware logs | *(none — nothing to log for a base write)* | `program_window(mask,match,replace)`, `update_window`, `S: WIN:` |
 
 The `40 / 0x1C / 0x2000` triple is **byte-identical across CAYMAN, MARIANA,
-MARIANA_PLUS, and MAVERICK** — confirmed this session by reading the `window`
+MARIANA_PLUS, and MAVERICK** — confirmed by reading the `window`
 bundle from all four `tpb_xt_local_reg.json` files:
 
 ```
@@ -215,7 +215,7 @@ maverick:     base=0x02000 stride=0x0001C count=40
 
 > **NOTE (v5 / MAVERICK).** MAVERICK's `tpb_xt_local_reg.json` is header-OBSERVED
 > (the `40 / 0x1C / 0x2000` window bundle matches the CAYMAN family), but no
-> MAVERICK *firmware* image was carved this session, so the MAVERICK
+> MAVERICK *firmware* image was carved, so the MAVERICK
 > *control-flow* interiors are `INFERRED` (carried from the CAYMAN decode). The
 > bit-grounded firmware decode below is the CAYMAN (v3) image.
 
@@ -239,7 +239,7 @@ and `const16 a3, OFF` overlays the low half; for DRAM the high half resolves to
 the `0x80000` base and the low half to the string offset. Because this idiom does
 *not* go through the flat-image l32r literal pool, the function entry points and
 their string call-sites are byte-exact (resolving the flat-image ambiguity of the
-loader family). Every entry below was confirmed this session to land on a clean
+loader family). Every entry below lands on a clean
 `entry aN, M` window-frame prologue:
 
 | IRAM VA | function | first insn | role |
@@ -252,11 +252,11 @@ loader family). Every entry below was confirmed this session to land on a clean
 | `0x05084` | `update_window` | `entry a1, 80` | re-point a window's target (§5c) |
 | `0x0a304` | `assert_fail` | `entry a1, 48` | the FATAL panic sink ([error-handler](error-handler.md)) |
 
-`[ALL HIGH/OBSERVED — the entry VAs and prologues re-disassembled this session
+`[ALL HIGH/OBSERVED — the entry VAs and prologues re-disassembled
 with the native ncore2gp objdump.]`
 
 **Assert `__LINE__` immediates** (the `movi a12, N` feeding `call8 0xa304`) — all
-five found this session at the addresses shown:
+five at the addresses shown:
 
 | addr | `movi a12, N` | source line | meaning |
 | ---- | ------------- | ----------- | ------- |
@@ -267,7 +267,7 @@ five found this session at the addresses shown:
 | `0x49b6` | `0x176` (374) | `soc_window_manager.hpp:374` | `push_unallocated_window`: `free_count < 15` invariant (§6) |
 
 `[ALL HIGH/OBSERVED — the immediates and their `call8 0xa304` targets
-re-disassembled this session.]`
+re-disassembled.]`
 
 ---
 
@@ -342,7 +342,7 @@ engine→label mapping is MED/INFERRED from the address-map TPB bases (§2c).]`
 Entry `0x046e8`. Args: `a2` = the window descriptor (`num` at `+0x28`, the six
 field words, gate bits at `+0x2c`, valid bit at `+0x30`), `a3` = a bool flag.
 This is the keystone — the exact HW-register address arithmetic and the field
-write order, re-disassembled byte-exact this session.
+write order, re-disassembled byte-exact.
 
 ### 5a. The window-register address
 
@@ -380,7 +380,7 @@ then writes `control` **last to set valid + gates**:
 | 8 | `control` (`+0x00`) again | `0x04002000 + 28i` | `(desc+0x2c) \| (valid bit from desc+0x30 bit0)`, written LAST |
 
 `[ALL HIGH/OBSERVED — the per-field address idioms, the absolute offsets, and the
-clear-first/set-last ordering re-disassembled this session.]`
+clear-first/set-last ordering re-disassembled.]`
 
 This is exactly the `control`-register contract from the JSON: *clear
 `window_valid`, write the full window state, set `window_valid` only when the
@@ -390,8 +390,8 @@ abstract `(num, vld, xt_addr, soc_addr, u_mask, l_mask)` and the HW-register
 
 > **CORRECTION (one conditional `memw`, not two bracketing fences).** The
 > prompt-level report stated *"two `memw` fences bracket the control writes."* A
-> raw byte scan (`c0 20 00`) over `0x46e8`–`0x48c6` and a full re-disassembly this
-> session find exactly **one** `memw`, at `0x48be`, and it is **conditional**:
+> raw byte scan (`c0 20 00`) over `0x46e8`–`0x48c6` and a full re-disassembly
+> find exactly **one** `memw`, at `0x48be`, and it is **conditional**:
 > `0x48b5: l8ui a2,[a1,76] ; 0x48b8: bbci a2,0,0x48c4` skips it on a frame flag,
 > and it sits *after* the final `control` write — it does not bracket the
 > clear/stage/set sequence. There is no opening fence before the clear and none
@@ -427,7 +427,7 @@ composing or reading one `xt_window` record. `[HIGH/OBSERVED.]`
 ## 6. `push_unallocated_window` — the allocator
 
 Entry `0x04994`. Args: `a2` = the `soc_window_manager` (`self`), `a3` = the
-`window_id` to free. The free-list, re-disassembled byte-exact this session:
+`window_id` to free. The free-list, re-disassembled byte-exact:
 
 ```
 4994: entry  a1, 48
@@ -500,11 +500,10 @@ fixed windows. If no window matches the requested region the function panics
 
 - **DEVICE** (SEQ NX firmware): logs the singular `S: WIN: @%llx -> %x` (one per
   window in `get_window_addr`). The device DRAM carries only this singular form —
-  no `xt_addrs[16]`, no `WIN[%u]` (verified by string search of the carved DRAM
-  this session).
+  no `xt_addrs[16]`, no `WIN[%u]` (verified by string search of the carved DRAM).
 - **HOST** (`libnrtucode_internal.so` runtime): keeps a **16-entry software
   shadow** dumped as
-  `P%i: Q7:   xt_addrs[16] = [0x%08x%08x, … ]` — re-counted this session as
+  `P%i: Q7:   xt_addrs[16] = [0x%08x%08x, … ]` — re-counted as
   **exactly 16** `0x%08x%08x` pairs (host `.rodata` offset `0x26c55a`). It also
   logs `R: program_window` / `R: update_window` / `P%i: WIN[%u]: @%llx -> %x`.
   The `R:` prefix = **R**untime (host); `P%i:` = per-pool-core.
@@ -547,7 +546,7 @@ So the SEQ window manager is **fail-fast**: an unclassifiable SoC address, an
 unmatched region, or a free-list overflow all hit `assert_fail` at `0x0a304`.
 There is **no silent default-window fallback** at the software level.
 `[HIGH/OBSERVED — the five assert sites + line numbers + the `0xa304` target
-re-disassembled this session; "no soft fallback" is HIGH from the absence of any
+re-disassembled; "no soft fallback" is HIGH from the absence of any
 non-panic miss branch.]`
 
 > **QUIRK (fail-fast SEQ vs fail-silent customop).** The customop Q7-compute
@@ -580,7 +579,7 @@ programs the per-engine `tpb_xt_local_reg` WINDOW registers — the NX/Q7 *local
 address-translation aperture that turns a Q7-local XT address into a SoC address
 for *this engine's* requests. The `amzn_remapper` sits much further downstream,
 at every AXI master's fabric-egress edge, doing a SoC-wide address+ID
-firewall/remap. This session confirmed the SEQ NX firmware accesses `0x04002000+`
+firewall/remap. The SEQ NX firmware accesses `0x04002000+`
 (the window block) and never the `amzn_remapper` sprot CSRs (no `0x…05000` /
 remapper access in the NX IRAM). A Q7 request flows:
 `NX-local addr → (soc_window_manager window) → SoC addr → (amzn_remapper CAM at
@@ -610,14 +609,9 @@ MED/INFERRED from layer placement.]`
   `push_unallocated_window` on unload (the load/unload wiring lands there).
 - [The SoC ↔ Q7 Translation Windows](../../control/address/soc-q7-translation-windows.md)
   — the address-map view of the same window apertures (the NX/SoC base placement,
-  the granule pins). *(Forward link — not yet authored.)*
+  the granule pins). *(Forward link.)*
 - [`neuron_translate` Window Family](../../abi/neuron-translate-windows.md)
   — the customop Q7-compute translator this page contrasts against in §4 and §8
-  (lazy 3-slot round-robin, fail-silent). *(Forward link — not yet authored.)*
+  (lazy 3-slot round-robin, fail-silent). *(Forward link.)*
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the
   `OBSERVED` / `INFERRED` / `CARRIED` × `HIGH`/`MED`/`LOW` tags used throughout.
-
-> **NOTE (forward links).** `control/address/soc-q7-translation-windows.md` and
-> `abi/neuron-translate-windows.md` are planned (their directories exist but the
-> pages are not yet authored). The links are kept against their SUMMARY-pinned slugs and will
-> resolve when those pages land.

@@ -35,11 +35,12 @@ file offset for this carve). DRAM string addresses are device DRAM VAs; the file
 the carved DRAM blob is `VA − 0x80000` (the DRAM image loads at VA `0x80000`).
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte / string / instruction read or re-disassembled from the carved image **this
-pass**; `INFERRED` = reasoned over those reads; `CARRIED` = taken from a cited sibling report at
+`OBSERVED` = a byte / string / instruction read or re-disassembled from the carved image;
+`INFERRED` = reasoned over those reads; `CARRIED` = taken from a cited sibling report at
 its original confidence. Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK**
 (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a
-naive reading), **NOTE** (orientation). Everything below was re-disassembled with the native
+naive reading), **NOTE** (orientation). The page default is `[HIGH/OBSERVED]`; claims that
+depart from it carry an explicit tag. Everything below was re-disassembled with the native
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, Binutils 2.34.20200201 / Xtensa Tools 14.09)
 against the carved `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o` members of
 `libnrtucode.a`.
@@ -58,9 +59,9 @@ against the carved `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o` members o
 
 ---
 
-## 0. Carve provenance and the one-line proof  `[HIGH/OBSERVED]`
+## 0. Carve provenance and the one-line proof
 
-The firmware was re-carved independently this pass and its hash re-checked against the sibling
+The firmware carve is hash-checked against the sibling
 anchors, so every offset below is anchored to a reproducible binary:
 
 ```
@@ -125,7 +126,7 @@ not-yet-filled line can never be executed (see
 
 ---
 
-## 2. String anchors — the module + log oracle  `[HIGH/OBSERVED]`
+## 2. String anchors — the module + log oracle
 
 Source-file / symbol tags in the DEBUG DRAM image (`VA = DRAM_file_off + 0x80000`):
 
@@ -186,7 +187,7 @@ resolves the `BRANCH` opcode byte to the handler object whose `vtable[0]` is `ex
 > virtual `execute()` — and recursively for its own sub-opcodes (§3.1) — consistent with the
 > handler-object model. `[identity HIGH/OBSERVED; opcode byte NOT RESOLVED.]`
 
-### 3.1 Sub-opcode dispatch — an 11-way jump table  `[HIGH/OBSERVED]`
+### 3.1 Sub-opcode dispatch — an 11-way jump table
 
 The handler reads a **14th instruction byte** (`instr[+14]`) as a *sub*-opcode and jumps
 through an 11-entry table:
@@ -265,7 +266,7 @@ state, producing a taken/not-taken boolean that is then logged via `"S: BRTAKEN:
 > The 3-way switch (`addi.n -1; bltui ,2`) is exact: raw `field28` value `0` → one-result,
 > `{1,2}` → resolve-substate, anything else → default. `[switch HIGH/OBSERVED; predicate MED/INFERRED.]`
 
-### 3.3 The taken-branch tail — redirect + arm hint  `0xca7d..0xcb74`  `[HIGH/OBSERVED]`
+### 3.3 The taken-branch tail — redirect + arm hint  `0xca7d..0xcb74`
 
 This is the join point with the [PC-redirect machine](fetch-pc-redirect.md) and the prefetch
 producer. It first reads the **prefetch-enable flag**, then redirects, then (if a hint is
@@ -326,9 +327,9 @@ across the FLIX-desynced operand loads; the arithmetic itself is `[HIGH/OBSERVED
 
 ---
 
-## 4. The prefetch-hint producer  `branch_prefetch_hint.cpp`  `[HIGH]`
+## 4. The prefetch-hint producer  `branch_prefetch_hint.cpp`
 
-### 4.1 The hint record + the hint table  `[HIGH/OBSERVED]`
+### 4.1 The hint record + the hint table
 
 The single *active* branch hint lives in the **central state struct** (base `0x855e0`):
 
@@ -358,7 +359,7 @@ The `1`/`0` armed byte at `state[+0]`, the `16 × 56-byte` table from `0x85f88+3
 > the two bases is a real reimplementation trap. `[HIGH/OBSERVED — `addi …,24` in both 0x6f24
 > and 0x6f38.]`
 
-### 4.2 `resolve_hint_decision @0xcf90`  `[HIGH/OBSERVED]`
+### 4.2 `resolve_hint_decision @0xcf90`
 
 A 3-way classifier that maps a decision *class* `∈ {0,1}` to a resolved decision byte; any other
 value is a **fatal assert** (`branch_prefetch_hint.cpp:45`):
@@ -408,7 +409,7 @@ mis-framed bundle slots). The `arm` *function* is decoded exactly (§4.4); but t
 instruction is `[MED/INFERRED]` — the data-flow proof is that **the armed byte `arm` writes is
 exactly the one `BRANCH`'s tail reads via `0x6ec4`** (`state[0x855e0+0]`).
 
-### 4.4 `PrefetchHelper::arm @0x15128`  (thunk `0x150ec`)  `[HIGH/OBSERVED]`
+### 4.4 `PrefetchHelper::arm @0x15128`  (thunk `0x150ec`)
 
 The arm is **decision-gated**: a *taken* branch (decision byte `0`) arms; a *not-taken* branch
 (decision `!= 0`) **disarms** to "preserve legacy behavior" (fall back to plain PC-redirect, no
@@ -448,7 +449,7 @@ are instruction-exact. `[HIGH/OBSERVED.]`
 > log-string setup); the scalar `const16`/`call8` log emission is exact. This is the FLIX desync
 > the §0 GOTCHA warns about, caught in the act. `[HIGH/OBSERVED on the scalar slots.]`
 
-### 4.5 `PrefetchHelper::disarm @0x151e8`  (thunk `0x151dc`)  `[HIGH/OBSERVED]`
+### 4.5 `PrefetchHelper::disarm @0x151e8`  (thunk `0x151dc`)
 
 Single-hint teardown — clears the armed bit. This is what the `BRANCH` taken-tail calls
 (`cb6b`) to consume the hint after its redirect commits:
@@ -497,7 +498,7 @@ void PrefetchHelper_check(/* tuple in a1 frame */) {   // 15208: entry a1,96
 > `[MED/INFERRED]` across the IVP slots. The `addi a5,a3,-64` (subtract one 64-byte block in the
 > low half) is `[HIGH/OBSERVED]`. `[skeleton + 0x15010 call + log HIGH; range/target math MED.]`
 
-### 4.7 `PrefetchHelper::invalidate_all_hints @0x1536c`  (thunk `0x15344`)  `[HIGH/OBSERVED]`
+### 4.7 `PrefetchHelper::invalidate_all_hints @0x1536c`  (thunk `0x15344`)
 
 Bulk-clears the per-entry `[+48]` valid/pushed flag across all 16 hint-table entries:
 
@@ -658,7 +659,7 @@ central-state base. `[addresses HIGH/OBSERVED.]`
 > **CORRECTION — the bounds global is `0x82dc0`, not `0x82d80` (this page's earlier value was
 > wrong).** An earlier draft of this NOTE (and the §summary table) "corrected" the bounds global
 > to `0x82d80`, contradicting [pc-bounds.md](pc-bounds.md). Re-disassembling
-> `GetSequenceBounds@0xd224` byte-exact this reconcile settles it: the *only* `const16`/`l32i`
+> `GetSequenceBounds@0xd224` byte-exact settles it: the *only* `const16`/`l32i`
 > that builds and **dereferences** a bounds pointer is `0xd25b: const16 a2,0x2dc0` →
 > `0xd25e: l32i.n a3,a2,12` (= load `[0x82dc0+12]`, first of eight). The value `0x2d80`
 > appears only once, at `0xd233`, on a `bnez.n a5` log/assert branch into the print helper
@@ -668,7 +669,7 @@ central-state base. `[addresses HIGH/OBSERVED.]`
 
 ---
 
-## 8. Shared PC-bounds enforcement — the prefetch OOB guard  `[HIGH/OBSERVED]`
+## 8. Shared PC-bounds enforcement — the prefetch OOB guard
 
 The same `branch.cpp` decode logic that enforces PC bounds also gates every **prefetch target**:
 a branch-target PC is checked by `is_pc_in_bounds @0x68d0` (the address-level guard detailed in
@@ -712,7 +713,7 @@ execution. `[HIGH/OBSERVED.]`
 
 ---
 
-## 10. Failure / edge cases  `[HIGH]`
+## 10. Failure / edge cases
 
 **10a. Mispredicted branch (wrong block prefetched).** If actual control flow diverges from the
 hinted path, the wrongly-pushed line is simply a wasted DMA fill. The pushed bit is cleared by
@@ -732,7 +733,7 @@ line-45 assert.]`
 
 ---
 
-## 11. Hint-invalidation triggers — when prefetch state is torn down  `[HIGH]`
+## 11. Hint-invalidation triggers — when prefetch state is torn down
 
 | trigger | mechanism | anchor |
 |---|---|---|
@@ -750,7 +751,7 @@ strings.]`
 
 ---
 
-## 12. Confirmed call / state map  `[HIGH]`
+## 12. Confirmed call / state map
 
 ```
  BRANCH execute  (branch.cpp 0xc7fc)
@@ -865,7 +866,7 @@ page.]`
 
 These are refinements, not contradictions: the prior-report offsets and semantics hold; this
 page tightens the `const16`-pair rendering and pins the descriptor base. The
-`GetSequenceBounds` data anchor is **`0x82dc0`** (byte-confirmed this reconcile; an earlier draft
+`GetSequenceBounds` data anchor is **`0x82dc0`** (byte-confirmed; an earlier draft
 of this page mis-stated it as `0x82d80` and has been retracted — see the §7 CORRECTION).
 `[HIGH/OBSERVED.]`
 
@@ -891,7 +892,7 @@ iram-cache and fetch-pc-redirect pages.]`
 
 ## 17. Adversarial self-verification — the 5 strongest claims
 
-Each re-challenged against the disassembly this pass; verdicts:
+Each claim's disassembly evidence; verdicts:
 
 1. **The `BRANCH`/`BRTAKEN` opcodes + 11-way sub-table.** `c803: l8ui a2,[a2+14]` (sub-opcode),
    `c811/c814: const16` pair → `0x82b84`, `addx4; l32i.n; jx`. Table at DRAM `0x2b84` decoded to

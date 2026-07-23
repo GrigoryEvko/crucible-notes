@@ -12,7 +12,7 @@ the microcode it interprets. This page **opens the SEQ-internals cluster**
 [SoC window-manager](soc-window-manager.md)); it owns the *state* and the *transitions*,
 and cross-links the loop, the dispatch hub, and the error path rather than re-deriving them.
 
-Everything below is **byte-pinned to a shipped artifact this session**. The anchor image is
+Everything below is **byte-pinned to a shipped artifact**. The anchor image is
 the carved `CAYMAN_NX_POOL_DEBUG` device firmware extracted from `libnrtucode.a` (member
 `img_CAYMAN_NX_POOL_DEBUG_IRAM_contents.c.o` for code, `…_DRAM_contents.c.o` for strings),
 disassembled with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, Cairo µarch,
@@ -24,11 +24,12 @@ onto the addresses here. Where a sibling note or the prompt-level report disagre
 disassembly, **the binary wins**, and an in-place **CORRECTION** says so.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string/JSON-field read from a shipped image this session; `INFERRED` =
+`OBSERVED` = a byte/string/JSON-field read from a shipped image; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor;
 crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading),
-**NOTE** (orientation).
+**NOTE** (orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it
+carry an explicit tag.
 
 > **NOTE — addressing convention.** All code addresses are **IRAM-image offsets == device
 > IRAM VA** (`ResetVectorOffset=0`, InstRAM base `0x0`). DRAM string offsets are the low-16
@@ -355,7 +356,7 @@ void fatal_halt(void) {
 }
 ```
 
-> **CORRECTION (folds SX-FW-09's "inferred halt CSR ~0x8_0400").** FW-09 left the halt-CSR
+> **CORRECTION (folds FW-09's "inferred halt CSR ~0x8_0400").** FW-09 left the halt-CSR
 > identity inferred. The Entering-HALT store target is byte-exactly **`run_state`** (`nx 0x0008`
 > == abs `0x04000008`), **not** `instr_halt_ctrl` (`0x0014`). The value stored is the
 > halt-context **pointer** `0x00085644`, used as a fatal sentinel. `instr_halt_ctrl` (`0x0014`)
@@ -515,7 +516,7 @@ void raise_fatal(err_t *e) {            // 13e00: entry a1,48
 
 Method: carve the `NX_POOL_DEBUG` IRAM `.rodata` from `libnrtucode.a` for each generation
 (`objcopy -O binary --only-section=.rodata`) and byte-search the run-state-machine
-instruction signatures. Image sizes (this session): **SUNDA 59,600 / CAYMAN 116,768 /
+instruction signatures. Image sizes: **SUNDA 59,600 / CAYMAN 116,768 /
 MARIANA 114,816 / MARIANA_PLUS 119,616 bytes**. `[HIGH/OBSERVED]`
 
 **CAYMAN family (CAYMAN / MARIANA / MARIANA_PLUS) — identical algorithm & encoding, only
@@ -560,7 +561,7 @@ window (`0x00100000` vs `0x04000000`) and the per-register offsets (`start_ctrl 
 > **QUIRK — SUNDA's run-state CSR window is a genuine architectural aperture difference.**
 > `0x00100000` (SUNDA) vs `0x04000000` (CAYMAN family) is observed directly from the two
 > images' address-build bytes — not assumed. SUNDA's `intr_info`-style `movi 16; const16 ,0x1c`
-> RUN selector was not found in this pass, so SUNDA's dispatcher likely lacks the
+> RUN selector was not found, so SUNDA's dispatcher likely lacks the
 > `intr_info==1` selector or encodes it elsewhere (`[MED/INFERRED]` — the SUNDA dispatcher was
 > not fully traced here).
 
@@ -599,7 +600,7 @@ sibling SEQ-internals pages cover the machinery this page only touches at transi
 - [SEQ PC-Bounds Guard](pc-bounds.md) — `is_pc_in_bounds @0x68d0`, the soft prefetch guard
   noted in §7.
 - [`tpb_xt_local_reg` CSR (nx / general / window bundles)](../../control/csr/tpb-xt-local-reg.md)
-  *(target not yet authored — canonical home for the full register-bundle map; offsets/fields
+  *(canonical home for the full register-bundle map; offsets/fields
   here are read directly from `tpb_xt_local_reg.json`)*.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the `OBSERVED` /
   `INFERRED` / `CARRIED` × `HIGH` / `MED` / `LOW` tags used throughout.

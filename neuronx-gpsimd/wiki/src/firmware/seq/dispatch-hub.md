@@ -18,25 +18,26 @@ this carries the FLIX/VLIW layer; `XCHAL_HAVE_FLIX3 = 0` is **not** "scalar"). D
 the SEQ image with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); the
 scalar-LX rule decodes the *different* NCFW management core and is wrong here.
 
-> **NOTE — what was re-run this session.** Every fact below was re-derived from a fresh
-> independent carve of the SEQ base firmware out of the static archive `libnrtucode.a`,
-> members `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o`. The carve
-> `objcopy -O binary --only-section=.rodata` reproduces **iram.bin = 116,768 B
+> **NOTE — carve provenance + addressing.** The facts below are grounded in a carve of the
+> SEQ base firmware out of the static archive `libnrtucode.a`, members
+> `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o`. The carve
+> `objcopy -O binary --only-section=.rodata` yields **iram.bin = 116,768 B
 > (`0x1c820`), sha256 `8e4412b9…ab9ed70a`** and **dram.bin = 28,448 B (`0x6f20`),
 > sha256 `7bdf6ed7…d6816ecd`**, head bytes `06 76 00 00` = `j 0x1dc` (reset vector).
-> The 178-entry table was re-parsed from `dram.bin` offset `0x814` and the
-> trampoline/impl/thunk bodies re-disassembled from `iram.bin` with
-> `xtensa-elf-objdump -D -b binary -m xtensa --adjust-vma=0x0` (exit 0, empty stderr,
-> 45,901 lines). All IRAM offsets equal device IRAM VA (reset vector at byte 0); DRAM
-> string offset = device DRAM VA − `0x80000`. `[HIGH/OBSERVED]`
+> The 178-entry table is parsed from `dram.bin` offset `0x814` and the
+> trampoline/impl/thunk bodies disassembled from `iram.bin` with
+> `xtensa-elf-objdump -D -b binary -m xtensa --adjust-vma=0x0`. All IRAM offsets equal
+> device IRAM VA (reset vector at byte 0); DRAM string offset = device DRAM VA − `0x80000`.
+> `[HIGH/OBSERVED]`
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string read from the shipped image this session; `INFERRED` =
+`OBSERVED` = a byte/string read from the shipped image; `INFERRED` =
 reasoned over OBSERVED facts (often across a FLIX/literal-pool desync); `CARRIED` =
 consolidated from a cited cross-page anchor at its original confidence. Crossed with
 `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
-(orientation).
+(orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it carry
+an explicit tag.
 
 > **GOTCHA — two opcode spaces, do not conflate.** The Xtensa `entry`/`call8`/`jx`/
 > `callx8` you read in the disassembly are the *engine's own instruction set*. The
@@ -114,7 +115,7 @@ call.
 
 Decode+dispatch is the tail of the Sunda FSM body
 ([main-loop.md §4](main-loop.md#4-level-3a--the-sunda-software-fetch-fsm-the-per-iteration-loop)).
-Re-decoded byte-exact this session from `iram.bin` (raw bytes
+Decoded byte-exact from `iram.bin` (raw bytes
 `22c2 bf32 a0b1 27b3 0206 cb00 3408 0034 1408 3022 a028 02a0 0200` at `0x2e5f`):
 
 ```
@@ -173,8 +174,8 @@ static void seq_decode_dispatch(uint32_t opcode_word) {
 ## 3. The 178-entry dispatch table — full enumeration
 
 Base `0x80814`; **178 × 4-byte LE absolute IRAM targets**; span `0x814..0xadc`
-(712 B); index = `opcode_byte − 0x41`; default = `0x3198`. Re-parsed directly from
-`dram.bin` this session: **55 real / 123 default**, all 55 real targets `< 0x1c820`
+(712 B); index = `opcode_byte − 0x41`; default = `0x3198`. Parsed directly from
+`dram.bin`: **55 real / 123 default**, all 55 real targets `< 0x1c820`
 (in-range IRAM). `[HIGH/OBSERVED]`
 
 > **NOTE — this is the LOWER of TWO dispatch tables.** The `0x80814` table enumerated here is
@@ -192,7 +193,7 @@ Base `0x80814`; **178 × 4-byte LE absolute IRAM targets**; span `0x814..0xadc`
 ### 3a. The 55 real handlers
 
 Each row: `opcode → trampoline → impl → handler-fn → thunk → operation`. The trampoline
-VA is the literal table word (re-parsed this session, all 55 verified); the operation
+VA is the literal table word (all 55 verified); the operation
 name is resolved from the handler's own embedded `"S: <OpName>"` log string (§8). The
 `handler-fn` column is the `const16` value the impl materialises (each verified to
 **start with `entry`**, §5).
@@ -274,7 +275,7 @@ name is resolved from the handler's own embedded `"S: <OpName>"` log string (§8
 ### 3b. The 123 default entries → `0x3198`
 
 The 123 default slots are exactly the indices **not** in §3a. They form 19 contiguous
-runs (verified by compressing the parsed default-index list this session):
+runs (from the parsed default-index list):
 
 | idx run | opcode run | | idx run | opcode run |
 |---|---|---|---|---|
@@ -304,10 +305,10 @@ hops, all instruction-exact below. It is **not** a flat indexed call; the indexe
 (`jx`) lands on a trampoline, and the actual `execute()` call is an indirect `callx8`
 through a per-object function pointer inside a shared thunk.
 
-### 4a. The trampoline (the table target) — `[HIGH/OBSERVED]`
+### 4a. The trampoline (the table target)
 
 Each real `table[idx]` points at an 8-byte trampoline of the form
-`call8 <impl> ; j 0x31a3`. Raw bytes at `0x3074` (the `'A'` target) this session:
+`call8 <impl> ; j 0x31a3`. Raw bytes at `0x3074` (the `'A'` target):
 `e5 0a ff | 06 4a 00` = `call8 0x2124 ; j 0x31a3`. The `j 0x31a3` is the universal
 back-edge (`31a3: j 0x2d81`), so **every** handler re-enters the FSM at the poll/fetch
 point.
@@ -326,9 +327,9 @@ point.
 > first reachable log (`0x77` RandGetState, `0x78` RandSetState); `0xbb` routes into the
 > TensorLoad path `0x89d0`. `[HIGH table targets / LOW bodies]`
 
-### 4b. The impl shim (loads the handler, calls the thunk) — `[HIGH/OBSERVED]`
+### 4b. The impl shim (loads the handler, calls the thunk)
 
-Re-decoded this session for `'A'` (impl `0x2124`):
+Decoded for `'A'` (impl `0x2124`):
 
 ```
 2124:  entry a1,48
@@ -344,7 +345,7 @@ All 31 `const16`-built handler-fn targets were verified to **start with `entry`*
 (byte 0 = `0x36`) — i.e. each is the entry of a real handler **function** (the
 polymorphic `execute()`), not a data record (§5).
 
-### 4c. The two dispatch thunks — `[HIGH/OBSERVED]`
+### 4c. The two dispatch thunks
 
 There are exactly **two** thunks; which one an impl calls partitions the 47 thunked
 handlers into two families. Both end with the *identical* double-indirect `execute()`
@@ -364,8 +365,7 @@ core; they differ only in pre/post bracketing.
 ```
 
 The bytes `22 21 03 | 28 02 | e0 02 00` at `0x96e6..0x96ee` are an **unambiguous
-double-indirection** — re-read from `iram.bin` this session, byte-identical to the
-sibling pages' anchor.
+double-indirection** — read from `iram.bin`, byte-identical to the sibling pages' anchor.
 
 **Thunk `0x85c4` — control/move/notify family (15 opcodes), pre-drain + POST notify:**
 
@@ -420,7 +420,7 @@ The thunk treats the passed pointer `P` as a C++ object whose word `[P+0]` is th
   value** (a pointer to a 1-word `Handler` object whose `[P+0]` = the `execute()`
   function). The `const16 0x9c30` saved to the impl's own frame is the impl-local copy
   of the `execute()` address used by that FLIX setup.
-- An **exhaustive word search** this session confirmed **none** of the handler-fn
+- An **exhaustive word search** confirmed **none** of the handler-fn
   addresses appear as a 4-byte data word anywhere in IRAM or DRAM (§5), so there is
   **no static pointer table / no `.rodata` vtable array** — the `Handler` singletons are
   **constructed at boot** (per-singleton, on a stack/heap frame or BSS slot) and the
@@ -448,7 +448,7 @@ The thunk treats the passed pointer `P` as a C++ object whose word `[P+0]` is th
 
 ## 5. Why the `const16` targets are functions, and why there is no vtable array
 
-Two byte-level checks this session pin §4d:
+Two byte-level checks pin §4d:
 
 **(i) Every handler-fn starts with `entry`.** For each `const16`-built target, the byte
 at that IRAM offset is `0x36` (the `entry` opcode low byte):
@@ -472,7 +472,7 @@ through the boot-constructed object pointer — never through a static pointer t
 
 ---
 
-## 6. The inline handlers (no thunk) — `[HIGH/OBSERVED]`
+## 6. The inline handlers (no thunk)
 
 Two opcodes inline their body directly in the impl instead of routing through a thunk.
 
@@ -564,7 +564,7 @@ dispatch surface: the human-readable identity of each routed operation.
 > **CORRECTION — "178" is the NUL-delimited *record* count; the literal `S: ` *instance*
 > count is 187.** `rg -c` counts matching **records** (`ripgrep` splits the binary on
 > `\n` / `0x0a`), and the strings here are predominantly **NUL-terminated** — so `-c`
-> reports records, not occurrences. Re-counted this session: `rg -o -a 'S: ' dram.bin
+> reports records, not occurrences. Counted: `rg -o -a 'S: ' dram.bin
 > \| wc -l` → **187** and `python3 -c "print(open('dram.bin','rb').read().count(b'S: '))"`
 > → **187**. The 9-instance gap is **4 records that pack multiple `S: ` substrings into
 > one `\n`-delimited line** (records 113→4×, 133→2×, 159→5×, 173→2×): `178 + 9 = 187`.
@@ -662,8 +662,8 @@ consolidated from the POOL pages, not re-derived here.
 > back-end**: a sparse keyed (`opcode<<24|spec`) relocated-funcVA table feeding flat C
 > kernel functions. Full POOL treatment:
 > [POOL Engine Main Dispatch Loop](../pool/pool-dispatch.md) and
-> [kernel_info_table Binary Layout](../pool/kernel-info-table.md) *(both stubs at time of
-> writing — the POOL contrast facts here are derived from the POOL dispatch analysis)*.
+> [kernel_info_table Binary Layout](../pool/kernel-info-table.md) *(the POOL contrast facts
+> here are derived from the POOL dispatch analysis)*.
 > `[HIGH on SEQ side / CARRIED on POOL side]`
 
 ---
@@ -699,9 +699,8 @@ To rebuild the SEQ decode/dispatch hub:
 
 ## 11. Adversarial self-verification
 
-Five strongest claims, each re-challenged against the re-carved image this session
-(carve SHAs match: `iram.bin 8e4412b9…`, `dram.bin 7bdf6ed7…`; disassembly exit 0,
-45,901 lines):
+Five strongest claims and the byte evidence for each (carve SHAs `iram.bin 8e4412b9…`,
+`dram.bin 7bdf6ed7…`):
 
 | # | Claim | Challenge | Verdict |
 |---|---|---|---|
@@ -711,7 +710,8 @@ Five strongest claims, each re-challenged against the re-carved image this sessi
 | 4 | **Every `const16` handler-fn starts with `entry`** (real fn, not data) | read `iram.bin[addr]` for 10 targets | **HOLDS.** All 10 (`0x9c30,0xa02c,0xd194,0x9aec,0x96f8,0x9930,0x9eac,0x9c04,0x9dec,0xb338`) = byte `0x36` (`entry`). OBSERVED. |
 | 5 | **No static vtable array** for handler fns | `bytes.count(pack(addr))` over both images | **HOLDS.** `0x9c30/0xa02c/0xd194/0x9aec/0xb338` each occur **0** times as a 4-byte word in `iram.bin` **and** `dram.bin`. Confirms boot-constructed objects, not a `.rodata` table. OBSERVED. |
 
-> **CORRECTION folded in during self-verify.** The `0x3198` default and the impl FLIX
+> **CORRECTION — the default path and impl FLIX bundle decode as linear-sweep garbage.**
+> The `0x3198` default and the impl FLIX
 > bundle at `impl+0x0c` both decode as **garbage under the linear sweep** (mid-bundle
 > entry / FLIX desync). The §7 default path is recovered from an **aligned** decode
 > (`l8ui a10,[a4+0]; call8 0x13f58`); the §4d object-pointer setup is honestly flagged
@@ -721,7 +721,7 @@ Five strongest claims, each re-challenged against the re-carved image this sessi
 
 ## 12. Honesty ledger
 
-**HIGH / OBSERVED (re-run this session):**
+**HIGH / OBSERVED:**
 
 - Carve reproduced: `iram.bin` 116,768 B / sha256 `8e4412b9…`, `dram.bin` 28,448 B /
   sha256 `7bdf6ed7…`; head bytes = reset vector `j 0x1dc`.

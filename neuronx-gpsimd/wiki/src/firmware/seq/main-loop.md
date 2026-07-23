@@ -11,7 +11,7 @@ straight is the single most important thing on this page; see
 [§0.1 Two levels](#01-two-levels-the-host-loop-vs-the-interpreted-word) before reading
 anything else.
 
-Everything below is **byte-pinned to a shipped artifact this session**. The anchor
+Everything below is **byte-pinned to a shipped artifact**. The anchor
 image is the carved `CAYMAN_NX_POOL_DEBUG` device firmware extracted from
 `libnrtucode.a` (member `img_CAYMAN_NX_POOL_DEBUG_IRAM_contents.c.o` for code,
 `…_DRAM_contents.c.o` for strings), disassembled with the native
@@ -23,11 +23,12 @@ prompt-level folklore disagrees with the disassembly, **the binary wins**, and a
 in-place **CORRECTION** says so.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string read from the shipped image this session; `INFERRED` =
+`OBSERVED` = a byte/string read from the shipped image; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor;
 crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading),
-**NOTE** (orientation).
+**NOTE** (orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it
+carry an explicit tag.
 
 ---
 
@@ -159,7 +160,7 @@ start-control handshake and the run-state publish, it **falls through** (no `ret
 into the inner Sunda FSM body and spins it until "no work", at which point control
 reaches the `retw.n` at `0x31a9` and returns to the outer boot loop.
 
-The handshake + publish were byte-verified this session at `0x2d0d`:
+The handshake + publish are byte-verified at `0x2d0d`:
 
 ```c
 // enter_run StartCtrl-ack + run_state publish. @0x2d0d. [HIGH/OBSERVED]
@@ -199,7 +200,7 @@ explicit fetch-from-cursor inside the loop body.
 This is the body to reimplement first: it is recovered **instruction-exact
 end-to-end**. The loop head is reached the first time via `enter_run`'s fall-through;
 every subsequent iteration re-enters at the FETCH/POLL point `0x2d81` via the
-back-edge `0x31a3 → 0x2d81`. The seven steps, all byte-verified this session:
+back-edge `0x31a3 → 0x2d81`. The seven steps, all byte-verified:
 
 ```c
 // LEVEL 3a — Sunda seq loop. SEQ firmware (Xtensa). [HIGH/OBSERVED]
@@ -281,7 +282,7 @@ exit_retw:                                    // 0x31a6: j 0x31a9 ; 0x31a9: retw
 
 ### 4.1 The two helpers the fetch front-end calls
 
-Both were byte-verified this session; full treatment is on the
+Both are byte-verified; full treatment is on the
 [fetch / PC-redirect](fetch-pc-redirect.md) and
 [surprises / IRQ poll](surprises-irq.md) pages.
 
@@ -338,8 +339,8 @@ else
 jx handler;                               // 0x2e76
 ```
 
-**Table layout** (verified by `struct.unpack` over the carved DRAM image this
-session): 178 little-endian 4-byte IRAM targets, `index = opcode_byte − 0x41`, span
+**Table layout** (verified by `struct.unpack` over the carved DRAM image): 178
+little-endian 4-byte IRAM targets, `index = opcode_byte − 0x41`, span
 DRAM `0x814 .. 0xadc` (712 bytes), default target `0x3198`. Counted directly:
 **55 real handlers, 123 default**. `[HIGH/OBSERVED]`
 
@@ -359,8 +360,7 @@ implementation, then take the loop back-edge. (A few opcodes — `0xa1` sync —
 more work before the back-edge; see §6.)
 
 Opcodes are **ASCII-coded mnemonics** (`'A'..'~'`, `0x41..0x7e`) plus a block of
-**binary opcodes** `>= 0x92`. Representative entries, all read from the table bytes
-this session:
+**binary opcodes** `>= 0x92`. Representative entries, all read from the table bytes:
 
 | opcode | char | table → trampoline → impl | note |
 |---|---|---|---|
@@ -571,7 +571,7 @@ hw_loop:
 ## 9. DEBUG vs PERF — the offsets here do *not* port
 
 `img_CAYMAN_NX_POOL_PERF_IRAM` is a distinct, **smaller** build (`.rodata` =
-`0x17280` = 94,848 B vs `0x1c820` = 116,768 B for DEBUG — verified this session). The
+`0x17280` = 94,848 B vs `0x1c820` = 116,768 B for DEBUG). The
 PERF DRAM image carries **0** `'S:'` strings; DEBUG carries **178** records (one
 NUL-delimited `S:` record per dispatch slot; the same population counts as **187** literal
 `S: ` substrings — see §1 metric note). Removing every
@@ -589,7 +589,7 @@ every step has a named string xref. A PERF-targeting reimplementation should mat
 
 ## 10. FSM state-transition table
 
-State variables (all OBSERVED this session unless noted):
+State variables (all OBSERVED unless noted):
 
 | Variable | Location | Role |
 |---|---|---|
@@ -624,7 +624,7 @@ State variables (all OBSERVED this session unless noted):
 
 ---
 
-## 11. Diagnostic strings (DEBUG DRAM) — every one verified this session
+## 11. Diagnostic strings (DEBUG DRAM)
 
 DRAM offset = VA − `0x80000`. All 15 anchors below were dereferenced out of the carved
 DRAM image and matched their expected text byte-for-byte. `[HIGH/OBSERVED]`
@@ -666,7 +666,7 @@ pointer built by a `const16` pair). The assert helper is `0xa304` (takes file-na
 | `0x80814` | (DRAM, not a CSR) | 178-entry opcode dispatch table | `0x2e6b` base / `0x2e76` `jx` |
 | `RER 0x122000+idx*4` | remote/external status | opcode-`0xa1` sync (drives Pause vs Halt) | `0x2eab` `rer` `[MED]` |
 
-Full register-bundle map: [SEQ Run-State Machine](run-state.md) and the SX-CSR pages.
+Full register-bundle map: [SEQ Run-State Machine](run-state.md) and the CSR pages.
 
 ---
 

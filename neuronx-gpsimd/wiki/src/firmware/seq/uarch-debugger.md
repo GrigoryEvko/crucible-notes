@@ -16,7 +16,8 @@ firmware image and the shipped register definitions, two things:
 All confidence tags follow the [confidence model](../../reference/confidence-model.md):
 `[HIGH/OBSERVED]` = byte-read from the shipped disasm or the shipped register
 JSON; `[…/INFERRED]` = reasoned over those reads; `[…/CARRIED]` = consolidated
-from a cited sibling page without re-reading the artifact this pass.
+from a cited sibling page without re-reading the artifact. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 ---
 
@@ -66,7 +67,7 @@ The debug **`__FILE__`-style trace strings** the DEBUG build bakes into DRAM
 > trace strings. The full table is conventionally counted two ways:
 > **178** = dispatch-table entries = `S:` NUL-records (one per slot), and
 > **187** = literal `S: ` (trailing space) substring instances —
-> `rg -aoN 'S: ' nx_dram.bin | wc -l` = **187**, re-grounded this pass. This
+> `rg -aoN 'S: ' nx_dram.bin | wc -l` = **187**. This
 > page only asserts the individual debug strings above, each grounded by its
 > own VA; it makes no bare "N strings" claim.
 
@@ -226,7 +227,7 @@ firmware site. `[HIGH/OBSERVED — negative]`
 enumeration of the SEQ image shows the firmware uses only:
 `br` (×15), `prefctl` (×11), `memctl`, `mpuenb`, `isl`, `prid`, `lbeg`, `wb`,
 `ccount`, `vecbase`, `ps`, `ms`, `isb`, `excvaddr`, `exccause`, `cacheadrdis`.
-Re-counted this pass, **every** Xtensa debug SR returns **zero** hits:
+**Every** Xtensa debug SR returns **zero** hits:
 
 ```
 $ rg -ciN 'icount'       nx_iram.dis  →  0
@@ -537,7 +538,6 @@ mapping is the deduction]`
 > [surprises-irq.md](surprises-irq.md).** This page characterizes the join — a
 > `hw_decode` firing becomes a surprise-word bit that the polled handler
 > dispatches to Setup-Halt — but does not re-derive the surprise poll itself.
-> That page is being authored concurrently; cross-link, do not duplicate.
 
 ### 6.3 Relation to the run-state machine — HALT, not PAUSE
 
@@ -625,8 +625,8 @@ by a vector lane), which the shipped objdump cannot expose. See
 > **NOTE — forward link (Part 13).** Whether profiling / trace / debug access to
 > this block is gated (e.g. a production fuse or capability bit disabling the
 > single-step debugger or the OCD bus) is the subject of
-> [profiling-trace-debug-gating.md](../../control/security/profiling-trace-debug-gating.md),
-> not yet authored. The `breakpoint_ctrl` reset values
+> [profiling-trace-debug-gating.md](../../control/security/profiling-trace-debug-gating.md).
+> The `breakpoint_ctrl` reset values
 > (`breakpoint_instr_enable`, `…profile_table_enable`, `ucode_force_pause_enable`
 > all reset to `0x1`) suggest the debugger is *enabled at reset*; any gating
 > would be an external overlay, deferred to that page.
@@ -640,20 +640,18 @@ by a vector lane), which the shipped objdump cannot expose. See
   handshake feeding the snapshot re-seed.
 - [surprises-irq.md](surprises-irq.md) — the polled surprise word
   (`INS_BREAK`/`EXT_BREAK`/`STEP_CNT`), the poll/dispatch, and the `0x85650`
-  consume; the *drive edge* into this debugger. *(authored concurrently)*
+  consume; the *drive edge* into this debugger.
 - [error-handler.md](error-handler.md) — the fatal (`reason=16`) exception path,
   distinct from the recoverable debug breaks.
 - [soc-window-manager.md](soc-window-manager.md) — the address-translation
   windows that resolve the firmware-built `0x04004000` local view to the
   per-engine `*_LOCAL_REG` physical base.
 - [../../control/csr/xtensa-q7.md](../../control/csr/xtensa-q7.md) — the Xtensa
-  Q7 OCD/TRAX/PMU debug aperture (Layer A, JTAG-only). *(planned — not yet
-  authored; SUMMARY entry exists)*
+  Q7 OCD/TRAX/PMU debug aperture (Layer A, JTAG-only).
 - [../../control/csr/tpb-xt-local-reg.md](../../control/csr/tpb-xt-local-reg.md)
   — the `hw_decode` breakpoint bundle (Layer B, this page's register model).
-  *(planned — not yet authored; SUMMARY entry exists)*
 - [../../control/security/profiling-trace-debug-gating.md](../../control/security/profiling-trace-debug-gating.md)
-  — debug/trace access gating. *(forward, Part 13 — not yet authored)*
+  — debug/trace access gating. *(forward, Part 13)*
 - [../../reference/confidence-model.md](../../reference/confidence-model.md) —
   the confidence × provenance tagging used throughout.
 - [../../reference/flix-decoding.md](../../reference/flix-decoding.md) — the

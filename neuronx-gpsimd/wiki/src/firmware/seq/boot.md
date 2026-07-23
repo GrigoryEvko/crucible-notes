@@ -4,8 +4,7 @@ This page reconstructs the **device-side boot/entry path of the NX *SEQ* engine*
 instruction sequencer that fronts the TPB engines on the Cayman GPSIMD/Neuron SoC — from the
 architectural reset vector at IRAM `0x0`, through the Cadence C-runtime `_ResetHandler`, into
 the application `BEGIN`, and out the far side into the `enter_run` reset→run handshake that the
-[main FSM loop](main-loop.md) spins on. Everything here is **byte-pinned to a shipped artifact
-disassembled this session**: the carved `CAYMAN_NX_POOL` *DEBUG* firmware image (IRAM + DRAM
+[main FSM loop](main-loop.md) spins on. Everything here is **byte-pinned to a shipped artifact**: the carved `CAYMAN_NX_POOL` *DEBUG* firmware image (IRAM + DRAM
 `.rodata`), decoded with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`,
 `ConfigName=Xm_ncore2gp`, uarch "Cairo", `TargetHWVersion=NX1.1.4`), every log line resolved
 against the firmware's own DRAM string image, and every CSR offset cross-referenced to the
@@ -13,10 +12,11 @@ against the firmware's own DRAM string image, and every CSR offset cross-referen
 disassembly, **the binary wins**, and an in-place **CORRECTION** callout says so.
 
 Confidence tags follow the project model: `OBSERVED` = a byte/string/instruction read from a
-shipped artifact this session; `INFERRED` = reasoned over OBSERVED facts; `CARRIED` =
-consolidated from a cited cross-page anchor; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK**
-(counter-intuitive but real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a
-naive reading), **NOTE** (orientation).
+shipped artifact; `INFERRED` = reasoned over OBSERVED facts; `CARRIED` = consolidated from a
+cited cross-page anchor; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive
+but real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading),
+**NOTE** (orientation). The page default is `[HIGH/OBSERVED]`; claims that depart from it carry
+an explicit tag.
 
 > **NOTE — which core this is, and which it is *not*.** The SEQ engine is the NX-core
 > instruction sequencer; its firmware emits log lines prefixed **`S:`** (`S: BEGIN on cayman`,
@@ -88,7 +88,7 @@ C-runtime** (stack/ISL/PS → ctors → `call8 BEGIN`) whose `BEGIN` picks the r
 programs the HW-decode control CSR, and falls into a forever run loop that calls `enter_run`
 once per iteration; `enter_run` is the **reset→run rendezvous** — it spins on the host-asserted
 `nx.start_ctrl` bit, then acks it and publishes `nx.run_state`. Every surface below is OBSERVED
-in the carved `CAYMAN_NX_POOL` DEBUG image this session.
+in the carved `CAYMAN_NX_POOL` DEBUG image.
 
 ---
 
@@ -124,7 +124,7 @@ IRAM head bytes are `06 76 00 00 ... 86 77 00 00` — i.e. `j <reset>` then `j <
 
 ### 1.1 Memory map (`ncore2gp-params`)
 
-Read directly this session from `XtensaTools/config/ncore2gp-params`:
+Read directly from `XtensaTools/config/ncore2gp-params`:
 
 | Param | Value | Meaning |
 |---|---|---|
@@ -732,7 +732,7 @@ The `CAYMAN_Q7_POOL` DEBUG DRAM, by contrast, holds **0** `S:` strings and **156
 
 > **GOTCHA — PERF builds strip the strings and re-lay-out DRAM; offsets differ.** The `*_DEBUG_*`
 > image keeps the format strings in DRAM; the `*_PERF_*` image is the optimized/stripped build and
-> drops them — the device emits log-record IDs instead. Concretely, measured this session:
+> drops them — the device emits log-record IDs instead. Concretely:
 >
 > | | DEBUG | PERF |
 > |---|---|---|

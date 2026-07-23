@@ -22,11 +22,12 @@ addresses (`.rodata` VMA == file offset for this carve). DRAM string addresses a
 DRAM VAs; the file offset into the carved DRAM blob is `VA − 0x80000`.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte / string / instruction read or re-disassembled from the carved image
-**this pass**; `INFERRED` = reasoned over those reads; `CARRIED` = taken from a cited sibling
+`OBSERVED` = a byte / string / instruction read or disassembled from the carved image;
+`INFERRED` = reasoned over those reads; `CARRIED` = taken from a cited sibling
 report at its original confidence. Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK**
 (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns
-a naive reading), **NOTE** (orientation). Everything below was re-disassembled with the native
+a naive reading), **NOTE** (orientation). The page default is `[HIGH/OBSERVED]`; claims that
+depart from it carry an explicit tag. Everything below was disassembled with the native
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, Binutils 2.34.20200201 / Xtensa Tools 14.09)
 against the four carved `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM,SRAM,EXTRAM}_contents.c.o`
 members of `libnrtucode.a`.
@@ -98,7 +99,7 @@ sections below. The two structural choices worth flagging up front: the region i
 
 ---
 
-## 2. String anchors — the module + log oracle  `[HIGH/OBSERVED]`
+## 2. String anchors — the module + log oracle
 
 The DEBUG DRAM image carries the source-file tags and every cache log string. These are the
 proof of which modules implement the cache, and they pin each function's arguments and assert
@@ -139,7 +140,7 @@ high half is `0x0008` for all — i.e. DRAM page `0x80000`):
 | `0x82c93` | `0xcff4` | `S: BranchPrefetchHint` |
 | `0x83c49` | `0x152f6` | `S: PrefetchHelper : Taken branch addr ... prefetching branch target 0x%llx` |
 
-The log helper itself is `0x18b84` (**254** call sites across the image, `rg -c` this pass) —
+The log helper itself is `0x18b84` (**254** call sites across the image, `rg -c`) —
 called with `a10` = format-string pointer, `a11..` = varargs. The assertion helper is
 `0xa304` (**43** call sites) — called with `a10` = message string, `a11` = `"cache.hpp"`
 (`const16 0x12d0`), `a12` = source line number. This `a12`-carries-the-line convention is how
@@ -153,7 +154,7 @@ every "cache.hpp line N" claim below is grounded.
 
 ---
 
-## 3. Cache init — geometry + tag-array allocation  `@0x2a84`  `[HIGH/OBSERVED]`
+## 3. Cache init — geometry + tag-array allocation  `@0x2a84`
 
 `BEGIN` (the boot path) calls the IRAM-cache init at `0x2a84`. It establishes the cache
 control struct, computes the geometry, programs the HW block-size mask CSR, selects HW-vs-SW
@@ -213,7 +214,7 @@ The geometry stores land at these struct offsets (full map in [§12](#12-cache-d
 
 ---
 
-## 4. Tag lookup — the fully-associative scan  `query @0x5edc`  `[HIGH/OBSERVED]`
+## 4. Tag lookup — the fully-associative scan  `query @0x5edc`
 
 `fetch_cache_line @0x5a98` is the hit/miss entry point. It calls the query body and logs the
 result; the query body branches on the HW/SW mode flag and, in SW mode, runs a **linear scan
@@ -274,7 +275,7 @@ The result is a single byte at `descr[+44]` (`0` = miss, `1` = hit), read back b
 
 ---
 
-## 5. The per-line state machine  `wait_for_valid @0x67f4`  `[HIGH/OBSERVED]`
+## 5. The per-line state machine  `wait_for_valid @0x67f4`
 
 One 16-byte descriptor layout serves both modes; `descr[+60]` selects which. `wait_for_valid`
 blocks until a line's fill completes. The line-state word (`entry[0]`) takes exactly three
@@ -354,7 +355,7 @@ uint32_t victim_rotate(cache_t *cache) {
 > victim back. The disassembly shows `victim_rotate @0x62e0` only **computes and returns**
 > `v` in `a2` (`0x6300: retw.n`); the write-back to `descr[+36]` happens in the caller
 > (`replace`, and the fetch-time driver at `0x5d14`). The distinction matters for a reimplementer:
-> the primitive is pure-ish, the state lives one frame up. `[HIGH/OBSERVED this pass.]`
+> the primitive is pure-ish, the state lives one frame up. `[HIGH/OBSERVED]`
 
 The collision guard layered on top — both inside `replace()` and in the fetch front-end's
 "rotate to next victim and retry" ([§9](#9-fetch-front-end-interaction)) — is what keeps the
@@ -466,7 +467,7 @@ void wait_for_cache_line(cache_t *cache, addr_t pc) {
 
 > **CORRECTION — `descr[+40]` ("next line staged") is a *byte* flag, not a word pointer.** The
 > store is `s8i a3, a2, 40` (`0x5df6`) with `a3 = 1`, not a 32-bit pointer write. Treat
-> `descr[+40]` as a boolean "next line has been staged" flag. `[HIGH/OBSERVED this pass.]`
+> `descr[+40]` as a boolean "next line has been staged" flag. `[HIGH/OBSERVED]`
 
 The index derivation `(pc & iram_block_size_mask) / block_size` is read from the log's own
 argument list (`mask`, `blk_sz`, `idx`, `nxt_idx`). The exact mask-arithmetic *word* sits in a
@@ -500,7 +501,7 @@ are instruction-exact**:
   `descr[+56] |= (1 << idx)`.
 
 ```c
-// cache_idx_pushed bitmask set  @0x5b84   (instruction-exact this pass)
+// cache_idx_pushed bitmask set  @0x5b84   (instruction-exact)
 void mark_pushed(cache_t *cache, uint32_t idx) {
     uint32_t bit = 1u << idx;            // 0x5b8f movi 1 ; 0x5b91 ssl a3 ; 0x5b94 sll a3,a4
     cache->pushed |= bit;               // 0x5b97 l32i +56 ; 0x5b99 or ; 0x5b9c s32i a3,a2,56
@@ -527,7 +528,7 @@ the 0x31ac dispatch body / loop back-edge are the FLIX desync span — per-itera
 
 ---
 
-## 10. Prefetch — branch-hint driven  `branch_prefetch_hint.cpp`  `[HIGH]`  *(SX-FW-05 touchpoint)*
+## 10. Prefetch — branch-hint driven  `branch_prefetch_hint.cpp`  `[HIGH]`  *(FW-05 touchpoint)*
 
 The prefetch subsystem is the **producer** that feeds the `Push?` path. Its full state machine
 is the subject of [SEQ Branch + Prefetch-Hint](branch-prefetch.md); the cache-relevant
@@ -647,7 +648,7 @@ CSR cross-reference (general local-register block, base `0x1000`, stride `0x20`)
   prefetch        ─► 0x151e8 PrefetchHelper ─► 0x15010 push next block ─► descr[+56]
 ```
 
-`[HIGH/OBSERVED — every hop re-disassembled this pass.]`
+`[HIGH/OBSERVED — every hop re-disassembled.]`
 
 ---
 
@@ -701,7 +702,7 @@ build must account for two differences:
 
 ## 16. Adversarial self-verification — the 5 strongest claims
 
-Each of the five primary claims was re-challenged against the disassembly this pass; where a
+The five primary claims and the disassembly evidence for each; where a
 naive reading would have failed, the failure and its fix are recorded.
 
 | # | claim | challenge | binary arbiter / verdict |
