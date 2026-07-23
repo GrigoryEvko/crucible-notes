@@ -62,7 +62,7 @@ are **HIGH / OBSERVED** unless noted.
 | `DMA_ENGINE_DATA_WIDTH_BYTES`          | 32         | 32         | 32         | **256**     |
 | `DMA_ENGINE_COUNT_PER_TPB`             | 16         | 16         | 16         | **8**       |
 
-> **CORRECTION (vs the earlier DX-DMA-06 synthesis).** Several maverick (v5) constants
+> **CORRECTION (vs the earlier synthesis).** Several maverick (v5) constants
 > diverge from the "stable across gens" picture the synthesis carried. Byte-exact from
 > `neuron_maverick_arch_isa/.../aws_neuron_isa_tpb_common.h`:
 > `PE_ARRAY_NUM_COLS = 256` (not 128), `PE_ARRAY_NUM_ROW_GROUPS = 2` (not 4),
@@ -254,7 +254,7 @@ ECC banks owns one 64-byte `erg_parity_model` register block. Verified byte-exac
 | `eg_sram_uncerr` @0x10 / `uncerr_sram_mask` @0x14 / `uncerr_cnt` @0x18 `[7:0]` / `uncerr_sram_status` @0x1c / `uncerr_stat_clear` @0x20 | per-SRAM uncorrectable-error gen-enable / mask / count (saturates 0xFF) / status / clear | uncerr path |
 | `spare_reg` @0x24   | `spare[31:0]`                                                                               | metal ECO |
 
-> **CORRECTION (vs DX-DMA-06).** The synthesis listed redundancy-MUX fields
+> **CORRECTION (vs the earlier synthesis).** The synthesis listed redundancy-MUX fields
 > `rmea/rmeb/rma/rmb` (SRAM row-repair selects) in `mem_cfg`. **Those fields are not
 > present** in the shipped `erg_parity_model.json` — `mem_cfg` carries only
 > `shutdown` + the four `test1a/test1b/testrnm/testrwm` margin pins. The `erg_type`
@@ -342,7 +342,7 @@ typedef struct NEURON_ISA_TPB_S3D3_MM_STRUCT {
 } NEURON_ISA_TPB_S3D3_MM_STRUCT;
 ```
 
-> **CORRECTION (vs DX-DMA-06).** The synthesis's field table omitted the matmul's
+> **CORRECTION (vs the earlier synthesis).** The synthesis's field table omitted the matmul's
 > `row_grp @44`, `col_grp @45`, and `xbus_sel @46`. These three are the heart of the
 > matmul→PSUM partition decode (below). [HIGH / OBSERVED struct.]
 
@@ -403,7 +403,7 @@ enum MATMUL_ZERO_REGION {                   enum MATMUL_ZERO_REGION {
                                             };
 ```
 
-> **CORRECTION (vs DX-DMA-06).** The synthesis stated the 1/2/4/8-bank
+> **CORRECTION (vs the earlier synthesis).** The synthesis stated the 1/2/4/8-bank
 > `SIZE2048/4096/8192/16384` enum is universal. **It is not.** On **sunda and cayman**
 > the enum has **only `SIZE2048 = 0`** — the matmul can zero exactly **one** 2048-B
 > bank at begin; the 2/4/8-bank zero regions exist only from **mariana (v4)** onward.
@@ -491,7 +491,7 @@ axi2sram_config @0x400:
 > transpose crossbar, the AXI→SRAM bridge carries a **`raw_en` Read-Add-Write logic
 > block (reset = 1)** with non-FP8 NaN/Inf saturation converters (`raw_conv`). This is
 > an atomic accumulate path *on the SBUF write side* — distinct from the PE-array PSUM
-> accumulation. (Not mentioned in the DX-DMA-06 synthesis.) `transpose_en` is reset
+> accumulation. (Not mentioned in the earlier synthesis.) `transpose_en` is reset
 > **enabled** (transpose-capable by default); the sequencer's `disable_bg_xpose`
 > ([§5.6](#56-the-pe-array-sequencer-the-drain-control)) is reset **disabled** — the
 > port is wired but background transpose is off until the firmware enables it.
@@ -533,7 +533,7 @@ only — v4+):
 > to store are of shape **128×16** and expected to be in **PSUM** partition 0–127 … we
 > must transpose the saved seeds in PSUM before we can load them back."*
 
-> **REFINEMENT (vs DX-DMA-06).** The 16 seeds/partition is not arbitrary — it is
+> **REFINEMENT (vs the earlier synthesis).** The 16 seeds/partition is not arbitrary — it is
 > **8 PSUM banks × 2 rounding states/bank**, a direct cross-check on the 8-bank/partition
 > count ([§4.2](#42-reconciling-8-banks-partition-with-32-ecc-banks--48)). `SaveSeed`
 > writes 128×16 to PSUM (one bank's worth per partition); `LoadSeed` reads 16×128 from
@@ -574,7 +574,7 @@ STAGE 2  arb_stage2 @0x100  — arbitrate the engine clients + the stage-1 winne
    → arbitrates {pool rd, act rd, pool wr, act wr, PE-read-winner} for the SBUF port.
 ```
 
-> **CORRECTION (vs DX-DMA-06).** The synthesis read the stage-1 `pe_client_0..4` reset
+> **CORRECTION (vs the earlier synthesis).** The synthesis read the stage-1 `pe_client_0..4` reset
 > *priorities* as 1. They are **all reset 0**; only stage-2 `pe_rd_client` has reset
 > priority **0x1**. The bandwidth bias toward the systolic array is set there (at reset
 > the PE-read winner from stage 1 wins ties against POOL/ACT). [HIGH / OBSERVED reset
@@ -696,7 +696,7 @@ OBSERVED partition map; MED cluster↔core alignment.]
 
 ## 9. Confidence ledger & corrections
 
-**HIGH / OBSERVED** (byte-exact this pass):
+**HIGH / OBSERVED** (byte-exact):
 
 - All per-gen geometry constants from the four `aws_neuron_isa_tpb_common.h` headers
   ([§1](#1-geometry-constants--the-per-generation-machine-model)), incl. the maverick
@@ -722,7 +722,7 @@ master sharing the TDM DMA slot. **LOW** — the sunda 16×1024 PSUM-bank silico
 the Q7-vs-SDMA arbitration order inside the DMA slot; **all v5/maverick interior geometry
 (header-OBSERVED only).**
 
-**Corrections issued vs the DX-DMA-06 synthesis** (all byte-grounded above):
+**Corrections issued vs the earlier synthesis** (all byte-grounded above):
 
 | # | claim corrected | truth |
 | - | --------------- | ----- |

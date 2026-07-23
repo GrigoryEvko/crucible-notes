@@ -51,7 +51,7 @@ schemas.
 > Their addresses below are byte-verified in that runtime binary's decompile; treat them
 > as **cross-package CARRIED** facts about the host runtime, not facts about the GPSIMD
 > firmware image. **[binary partition HIGH/OBSERVED — symbol present-in/absent-from each
-> sidecar this session.]**
+> sidecar.]**
 
 ---
 
@@ -126,7 +126,7 @@ threshold) **and** `enable_dge_on_indirect_dma`; `HWDGE` is **NeuronCore-v3+ onl
 ("HWDGE is only supported for NeuronCore-v3+").
 
 **[CARRIED/HIGH — the `bir::InstDMA` field set and enum values are recovered from the
-host neuronx-cc analysis (DX-DMA-01/DX-CC-02); they are not in the GPSIMD ISA headers,
+host neuronx-cc analysis; they are not in the GPSIMD ISA headers,
 which begin at the device descriptor. Treat as cross-component CARRIED.]**
 
 ### 1.2 kbin lowering — the typed ring (CUSTOM_OP = 16)
@@ -158,7 +158,7 @@ host runtime; the `16`↔CUSTOM_OP binding is byte-confirmed in `dma_is_custom_o
 The DGE that **builds** the descriptors runs **device-side**, on the Q7/POOL GPSIMD
 cores — the shipped `gather_xpose` ISA header names the backend verbatim: *"This
 instruction uses the SW-DGE backend with Q7 processors in the Gpsimd engine"*
-(`aws_neuron_isa_tpb_dma_gather_xpose.h:17`, OBSERVED this session). The host only
+(`aws_neuron_isa_tpb_dma_gather_xpose.h:17`, OBSERVED). The host only
 *configures* it (the priority/mailbox tables, §7.2); the device *generates*. The build
 is a four-stage pipeline, all in the `*_NX_POOL` firmware images
 ([DGE Setup](../firmware/dge/dge-setup.md) / [Selector](../firmware/dge/dge-backend-selector.md) /
@@ -171,7 +171,7 @@ is a four-stage pipeline, all in the `*_NX_POOL` firmware images
 | 3. SELECT | `dge_backend_rtl.cpp` | one BSS availability read → Pool / RTL / software (§4) | `S: DGE: Select backend Pool` (`@VA 0x83157`) |
 | 4. EMIT | (same TU) | `[REGWRITE]* + GENERATE + DIMPUSH×#dims` onto `DMA[d]` (§5) | `S: push GENERATE to DMA[%d]: …` |
 
-The setup string and the `rx.base`/`tx.base` line were re-found this session in
+The setup string and the `rx.base`/`tx.base` line appear in
 `libnrtucode_internal.so` `.rodata` (the host build embeds the same DEBUG corpus the
 firmware DRAM carries). **[stage strings HIGH/OBSERVED.]**
 
@@ -244,14 +244,14 @@ loop-nest bounds + strides of the (up to) 4-D walk.
 > **CORRECTION — the shape-register symbol IS `NEURON_ISA_TPB_NUM_DGE_SHAPE_REGISTERS
 > = 4U`.** The [backend-selector page §4](../firmware/dge/dge-backend-selector.md) carries
 > a CORRECTION claiming the symbol name is *not* `NUM_DGE_SHAPE_REGISTERS` (it offered
-> `NEURON_ISA_TPB_n`). Re-grepping the shipped header this session, the symbol is
+> `NEURON_ISA_TPB_n`). The shipped header carries the symbol
 > verbatim `static const uint32_t NEURON_ISA_TPB_NUM_DGE_SHAPE_REGISTERS = 4U;` at
 > `aws_neuron_isa_tpb_common.h:34`, and `is_valid_dge_shape_reg` checks `reg_num <
 > NUM_DGE_SHAPE_REGISTERS` at `:2077`. The [emit page §5.1](../firmware/dge/dge-emit.md)
 > uses the same correct symbol. The 4-deep fact holds on every page; the *name* the
 > selector page disputes is in fact present. The `NEURON_ISA_TPB_n` artifact is a
 > name-obfuscated placeholder in that header, not the real symbol. **[HIGH/OBSERVED —
-> `rg -n NUM_DGE_SHAPE_REGISTERS` this session.]**
+> `rg -n NUM_DGE_SHAPE_REGISTERS`.]**
 
 ### 3.3 Transpose = a SIGNED stride permutation
 
@@ -261,7 +261,7 @@ reorder. The `i32` SIGNED `step_elem` allows **negative strides** (reverse-axis
 walks). For the 2-byte gather-transpose Kind, `tensor_reshape_transpose` builds a 64-B
 `GATHER_XPOSE` descriptor whose DMA/xbar HW transposes **16×128 tiles for 2-B
 dtypes** (BF16/FP16); the shipped header pins the constraints
-(`aws_neuron_isa_tpb_dma_gather_xpose.h`, OBSERVED this session):
+(`aws_neuron_isa_tpb_dma_gather_xpose.h`, OBSERVED):
 
 ```
 // - Only 2B data types supported initially (BF16/FP16)
@@ -452,7 +452,7 @@ FLIX-desynced body, forward-resolved on [dge-microop-encoding](dge-microop-encod
 
 ### 5.3 The descriptor opcodes — struct → opcode binding
 
-The `instruction_mapping.json` `struct2opcode` table (OBSERVED this session) binds
+The `instruction_mapping.json` `struct2opcode` table (OBSERVED) binds
 each 64-B descriptor struct to its TPB opcode:
 
 | 64-B struct | TPB opcode | DGE Kind |
@@ -469,12 +469,12 @@ HIGH/OBSERVED; the numeric 0..3 ordering INFERRED from declaration order.]**
 
 > **NOTE — there is a fourth DGE Kind, `DIRECT2D_XPOSE` (`DMA_TRANSPOSE`).** The backing
 > report and the firmware backend logs enumerate three descriptor Kinds (DIRECT2D,
-> INDIRECT1D, GATHER_XPOSE). The `struct2opcode` table OBSERVED this session carries a
+> INDIRECT1D, GATHER_XPOSE). The `struct2opcode` table OBSERVED carries a
 > **fourth**, `DMA_DIRECT2D_XPOSE_STRUCT → OPCODE_DMA_TRANSPOSE` (a non-gather 2-D
 > transpose), distinct from the gather-transpose. It is a `DGE_OPCODE` member but does
 > not surface as a separate backend log line — it shares the Pool/RTL emit path. A
 > reimplementer enumerating DGE descriptor Kinds must include all four. **[HIGH/OBSERVED
-> — `struct2opcode` + the `DGE_OPCODE` enum this session.]**
+> — `struct2opcode` + the `DGE_OPCODE` enum.]**
 
 ### 5.4 The 64-B → 16-B expansion + the carveout
 
@@ -482,7 +482,7 @@ HIGH/OBSERVED; the numeric 0..3 ordering INFERRED from declaration order.]**
 `GATHER_XPOSE`, all `ISA_STATIC_ASSERT(sizeof == 64)`, `gcc`-verified); the backend
 EXPANDS it into 16-B BD ring entries (one or more per partition / per length-chunk).
 The 16-B unit is PINNED by `MEMCOPY_CARVEOUT_CFG` (local-reg **39**, header comment
-verbatim this session):
+verbatim):
 
 ```c
 // DGE Pool carveout configuration (only usable on Pool).
@@ -502,8 +502,8 @@ engine may use, hi16 = which queues }`. The composed BDs land in the DGE Pool ca
 
 > **CORRECTION — `SDMA_CME_BD_DESC` is NOT a C struct in this distribution.** The
 > backing report and the [backend-selector page §2](../firmware/dge/dge-backend-selector.md)
-> both name `SDMA_CME_BD_DESC` as the 16-byte BD struct. Re-checking this session
-> (`rg --no-ignore` over the whole `c10/include` tree), **no such C struct exists in
+> both name `SDMA_CME_BD_DESC` as the 16-byte BD struct. A sweep of the whole
+> `c10/include` tree (`rg --no-ignore`) confirms **no such C struct exists in
 > the `0.21.2.0` GPSIMD distribution** — the name is a carried cross-analysis label.
 > What is OBSERVED here is the **16-byte descriptor *unit*** (pinned by
 > `MEMCOPY_CARVEOUT_CFG` above) and the three 64-B high-level structs. The 16-B BD's
@@ -586,7 +586,7 @@ typedef struct NEURON_ISA_TPB_DMA_CONFIGS {
 ```
 
 `priority_class <= 4` → **five valid classes, 0..4**. `DMA_CONFIGS` sits at **+12 in
-DIRECT2D**, **+13 in GATHER_XPOSE**, **+61 in INDIRECT1D** (all OBSERVED this session,
+DIRECT2D**, **+13 in GATHER_XPOSE**, **+61 in INDIRECT1D** (all OBSERVED,
 header offsets). So the 17-value compiler `DMAQoSClass` is **saturated** into a 3-bit,
 5-class device field: `P0..P3` map to wire 1..4; `P4..P14` and Default/Unassigned
 collapse onto the legal 0..4 band. **[the 3-bit field + the `<=4` gate + the three
@@ -597,7 +597,7 @@ saturation INFERRED-HIGH from the gate.]**
 
 Before the device DGE runs, the host writes the class table via
 `nrtucode_core_dge_set_priority_class_map(core, priority_classes, n)`
-(`libnrtucode.so` `@0x3094e0`, byte-verified this session; `libnrtucode_internal.so`
+(`libnrtucode.so` `@0x3094e0`, byte-verified; `libnrtucode_internal.so`
 copy `@0x9b1000`). It is a single bulk `n*4`-byte write of a `uint32_t[≤4]` to
 `dram_base + 0x18`, gated on `boot_state == 1` and an NX-POOL core-kind mask:
 
@@ -658,7 +658,7 @@ delta HIGH/OBSERVED — host-api page.]**
 
 ### 7.3 Where the class surfaces on the M2S queue (Cayman CSR, byte-exact)
 
-`priority_class` → the per-queue M2S CSR fields (all re-read this session from
+`priority_class` → the per-queue M2S CSR fields (all read from
 `csrs/sdma/udma_m2s.json`, the Cayman schema):
 
 | CSR field | abs offset | bits | reset | role |
@@ -673,8 +673,7 @@ delta HIGH/OBSERVED — host-api page.]**
 > `0x1080` is `M2S_Q.dwrr_cfg_1` (`{pause[25], strict[24], max_deficit_cnt_size[23:0]}`),
 > `0x1084` is `dwrr_cfg_2.q_qos[7:0]`, `0x1088` is `dwrr_cfg_3.weight[7:0]`. The
 > report conflated `dwrr_cfg_1` and `dwrr_cfg_2`. A reimplementer must write `q_qos` to
-> `queue_base + 0x84`, not `+0x80`. **[HIGH/OBSERVED — `udma_m2s.json` register offsets
-> this session.]**
+> `queue_base + 0x84`, not `+0x80`. **[HIGH/OBSERVED — `udma_m2s.json` register offsets.]**
 
 So the compiler's `DMAQoSClass` becomes a per-queue AXI QoS + a DWRR `q_qos`/`weight`
 + a high-priority-candidate bit. **[all four fields HIGH/OBSERVED — the JSON schema;
@@ -764,7 +763,7 @@ comp_fifo_depth  [7:0]  rst=0x40    // completion FIFO size (descriptors per que
 > **`M2S_stream_rate_limiter.cfg_1s @0x3C0`**; and the `mask`
 > (`internal_rate_limiter[1]` / `external_rate_limiter[0]`, both reset `1`) is in
 > **`M2S_stream_rate_limiter.mask @0x3D4`**. Both rate limiters are masked at reset.
-> **[HIGH/OBSERVED — block-by-block register lists this session.]**
+> **[HIGH/OBSERVED — block-by-block register lists.]**
 
 ### 8.5 The S2M (RX) side — QoS without egress shaping
 
@@ -782,7 +781,7 @@ only QoS tagging + the two RR↔QoS arbiters:
 
 So inbound DMA is QoS-tagged (`AXI_qos` + `q_qos`) but NOT bandwidth-shaped — the
 egress M2S side carries the DWRR + rate-limiter machinery. **[all S2M fields + the
-no-DWRR/no-rate-limiter absence HIGH/OBSERVED — `udma_s2m.json` this session.]**
+no-DWRR/no-rate-limiter absence HIGH/OBSERVED — `udma_s2m.json`.]**
 
 ### 8.6 The arbiter summary
 
@@ -807,7 +806,7 @@ no-DWRR/no-rate-limiter absence HIGH/OBSERVED — `udma_s2m.json` this session.]
 
 The QoS class also bounds the **size** of a collective-reduce (CCE) DMA packet. The
 prio_cap is `encd_get_cce_reduce_packet_size` in the host runtime `libnrt.so`
-(`@0x2396f0`), decompiled byte-exact this session:
+(`@0x2396f0`), decompiled byte-exact:
 
 ```c
 // libnrt.so @0x2396f0 ; /opt/workspace/KaenaRuntime/tdrv/encd.c
@@ -846,7 +845,7 @@ the arbiter re-evaluates. Element/packet-count limits compound it
 > **which** queue is served next (`AXI_qos` + DWRR `q_qos`/`weight`); the prio_cap
 > decides **how big** each CCE reduce packet on that queue may be, per class. Together
 > they shape a collective reduce's bandwidth share. **[the `min()`/`& ~0x1F`/per-class
-> cap-table read HIGH/OBSERVED — `libnrt.so` decompile this session; the "which + how-
+> cap-table read HIGH/OBSERVED — `libnrt.so` decompile; the "which + how-
 > much" joint reading INFERRED-HIGH.]**
 
 ---
@@ -856,7 +855,7 @@ the arbiter re-evaluates. Element/packet-count limits compound it
 ### 10.1 The custom-op queue-bundle detection — byte-exact
 
 A DMA is identified as a custom-op DMA by `dma_is_custom_op_dma_v2(eng_id, queue_id)`
-(`libnrt.so` `@0x22e120`), decompiled verbatim this session:
+(`libnrt.so` `@0x22e120`), decompiled verbatim:
 
 ```c
 // libnrt.so @0x22e120
@@ -880,7 +879,7 @@ So the table `v2_queue_bundle_alloc_table` is a flat array of
 walked in **pairs**: `entry[0]` is the `(marker=16, rel_index)` pair, `entry[1]` is the
 `(eng_lo, eng_hi)` range pair; the walk stops at `mariana_queue_idx`. The literal **16**
 is the CUSTOM_OP rel-index marker (matching `KBIN_DMA_RING_TYPE_CUSTOM_OP(16)`, §1.2),
-**not a hardware queue number**. **[HIGH/OBSERVED — `libnrt.so` decompile this session;
+**not a hardware queue number**. **[HIGH/OBSERVED — `libnrt.so` decompile;
 the `==16` marker + the pair-walk + the sentinel byte-exact.]**
 
 ### 10.2 The queue-bundle routing record
@@ -893,7 +892,7 @@ static_ring_info_{rx,tx}, dma_queue_bundle_t* queue_bundle}`.
 (stride 6096) and the per-instance queues (stride 360), counting template rings
 re-materialized per inference into `dynamic_ring_count`. The `queue_bundle` is the
 per-queue routing record `dma_is_custom_op_dma_v2` keys on. **[CARRIED/HIGH — host
-runtime; the two symbol addresses byte-verified this session.]**
+runtime; the two symbol addresses byte-verified.]**
 
 ### 10.3 How custom-op DMA is scheduled vs compute / collective
 
@@ -964,7 +963,7 @@ M2S/S2M engine and the **same** three arbiters (§8). The distinctions are:
 
 ## 12. Confidence & gaps
 
-- **HIGH / OBSERVED (this session):** the device descriptor fields — `DMA_CONFIGS`
+- **HIGH / OBSERVED:** the device descriptor fields — `DMA_CONFIGS`
   `priority_class:3` + `is_valid_dma_configs: priority_class<=4` (header `:713–716`,
   `:2070–2071`); `dma_configs` at +12 (DIRECT2D) / +13 (GATHER_XPOSE) / +61
   (INDIRECT1D); the 4-deep `NEURON_ISA_TPB_NUM_DGE_SHAPE_REGISTERS=4U` (`:34`); the

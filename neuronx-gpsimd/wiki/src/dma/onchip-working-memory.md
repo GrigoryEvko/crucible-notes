@@ -17,7 +17,7 @@ page is the layer *above* that: where each region sits in the SoC decode window 
 the Q7 reaches (or cannot reach) it.
 
 Every base/size below is grounded in the shipped, RTL-generated address-map artifacts and
-re-verified numerically: the Cayman `address_map_flat.yaml` (34,858 nodes) and its
+verified numerically: the Cayman `address_map_flat.yaml` (34,858 nodes) and its
 `address_map.h` `#define` twin, the Maverick `al_address_map_db.{pkl,json}`, plus the
 device-side Xtensa-disassembled `neuron_translate` / `dram_addr_to_soc_addr` /
 `init_neuron_dataram_allocator` bodies. Confidence is tagged
@@ -64,7 +64,7 @@ macros in `cayman/address_map.h` L3472–L3502 — **both views are byte-identic
 with **zero gaps and zero overlaps** — every `base == previous_end` through `PSUM_BUF`'s
 end. `STATE_BUF(32) + RESERVED10(32) + SCRATCH(32) + RESERVED11(928 MiB) = 0x2040000000`
 = `DGE_MEMORY` base; `…+ DGE(1 GiB) + RESERVED12(30 GiB) = 0x2800000000` = the
-`RESERVED_SBUF` block base. [HIGH / OBSERVED — arithmetic re-run this pass.]
+`RESERVED_SBUF` block base. [HIGH / OBSERVED — arithmetic verified.]
 
 **No data-region carries a CSR.** None of `STATE_BUF` / `SCRATCH_RAM` / `DGE_MEMORY` /
 `PSUM_BUF` has a `json:` binding in the map — they are **pure memory / decode leaves**.
@@ -317,7 +317,7 @@ Verified per-core aperture offsets (`window_index << 16`):
 
 Each core gets its own **64 KiB SoC aperture** (`idx·0x10000` apart), anchored at a runtime
 `SoC_BASE` read from two fixed low words (`ureg[0x28]`/`[0x2C]`). [HIGH / OBSERVED — the
-PRID-switch `movi` arms + the aperture math re-verified this pass.]
+PRID-switch `movi` arms + the aperture math.]
 
 > **NOTE — aperture (64 KiB) vs physical core DRAM (256 KiB).** The SDMA aperture exposes
 > the **low 64 KiB** of each core's 256 KiB physical DRAM — exactly matching the local
@@ -397,7 +397,7 @@ working-memory regions. [HIGH / OBSERVED.]
 ## 10. Confidence ledger
 
 **HIGH / OBSERVED** (byte-exact in `address_map_flat.yaml` + `cayman/address_map.h` +
-the Xtensa-disassembled device objects, re-verified this pass):
+the Xtensa-disassembled device objects):
 
 - The 10-row TPB_0 region table ([§1](#1-the-tpb_0-on-chip-memory-region-table)): YAML and
   header `#define` byte-identical; gap-free contiguity verified.

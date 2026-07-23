@@ -623,7 +623,7 @@ reference is in [the data-movement reference](data-movement-reference.md).
 
 ## 9. Confidence ledger
 
-* **HIGH/OBSERVED** (re-verified against shipped cayman artifacts in this extraction):
+* **HIGH/OBSERVED** (verified against shipped cayman artifacts in this extraction):
   every 64-B word byte layout (§2, `_Static_assert sizeof==64`); the wire opcodes
   `0xb8/0xbb/0xbd/0xf1` and extended `8/9` + the `struct2opcode` binding; the full
   udma M2S/S2M per-queue ring CSR map + the `*DRTP_INC @0x1038` doorbell, queue stride
