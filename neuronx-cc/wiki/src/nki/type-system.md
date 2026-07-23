@@ -76,11 +76,11 @@ The dispatch key is an `IntEnum` *category* assigned to each operand by an `isin
 ### 2.1 CmpOp lattice (comparisons)
 
 ```c
-// NkiTypeSystemCmpOp — TypeCategory(IntEnum), members CONFIRMED via _strings.json
+// NkiTypeSystemCmpOp — TypeCategory(IntEnum), members read from _strings.json
 //   {OTHER, SCALAR, TILE_INDEX, TENSOR}      // exactly four — no MASK/PREDICATE here
 enum TypeCategory { OTHER, SCALAR, TILE_INDEX, TENSOR };   // integer values INFERRED
 
-// get_type_category  (__pyx_pw_…_18NkiTypeSystemCmpOp_1get_type_category, CONFIRMED body)
+// get_type_category  (__pyx_pw_…_18NkiTypeSystemCmpOp_1get_type_category)
 TypeCategory get_type_category(PyObject *x) {
     if (isinstance(x, scalar))      return SCALAR;       // neuron `scalar`
     if (isinstance(x, tensor))      return TENSOR;       // neuron `tensor`
@@ -94,7 +94,7 @@ TypeCategory get_type_category(PyObject *x) {
 The logical module extends the lattice with `MASK` and `PREDICATE` so that already-built mask/predicate objects classify distinctly from the index/scalar/tensor inputs. The `isinstance` chain order is recovered directly from the decompiled body of `get_type_category` (`__pyx_pw_…_22NkiTypeSystemLogicalOp_1get_type_category`, file `…_1get_type_categor_0x15cb0_…c`), which probes the module globals in exactly this sequence: `scalar → tensor → tile_index → nki_mask → predicate`, falling through to `OTHER`:
 
 ```c
-// NkiTypeSystemLogicalOp — TypeCategory(IntEnum), all six members CONFIRMED
+// NkiTypeSystemLogicalOp — TypeCategory(IntEnum), all six members read from the pool
 //   `__pyx_k_MASK` and `__pyx_n_s_PREDICATE` are real constants in this module's pool
 enum TypeCategory { OTHER, SCALAR, TILE_INDEX, MASK, PREDICATE, TENSOR };  // ints INFERRED
 
@@ -128,8 +128,8 @@ Two factories build the comparison handlers; two class decorators install them.
 //   op       = operator.eq / operator.ne
 //   op_name  = 'eq' / 'ne'                 (also selects tensor _binop op)
 //   numpy_op = np.equal / np.not_equal
-// CONFIRMED: closure refs SCALAR/TENSOR/TILE_INDEX, EQTileMask, EQScalarPredicate,
-//            _binop, return_tensor_or_extracted_scalar, "Unexpected type "
+// closure refs: SCALAR/TENSOR/TILE_INDEX, EQTileMask, EQScalarPredicate,
+//               _binop, return_tensor_or_extracted_scalar, "Unexpected type "
 PyObject *handler(self, a, b) {
     cat_a = get_type_category(a);
     cat_b = get_type_category(b);
@@ -144,7 +144,7 @@ PyObject *handler(self, a, b) {
     else if (/* SCALAR involved */)
         return EQScalarPredicate(a, b, op);             // scalar equality predicate
     else
-        raise TypeError("Unexpected type " ...);        // CONFIRMED .rodata
+        raise TypeError("Unexpected type " ...);        // .rodata literal
 }
 ```
 
@@ -155,8 +155,8 @@ Identical category dispatch, but the predicate/mask results are the **Intersecti
 ```c
 // make_comparison_operation(op, op_name, numpy_op, pred_op) -> handler(self, a, b)
 //   pred_op = pred_lt / pred_le / pred_gt / pred_ge   (affine predicate constructor)
-// CONFIRMED: TileMaskIntersection, ScalarPredicateIntersection, combine_tile_with,
-//            _binop, return_tensor_or_extracted_scalar, pred_lt/le/gt/ge
+// closure refs: TileMaskIntersection, ScalarPredicateIntersection, combine_tile_with,
+//               _binop, return_tensor_or_extracted_scalar, pred_lt/le/gt/ge
 PyObject *handler(self, a, b) {
     cat_a = get_type_category(a);
     cat_b = get_type_category(b);
@@ -221,7 +221,7 @@ PyObject *promote_other_to_predicate(PyObject *a) {
 PyObject *promote_to_logical_type(PyObject *value, TypeCategory highest_category) {
     if (get_type_category(value) == TENSOR)
         raise(...);                                  // tensors are not promotable here
-    promoter = PROMOTION_MAP[highest_category];      // CONFIRMED: PyObject_GetItem(PROMOTION_MAP, …)
+    promoter = PROMOTION_MAP[highest_category];      // PyObject_GetItem(PROMOTION_MAP, …)
     return promoter(value);                          // promote_to_mask / promote_to_predicate
     // failure path emits "Cannot promote from <…> to <…>"   (.rodata "Cannot promote from ")
 }
@@ -241,7 +241,7 @@ The `PROMOTION_MAP` entries are the module functions `promote_to_mask` and `prom
 ```c
 // make_logical_operation(op, op_name, numpy_op) -> handler(self, a, b)
 //   op = operator.and_ / operator.or_ ;  numpy_op = np.logical_and / np.logical_or
-// CONFIRMED: highest_category, TENSOR branch, promote_to_logical_type, a_promoted/b_promoted
+// body refs: highest_category, TENSOR branch, promote_to_logical_type, a_promoted/b_promoted
 PyObject *handler(self, a, b) {
     cat = highest_category(a, b);
     if (cat == TENSOR)                               // tensor & tensor -> elementwise int8 mask
@@ -261,7 +261,7 @@ PyObject *handler(self, a, b) {
 PyObject *handler(self, a) {
     cat = highest_category(a, a);
     if (cat == TENSOR)
-        raise err_ambiguous_tensor_truth_value(...); // CONFIRMED: inverting a tensor is ambiguous
+        raise err_ambiguous_tensor_truth_value(...); // inverting a tensor is ambiguous
     a_promoted = promote_to_logical_type(a, cat);
     return operator.invert(a_promoted);              // De Morgan-aware invert on the promoted object
 }
@@ -299,15 +299,15 @@ class NkiTypeSystem {                       // decorated by all three synthesize
 
     // ---- membership:  x in coll  /  x not in coll ----
     PyObject *in_(self, a, b) {
-        return operator.contains(a, b);     // CONFIRMED: GetBuiltin 'operator', getattr 'contains'
+        return operator.contains(a, b);     // GetBuiltin 'operator', getattr 'contains'
     }                                        //   -> yields a predicate, not a bool
     PyObject *not_in(self, a, b) {
-        return !self.in_(a, b);             // STRONG: body refs in_, PyObject_Not
+        return !self.in_(a, b);             // reconstructed: body refs in_, PyObject_Not
     }
 
     // ---- chained comparison:  a OP1 b OP2 c  ->  (a OP1 b) & (b OP2 c) & … ----
     PyObject *compare_nary(self, ops, operands) {
-        assert(len(ops) == len(operands) - 1);            // CONFIRMED: two PyObject_Size, v==v+1
+        assert(len(ops) == len(operands) - 1);            // two PyObject_Size, v==v+1
         return self.logical_and_nary(                     // AND-fold the per-link results
             (op(a, b)
              for (op, (a, b)) in zip(ops, zip(operands[:-1], operands[1:]))));
@@ -317,10 +317,10 @@ class NkiTypeSystem {                       // decorated by all three synthesize
 
     // ---- n-ary logical reductions (consume the synthesized logical_and/_or) ----
     PyObject *logical_and_nary(self, operands) {
-        return functools.reduce(self.logical_and, operands);   // CONFIRMED reduce + self.logical_and
+        return functools.reduce(self.logical_and, operands);   // reduce + self.logical_and
     }
     PyObject *logical_or_nary(self, operands) {
-        return functools.reduce(self.logical_or, operands);    // CONFIRMED reduce + self.logical_or
+        return functools.reduce(self.logical_or, operands);    // reduce + self.logical_or
     }
 }
 ```

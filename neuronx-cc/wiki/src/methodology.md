@@ -38,20 +38,20 @@ With one notable exception, the C++ binaries ship **stripped of debug info**. Ad
 
 ## The confidence ladder
 
-Reverse-engineered claims carry one of four tags. The same ladder appears as the **Confidence** column in function-map and struct-layout tables, and inline (e.g. `(INFERRED)`) in prose. A page with no confidence signal would read as uniformly authoritative, which is dishonest for this material.
+Reverse-engineered claims carry one of four grades, shown as the **Confidence** column in function-map and struct-layout tables.
 
-| Tag | Meaning | Reimplementer should |
+| Grade | Meaning | Reimplementer should |
 |---|---|---|
-| **CONFIRMED** | Directly observed — a symbol, a decompiled store, an asserted field, a roster entry. | Trust verbatim. |
-| **STRONG** | Multiple independent signals agree, but the decisive line was not read end-to-end. | Trust, spot-check the boundary. |
-| **INFERRED** | Deduced from surrounding structure, naming, or analogy to a confirmed sibling. | Re-derive before relying on it. |
-| **SPECULATIVE** | A plausible reading consistent with the evidence but unproven. | Treat as a hypothesis to test. |
+| **CERTAIN** | Directly observed — a symbol, a decompiled store, an asserted field, a roster entry. | Trust verbatim. |
+| **HIGH** | Multiple independent signals agree, but the decisive line was not read end-to-end. | Trust, spot-check the boundary. |
+| **MEDIUM** | Deduced from surrounding structure, naming, or analogy to a confirmed sibling. | Re-derive before relying on it. |
+| **LOW** | A plausible reading consistent with the evidence but unproven. | Treat as a hypothesis to test. |
 
-These map onto the house style guide's `CERTAIN / HIGH / MEDIUM / LOW` one-to-one (CONFIRMED≈CERTAIN, STRONG≈HIGH, INFERRED≈MEDIUM, SPECULATIVE≈LOW). This book standardizes on the four-tier names above because the underlying analysis used them.
+The grades match the house style guide, so a reader moving between books in this collection reads one vocabulary.
 
-When later analysis overturns an earlier claim, the page carries an in-place correction note rather than a silent edit:
+**Certainty is the default; only doubt is marked.** Prose does not stamp individual sentences as confirmed — that would tag nearly every sentence and drown the text. Where a claim is *not* directly read, the page says so explicitly, either with an inline `[INFERRED]` / `[SPECULATIVE]` / `[UNRESOLVED]` marker or with a sentence naming what was reconstructed and from what. Evidence lives in the table anchor column or a trailing `*Anchors: …*` line, not mid-sentence.
 
-> **CORRECTION —** an example of the form. The original reading is stated, the corrected one replaces it, and the reason is given, so a reader who cached the old fact sees the change.
+**Corrected readings are folded into the text, not narrated.** When analysis revises a claim, the page simply states the correct one — a reader wants the mechanism, not the history of how it was found, and a page whose sections argue with themselves is harder to trust, not easier. The exception is a belief a reader could plausibly arrive at *independently*: an obvious-but-wrong reading of the layout, a decompiler artifact such as `_WORD*` pointer arithmetic rescaling an offset, a misleading symbol name, or a name collision between two unrelated things. Those are worth a standing `> **GOTCHA —**` or `> **NOTE —**`, because the trap survives whether or not this page ever got it wrong.
 
 ## What is *not* recoverable
 
