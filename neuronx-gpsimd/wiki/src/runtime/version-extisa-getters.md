@@ -10,14 +10,13 @@ Everything below is recovered by static analysis of the shipped binary only — 
 
 > **GOTCHA — this image has ZERO C++ vtables.** `nm libnrtucode_internal.so | rg -c '_ZTV'` → `0`. Every dispatch structure here is a **plain C array of function pointers**: slot *N* in a lib table is at `table_symbol + 16*N` (two 8-byte pointers per entry: `{SO_get, JSON_get}`), and the coretype jump table is a 32-entry array of **int32 self-relative offsets** with stride 4 (`table + 4*N`). The `_ZTV + 0x10` vtable-base rule used on C++ images does **not** apply here.
 
-Tags per claim: confidence **HIGH/MED/LOW** × provenance **OBSERVED** (read from this binary's `.symtab`/relocs/disasm) / **INFERRED** (reasoned from neighbours) / **CARRIED** (from a sibling page, re-checked here). Escaped `\|` inside a table cell is a literal pipe.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag. Escaped `\|` inside a table cell is a literal pipe.
 
 ---
 
 ## 0. Orientation — the five symbols and their addresses
 
-All seven relevant symbols (five primary + one internal worker + one boundary sibling) are present at fixed addresses in both libraries. `[HIGH/OBSERVED]`
-
+All seven relevant symbols (five primary + one internal worker + one boundary sibling) are present at fixed addresses in both libraries.
 | Symbol | Bind | internal twin addr | front lib addr | Role |
 |---|---|---|---|---|
 | `nrtucode_get_api_level` | `T` | `0x9b0260` | `0x308740` | returns the constant ABI/API level **3** |
@@ -36,8 +35,7 @@ All seven relevant symbols (five primary + one internal worker + one boundary si
 
 These three are the simplest functions in the library: a single `mov`/`lea` followed by `ret`. No argument is read; the return is a constant.
 
-### 1a. `nrtucode_get_api_level` @ `0x9b0260` `[HIGH/OBSERVED]`
-
+### 1a. `nrtucode_get_api_level` @ `0x9b0260`
 ```asm
 9b0260:  b8 03 00 00 00     mov    $0x3,%eax        ; return 3
 9b0265:  c3                 ret
@@ -52,8 +50,7 @@ int nrtucode_get_api_level(void) {
 
 `api_level = 3` is the lone numeric version surface and is **byte-verified** (`b8 03 00 00 00`); the value matches the committed object-model graph. It does **not** track the generation count — it is `3` in both the 4-gen front lib and the 5-gen internal twin.
 
-### 1b. `nrtucode_get_build_version` @ `0x9b0270` `[HIGH/OBSERVED]`
-
+### 1b. `nrtucode_get_build_version` @ `0x9b0270`
 ```asm
 9b0270:  48 8d 05 e9 51 65 ff   lea    -0x9aae17(%rip),%rax   ; -> VA 0x5460
 9b0277:  c3                     ret
@@ -68,8 +65,7 @@ const char *nrtucode_get_build_version(void) {
 
 The string at `.rodata` VA `0x5460` is `31 32 2e 32 31 2e 31 2e 30 00` = `"1.21.1.0"` (length 8). In the host string pool it sits right after `"op_set\0"` — a genuine standalone literal, **before** the first embedded Q7 ELF blob (`0x5460 < 0x14020`), so it is not aliased into any embedded image. The front-lib mirror at `0x308750` `lea`s VA `0x38c6`, which holds the same `"1.21.1.0"`.
 
-### 1c. `nrtucode_get_git_version` @ `0x9b0280` `[HIGH/OBSERVED]`
-
+### 1c. `nrtucode_get_git_version` @ `0x9b0280`
 ```asm
 9b0280:  48 8d 05 61 4f 65 ff   lea    -0x9ab09f(%rip),%rax   ; -> VA 0x51e8
 9b0287:  c3                     ret
@@ -85,8 +81,7 @@ const char *nrtucode_get_git_version(void) {
 
 The string at `.rodata` VA `0x51e8` is the 40-character git commit SHA `6db9edc09474e79d0c0e283c14c16e51ee7417e5`. This SHA occurs **exactly once** in the internal twin (at `0x51e8`) and exactly once in the front lib (at `0x364e`) — a single host copy each.
 
-### 1d. Phantom-version check — NEGATIVE `[HIGH/OBSERVED]`
-
+### 1d. Phantom-version check — NEGATIVE
 `"1.21.1.0"` is the **only** `x.y.z.w` dotted-version string in either library. A direct file scan of the internal twin finds it **27 times**: 1 host getter copy at `0x5460` (below the first blob at `0x14020`) and 26 copies **inside** the embedded Q7 ELF blobs (per-gen version stamps + the SUNDA real-JSON `ulib_to_ucode_version`). The host getter copy is distinct from every blob copy. No competing dotted-version string exists, so the libtpu-style "phantom version" risk is ruled out: the reported `build_version` is real and is the value the getter actually returns.
 
 > **NOTE — build_version is identical across the 4-gen and 5-gen builds.** `"1.21.1.0"` is byte-identical in the 4-gen front lib and the 5-gen internal twin: adding MAVERICK did **not** bump `build_version`. The OBSERVED fact is the identical string; the interpretation — that `build_version` identifies the ulib/opcode contract generation rather than the binary's gen-count — is `[MED/INFERRED]`.
@@ -97,8 +92,7 @@ The string at `.rodata` VA `0x51e8` is the 40-character git commit SHA `6db9edc0
 
 This getter answers "how many EXTISA libs does this generation expose?" It takes a coretype and an out-pointer, writes the count, and returns `0` (ok) or `1` (error). The internal twin and the front lib implement it with **different code shapes** but identical observable behaviour for the four shared generations.
 
-### 2a. Internal twin @ `0x9b2c90` — the bitmask form `[HIGH/OBSERVED]`
-
+### 2a. Internal twin @ `0x9b2c90` — the bitmask form
 ```asm
 9b2c90:  48 c7 06 00 00 00 00   movq   $0x0,(%rsi)            ; *out = 0
 9b2c97:  b8 01 00 00 00         mov    $0x1,%eax              ; default return = 1 (error)
@@ -132,8 +126,7 @@ int nrtucode_get_num_ext_isa_libs(uint32_t coretype, uint64_t *out) {
 }
 ```
 
-The immediate `0x2020202000` has set bits at exactly `{13, 21, 29, 37}` (verified by direct bit-scan). Those are the four "4-lib" PERF coretypes; coretype `6` (SUNDA) is the lone "1-lib" RELEASE case; everything else errors. `[HIGH/OBSERVED]`
-
+The immediate `0x2020202000` has set bits at exactly `{13, 21, 29, 37}` (verified by direct bit-scan). Those are the four "4-lib" PERF coretypes; coretype `6` (SUNDA) is the lone "1-lib" RELEASE case; everything else errors.
 | coretype | codename | libs | `*out` | return |
 |---:|---|---:|---:|---:|
 | 6 | SUNDA (RELEASE) | 1 | 1 | 0 |
@@ -145,8 +138,7 @@ The immediate `0x2020202000` has set bits at exactly `{13, 21, 29, 37}` (verifie
 
 > **NOTE — the count comes from the lib-table size.** `cayman_libs`/`mariana_libs`/`mariana_plus_libs`/`maverick_libs` are `0x40` bytes each = 4 × 16-byte entries; `sunda_libs` is `0x10` bytes = 1 entry. The "4" is the four POOL Q7 EXTISA engines (EXTISA_0..3), stored in **reverse engine order** (idx 3,2,1,0) in the embedded container per the [EXTISA inventory](../images/extisa-inventory.md). "5 generations" but **per-coretype count = 4** for each PERF gen, **1** for SUNDA. Total getter entries = 4·4 + 1 = 17; unique blobs = 13 because MARIANA ≡ MARIANA_PLUS by byte-identity.
 
-### 2b. Front lib @ `0x30b110` — the jump-table form, 4-gen bound `[HIGH/OBSERVED]`
-
+### 2b. Front lib @ `0x30b110` — the jump-table form, 4-gen bound
 ```asm
 30b110:  48 c7 06 00 00 00 00   movq   $0x0,(%rsi)
 30b117:  b8 01 00 00 00         mov    $0x1,%eax
@@ -165,8 +157,7 @@ The front lib uses a **24-entry** jump table at VA `0x3af4` bounded by `cmp $0x1
 
 ## 3. `nrtucode_get_ext_isa` — the dispatcher and the 32-case jump table
 
-### 3a. Public wrapper `nrtucode_get_ext_isa` @ `0x9b2c80` `[HIGH/OBSERVED]`
-
+### 3a. Public wrapper `nrtucode_get_ext_isa` @ `0x9b2c80`
 ```asm
 9b2c80:  31 c9                  xor    %ecx,%ecx             ; lib = 0
 9b2c82:  e9 a9 fe ff ff         jmp    9b2b30                ; tail-call internal worker
@@ -182,8 +173,7 @@ int nrtucode_get_ext_isa(int coretype, int flavor, void *out_struct) {
 
 The public entry point always selects lib index **0** (EXTISA_0). A different lib index is reachable only through the internal worker directly (see §4).
 
-### 3b. Worker `nrtucode_get_ext_isa_internal` @ `0x9b2b30` — flavor gate `[HIGH/OBSERVED]`
-
+### 3b. Worker `nrtucode_get_ext_isa_internal` @ `0x9b2b30` — flavor gate
 Args at entry: `edi`=coretype (→ `r15d`), `esi`=flavor, `rdx`=out (→ `rbx`), `rcx`=lib (→ `r14`).
 
 **(i) Flavor validation.** If `flavor != 0`: compute `flavor - 4`; the explicit (non-`0`) flavor is valid iff `(uint32_t)(flavor - 4) >= 0xFFFFFFFD`, i.e. valid explicit flavors are `{1,2,3}`; flavor `0` is handled below; flavor `>= 4` returns error code **2**.
@@ -204,8 +194,7 @@ flavor = 1 + 2 * (strcmp(e,"TEST") == 0);         /* "TEST"->3, else ->1 */
 
 Net: **flavor == 0 always proceeds.** Critically, the flavor value does **not** change which per-gen lib table is chosen — it only gates validity and selects the error code. The dispatch is keyed on coretype alone.
 
-> **CORRECTION — this is `NEURON_UCODE_FLAVOR`, not `NRTUCODE_MPLUS_ON_MARIANA`.** `get_ext_isa_internal` reads `NEURON_UCODE_FLAVOR` (`0x52e2`). The unrelated `NRTUCODE_MPLUS_ON_MARIANA` env belongs to the **separate** `nrtucode_get_memory_image` resolver, where it is now a *removed/deprecation guard* (see §7 and [image-hwdecode-resolvers](image-hwdecode-resolvers.md)). The two functions must not be conflated. `[HIGH/OBSERVED]`
-
+> **CORRECTION — this is `NEURON_UCODE_FLAVOR`, not `NRTUCODE_MPLUS_ON_MARIANA`.** `get_ext_isa_internal` reads `NEURON_UCODE_FLAVOR` (`0x52e2`). The unrelated `NRTUCODE_MPLUS_ON_MARIANA` env belongs to the **separate** `nrtucode_get_memory_image` resolver, where it is now a *removed/deprecation guard* (see §7 and [image-hwdecode-resolvers](image-hwdecode-resolvers.md)). The two functions must not be conflated.
 **(ii) The 32-case coretype jump table** @ VA `0x556c`:
 
 ```asm
@@ -238,7 +227,7 @@ Only **5 of 32** slots are live — coretypes `{6, 13, 21, 29, 37}`; the other 2
 
 > **GOTCHA — the `get_hwdecode_table` coretype set is yet a THIRD, orthogonal set.** The sibling `nrtucode_get_hwdecode_table` @ `0x9b2cd0` (immediately after this getter) keys on `{7–10, 15–18, 23–26, 31–33}` — the *intra-generation engine* indices, not the per-gen POOL coretypes. It has nothing to do with the EXTISA `{6,13,21,29,37}` set. See [image-hwdecode-resolvers](image-hwdecode-resolvers.md).
 
-**(iii) Per-gen handler + out-struct fill** `[HIGH/OBSERVED]`. Each live slot runs the same epilogue (shown for the CAYMAN slot `0x9b2c13`; the others differ only in the lib-table `lea`):
+**(iii) Per-gen handler + out-struct fill**. Each live slot runs the same epilogue (shown for the CAYMAN slot `0x9b2c13`; the others differ only in the lib-table `lea`):
 
 ```asm
 9b2c13:  49 c1 e6 04           shl    $0x4,%r14             ; r14 = lib * 16 (16B per entry)
@@ -280,7 +269,7 @@ struct ext_isa_out {           /* 0x20 bytes */
 }
 ```
 
-**(iv) Return codes** `[HIGH/OBSERVED]`:
+**(iv) Return codes**:
 
 | code | meaning |
 |---:|---|
@@ -289,8 +278,7 @@ struct ext_isa_out {           /* 0x20 bytes */
 | 2 | invalid flavor (`flavor >= 4`) |
 | 3 | lib slot empty / NULL fnptr (lib index out of range for that gen, or SUNDA weak-undef unresolved) |
 
-### 3c. The per-gen lib tables (the data behind the dispatch) `[HIGH/OBSERVED]`
-
+### 3c. The per-gen lib tables (the data behind the dispatch)
 The five lib tables live in `.data.rel.ro` (VMA `0x9b8cf0`, file `0x9b6cf0`, Δ `0x2000`). Each is an array of 16-byte `{SO_get, JSON_get}` entries. The pointers are materialised by relocations: the four PERF gens use `R_X86_64_RELATIVE` (resolved at load to the in-image getter stubs), while **SUNDA** uses `R_X86_64_64` against its **weak-undefined** symbols (resolved from the EXTISA container at final link). `nm` confirms the table symbols at their addresses, and `readelf -rW` confirms the slot relocs:
 
 | table | base | entries | first SO/JSON stub | reloc kind |
@@ -312,8 +300,7 @@ The getter stubs are the 4-instruction `{blob,size}` form. For example `CAYMAN_Q
 
 There are exactly **16 named SO_get + 16 named JSON_get** stubs (4 each × CAYMAN/MARIANA/MARIANA_PLUS/MAVERICK) plus the **1 SUNDA weak-undef pair** — confirmed by `nm` symbol count. CAYMAN/MARIANA/MARIANA_PLUS EXTISA_0 each carry SO length `0xa260`; **MAVERICK EXTISA_0 differs** (`0x7fb0`, blob @ `0x994de0`), corroborating that MAVERICK is a distinct, newer build rather than a copy. These VAs and sizes reconcile with the [EXTISA inventory](../images/extisa-inventory.md) §2 carve census.
 
-### 3d. Front lib `get_ext_isa` (the shipped 4-gen form) `[HIGH/OBSERVED]`
-
+### 3d. Front lib `get_ext_isa` (the shipped 4-gen form)
 `nrtucode_get_ext_isa` @ `0x30b100`: `xor %ecx,%ecx ; jmp 0x30afc0` (worker, lib=0). The worker `nrtucode_get_ext_isa_internal` @ `0x30afc0` has the same flavor gate, and a **24-entry** jump table at VA `0x3a94` bounded by `cmp $0x17` (coretype ≤ 29):
 
 | coretype | front handler | front lib base |
@@ -330,7 +317,7 @@ Exactly **four** lib bases; **no MAVERICK**. Same `{SO_get,JSON_get}` 16-byte en
 
 ## 4. Consumer — who passes a non-zero lib index
 
-The public `nrtucode_get_ext_isa` hardcodes lib 0, but `nrtucode_ll_create` calls the worker directly with a **non-zero** lib index `[HIGH/OBSERVED]`:
+The public `nrtucode_get_ext_isa` hardcodes lib 0, but `nrtucode_ll_create` calls the worker directly with a **non-zero** lib index:
 
 ```c
 /* nrtucode_ll_create (sibling lifecycle page) */
@@ -344,8 +331,7 @@ So the lifecycle path selects EXTISA lib index = `a4`, defaulting to **3** when 
 
 ---
 
-## 5. MAVERICK inclusion — the "4 vs 5" reconciliation `[HIGH/OBSERVED]`
-
+## 5. MAVERICK inclusion — the "4 vs 5" reconciliation
 The generation count differs by **binary**, not by an inconsistent table inside one binary:
 
 | packaging view | EXTISA generations | MAVERICK | dispatch bound |
@@ -377,8 +363,7 @@ Uniformly `coretype = arch_id + 1`. The bitmask `0x2020202000` (bits 13,21,29,37
 
 ---
 
-## 7. `get_memory_image` boundary (separate resolver) `[HIGH/OBSERVED]`
-
+## 7. `get_memory_image` boundary (separate resolver)
 `nrtucode_get_memory_image` @ `0x9b2960` is a **different, broader** resolver and must not be confused with the EXTISA path:
 
 ```c

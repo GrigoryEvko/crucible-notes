@@ -32,18 +32,15 @@
 > the error/abort surface of the teardown path is
 > [Host Model Lifecycle + Error-Handling Model](lifecycle-error-model.md).
 >
-> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read this task
-> from `objdump`/`nm`/`readelf`/`c++filt`/DWARF on the shipped binary, or the
-> ncore2gp `xtensa-elf-objdump` on the device `.a`), `INFERRED` (a rule applied to
-> an observed fact), `CARRIED` (consolidated from a cited committed page and
-> re-confirmed here only where spot-checked).
+> The page default is `[HIGH × OBSERVED]`; claims that depart from it carry an
+> explicit tag.
 
 > **NOTE — provenance & artifacts.** Every **host** fact is derived **solely from
 > static analysis** of `libnrt.so.2.31.24.0`
 > (`…/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/`), an
 > ELF64 x86-64 shared object, **122 956 336 bytes**, BuildID
 > `8bb57aba0fb2e0035f1d88e9fc4fb3e7387c102e`, version **2.31.24.0** (git
-> `0b044f4ce`), shipped **with** DWARF (not stripped). Confirmed this pass:
+> `0b044f4ce`), shipped **with** DWARF (not stripped). Confirmed:
 > `.text` VMA `0x3dbc0` == file offset `0x3dbc0`, `.data` VMA `0xc07e00` == file
 > offset `0xc07e00` — **`libnrt.so` has no VMA↔offset delta**, so `objdump`/DWARF
 > offsets are file offsets directly. Every **device** fact is from the
@@ -72,7 +69,7 @@ Teardown reverses the bring-up: `tdrv_destroy` → **13** `ucode_core_destroy` �
 `ucode_ll_destroy` → `pool_stdio_block_destroy` → `ucode_free_lib_set` (§6).
 
 **Key host addresses** (all confirmed against `libnrt`'s `functions.json` sidecar
-and re-disassembled this pass): `tdrv_destroy 0x269a70`,
+and disassembled): `tdrv_destroy 0x269a70`,
 `ucode_core_destroy 0x2267d0`, `ucode_ll_destroy 0x226a70`,
 `ucode_free_lib_set 0x311060`, `ucode_stage_libs_table 0x3108e0`,
 `ucode_switch_libs 0x311100`, `add_drain 0x273e40`,
@@ -93,7 +90,7 @@ and re-disassembled this pass): `tdrv_destroy 0x269a70`,
 
 ## 1. The SPMD rank — `get_cpu_id()` is the PRID, `get_cpu_count()` is the constant 8
 
-`[HIGH × OBSERVED]` — `parallel.o` re-disassembled byte-exact this pass with
+`[HIGH × OBSERVED]` — `parallel.o` disassembled byte-exact with
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`).
 
 ```asm
@@ -155,7 +152,7 @@ carry.
 
 ### 2.1 `ucode_stage_libs_table @0x3108e0` — collect 8 DMA queues, bake one table
 
-`[HIGH × OBSERVED]` — re-disassembled this pass. Reached at LOAD/STAGE time via
+`[HIGH × OBSERVED]` — disassembled. Reached at LOAD/STAGE time via
 `dlr_kelf_stage_model_add → kbl_model_add → ucode_stage_libs @0x310ea0 →
 ucode_stage_libs_impl @0x310c00 → ucode_stage_libs_table`, under
 `ulib_staging_lock` keyed by `db_physical_core_get_mla_and_tpb`.
@@ -201,7 +198,7 @@ opcode table itself is one table shared by all 8 cores.
 
 ### 2.2 `ucode_switch_libs @0x311100` — the broadcast install
 
-`[HIGH × OBSERVED]` — full body re-disassembled this pass.
+`[HIGH × OBSERVED]` — full body disassembled.
 
 ```asm
 311110: call db_physical_core_get_mla_and_tpb     ; -> tpb (out param at 0x8(%rsp))
@@ -235,8 +232,8 @@ opcode table itself is one table shared by all 8 cores.
 
 ## 3. Per-core SoC remap — `dram_addr_to_soc_addr` (PRID → private window)
 
-`[HIGH × OBSERVED]` — `data_transfer.o dram_addr_to_soc_addr @0x210` re-disassembled
-byte-exact this pass. This is the **device half** of the per-core DMA selection §2.1
+`[HIGH × OBSERVED]` — `data_transfer.o dram_addr_to_soc_addr @0x210` disassembled
+byte-exact. This is the **device half** of the per-core DMA selection §2.1
 stages.
 
 ```c
@@ -274,7 +271,7 @@ bytes; `[MED × INFERRED]` for the "9..23 = coretype numbering" label.
 
 An `xtensa-elf-nm` sweep across **all** members of `libneuroncustomop.a` finds **zero**
 `barrier` / `semaphore` / `allreduce` / `collective` / `spinlock` / `__atomic` /
-`rendezvous` symbols (verified empty this pass). The only "sync"-like symbols are weak
+`rendezvous` symbols (verified empty). The only "sync"-like symbols are weak
 libc++ condvar **stubs** (intra-core threading shims) and `fsync`. The Q7 device runtime
 implements **no** pool-core-to-pool-core handshake in software.
 
@@ -346,7 +343,7 @@ single-core-gather based, not a Q7 collective. `[MED × INFERRED]`
 
 ## 5. The `pool_stdio` per-core ring drain — end to end (8×2 layout, wraparound)
 
-### 5.1 Layout `[HIGH × OBSERVED]` (DWARF, this pass)
+### 5.1 Layout `[HIGH × OBSERVED]` (DWARF)
 
 `pool_stdio_block_t` member offsets and the `[8]` array bounds read directly from DWARF
 (`DW_AT_upper_bound = 7` ⇒ `[8]`; `DW_AT_byte_size = 56` for the queue):
@@ -374,7 +371,7 @@ struct pool_stdio_queue_t {                    // DW_AT_byte_size 56 (0x38 strid
 ```
 
 > **CORRECTION — `+0x0c` is `q7_idx`, not a "read-byte cursor".** A prior framing labelled
-> `pool_stdio_queue_t +0x0c` a "read-byte cursor"; DWARF this pass names it **`q7_idx`** (the
+> `pool_stdio_queue_t +0x0c` a "read-byte cursor"; DWARF names it **`q7_idx`** (the
 > pool-core index the ring belongs to). Likewise `+0x20` is precisely
 > **`read_idx_ptr_write_only`** (host writes it, device reads it) and `+0x18` is
 > **`host_queue_dmem`**. The read cursor the host advances is `read_idx_local` at **`+0x30`**.
@@ -503,8 +500,8 @@ the same progress step.
 
 ## 6. The teardown path — `tdrv_destroy` → core_destroy ×13 → ll/stdio/lib_set
 
-`tdrv_destroy @0x269a70` (2204 B) runs **per NeuronCore** and reverses the bring-up. Re-disassembled
-byte-exact this pass. `[HIGH × OBSERVED]`
+`tdrv_destroy @0x269a70` (2204 B) runs **per NeuronCore** and reverses the bring-up. Disassembled
+byte-exact. `[HIGH × OBSERVED]`
 
 ### 6.1 Outer frame (per device / mla)
 
@@ -562,7 +559,7 @@ ht_destroy(tpb + 0x4e40 /* model_db */);
 //     dma_queue_free_h2d_queue (is_h2d_engine), free.
 ```
 
-The NX and Q7 loop bounds are byte-exact this pass:
+The NX and Q7 loop bounds are byte-exact:
 
 ```asm
 269ccf: mov  0x9918(%rbp,%rbx,8),%rdi    ; NX core[i]
@@ -691,11 +688,11 @@ TEARDOWN (tdrv_destroy, §6):
 
 ## 8. Confidence ledger & open items
 
-**`HIGH × OBSERVED` (this pass):** `get_cpu_id`/`get_cpu_count`/`_GLOBAL__sub_I` ctor (PRID,
+**`HIGH × OBSERVED`:** `get_cpu_id`/`get_cpu_count`/`_GLOBAL__sub_I` ctor (PRID,
 byte-exact); `dram_addr_to_soc_addr` aperture + `9+2*cpu` index; `customop_cleanup` `memw`; **no**
 device inter-core primitive (`nm` sweep empty); `ucode_stage_libs_table` 8-DMA-queue collection +
 opcode-table bake (`cpu_id`/`total_cpus` carry); `ucode_switch_libs` single `swap_table` broadcast
-(re-disassembled); `pool_stdio_block_t` `[8]`/`[8]` arrays (DWARF `upper_bound=7`) + full member
+(disassembled); `pool_stdio_block_t` `[8]`/`[8]` arrays (DWARF `upper_bound=7`) + full member
 offsets; `pool_stdio_queue_t` 56-B layout (DWARF field names: `q7_idx`,
 `read_idx_ptr_write_only`, `read_idx_local`); `available_count` write−read clamp;
 `consume_all_entries` wraparound (`0x100` entry / `0x10` header skip / `0xf0` host record, read-idx

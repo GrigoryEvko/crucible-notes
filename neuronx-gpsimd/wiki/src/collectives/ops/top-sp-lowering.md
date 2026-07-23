@@ -9,7 +9,7 @@
 > DMA-tail doorbell), (3) the SPAD `cc_op` program the TOP_SP NX core walks,
 > (4) the per-pseudo-op lowering, (5) the `EVT_SEM`/tsync usage, and (6) the
 > **TOP_SP-vs-SB2SB-vs-NCFW reconciliation**. Every offset/symbol/enum/field below is
-> re-grounded to the shipped host runtime `libnrt.so.2.31.24.0`
+> grounded to the shipped host runtime `libnrt.so.2.31.24.0`
 > (BuildID `8bb57aba…c102e`), the NCFW JSON pretty-printer `libncfw.so`
 > (BuildID `a98f8e1c…0db5`), the device ucode `libnrtucode_extisa.so`, and the
 > shipped per-arch headers / address-map `.pkl`. `.text`/`.rodata` are
@@ -34,7 +34,7 @@
 > the **write** (`set_host_trigger`) goes through slot **`+0x708`**; **`+0x710`** is the
 > *offset getter* (`get_host_trigger_reg_offset`). The all-reduce *prose* (its §7) already
 > states this; only the summary-table cell uses the `+0x710` shorthand. This page is the
-> authoritative split. (The earlier SX-CCL-03 anchor that named `+0x710` as "the trigger
+> authoritative split. (The earlier CCL-03 anchor that named `+0x710` as "the trigger
 > slot" is superseded.)
 
 ---
@@ -49,7 +49,7 @@
 NEURON_ISA_TPB_NEURON_ENGINE_TOP_SP = 5,
 ```
 
-`[HIGH / OBSERVED]` It is **not** `TPB_SP` (`engine 4`): `TPB_SP` is the per-NeuronCore
+It is **not** `TPB_SP` (`engine 4`): `TPB_SP` is the per-NeuronCore
 scalar-processor in the data plane; `TOP_SP` (`engine 5`) is the *top-level sequencer-
 processor* — an embedded Xtensa-NX core with its own program counter (`top_sp_nx_spc_lo/hi`),
 a local `EVT_SEM` semaphore unit, the global `timestamp_inc` tick, and a notification
@@ -78,8 +78,7 @@ and the NCFW side in [NCFW Main Dispatch Loop](../ncfw/main-dispatch-loop.md).
 The host drives the TOP_SP through the **`kaena_khal`** HAL vtable — a `.bss` global at
 `0xcaeb80`, populated at runtime by the per-arch HAL init `kaena_khal_register_funcs_v3
 @0x46ed70`. The TOP_SP control slots were recovered from the cayman population block
-`0x46f648 … 0x46f6e9` (`lea <fn> ; mov %rdx,<slot>(%rax)`): `[HIGH / OBSERVED]`
-
+`0x46f648 … 0x46f6e9` (`lea <fn> ; mov %rdx,<slot>(%rax)`):
 | Slot | Populated with (cayman) `@` | Role |
 |---|---|---|
 | `+0x6f0` | `aws_hal_sp_release_run_stall_cayman` `@0x46f64f` | release NX run-stall |
@@ -115,8 +114,7 @@ uint64_t aws_hal_sp_topsp_get_host_trigger_reg_offset(void) {
 }
 ```
 
-`[HIGH / OBSERVED — both indirections (`48 8b 80 08 07 00 00` / `48 8b 80 10 07 00 00`)
-read this session.]`
+`[HIGH / OBSERVED — both indirections (`48 8b 80 08 07 00 00` / `48 8b 80 10 07 00 00`).]`
 
 ---
 
@@ -138,7 +136,7 @@ void set_host_trigger_cayman(void) {
 ```
 
 The complete cayman `LOCAL_REG` doorbell set, with the immediate-return offset getters
-(each a single `mov $imm,%eax ; ret`): `[HIGH / OBSERVED — register immediates read this session]`
+(each a single `mov $imm,%eax ; ret`): `[HIGH / OBSERVED — register immediates]`
 
 | Doorbell | `LOCAL_REG + ofst` | getter returns (cayman) | write value | set fn |
 |---|---|---|---|---|
@@ -153,7 +151,7 @@ So the **host-trigger doorbell** = a single 32-bit write of `1` to `LOCAL_REG + 
 `encd_start_executable @0x2431c0` *after* the SPAD has been loaded (its callee set includes
 `aws_hal_sp_topsp_set_host_trigger` alongside the two SPAD-size getters — §5a).
 
-**Cross-arch** `[HIGH / OBSERVED]`:
+**Cross-arch**:
 
 | Arch | `host_trigger` getter `@` | value | base fn (`get_sp_base_addr`) |
 |---|---|---|---|
@@ -172,8 +170,7 @@ So the **host-trigger doorbell** = a single 32-bit write of `1` to `LOCAL_REG + 
 
 The instruction-block builder bakes a TOP_SP trigger **address** into the DMA descriptor
 ring, so that a tail-pointer write hits the TOP_SP's `EVT_SEM` `SEMAPHORE_INC` slot. The
-call chain (all disassembled): `[HIGH / OBSERVED]`
-
+call chain (all disassembled):
 ```c
 // ib_create_one_block @0x2f7e50 / ib_add_inference_wait_v2 @0x2f6e20
 //   → enc_get_topsp_trigger_addrs @0xfcb10          (loops over the used TOP_SPs)
@@ -214,8 +211,7 @@ TOP_SP NX program polls (its `WAIT_FOR_SEM_GE`) to advance to the next step.
 ## 4 · The TOP_SP-hosted `EVT_SEM` semaphore windows (byte-exact)
 
 The TOP_SP base + per-op semaphore-window offsets, recovered from the cayman
-implementations (each: `addr = sp_base + WINDOW + sema_idx*4`): `[HIGH / OBSERVED]`
-
+implementations (each: `addr = sp_base + WINDOW + sema_idx*4`):
 | Function | Window | Op | Use |
 |---|---|---|---|
 | `cayman_get_sp_base_addr @0x25aee0` | `0x8280000000` | — | TOP_SP_0 SoC base |
@@ -232,17 +228,15 @@ routing is `rdx << 0x1e` (the instance) and, for `sp_id ≥ 8`, `rax << 0x2f` (*
 DIE bit**) before the `lea 0x1800(%rax,%rbx,4)`.
 
 The per-instance base table `cayman_sp_base_addresses @0x9d2020` (16 × `u64`, read raw):
-`[HIGH / OBSERVED]`
 
 ```
 [0] 0x8280000000   [1] 0x82c0000000  …  [7] 0x8440000000      // TOP_SP_0..7,  stride 0x40000000
 [8] 0x808280000000 [9] 0x8082c0000000 … [15] 0x808440000000   // TOP_SP_8..15, + bit-47 DIE mirror
 ```
 
-> **CORRECTION (vs SX-CCL-12 §4).** The backing survey transcribed the die mirror as
+> **CORRECTION (vs CCL-12 §4).** The backing survey transcribed the die mirror as
 > `0x8280800000` (a bit-23 mirror). The actual `.rodata` bytes are **`0x808280000000`** —
 > the **bit-47** die mirror (the `<< 0x2f` the sema functions apply), *not* bit-23.
-> Re-grounded to the raw table here.
 
 **TOP_SP count (runtime):** `tdrv_arch_get_num_topsp_cayman @0x30c690 = 16`,
 `…_mariana @0x30d7b0 = 16`, `…_sunda @0x30af40 = 6`. `[HIGH / OBSERVED — `mov $imm,%eax`.]`
@@ -353,7 +347,7 @@ channel's `sp->idx` against this one (`> idx ⇒ send_complete` needs
 `neff.complete.addr.soc_addr`; `< idx ⇒ wait_complete` needs
 `neff.complete_prev.addr.soc_addr`). `[HIGH / OBSERVED — decompilation.]`
 
-> **CORRECTION / upgrade (vs SX-CCL-12 §5b).** The survey rated the packer↔decoder bit-
+> **CORRECTION / upgrade (vs CCL-12 §5b).** The survey rated the packer↔decoder bit-
 > equivalence "MED". With the struct DB in hand, the equivalence is **HIGH**: the packer's
 > word bits map 1:1 onto `spad_ctrl_entry`'s declared bitfields (`algo_type` byte1[0:3],
 > `algo_sub_type` byte1[4:6], `trigger_next` byte1[7], the byte2 flag nibble).
@@ -362,7 +356,6 @@ channel's `sp->idx` against this one (`> idx ⇒ send_complete` needs
 
 `encd_dma_mark_end @0x237200` "marks" each TOP_SP DMA step into the SPAD table and logs the
 full `cc_op` field roster verbatim — byte-for-byte the §5b record:
-`[HIGH / OBSERVED]`
 
 ```
 [nec_dev %2u, TOPSP %d, op %d] CTRL mark -alg %d-subalg %d-trignext %d-chlist %d
@@ -373,8 +366,7 @@ full `cc_op` field roster verbatim — byte-for-byte the §5b record:
 ```
 
 The `trigger_next` / `complete_prev` chaining is finalized by `mark_spad_slot_final_entry
-@0x22fc20`: `[HIGH / OBSERVED]`
-
+@0x22fc20`:
 ```
 [nec_dev %d TOPSP %d] Adding CONTINUE mark                                       (@0x8029e0)
 [nec_dev %d TOPSP %d] Adding END mark with compl address 0x%lx (semaphore bits : %lx)  (@0x802a78)
@@ -420,8 +412,7 @@ Barriers lower into `EVT_SEM` `arrive(INC +0x1800)` / `wait(GE, read +0x1000)` /
 `dec(+0x1C00)` ops on the TOP_SP-hosted 256-semaphore array (§4). The TOP_SP **gates** the
 host's barrier (`received clearance from top_sp to execute enc_barrier`, §1) — it is the
 rendezvous authority. One TOP_SP per VNC is elected **leader** that posts completion,
-matching `cc_op.reporter`: `[HIGH / OBSERVED]`
-
+matching `cc_op.reporter`:
 ```c
 // encd_get_topsp_is_leader @0x253420
 bool encd_get_topsp_is_leader(encd_ctx *ctx, int topsp_idx) {
@@ -459,8 +450,7 @@ sequences the tail-pointer increment that launches the leg (§3b / §5d's `tp_in
 ### 7b · SB2SB = the data plane (NOT the TOP_SP)
 
 `libnrtucode_extisa.so`'s device decoder runs the copy with the Pool/Q7 pre-sync handshake
-— and crucially the device decode set carries **no** trigger ops: `[HIGH / OBSERVED]`
-
+— and crucially the device decode set carries **no** trigger ops:
 ```
 P%i: Decode : SB2SB_Collective                                                  (@0x551c6)
 P%i: SB2SB_Collective : total_src_nelem = %zu, total_dst_nelem = %zu, dtype=%d  (@0x550e8)
@@ -510,8 +500,7 @@ byte-grounded arches above).
 
 - **The `EVT_SEM` array** is the TOP_SP's per-instance 256-semaphore unit (§4) — the
   substrate for both the collective step semaphores (the `sema_i` the DMA legs increment)
-  and the barrier rendezvous (§6b). `[HIGH / OBSERVED]`
-- **The tsync START is a TOP_SP doorbell.** `encd_ncfw_tsync_start @0x2526e0` calls
+  and the barrier rendezvous (§6b).- **The tsync START is a TOP_SP doorbell.** `encd_ncfw_tsync_start @0x2526e0` calls
   `aws_hal_sp_topsp_set_tsync_signal @0x457ac0` (at call-site `0x252797`) — writes `1` to
   `LOCAL_REG + 0x1560`. The one-time NX init is `encd_ncfw_configure_device_init @0x230c70`
   → `aws_hal_sp_topsp_set_init_signal` (`LOCAL_REG + 0x1540`) + `read_config_addr` +
