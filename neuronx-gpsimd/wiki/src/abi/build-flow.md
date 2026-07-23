@@ -51,13 +51,13 @@ spec `NX1.1.4`. The LSP `specs` files corroborate the vintage with a Tensilica
 the Perl packager carries `Copyright (c) 2012-2013 by Tensilica Inc.`
 (`xt-pkg-loadlib.cpl:4`). A rebuild **must** target a `ncore2gp`-equivalent core config
 or the linker spec's vector-pipe / coproc options and the `-mcoproc` codegen will not
-agree. `[HIGH/OBSERVED]`
+agree.
 
 > **NOTE.** Every ELF the device half produces is **ELF32, little-endian, machine =
 > `Tensilica Xtensa Processor`, type `REL`**. Confirmed by `readelf -h` on a member of
 > `libc10.a`: `Class: ELF32 / Data: little endian / Type: REL / Machine: Tensilica
 > Xtensa Processor`. The host driver `xt-clang++` and the Perl `xt-pkg-loadlib` are
-> x86-64 ELF executables; only their *outputs* are Xtensa. `[HIGH/OBSERVED]`
+> x86-64 ELF executables; only their *outputs* are Xtensa.
 
 ---
 
@@ -106,7 +106,7 @@ Map of phase → function → line:
 > emitted only once the user objects already exist, but it is **not** consumed by them —
 > the wrapper provides `get_func_cnt/get_func_name/get_func_ptr` and the per-op
 > `*_stack_switch` thunks that the *runtime* (`libneuroncustomop.a`) calls. Ordering is
-> therefore cosmetic for correctness but fixed by the code. `[HIGH/OBSERVED]`
+> therefore cosmetic for correctness but fixed by the code.
 
 ---
 
@@ -131,11 +131,10 @@ LLIB = xt-pkg-loadlib      # :37   (the Perl packager front-end name)
 The license default `amzn_vq7_us_582883.out` is a FlexLM checkout file; the compiler
 front-end is FlexLM-gated, so a rebuild needs a valid `LM_LICENSE_FILE` even though the
 *output* ELF carries no license — see [FlexLM Licensing Gate](flexlm-licensing.md).
-`[HIGH/OBSERVED]`
 
 The only hard precondition `compile()` enforces is `shutil.which(CC)` at line 381 —
 if `xt-clang++` is not on `PATH`, it raises `Could not find xt-clang++`
-(`build_custom_op.py:382`). `[HIGH/OBSERVED]`
+(`build_custom_op.py:382`).
 
 ---
 
@@ -143,7 +142,7 @@ if `xt-clang++` is not on `PATH`, it raises `Could not find xt-clang++`
 
 All compilation — user sources and the generated wrapper — funnels through
 `_compile_single` (`build_custom_op.py:262-279`). The command string is assembled at
-`:269`: `[HIGH/OBSERVED]`
+`:269`:
 
 ```python
 cmd = CC + CC_OPT + ' '.join(cflags) + INC + ' '.join(includes) + ' -o ' + obj + ' ' + src
@@ -187,13 +186,13 @@ MED/INFERRED rationale]`
 `_compile_sources` (`:281-294`) loops `src_files`, asserting each exists (`:288`, raises
 `Cant find source file`), and returns the `.o` list. `_compile_wrapper` (`:296-304`) is a
 thin wrapper that runs the **same** `_compile_single` on the generated `wrapper.cpp` with
-an empty `includes` list. `[HIGH/OBSERVED]`
+an empty `includes` list.
 
 > **QUIRK.** `_compile_single` runs `subprocess.run(cmd, shell=True, capture_output=True)`
 > (`:272`) — the whole command is a single shell string, so paths with spaces will break.
 > On failure it raises `Error compiling {src}` and only prints stdout/stderr when
 > `verbose` (`:273-277`). A reimplementation should prefer an argv list; the shell form is
-> the shipped behavior. `[HIGH/OBSERVED]`
+> the shipped behavior.
 
 ---
 
@@ -215,7 +214,7 @@ more `.o` that joins `objs` before link.** `[HIGH/OBSERVED]`
 
 ## 5. Link (Phase 4): single vs 8× per-core matrix
 
-`_link` (`:329-337`) branches on `multicore`: `[HIGH/OBSERVED]`
+`_link` (`:329-337`) branches on `multicore`:
 
 ```python
 def _link(name, objs, build_directory, multicore):
@@ -237,7 +236,6 @@ cmd = CC + LINK_OPT + INC + ' -o ' + lib + ' ' + ' '.join(objs) + linking_libs
 `-fpic`, no `-MMD/-MP`**, but it keeps `-g -std=c++14 -stdlib=libc++-e -fno-jump-tables
 -Os -Wall -Werror -Wno-c99-designator -mcoproc --xtensa-core/--xtensa-system`. The
 per-target library string (`linking_libs`) is where single and multicore diverge:
-`[HIGH/OBSERVED]`
 
 **Single-core** (`LIBS_SINGLE`, `:45`):
 
@@ -253,7 +251,6 @@ xt-clang++ <LINK_OPT> -I… -o build/<name>.so  <all .o>  \
 
 **Multicore** (`MULTI_Q7_LIBS[i]`, built in the loop `:48-50`): identical except
 `-mlsp=…/lsp_fll_load_cpu{i}` for `i` in `0..7`, and the output base is `<name>_cpu{i}`.
-`[HIGH/OBSERVED]`
 
 The library-order contract a reimplementation must reproduce exactly: `[HIGH/OBSERVED
 ordering; MED/INFERRED roles]`
@@ -275,13 +272,13 @@ ordering; MED/INFERRED roles]`
 > `<dir>/specs` (gcc spec strings) and `<dir>/ldscripts/elf32xtensa.x` (the section
 > script). The directory name encodes the core: `lsp_fll_load_cpu0 … cpu7` for SPMD,
 > `lsp_fll_load_cpu_single` for one fat core. Get the `-mlsp` wrong and the image links
-> to the wrong SRAM window — see §6. `[HIGH/OBSERVED]`
+> to the wrong SRAM window — see §6.
 
 > **QUIRK.** The output naming convention is a hard contract with the consumer. The
 > comment at `:334` states it: *"Compiler assumes that multi-core library is in format
 > `xxx_cpuX.so`."* So `_link_one`'s `name` argument is `<base>_cpu{i}` and `_strip` then
 > derives `<base>_cpu{i}.stripped.so` / `.packed.so`. The downstream loader keys off the
-> `_cpuX` suffix to map each image to its core. `[HIGH/OBSERVED]`
+> `_cpuX` suffix to map each image to its core.
 
 ---
 
@@ -299,11 +296,11 @@ identical), a minimal gcc spec stub (`lsp_fll_load_cpu0/specs:25-35`): `[HIGH/OB
 ```
 
 i.e. CRT begin/end glue, no extra default libs (the libs come from the explicit `-l…`
-list in §5). `[HIGH/OBSERVED]`
+list in §5).
 
 **`ldscripts/elf32xtensa.x`** — the section script. Five variants ship per dir
 (`.x` default, `.xbn`, `.xn`, `.xr` relocatable, `.xu`); the link uses `.x`. Its
-`MEMORY` block is the per-core difference (`cpu0 elf32xtensa.x:3-7`): `[HIGH/OBSERVED]`
+`MEMORY` block is the per-core difference (`cpu0 elf32xtensa.x:3-7`):
 
 ```ld
 MEMORY {
@@ -313,7 +310,7 @@ MEMORY {
 ```
 
 The SRAM `org` walks by `0x200000` (2 MiB) per core, confirmed by reading all nine
-scripts: `[HIGH/OBSERVED]`
+scripts:
 
 | LSP dir | `sram0_0_seg` org | len | `_memmap_mem_sram0_end` |
 |---|---|---|---|
@@ -328,7 +325,7 @@ scripts: `[HIGH/OBSERVED]`
 So the rule is **`org(i) = 0x84000000 + i·0x200000`** for the 8 SPMD cores, each owning a
 disjoint 2 MiB window, and the single-core LSP collapses all eight windows into **one
 32 MiB region** (`0x2000000`) at `0x84000000`. The `iram0_0_seg` (4 KiB at `0x0`) holds
-the dispatch/reset/handler vectors and is identical across cores. `[HIGH/OBSERVED]`
+the dispatch/reset/handler vectors and is identical across cores.
 
 > **NOTE.** This is why `-fpic` + `-mlongcalls` are mandatory in §3: the same `objs` link
 > eight times to eight different base addresses. The codegen is base-agnostic; the LSP
@@ -341,10 +338,10 @@ rebuild's image layout: `.text` → `.clib.rodata` → `.rtos.rodata` → `.clib
 pair at `:195-198`) → `.clib.text` → `.rtos.text` → `.clib.percpu.data` /
 `.rtos.percpu.data` → `.rtos.data` → `.interp` → `.data` → `.note.gnu.build-id` (`:275`)
 → `.bss` (between `_bss_start`/`_bss_end`, `:286-307`). The `_bss_table` LONG pair is the
-runtime's BSS-clear descriptor. `[HIGH/OBSERVED]`
+runtime's BSS-clear descriptor.
 
 The single user-facing knob in this region is the **stack size**, defaulted in
-`stack_switch.hpp:15-19`: `[HIGH/OBSERVED]`
+`stack_switch.hpp:15-19`:
 
 ```c
 #ifndef STACK_SIZE
@@ -355,13 +352,13 @@ static_assert(STACK_SIZE <= MAX_STACK_SIZE, "…");  // MAX_STACK_SIZE = 0x40000
 
 `switch_stack_or_call_wrapper(wrapper_fn_ptr, STACK_SIZE)` decides at runtime whether the
 4 KiB default is too small and an HBM stack switch (`allocate_hbm_stack`) is needed; the
-default `4196` is deliberately conservative so most ops never switch. `[HIGH/OBSERVED]`
+default `4196` is deliberately conservative so most ops never switch.
 
 ---
 
 ## 7. Strip + Package (Phase 5): the gate and the packager
 
-Phase 5 is **conditional** (`build_custom_op.py:391-392`): `[HIGH/OBSERVED]`
+Phase 5 is **conditional** (`build_custom_op.py:391-392`):
 
 ```python
 if '-g' not in cflags:          # the caller's cflags, NOT CC_OPT
@@ -374,10 +371,9 @@ if '-g' not in cflags:          # the caller's cflags, NOT CC_OPT
 > `.so`. For a shippable artifact the caller must omit `-g` from `cflags`. The
 > always-present `-g` in `CC_OPT` only affects the object DWARF, not the gate. A
 > reimplementation that hardcodes "always strip" will diverge on debug builds.
-> `[HIGH/OBSERVED]`
 
 `_strip_one` (`:339-358`) is misnamed — it runs the **packager** `xt-pkg-loadlib`, which
-both strips and packs. Command (`:349`): `[HIGH/OBSERVED]`
+both strips and packs. Command (`:349`):
 
 ```python
 cmd = LLIB + STRIP_OPT + ' -o ' + pack + ' -s ' + strip + ' ' + lib
@@ -398,14 +394,14 @@ xt-pkg-loadlib \
 Outputs are derived from the linked lib's base (`:345-347`):
 `<base>.packed.so` (`-o`, the device load-lib) and `<base>.stripped.so` (`-s`, the saved
 intermediate). The `-e lib_func` names the **exported section symbol** placed at the head
-of the packed blob's `.rodata` (see below). `[HIGH/OBSERVED]`
+of the packed blob's `.rodata` (see below).
 
 ### 7.1 What `xt-pkg-loadlib.cpl` actually does
 
 The packager is a 288-line Perl script (`xt-pkg-loadlib.cpl`). It option-parses
 `-o/-s/-e/-v/-p/-l` plus the `--xtensa-*core/params/system` triple (`:47-63`), and
 forwards `--xtensa-core` as **both** host and target core (`:72-81`). Decoded to ordered
-pseudocode (`:130-288`): `[HIGH/OBSERVED]`
+pseudocode (`:130-288`):
 
 ```sh
 # inputs:  $inputlib = <name>.so      (the PIE linked image)
@@ -455,7 +451,7 @@ from RT-19]`
 > `:189-196`, `:221-271`). The overlay path is what removes `.hash/.dynstr/.dynsym/.rela.plt`
 > (since `-l`/symlookup is also absent, `:175-180`) and embeds via `--add-section libdata=`.
 > A `-p` value would instead keep PIE pagesize metadata and a different symbol-export path.
-> The shipped build is overlay. `[HIGH/OBSERVED]`
+> The shipped build is overlay.
 
 > **GOTCHA.** Step 2 removes **`.got` and `.got.loc`** unconditionally (`:171-172`). The
 > device image therefore has no GOT — all cross-references are resolved by the prelinker's
@@ -479,7 +475,6 @@ relu.packed.so     # Phase 5 -o — RELOCATABLE load-lib: libdata blob under `li
 A multicore build produces the triple **eight times**, named
 `relu_cpu0.{so,stripped.so,packed.so}` … `relu_cpu7.*`. The `_cpuX` suffix is the
 contract from §5's `:334` comment; the consumer demuxes images to cores by that suffix.
-`[HIGH/OBSERVED]`
 
 The **`.packed.so` is the deliverable** that crosses from this build flow into the
 runtime. The on-device prelinker (host-resident, in `libnrtucode.so`; entry chain

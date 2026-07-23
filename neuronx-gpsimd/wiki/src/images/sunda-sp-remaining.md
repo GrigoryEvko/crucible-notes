@@ -56,33 +56,32 @@ the **absent compute strings/opcodes**, and the byte-distinct IRAM datapaths —
    (RELEASE × `{IRAM, DRAM, SRAM, EXTRAM}`); `IRAM`/`DRAM` carry real bytes, `SRAM`/`EXTRAM` are **zero-size
    boundary cursors** (`movq $0x0,(%rsi)`, lea → next blob). CAYMAN ships **14** for ACT/DVE/PE (12 base + 2
    PROF) and **12** for SP (no PROF). SUNDA has **NO PROF getter, NO DKL, NO in-library EXTISA** on any engine.
-   `[HIGH/OBSERVED]`
 3. **All 8 non-POOL carves are byte-identical (sha256) to the `libnrtucode.a` RELEASE member `.rodata`** —
    `8/8 IDENTICAL` (independent 2-source proof: the `internal.so` getter blob == the archive member). The 48
    SUNDA `.a` members = 6 engine-classes × 8 (DEBUG+RELEASE × 4 regions) = **24 DEBUG + 24 RELEASE**; the
-   DEBUG superset (no getters in `internal.so`) is what enables the module-spine enumeration below. `[HIGH/OBSERVED]`
+   DEBUG superset (no getters in `internal.so`) is what enables the module-spine enumeration below.
 4. **Uniform reset/boot across all five NX engines, == SUNDA POOL, == CAYMAN in the reset *value*.** Every
    IRAM head is `06 76 00 00 00 00 86 77 00 00 00 00` (`j 0x1dc` / `j 0x1e8`); the `0x1dc` trampoline decodes
    **exactly** `const16 a0,0 ; const16 a0,148(0x94) ; jx a0 → enter_run @0x94`. The **only** boot delta vs
    CAYMAN is the **+0x4** entry-point shift (CAYMAN `enter_run @0x90`; SUNDA `@0x94`). DRAM head =
    `0x6099cb34` `.globstruct` magic (== CAYMAN) + the byte-identical `4 × 0x00001000 @0x18` dispatcher-state
-   init block. `[HIGH/OBSERVED]`
+   init block.
 5. **The NX dispatch is the SUNDA base-subtraction segmented "Sunda-mode" flavor** — `sub a2,a2,a3 = 1`,
    `addi a2,a2,-65 = 0`, `movi a3,177 = 0` on **every** engine. It is **NOT** the `addi-0x41`-ASCII-normalized
    indexed table CAYMAN DVE/POOL use, and **NOT** a 177-entry table. This is the **origin** of the dispatch
-   that [MARIANA SP](./mariana-sp.md) and MAVERICK SP inherit byte-exact (the flavor *named after SUNDA*). `[HIGH/OBSERVED]`
+   that [MARIANA SP](./mariana-sp.md) and MAVERICK SP inherit byte-exact (the flavor *named after SUNDA*).
 6. **The observability floor is TOTAL — on every engine, even in DEBUG.** Zero `S:` handler-name logs, zero
    `"Dispatch opcode=0x%x"`, zero compute-name self-strings (`Matmul`/`Activate`/`Dropout`/…). The CAYMAN
    `S:`-log handler set-diff method ([× ACT](./cayman-act.md)/[DVE](./cayman-dve.md)/[PE](./cayman-pe.md)/[SP](./cayman-sp.md)
    §5) is **INAPPLICABLE** on SUNDA for every engine. The per-engine CAYMAN diff is therefore expressed at the
    **string/opcode-ABSENCE** level, anchored to the shared `sunda/seq/` module spine — never fabricated as a
-   SUNDA handler-name count. `[HIGH/OBSERVED]`
+   SUNDA handler-name count.
 
 > **GOTCHA — "SUNDA is a reduced-engine baseline" is the wrong framing.** The reduction is **per-engine**, not
 > per-set. SUNDA has the **same six engine-classes** as CAYMAN (five NX + the POOL Q7). What it lacks is
 > *inside* each engine: the DEBUG/PERF/TEST flavor split, the PROF CAM/TABLE, the DKL family, the EXTISA
 > container, and the CAYMAN compute-extension opcodes. A reimplementer must provision **all five NX engines**
-> for a v2-compatible part — just with the lean per-engine handler floor. `[HIGH/OBSERVED]`
+> for a v2-compatible part — just with the lean per-engine handler floor.
 
 ---
 
@@ -116,19 +115,17 @@ Each getter is the 4-instruction `(img-ptr, size)` stub
 
 The POOL NX (idx 2) + Q7_POOL getters sit between PE and SP in the layout (`0x9b2ea0..0x9b3000`) — see
 [× POOL](./sunda-pool.md). **No SUNDA non-POOL engine carries a non-zero SRAM/EXTRAM**; the eight zero-size
-stubs all `movq $0x0,(%rsi)` and `lea` to the contiguous-layout cursor (the *next* engine's IRAM). `[HIGH/OBSERVED]`
+stubs all `movq $0x0,(%rsi)` and `lea` to the contiguous-layout cursor (the *next* engine's IRAM).
 
 > **GOTCHA — the SP getter `.data` VA is `0x3b580`, not its catalog row index.** SUNDA SP is `engine_idx 4`
 > (`TPB_SP`) per the ISA enum (§4); the `.data` VA `0x3b580` is just its file offset in the contiguous
 > `.rodata` layout (POOL's NX+Q7 blobs precede it). Don't confuse the layout offset with the engine index.
-> `[HIGH/OBSERVED]`
 
 ### 2.2 Carve provenance + the 2-source byte-identity reconciliation
 
 Carve rule (identity map): `blob = so[IMG-PTR : IMG-PTR+SIZE]` (python slice). The 8 real non-POOL images
 carved; sha256 (full) **reproduces the published anchors exactly**, and **each carve is byte-identical
 (sha256) to the matching `libnrtucode.a` RELEASE member `.rodata`** (`ar x` + `objcopy --only-section=.rodata`):
-`[HIGH/OBSERVED]`
 
 | IMAGE | FILE-OFF | SIZE | sha256 (full) | `.a` RELEASE member |
 |---|---|---:|---|---|
@@ -144,11 +141,11 @@ carved; sha256 (full) **reproduces the published anchors exactly**, and **each c
 The archive **also** holds the SUNDA **DEBUG** members per engine (`img_SUNDA_NX_{ACT,DVE,PE,SP}_DEBUG_{IRAM,DRAM,SRAM,EXTRAM}`)
 that `internal.so` does **not** surface as getters — used below (`ar x` + `.rodata`-strip) for the module-set
 enumeration, since the RELEASE flavor strips all assertion/log strings. SUNDA DEBUG **DRAM** sizes (distinct
-from RELEASE): ACT `0x3300`, DVE `0x3800`, PE `0x3360`, SP `0x3390`. `[HIGH/OBSERVED]`
+from RELEASE): ACT `0x3300`, DVE `0x3800`, PE `0x3360`, SP `0x3390`.
 
 ### 2.3 The `.a` member split — where the 48 land
 
-`ar t libnrtucode.a` = **435** members; the per-generation split is byte-clean: `[HIGH/OBSERVED]`
+`ar t libnrtucode.a` = **435** members; the per-generation split is byte-clean:
 
 | Generation | `.a` image members | Notes |
 |---|---:|---|
@@ -162,7 +159,7 @@ from RELEASE): ACT `0x3300`, DVE `0x3800`, PE `0x3360`, SP `0x3390`. `[HIGH/OBSE
 `48 + 124×3 + 0 + 15 = 435`. The **48** SUNDA members cover **all six engine-classes** in both DEBUG and
 RELEASE — i.e. SUNDA's `.a` footprint is one-third of CAYMAN's *not because engines are missing*, but because
 SUNDA ships **2 flavors** (DEBUG+RELEASE) where CAYMAN ships **3** (DEBUG/PERF/TEST) **plus** the PROF, DKL
-and EXTISA member families SUNDA omits entirely. `[HIGH/OBSERVED]`
+and EXTISA member families SUNDA omits entirely.
 
 ---
 
@@ -186,7 +183,7 @@ DRAM @0x18 (all four):  4 × 0x00001000             ; dispatcher-state init  (==
 The trampoline at `0x1dc` was decoded **byte-for-byte on each of the four engines** (`const16 a0,148 ; jx a0`)
 — and the **CAYMAN** SP image at the same `0x1dc` decodes `const16 a0,144(0x90) ; jx a0`. So the reset
 **value** (`j 0x1dc`, the `{v2,v3}` family) is shared, the trampoline **shape** is shared, and the **only**
-boot difference is the **+0x4 `enter_run` entry-point shift**: `[HIGH/OBSERVED]`
+boot difference is the **+0x4 `enter_run` entry-point shift**:
 
 | engine | SUNDA reset | CAYMAN reset | SUNDA `enter_run` | CAYMAN `enter_run` | delta |
 |---|---|---|---|---|---|
@@ -207,7 +204,7 @@ boot difference is the **+0x4 `enter_run` entry-point shift**: `[HIGH/OBSERVED]`
 ### 3.1 Engine layout — fully contiguous
 
 The full SUNDA engine order is **byte-contiguous** (each blob's end == the next blob's start), verified from
-the getter `.data` VAs + sizes: `[HIGH/OBSERVED]`
+the getter `.data` VAs + sizes:
 
 ```text
 ACT_IRAM 0x055f0 → ACT_DRAM 0x0e510 → DVE_IRAM 0x10630 → DVE_DRAM 0x1c0e0 →
@@ -217,7 +214,7 @@ SP_DRAM  0x469d0 → Q7_POOL_IRAM 0x48bf0 → …
 
 Every adjacency closes exactly (`0x055f0+0x8f20 = 0x0e510`, `0x469d0+0x2220 = 0x48bf0`, …). The order is
 `ACT → DVE → PE → NX_POOL → NX_SP → Q7_POOL`; **NX_SP is interleaved between the two POOL cores**, and there
-are no gaps. `[HIGH/OBSERVED]`
+are no gaps.
 
 ### 3.2 Decode census — full windowed-ABI + IVP datapath
 
@@ -314,13 +311,12 @@ Set-diffing the four DEBUG DRAMs: **62 strings are common to all four**, and the
 ACT=0, PE=0, SP=0, DVE=1** — the **sole** engine-distinguishing string in the entire DRAM data segment is DVE's
 `/opt/workspace/NeuronUcode/sunda/seq/src/uarch.hpp:161` `0 && "not a supported tscr op"` (the tensor-scalar
 decode arm — DVE is the tensor-scalar-rich engine; ACT/PE/SP have byte-identical string sets). The engines are
-byte-distinct **only** in their IRAM code bodies and dispatch tables. `[HIGH/OBSERVED]`
+byte-distinct **only** in their IRAM code bodies and dispatch tables.
 
 > **GOTCHA — `Cast` survives the absence scan as RTTI, not as a handler.** The raw substring `Cast` returns 2
 > hits per engine — but both are `std::bad_cast` / `St8bad_cast` (C++ typeinfo), **not** the compute op; the
 > word-boundary `\bcast\b` count is **0** on every engine. A reimplementer grepping bare `Cast` will draw a
 > false positive. The compute-name floor (no `Activate`/`Cast`/`Copy`/`Matmul`/… handler self-string) holds.
-> `[HIGH/OBSERVED]`
 
 The shared `sunda/seq/` **module spine** (recovered from the DEBUG DRAM source-path assertions — the only
 handler-level evidence available) is **exactly 16 distinct `.cpp`/`.hpp` basenames, byte-identical across
@@ -338,7 +334,7 @@ exception_handler.hpp`, and (DVE-only) `sunda/seq/src/uarch.hpp`; the other 10 a
 null-terminated basenames (a `__FILE__`-basename table + a parallel offset array), not full paths. So all five
 SUNDA NX engines are the **same `sunda/seq/` SEQ codebase** — the fetch/cache/fsm/branch control spine +
 move/alu_op decode + legacy_dma + soc_window translation + exception/interrupt/signal handlers — but **without**
-the per-handler `S:` self-naming and **without** the CAYMAN extended layer. `[HIGH/OBSERVED]`
+the per-handler `S:` self-naming and **without** the CAYMAN extended layer.
 
 ### 5.2 The per-engine diff vs CAYMAN (anchored to absences, not `S:` names)
 
@@ -410,7 +406,7 @@ CARRIED from CAYMAN, INAPPLICABLE to re-verify on SUNDA.]`
 ### 5.3 The v2-floor opcode characterization — what is ABSENT, pinned to the enum
 
 Read directly from the shipped per-gen `aws_neuron_isa_tpb_common.h` opcode enum (the `// Y`/`// n` maintenance
-flags are the header's own): `[HIGH/OBSERVED]`
+flags are the header's own):
 
 | opcode | SUNDA (v2) | CAYMAN (v3) | MARIANA (v4) | MAVERICK (v5) | first-ship |
 |---|---|---|---|---|---|
@@ -438,7 +434,7 @@ So at the **enum** level, SUNDA is the floor below:
 ### 5.4 The compute-layer absence ledger (string-level, all four engines)
 
 Full DEBUG IRAM+DRAM string scan, all four engines — **0 hits each** (extends the SUNDA POOL absence ledger to
-ACT/DVE/PE/SP): `[HIGH/OBSERVED]`
+ACT/DVE/PE/SP):
 
 | token | meaning | SUNDA |
 |---|---|---|
@@ -482,14 +478,14 @@ SUNDA ships **no** PROF_CAM/PROF_TABLE getters and **no** `hwdecode_` `.a` membe
 (`nm | rg -ci 'SUNDA.*PROF' = 0`; `ar t | rg -ci 'sunda.*(prof|hwdecode)' = 0`). For contrast, CAYMAN ships
 **8** PROF getters (`CAYMAN_NX_{ACT,DVE,PE,POOL}_PROF_{CAM,TABLE}_get`), where the four NX engines share the
 **byte-identical** PROF_CAM (`8fd7e422`) / PROF_TABLE (`ce761f81`). SUNDA = the no-HW-decode-profiling floor
-across the set. `[HIGH/OBSERVED]`
+across the set.
 
 > **NOTE — PROF_CAM ≠ the activation CAM.** The **16-byte opcode-only PROF_CAM** is the HW
 > instruction-decode profiler (keyed on `opcode`, 16B stride). It is **distinct** from the **32-byte**
 > `aws_hal_stpb_act_cam_entry_t` activation-LUT CAM (keyed `(opcode, func_id)`, 32B stride). SUNDA omits the
 > PROF_CAM **entirely** (no getter, no member); the activation CAM is part of the ACT PWP machine (next), and
 > it is *that* CAM/PWP header that **diverges** on SUNDA — not the PROF profiler. See
-> [PROF_CAM / PROF_TABLE formats](./prof-cam-table-formats.md). `[HIGH/OBSERVED]`
+> [PROF_CAM / PROF_TABLE formats](./prof-cam-table-formats.md).
 
 ### 6.3 The SUNDA activation PWP header DIVERGES — sha `dbdca26b…`
 
@@ -497,7 +493,7 @@ The ACT piecewise-cubic (PWP) machine is described by four shipped header struct
 `aws_hal_stpb_act_{cam,profile,control,bucket}_entry_t` (CAM 32B / PROFILE 128B / CONTROL 32B / BUCKET 32B).
 For cayman/mariana/mariana_plus/maverick the combined header is **byte-stable** (sha256 `8f6f5f49…`). **SUNDA
 diverges — sha256 `dbdca26b…`** — a known SUNDA-specific de-share. The diff is **three fields, all within the
-same 32B/128B/32B/32B sizes** (compile-verified equal-size to cayman): `[HIGH/OBSERVED]`
+same 32B/128B/32B/32B sizes** (compile-verified equal-size to cayman):
 
 | # | field | SUNDA (v2) | cayman+ |
 |---|---|---|---|
@@ -516,7 +512,7 @@ read + sha both gens.]`
 > added config bits + one mask byte-swap**, so a v2-compatible reimplementation must decode the **SUNDA** CAM
 > mask order and **omit** the FMA-bypass / bn-accum-read control bits — but otherwise runs the **same cubic
 > PWL** as the later gens. A reimplementer keying off the cayman+ `8f6f5f49` layout will mis-read the SUNDA
-> CAM opcode/func_id masks. `[HIGH/OBSERVED]`
+> CAM opcode/func_id masks.
 
 ---
 
@@ -580,7 +576,7 @@ the on-device DUAL datapath is MED/INFERRED — never fabricated.]`
 > once — `OPCODE_*_DUAL_ARITH = 0x87` (`common.h:221`) **and** `UPDATE_MODE_SEM_SUB_REG_READ = 0x87`
 > (`:350`). On cayman+ only the **OPCODE** name was dropped; the `UPDATE_MODE` constant is gen-stable. Opcode
 > dispatch and update-mode selection are separate decode contexts, so the shared value is unambiguous in
-> either. `[HIGH/OBSERVED]`
+> either.
 
 ---
 
