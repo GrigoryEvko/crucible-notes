@@ -6,7 +6,8 @@ MARIANA_PLUS Activation-engine firmware image against the committed, byte-true
 byte, and string below is read directly from `libnrtucode_internal.so`
 (sha256 `b7c67e89…632fc329b`) via its 14 `MARIANA_PLUS_NX_ACT_*_get` accessors,
 carved from identity-mapped `.rodata`, with the shipped Cadence Vision-Q7
-`ncore2gp` `xtensa-elf-objdump` decoding the flat blobs.
+`ncore2gp` `xtensa-elf-objdump` decoding the flat blobs. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **The one headline, up front — and it is counterintuitive, so this page proves
 > it hard.**
@@ -17,7 +18,6 @@ carved from identity-mapped `.rodata`, with the shipped Cadence Vision-Q7
 > The v4+-vs-v4 delta is **a RECOMPILE + ONE functional addition — a DGE reshape
 > fast-path** — with **NO new silicon**: no new dispatch handler, no new opcode,
 > no new dtype. `MARIANA_PLUS = MARIANA-recompiled + the DGE fast-path`.
-> [HIGH/OBSERVED]
 
 This is the *expected* result. MARIANA_PLUS shares the MARIANA ISA — there is no
 `neuron_mariana_plus_arch_isa` dir; the four ISA dirs are
@@ -85,7 +85,6 @@ bytes; 6 SRAM/EXTRAM getters emit `movq $0x0,(%rsi)` and alias the
 contiguous-layout DVE cursor — ACT runs entirely from IRAM (code) + DRAM (data),
 exactly as MARIANA. Each getter disassembles to the
 `lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret` stub.
-[HIGH/OBSERVED]
 
 | VARIANT | REGION | ACCESSOR (.text VA) | IMG-PTR (.rodata VA == file off) | SIZE | sha256 |
 |---|---|---|---|---|---|
@@ -106,7 +105,7 @@ exactly, and each is **byte-identical** (sha256 + `cmp -s` clean) to the matchin
 `libnrtucode.a` member `.rodata` (`ar x` → `objcopy --only-section=.rodata`): the
 archive ships exactly 14 `MARIANA_PLUS_NX_ACT` members (12 `img_*_contents.c.o` +
 2 `hwdecode_*_PROF_{CAM,TABLE}_contents.c.o`), **8/8 reconciled** (not a
-spot-check). One firmware corpus, two packaging views. [HIGH/OBSERVED]
+spot-check). One firmware corpus, two packaging views.
 
 > **NOTE — ACT is the HEAD of the MARIANA_PLUS NX block.** The layout is
 > variant-major, engine-minor (`ACT → DVE → PE → POOL → SP`), the same order as
@@ -118,7 +117,7 @@ spot-check). One firmware corpus, two packaging views. [HIGH/OBSERVED]
 > `MARIANA_PLUS_NX_ACT_PERF_IRAM.data` (`0x5a5480`) — the two generations are laid
 > out contiguously (MARIANA fully, then MARIANA_PLUS). ACT is a **standalone**
 > image, contiguous-before-DVE, **not folded** — same fold-disproof as MARIANA
-> (the fold is MAVERICK-only). [HIGH/OBSERVED]
+> (the fold is MAVERICK-only).
 
 ---
 
@@ -136,7 +135,7 @@ MARIANA_PLUS IRAM:  06 7d 00 00 | 00 00 | 86 7e 00 00 | 00 00 | a0 71 69 80
 The `J` opcode byte-1 is `0x7d` on **both** generations (the MARIANA `+0x1c`
 forward shift from CAYMAN's `0x76`), so MARIANA_PLUS inherits MARIANA's relocated
 boot entry with **no further shift**. Decoded with the shipped `ncore2gp`
-`xtensa-elf-objdump` (exit 0, empty stderr) off the MARIANA_PLUS PERF IRAM carve:
+`xtensa-elf-objdump` off the MARIANA_PLUS PERF IRAM carve:
 
 ```text
 0x000:  06 7d 00     j        0x1f8      ; primary reset vector → boot path
@@ -151,7 +150,7 @@ The DRAM head is `34 cb 99 60` = header word `0x6099cb34`, the `.globstruct`
 dispatcher-state magic shared with every flat NX DRAM, **byte-identical** to
 MARIANA across all 3 variants, with the same `@0x18:0x38` init block
 (`4× 0x00001000 + 4× 0x00ffffff`). The reset + boot stub + DRAM init are a
-recompile of the *same* boot scheme, not a re-relocation. [HIGH/OBSERVED]
+recompile of the *same* boot scheme, not a re-relocation.
 
 > **GOTCHA — the recompile signature is a literal constant, not a vector move.**
 > The MARIANA_PLUS-vs-MARIANA PERF IRAM **shared prefix is `0x212` bytes** — the
@@ -160,7 +159,7 @@ recompile of the *same* boot scheme, not a re-relocation. [HIGH/OBSERVED]
 > (`0xc8` MPLUS vs `0x68` MARIANA). That is the recompile-relocation point: the
 > boot/dispatch *scheme* is shared verbatim and the code only diverges where a
 > relocated literal address appears. A binary patch would have left the literals
-> alone; a recompile shifts them. [HIGH/OBSERVED]
+> alone; a recompile shifts them.
 
 ---
 
@@ -196,7 +195,7 @@ The 29-handler clean dispatch set — **identical on both generations**:
 MARIANA's three additions over CAYMAN (`Activate2`/`RandGetState`/`RandSetState`)
 are **retained**, each confirmed a *real* dispatch handler by its string-load
 entry site in MARIANA_PLUS DEBUG IRAM (the same self-naming pattern as MARIANA, at
-near-identical addresses): [HIGH/OBSERVED]
+near-identical addresses):
 
 | Handler | DRAM string (file off) | IRAM entry (`const16 a10,…`) | MARIANA entry |
 |---|---|---|---|
@@ -211,7 +210,7 @@ near-identical addresses): [HIGH/OBSERVED]
 > `VS: Copy`, `TS: TensorScalar`, `TS: ActivateQuantize`,
 > `@S: ActivationReadAccumulator`, `RS: Activate2`. **Both** generations exhibit
 > the *same* glue, so the glue-stripped diff is robustly clean. Any Part-6 cross-gen
-> handler diff MUST glue-strip. [HIGH/OBSERVED]
+> handler diff MUST glue-strip.
 
 ---
 
@@ -222,7 +221,7 @@ MARIANA_PLUS ACT uses the **same** dispatch model as MARIANA ACT: an
 the **raw-compare** normalization flavor (`movi a3,N ; bne a2,a3`) for the DEBUG
 segment — **not** the `addi a2,a2,-65` ASCII style (DVE) nor the `sub a2,a2,a3`
 base-subtraction style (SP). The sole `addi a2,a2,-65` in the image is at `0x165bd`,
-far from dispatch (an unrelated inline char-decode). [HIGH/OBSERVED]
+far from dispatch (an unrelated inline char-decode).
 
 The opcode-space stability is proven at the byte level. The DEBUG segmented
 compare-chain constants are **byte-identical AND at byte-identical addresses** on
@@ -239,7 +238,7 @@ both generations (`ncore2gp` disasm, region `[0x2b06:0x2b8d]` `cmp`-clean):
 The `addx4` trampoline (`extui a3,a3,0,4 ; addx4 a4,a3,a4 ; l32i a4,a4,0 ; jx a4`,
 sub-table base `const16 a4,0x1250`) is byte-identical in structure, and the
 `S: Dispatch opcode=0x%x` per-fetch log is at DRAM file offset `0x858` on **both**
-generations. [HIGH/OBSERVED]
+generations.
 
 > **GOTCHA — the DRAM dispatch-table "+0x20 reloc" is a recompile shift, not a
 > handler change.** The IRAM-target trampolines reached through the DRAM table are
@@ -248,7 +247,7 @@ generations. [HIGH/OBSERVED]
 > `170→187` growth on other engines). The table base, entry structure, and the
 > slot-by-slot `+0x20` relocation are gen-stable; the *per-opcode→handler row
 > binding* is the FLIX-desync-limited frontier carried from
-> [MARIANA ACT §5](./mariana-act.md#5-dispatch--dtype-deltas) (SX-FW-00 bundle
+> [MARIANA ACT §5](./mariana-act.md#5-dispatch--dtype-deltas) (FW-00 bundle
 > desync). [HIGH model/base; MED per-row binding]
 
 The SEQ infrastructure confirms the engine model is unchanged: the identical
@@ -256,7 +255,7 @@ The SEQ infrastructure confirms the engine model is unchanged: the identical
 `Int Div Zero`, sourced from `…/cayman/seq/src/handlers/exception_handler.hpp`),
 the dual `S: NX in HW Decode mode` / `S: NX in Sunda mode` strings, the
 `sunda_fetch`/`sunda_redirect`/`sunda_handle_surprises` fetch machinery, and the
-`S: enter_run: start/done` markers are all byte-for-name present. [HIGH/OBSERVED]
+`S: enter_run: start/done` markers are all byte-for-name present.
 
 ---
 
@@ -284,7 +283,7 @@ This is gen-wide: all four MARIANA_PLUS PROF-bearing engines reuse MARIANA's
 per-engine PROF_CAM byte-identical (DVE `ca588683`, PE `43475cec`, POOL `0951b326`,
 ACT `326bc0dd`). MARIANA_PLUS **reuses MARIANA's HW-decode profiler config
 unchanged** — a strong v4/v4+ kinship signal, and confirmation that the recompile
-did not re-arm anything. [HIGH/OBSERVED]
+did not re-arm anything.
 
 ---
 
@@ -314,7 +313,6 @@ The reverse delta is trivial: MARIANA carries `S: push REGWRITE to DMA[%d]`
 (absent on MARIANA_PLUS, likely folded into the fast path), which is why the DEBUG
 DRAM `S:` line count drops `153 → 152`. There is **no `mariana_plus` errata
 string** (the `mariana-4062` errata is DVE-specific and absent here too).
-[HIGH/OBSERVED]
 
 ```c
 // The v4+ change, in one line of pseudocode (INFERRED-HIGH from the names +
@@ -358,7 +356,7 @@ growth is the new DGE fast-path code (§7). Positional 16-byte-block similarity 
 low (PERF 6 %, TEST 5 %, DEBUG 14 %) — a fresh build with relocated layout +
 inserted code, **not** a patch. The PERF IRAM decodes a genuine, *larger*
 `cayman/seq` sequencer (`123 entry / 188 retw / 500 call8 / 193 distinct
-mnemonics`, vs MARIANA's `138 entry / 185 retw`). [HIGH/OBSERVED]
+mnemonics`, vs MARIANA's `138 entry / 185 retw`).
 
 > **NOTE — `engine_idx` is still runtime-computed (= 1, ACT).** The shipped ISA
 > enum `NEURON_ISA_TPB_NEURON_ENGINE { PE=0, ACT=1, POOL=2, DVE=3, TPB_SP=4,
@@ -387,7 +385,7 @@ gen-wide). [INFERRED-HIGH from the ACT instance — to be VERIFIED per-engine]
 
 ## 10. Adversarial self-verification
 
-Five strongest claims, re-challenged against the binary this task:
+Five strongest claims, challenged against the binary:
 
 1. **Handler roster byte-for-name identical (`+0/−0`).** *Challenge:* a glue
    artifact could mask a real add/drop. *Re-verify:* two independent methods —
@@ -407,7 +405,7 @@ Five strongest claims, re-challenged against the binary this task:
    **HOLDS.**
 4. **PROF byte-identical to MARIANA.** *Challenge:* same size could mask different
    content. *Re-verify:* `cmp -s` clean for both CAM (`326bc0dd`) and TABLE
-   (`8786dd11`); the 24 armed records re-decoded match the MARIANA set. **HOLDS.**
+   (`8786dd11`); the 24 armed records match the MARIANA set. **HOLDS.**
 5. **DGE fast-path is the one functional addition.** *Challenge:* the 4 strings
    could be stray text, or present on MARIANA too. *Re-verify:* all 4
    (`dge_decode_fast.cpp`, `dge_reshape_memcopy_transpose_fast`,
@@ -418,7 +416,7 @@ Five strongest claims, re-challenged against the binary this task:
 
 **Honesty ledger.** *HIGH/OBSERVED:* 14 getters (`nm` + IDA sidecar = 14); 8 carves
 sha-reproduced + `cmp`-reconciled 8/8 to `libnrtucode.a`; MARIANA baseline 8/8
-re-hashed and MATCH; reset/boot/DRAM-magic byte-identical to MARIANA; handler
+MATCH; reset/boot/DRAM-magic byte-identical to MARIANA; handler
 `29==29`/`70==70`; compare-chain byte-identical at identical addrs; PROF
 `cmp`-clean; dtype `{UINT32,INT32,FP32}` only, FP4/CPTC 0 hits ×8; 4 DGE strings
 present-vs-absent; IRAM grew, PROF identical; `BEGIN on mariana_plus`; ISA enum

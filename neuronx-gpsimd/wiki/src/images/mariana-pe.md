@@ -24,10 +24,10 @@ Confidence/evidence tags follow the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so` (sha256 `b7c67e89…632fc329b`) and decoded with the shipped `ncore2gp`
-`xtensa-elf-objdump`; both the CAYMAN baseline and the MARIANA images were **re-carved and re-hashed
-this session** for an apples-to-apples diff (all 5 CAYMAN anchors + all 8 MARIANA carves reproduced
-exact). The micro-op operand-struct semantics and the MX block model are CARRIED from the kernel
-pages cited inline.
+`xtensa-elf-objdump`; both the CAYMAN baseline and the MARIANA images are carved for an
+apples-to-apples diff (all 5 CAYMAN anchors + all 8 MARIANA carves reproduce exact). The micro-op
+operand-struct semantics and the MX block model are CARRIED from the kernel pages cited inline.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — the objects used.** Container:
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (sha256
@@ -38,9 +38,7 @@ pages cited inline.
 > **DRAM string-file-offset == device DRAM VA − `0x80000`**. Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
 > (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, ConfigName `Xm_ncore2gp`, uarch Cairo,
-> Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`, `IsaMaxInstructionSize=32` FLIX/VLIW). All carve
-> sha256, the reset vectors, the dispatch chain, the PROF tables and the new-handler strings were
-> reproduced this session (exit 0, empty stderr). `[HIGH/OBSERVED]`
+> Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`, `IsaMaxInstructionSize=32` FLIX/VLIW).
 
 ---
 
@@ -79,15 +77,15 @@ left column is the committed [CAYMAN × PE](./cayman-pe.md) baseline, the right 
 **Verdict.** A CAYMAN↔MARIANA PE swap is a **full recompile + opcode-space growth (+4) + 4 handlers +
 re-armed/pruned/de-shared profiler + reset-vector relocation** — NOT a model change. The "same SEQ
 engine, different handler subset" hypothesis holds across the generation gap. No MARIANA PE image is
-byte-identical to its CAYMAN counterpart (8/8 distinct sha256, §8). `[HIGH/OBSERVED]`
+byte-identical to its CAYMAN counterpart (8/8 distinct sha256, §8).
 
 ---
 
 ## 2. The PeManageSeed / MX first-ship proof (the headline, byte-pinned)
 
 This is the decisive section. [CAYMAN × PE §1.5](./cayman-pe.md) reported **0** grep hits for
-`ManageSeed` / `MX` / `seed` / `ConvLut` across all three CAYMAN PE DRAM variants. Re-run this
-session over the re-carved DEBUG DRAMs (`strings -n3 | rg -c`): `[HIGH/OBSERVED]`
+`ManageSeed` / `MX` / `seed` / `ConvLut` across all three CAYMAN PE DRAM variants. The same grep
+over the MARIANA DEBUG DRAMs (`strings -n3 | rg -c`):
 
 | token | MARIANA PE DEBUG DRAM | CAYMAN PE DEBUG DRAM |
 |---|---:|---:|
@@ -98,7 +96,6 @@ session over the re-carved DEBUG DRAMs (`strings -n3 | rg -c`): `[HIGH/OBSERVED]
 | `MatmulMX` | **1** | 0 |
 
 The exact MARIANA PE handler-name strings, read out of the carve (`grep -aob`):
-`[HIGH/OBSERVED]`
 
 ```text
 S: PeManageSeed(LOAD)                          ; PE_SEED_MODE LOAD_SEED=1
@@ -112,7 +109,7 @@ VS: MatmulSparse                               ; 0x824d0          (note glue pre
 ```
 
 The CAYMAN PE DEBUG DRAM, same grep, yields **only** `S: Ldweights`, `S: Matmul`, `S: MatmulSparse`
-— no seed, no MX, no ConvLut. `[HIGH/OBSERVED]`
+— no seed, no MX, no ConvLut.
 
 > **QUIRK — the `TS:`/`XS:`/`VS:` string-pool glue trap is present on PE.** The matmul-handler names
 > are glued to the tail byte of the previous pooled string: `TS: Matmul`, `XS: MatmulMX`,
@@ -120,11 +117,11 @@ The CAYMAN PE DEBUG DRAM, same grep, yields **only** `S: Ldweights`, `S: Matmul`
 > `MatmulSparse` as **removed**. The correct method (same as MARIANA ACT/DVE) strips the 0–3 glue
 > bytes before `S: ` and normalizes to the bare `OpName`. The glue-stripped set-diff gives the clean
 > **+4 / −0**: MARIANA ADDS `{ConvLutLoad, LdweightsMX, MatmulMX, PeManageSeed}`, removes nothing.
-> `[HIGH/OBSERVED]`
+>
 
-**Handler DRAM-string offsets** (MARIANA PE DEBUG DRAM, `grep -aob`, all reproduced this session):
+**Handler DRAM-string offsets** (MARIANA PE DEBUG DRAM, `grep -aob`):
 the 5 retained CAYMAN handlers relocated `+~0xC0` for the new strings; the 4 new tokens slot into
-the pool. `[HIGH/OBSERVED]`
+the pool.
 
 | handler | opcode | MARIANA DRAM str (file off / VA) | CAYMAN DRAM str (VA) | status |
 |---|---|---|---|---|
@@ -139,7 +136,7 @@ the pool. `[HIGH/OBSERVED]`
 | **`ConvLutLoad`** | **`0xe4`** | `0x23c0` / `0x823c0` | — | **NEW** |
 
 Two `PeManageSeed` string copies exist: an early dispatch-path copy @`0x80871` and the
-handler-name-cluster copy @`0x823e0`. `[HIGH/OBSERVED]`
+handler-name-cluster copy @`0x823e0`.
 
 > **NOTE — what `PeManageSeed` manages (CARRIED, not re-derived here).** `PeManageSeed` (`0x08`,
 > ISA enum 165, struct `S2S1D2_PE_SEED_STRUCT`) is the **PSUM fp32→bf16 stochastic-rounding RNG seed
@@ -161,10 +158,10 @@ MARIANA PE keeps the CAYMAN dispatch *form* exactly: a **RAW-opcode** segmented 
 DEBUG (NO `addi a2,a2,-N` normalization — unlike DVE's normalized `addx4`), a 17-entry sub-table @
 DRAM `0x80814`, the `S: Dispatch opcode=0x%x` log, and the clean PERF table @ DRAM `0x80218`. The
 only delta is **+4 opcodes**. The DEBUG compare-chain was decoded instruction-exact at **both** NX-mode
-dispatch sites this session (HW-Decode ~`0x2936`, Sunda ~`0x2e2b`); both agree. `[HIGH/OBSERVED]`
+dispatch sites (HW-Decode ~`0x2936`, Sunda ~`0x2e2b`); both agree.
 
 ```text
-; MARIANA PE DEBUG IRAM, HW-Decode site ~0x2936 (ncore2gp objdump, this session):
+; MARIANA PE DEBUG IRAM, HW-Decode site ~0x2936 (ncore2gp objdump):
   293f:  662202   bnei  a2, 2, 0x2945        ; opcode 0x02 Matmul
   2948:  663202   bnei  a2, 3, 0x294e        ; opcode 0x03 PeRegWrite
   2951:  666202   bnei  a2, 6, 0x2957        ; opcode 0x06 LdTags
@@ -177,7 +174,7 @@ dispatch sites this session (HW-Decode ~`0x2936`, Sunda ~`0x2e2b`); both agree. 
   2a70:  32a0e4   movi  a3, 228              ; opcode 0xe4 ConvLutLoad     <-- NEW (v4)
 ```
 
-**Opcode rosters (instruction-exact):** `[HIGH/OBSERVED]`
+**Opcode rosters (instruction-exact):**
 
 * **CAYMAN PE (25):** `0x1 2 3 6 7` · `0x9f a0 a1 a2 a3 a4 a5 a6 a7 a8 a9 aa ab` · `0xb0 b1 b2 b3 b5 b8 bd`
 * **MARIANA PE (29):** CAYMAN's 25 **+ `{0x8, 0x9, 0xa, 0xe4}`** (+4, −0)
@@ -192,9 +189,9 @@ CARRIED-MED — the 0x38xx trampolines partly FLIX-bundle in the linear sweep]`
 > (`{0x8,0x9,0xa,0xe4}`) == the `+4 new handler names`
 > (`{PeManageSeed, LdweightsMX, MatmulMX, ConvLutLoad}`) == the `+4` real-opcode count delta (29−25).
 > The three counts coincide from independent evidence (the compare-chain arms, the glue-stripped string
-> diff, the opcode census). `[HIGH/OBSERVED]`
+> diff, the opcode census).
 
-**Dispatch infra, gen-stable / relocated** (decoded this session): `[HIGH/OBSERVED]`
+**Dispatch infra, gen-stable / relocated** (decoded):
 
 * sub-table @ DRAM `0x80814`: **17** in-range IRAM trampolines in both gens (MARIANA pool starts
   `0x3d78`, CAYMAN `0x3c44` — relocated, same count).
@@ -213,7 +210,7 @@ CARRIED-MED — the 0x38xx trampolines partly FLIX-bundle in the linear sweep]`
 The unchanged matmul core — boot → fetch → the 5 retained handlers, the SBUF→array→PSUM dataflow, the
 IVP widening-MAC datapath — is documented byte-exact in [CAYMAN × PE §4/§6/§9](./cayman-pe.md) and is
 **not repeated** here. Below is **only** what v4 adds: the seed manager and the MX matmul path, as the
-new arms of the same `switch`. Opcodes/strings are byte-pinned this session; the operand-struct and
+new arms of the same `switch`. Opcodes/strings are byte-pinned; the operand-struct and
 PSUM-SR datapath fields are CARRIED from [pe-matmul.md](../firmware/kernels/pe-matmul.md).
 
 ```c
@@ -303,10 +300,10 @@ void h_conv_lut_load(instr_t *ins) { pe_load_conv_lut(ins); }  // S: ConvLutLoad
 ## 5. DTYPE delta (does v4's FP4/MX surface in PE strings?)
 
 **No — and that is the expected negative.** `FP4` / `CPTC` / `MXTENSOR` / `SFP8` / `fp8_e` appear as
-named strings in **0** of the 8 MARIANA PE blobs (grep this session, all blobs). The only named dtype
+named strings in **0** of the 8 MARIANA PE blobs (grep over all blobs). The only named dtype
 constants are `NEURON_ISA_TPB_DTYPE_{UINT32,INT32,FP32}` (the `move.cpp` / `alu_op.cpp` assertions) —
 **byte-identical to CAYMAN**. The new dtype codes are numeric in the decode path, not named-string
-asserts; same negative result MARIANA ACT/DVE showed. `[HIGH/OBSERVED]`
+asserts; same negative result MARIANA ACT/DVE showed.
 
 The FP4/MX dtype expansion's PE-engine footprint is therefore **not** a dtype string but the **new
 handler pair `LdweightsMX` + `MatmulMX`** (§2). This is the PE analogue of DVE's `QuantizeMx`
@@ -322,7 +319,7 @@ MX↔FP4/MX linkage INFERRED-HIGH from the name + the
 The single biggest *structural* PROF change is that **the generic-shared-CAM property did not survive
 the generation**. On CAYMAN, PROF_CAM was byte-identical across all 4 NX engines (one shared
 `8fd7e422`, [CAYMAN × PE §7](./cayman-pe.md)). On MARIANA, PROF_CAM is **per-engine** — carved and
-sha-compared this session: `[HIGH/OBSERVED]`
+sha-compared:
 
 | PROF_CAM | sha256 | armed records |
 |---|---|---:|
@@ -350,7 +347,7 @@ level only (MED). `[HIGH/OBSERVED bytes; schema MED]`
 
 ---
 
-## 7. Carve provenance + flat-image geometry (re-verified this session)
+## 7. Carve provenance + flat-image geometry
 
 The 14 getters (`nm libnrtucode_internal.so | rg 'MARIANA_NX_PE_.*_get$' | rg -v PLUS` → exactly 14)
 match the catalog ([image-catalog-index.md](./image-catalog-index.md), MARIANA NX_PE rows 313–326)
@@ -358,10 +355,9 @@ exactly. 8 carry real bytes; 6 are zero-size SRAM/EXTRAM boundary cursors (`movq
 `MARIANA_NX_POOL_<MODE>_IRAM` — PE is the last NX engine before POOL, runs entirely from IRAM+DRAM, as
 on CAYMAN). Engine ordering **ACT→DVE→PE→POOL** is proven by contiguity arithmetic: DVE PERF_DRAM ends
 @`0x335ca0` == PE PERF_IRAM start; PE PERF_DRAM ends @`0x34b720` == POOL PERF_IRAM (= PE's PERF cursor).
-`[HIGH/OBSERVED]`
 
-**8 real carves, reproduced byte-exact this session** (sha256; all 8 also `cmp -s`-identical to the
-matching `libnrtucode.a` member `.rodata`): `[HIGH/OBSERVED]`
+**8 real carves, byte-exact** (sha256; all 8 also `cmp -s`-identical to the
+matching `libnrtucode.a` member `.rodata`):
 
 | IMAGE | FILE-OFF | SIZE | sha256 | CAYMAN counterpart | identical? |
 |---|---|---:|---|---|---|
@@ -376,7 +372,7 @@ matching `libnrtucode.a` member `.rodata`): `[HIGH/OBSERVED]`
 
 **Flat-image geometry.** None of the 8 carves is an ELF (head ∉ `\x7fELF`). The reset vector is
 byte-identical across all 3 IRAM variants and **shifted +0x1c** from CAYMAN — the same shift MARIANA
-ACT/DVE carry (reproduced this session with `xxd` + `ncore2gp` objdump): `[HIGH/OBSERVED]`
+ACT/DVE carry (`xxd` + `ncore2gp` objdump):
 
 ```text
 MARIANA PE IRAM:  06 7d 00 00 00 00  86 7e 00 00 00 00     ; j 0x1f8 / j 0x204
@@ -396,9 +392,9 @@ boot scheme shared across MARIANA NX engines, **NOT a binary patch**. The engine
 loaded on any engine slot; `engine_idx` (`=0` for PE) is derived at boot from `engine_base_addr` vs
 `tpb_base_addr`. `[HIGH/OBSERVED string; runtime-compute INFERRED]`
 
-The `ncore2gp` objdump decodes all three IRAMs to real Q7/NX windowed-ABI + FLIX-VLIW + IVP vector
-(exit 0): PE carries a full vector compute datapath (PERF 281 distinct IVP, vs CAYMAN PE PERF 307 —
-same direction as DVE). The MAC-family detail is in [CAYMAN × PE §6](./cayman-pe.md). `[HIGH/OBSERVED]`
+The `ncore2gp` objdump decodes all three IRAMs to real Q7/NX windowed-ABI + FLIX-VLIW + IVP vector:
+PE carries a full vector compute datapath (PERF 281 distinct IVP, vs CAYMAN PE PERF 307 —
+same direction as DVE). The MAC-family detail is in [CAYMAN × PE §6](./cayman-pe.md).
 
 ---
 
@@ -420,14 +416,14 @@ same direction as DVE). The MAC-family detail is in [CAYMAN × PE §6](./cayman-
   ≈ −13%, TEST −0x2620 ≈ −11%); DEBUG IRAM slightly smaller (−0x560); **all** DRAM larger (DEBUG +0x1e0,
   PERF +0x360, TEST +0x360 = the new strings). PROF tables same size, different content (§6).
 * **NO MARIANA PE image is byte-identical to its CAYMAN counterpart** (8/8 distinct sha256, §7): a full
-  per-generation rebuild, not a patch. `[HIGH/OBSERVED]`
+  per-generation rebuild, not a patch.
 
 > **NOTE — `addr_bits.hpp` is the one new source file; no `mariana-4062` errata on PE.** MARIANA PE
 > DRAM adds exactly one source path vs CAYMAN PE: `addr_bits.hpp` (the same pool/tpb
 > address-rerouting header MARIANA ACT/DVE gained — a gen-wide MARIANA change; verified 1 hit vs 0 on
 > CAYMAN). `translate_cayman+.hpp` is on **both** gens (not new). Unlike MARIANA DVE, the PE image
 > carries **no** `S: Applying patch for mariana-4062` errata string (0 hits) — that workaround is
-> DVE-specific. `[HIGH/OBSERVED]`
+> DVE-specific.
 
 ---
 
@@ -438,7 +434,7 @@ matmul SEQUENCER (`engine_idx = 0`, corpus CSR enum `PE=0`), distinguished by it
 handler subset + the +4 new handlers + the +4 opcodes. It is **not** folded with any other engine
 (the ACT→DVE fold is a MAVERICK-only change, irrelevant to PE) and **not** a POOL Q7
 `kernel_info_table` engine. The full point-by-point property comparison is the §1 table; everything
-not in the Δ column is byte-invariant across the generation. `[HIGH/OBSERVED]`
+not in the Δ column is byte-invariant across the generation.
 
 **The FW-66 boundary (the cross-report fix).** [CAYMAN × PE](./cayman-pe.md) found `PeManageSeed`
 **absent** on CAYMAN PE (exhaustively grep-verified) and flagged FW-66 territory. This page establishes
@@ -460,11 +456,11 @@ presence/absence boundary**. `[HIGH/OBSERVED handler presence; micro-op semantic
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED (reproduced this session):**
+**HIGH / OBSERVED:**
 
-- Container sha256 `b7c67e89…632fc329b` (re-hashed, MATCH); 14 `MARIANA_NX_PE` getters (`nm`,
+- Container sha256 `b7c67e89…632fc329b` (MATCH); 14 `MARIANA_NX_PE` getters (`nm`,
   14/14 accessor VAs exact); 8 real carves byte-exact (sha256 + `cmp -s` to `libnrtucode.a` member
-  `.rodata`, 8/8); 6 zero-size SRAM/EXTRAM cursors → next-engine POOL IRAM. CAYMAN baseline re-carved,
+  `.rodata`, 8/8); 6 zero-size SRAM/EXTRAM cursors → next-engine POOL IRAM. CAYMAN baseline carved,
   all 5 anchors MATCH (`e1f1268c`/`400910dd`/`13ba3969`/`8fd7e422`/`ce761f81`).
 - Reset vector `06 7d 00 00` (`j 0x1f8`), **+0x1c** from CAYMAN's `06 76 00 00` (`j 0x1dc`), identical
   across DEBUG/PERF/TEST and to MARIANA DVE/ACT; boot-stub body @`0xc` byte-identical to MARIANA DVE;

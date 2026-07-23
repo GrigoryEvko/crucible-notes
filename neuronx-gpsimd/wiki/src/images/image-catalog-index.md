@@ -37,7 +37,7 @@ otherwise.
 ### Section/offset model (so addresses are reproducible)
 
 `readelf -SW` confirms three layout deltas you need to carve blobs and read the
-tables: `[HIGH/OBSERVED]`
+tables:
 
 | Section | VA | File off | Delta (VA − fileoff) | Holds |
 |---|---|---|---|---|
@@ -56,7 +56,7 @@ tables: `[HIGH/OBSERVED]`
 ## 1. The getter shape and the naming grammar
 
 Every accessor is the **exact 4-instruction stub** — verified
-instruction-exact on multiple getters: `[HIGH/OBSERVED]`
+instruction-exact on multiple getters:
 
 ```asm
 9b3540 <CAYMAN_NX_ACT_DEBUG_DRAM_get>:
@@ -69,9 +69,9 @@ instruction-exact on multiple getters: `[HIGH/OBSERVED]`
 i.e. `void <NAME>_get(void** out_ptr /*rdi*/, size_t* out_size /*rsi*/)` — it
 writes the `(image-pointer, size)` pair through two out-pointers and returns. The
 img-ptr is always a named `.rodata` symbol `<NAME>.data`; **all 386 objdump-parsed
-`lea` targets equal the `nm` `.data` symbol address, 0 mismatches.** `[HIGH/OBSERVED]`
+`lea` targets equal the `nm` `.data` symbol address, 0 mismatches.**
 
-### Naming grammar `[HIGH/OBSERVED]`
+### Naming grammar
 
 ```
 <GEN>_<CLS>_<ENGINE>_<VARIANT>_<REGION>_get
@@ -96,7 +96,7 @@ img-ptr is always a named `.rodata` symbol `<NAME>.data`; **all 386 objdump-pars
 
 `nm libnrtucode_internal.so | rg -c '_get$'` = **388** = **386 defined-local**
 (`nm` type `t`) getters **+ 2 weak-undefined** SUNDA Q7_POOL EXTISA stubs (see
-§5). The 386 defined getters: `[HIGH/OBSERVED]`
+§5). The 386 defined getters:
 
 | Generation | Getters | `nm \| rg -c` verification |
 |---|---:|---|
@@ -111,7 +111,7 @@ img-ptr is always a named `.rodata` symbol `<NAME>.data`; **all 386 objdump-pars
 > because `MARIANA_PLUS` symbols also begin `MARIANA_`. The true MARIANA-only
 > count is `200 − 100 = 100`. Always subtract the `_PLUS` slice.
 
-Category partition (each verified by `nm | rg -c`): `[HIGH/OBSERVED]`
+Category partition (each verified by `nm | rg -c`):
 
 | Category | Count | Resolver lane |
 |---|---:|---|
@@ -123,19 +123,19 @@ Category partition (each verified by `nm | rg -c`): `[HIGH/OBSERVED]`
 
 The base+DKL = **324** getters are the resolver-reachable set of
 `get_memory_image`; PROF (30) and EXTISA (32) are sibling lanes. `324 + 30 + 32 =
-386`, exact, no residue. `[HIGH/OBSERVED]`
+386`, exact, no residue.
 
 > **CORRECTION.** A "266-getter" figure circulated in the task brief. The binary
 > does not produce 266 anywhere; the precise resolver-reachable count is **324**
 > (or **288** base-only if DKL is excluded). The grand total is **386**. Use these.
 
-### 225 distinct image pointers back 386 getters `[HIGH/OBSERVED]`
+### 225 distinct image pointers back 386 getters
 
 `objdump`-parsing every getter's `lea` target and `sort -u` yields **225 distinct
 img-ptr addresses**. The 386 → 225 collapse is because the (almost-always-empty)
 `SRAM`/`EXTRAM` segments return a `(cursor, 0)` pair where the cursor is the start
 of the *next* engine's blob — a boundary marker, **not** a real alias. Region
-population pattern: `[HIGH/OBSERVED]`
+population pattern:
 
 | Region | Population |
 |---|---|
@@ -150,7 +150,7 @@ population pattern: `[HIGH/OBSERVED]`
 
 `T nrtucode_get_memory_image @0x9b2960` (front-lib twin `@0x30adf0`). The first
 arg is **not** a raw coretype — it is a **flat `(gen, engine)` image index 0..37**
-that the host driver precomputes. `[HIGH/OBSERVED]`
+that the host driver precomputes.
 
 ```c
 // nrtucode_get_memory_image — internal twin @0x9b2960, byte-exact from objdump+IDA.
@@ -228,9 +228,9 @@ int nrtucode_get_memory_image(unsigned idx,   /*edi: flat (gen,engine) index 0..
 
 Every branch, the region jump table `@VA 0x555c`, the `0x28` descriptor stride,
 the env logic, and the return codes were triple-anchored (objdump disasm + IDA
-decompile + raw-byte reads agree). `[HIGH/OBSERVED]`
+decompile + raw-byte reads agree).
 
-### Return-code table `[HIGH/OBSERVED]`
+### Return-code table
 
 | Code | Meaning |
 |---|---|
@@ -263,7 +263,7 @@ straight from the binary (`dd skip=0x9b6d20`, delta `0x2000`) is, slot by slot:
 
 Σ = **102 descriptors** (SUNDA 7 + CAYMAN 27 + MARIANA 27 + MPLUS 27 + MAVERICK 14).
 `102 × 4 region slots = 408 getter references → 324 distinct getters` (boundary
-cursors share pointers). `[HIGH/OBSERVED]`
+cursors share pointers).
 
 | idx | GEN | CLS | ENG | count | descriptor array (`.data` VA) | flavor keys present |
 |---:|---|---|---|---:|---|---|
@@ -306,7 +306,7 @@ cursors share pointers). `[HIGH/OBSERVED]`
 | 36 | — | — | — | **0** | `0x0` | **EMPTY boundary slot** → `get_memory_image(36,…)` = ret 2 |
 | 37 | MAVERICK | Q7 | POOL | 3 | `0x9bb428` | `{1,2,3}` |
 
-### Flavor enum `[HIGH/OBSERVED]`
+### Flavor enum
 
 | Key | Flavor | Notes |
 |---:|---|---|
@@ -347,7 +347,7 @@ w SUNDA_Q7_POOL_RELEASE_EXTISA_0_JSON_get      ; .dynsym: NOTYPE WEAK UND, value
 These have **no body and no `.data`** — they are link-time placeholders resolved
 only when the runtime `libnrtucode_extisa.so` container is present. SUNDA ships
 its 24 base RELEASE engine images **in-lib**, but its Q7 POOL custom-op kernel
-lives in the runtime EXTISA container, not here. `[HIGH/OBSERVED]` Consequently
+lives in the runtime EXTISA container, not here. Consequently
 `get_num_ext_isa_libs` returns 4 only for gen indices whose bit is set in mask
 `0x2020202000` = `{13,21,29,37}` (CAYMAN/MARIANA/MARIANA_PLUS/MAVERICK);
 SUNDA's bit is unset → 0 in-lib EXTISA libs. See
@@ -798,7 +798,7 @@ segment / boundary cursor.** "class": **R** = real blob, **C** = boundary cursor
 > **`SRAM`** getter carries the real code (`0xf580`/`0xf6c0` for SP PERF/TEST;
 > `0x14480`/`0x1d100`/`0x15dc0` for Q7_POOL PERF/DEBUG/TEST). `NX_DVE`/`NX_PE`/
 > `NX_POOL` still load from IRAM normally. Verified by getter-body `movq $0x0` on
-> IRAM and the non-zero `movq` on SRAM. `[HIGH/OBSERVED]`
+> IRAM and the non-zero `movq` on SRAM.
 
 ---
 
@@ -806,7 +806,7 @@ segment / boundary cursor.** "class": **R** = real blob, **C** = boundary cursor
 
 The MAVERICK row is structurally pared down. The following `(engine, gen, flavor)`
 cells have **zero getter symbols** in this binary — verified `nm | rg -c` = 0:
-`[HIGH/OBSERVED]`
+
 
 | Absent cell | `nm \| rg -c` | Why |
 |---|---:|---|
@@ -831,7 +831,7 @@ cells have **zero getter symbols** in this binary — verified `nm | rg -c` = 0:
 The 386 `*_get` accessors are **not** distinct firmware — they are pointers into
 `.rodata` that is the byte-identical, statically-linked-in copy of three archive
 families, which are in turn the same kernels the runtime EXTISA container ships.
-Proven by **sha256 byte-identity**, not inference: `[HIGH/OBSERVED]`
+Proven by **sha256 byte-identity**, not inference:
 
 | Blob family | Archive source | Verified identity |
 |---|---|---|
@@ -839,10 +839,10 @@ Proven by **sha256 byte-identity**, not inference: `[HIGH/OBSERVED]`
 | PROF CAM/TABLE | `hwdecode_<…>_PROF_{CAM,TABLE}_contents.c.o` | `CAYMAN_NX_ACT_PROF_CAM` 0x400 == member `.rodata` |
 | EXTISA SO/JSON | `img_<…>_EXTISA_n_{SO,JSON}_contents.c.o` | `CAYMAN_Q7_POOL_PERF_EXTISA_0_SO` 0xa260 → **sha `910d41c3ededce67…`** == the byte the runtime EXTISA container ships |
 
-The EXTISA `SO` sha256 was re-verified live here:
+The EXTISA `SO` sha256, carved here:
 `dd skip=0x2ef7e0 count=0xa260 | sha256sum` =
 `910d41c3ededce67cd00ec7041a5e66c3c39536d2e9b16fe21ea019db4b55527`, matching the
-runtime container. `[HIGH/OBSERVED]`
+runtime container.
 
 > **NOTE — internal.so is a host-side superset, not a 1:1 mirror.** The shipped
 > *front* lib `libnrtucode.so` (stripped, sha `06d3f0b1…`) carries the same 38-slot
@@ -863,7 +863,7 @@ runtime container. `[HIGH/OBSERVED]`
 
 ## 9. Adversarial self-verification
 
-Five strongest claims, re-challenged against the binary:
+Five strongest claims, challenged against the binary:
 
 1. **Getter count = 386 defined-local (+2 weak SUNDA EXTISA).**
    `nm libnrtucode_internal.so | rg -c '_get$'` = **388**; `' t .*_get$'` = **386**;
@@ -904,7 +904,7 @@ Five strongest claims, re-challenged against the binary:
    `{"dummy_message":"hello world"}` manifest placeholder for the 4 EXTISA-bearing
    gens). ✓
 
-All five survive re-challenge with zero corrections to the catalog data.
+All five hold against the binary, with zero corrections to the catalog data.
 
 ---
 

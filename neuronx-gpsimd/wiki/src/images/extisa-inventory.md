@@ -18,9 +18,10 @@ little-endian. The deliverable here is exhaustive and reimplementation-grade: th
 **blob→getter binding table** (which getter yields which ELF), the **JSON-decoy
 verdict** (is the per-image JSON real metadata or an inert placeholder?), the **per-gen
 EXTISA descriptor schema** `Q7_POOL_PERF_EXTISA_{0..3}`, and the **carve recipe** as
-annotated pseudocode. Everything below was **re-carved, re-hashed, and re-disassembled
-from the shipped binaries this session** with stock `binutils` on the x86-64 host side
+annotated pseudocode. Everything below is carved, hashed, and disassembled
+from the shipped binaries with stock `binutils` on the x86-64 host side
 and the native Cadence `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) on the device side.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — what "EXTISA" means here.** The GPSIMD POOL engine has a *base* opcode set
 > (carved as the per-gen base IRAM/DRAM firmware getters; see
@@ -42,7 +43,7 @@ per-engine profiling tables addressed by the *sibling* `hwdecode` enum are at
 
 ---
 
-## 1. Targets, toolchain, identity (re-validated this session)
+## 1. Targets, toolchain, identity
 
 All offsets/sizes/sha256 below are anchored to these exact binaries.
 
@@ -57,15 +58,15 @@ All offsets/sizes/sha256 below are anchored to these exact binaries.
 * `libnrtucode_internal.so`: ELF64 x86-64 DYN, **not stripped** (full symtab — every
   accessor and `.data` blob symbol named), `BuildID 9cbf78c6…e585fd`, 10,276,288 bytes.
   Its first `R` `LOAD` segment maps **file offset 0 → VA 0** (`readelf -l` confirmed),
-  so `.rodata` file-offset equals VA — carve directly at the getter's blob VA. *[HIGH/OBSERVED]*
+  so `.rodata` file-offset equals VA — carve directly at the getter's blob VA.
 * `libnrtucode_extisa.so`: ELF64 x86-64 DYN, **stripped**, `BuildID 7bb03bc4…ae5e44`,
-  9,656,488 bytes. `.rodata` is identity-mapped; all 13 embedded blobs live in it. *[HIGH/OBSERVED]*
-* Disassembler identity (re-confirmed byte-for-byte): `GNU objdump (GNU Binutils)
+  9,656,488 bytes. `.rodata` is identity-mapped; all 13 embedded blobs live in it.
+* Disassembler identity: `GNU objdump (GNU Binutils)
   2.34.20200201  Xtensa Tools 14.09`; registry `XTENSA_SYSTEM=…/XtensaTools/config`,
   `XTENSA_CORE=ncore2gp` (registry file `ncore2gp-params`); core
   `ConfigName=Xm_ncore2gp`, `uarchName=Cairo`, `arch=Xtensa24`,
   `SWToolsRelease=RI-2022.9`, `TargetHWVersion=NX1.1.4`,
-  `IsaMaxInstructionSize=32` (FLIX/VLIW up to 32-byte bundles). *[HIGH/OBSERVED]*
+  `IsaMaxInstructionSize=32` (FLIX/VLIW up to 32-byte bundles).
 
 > **GOTCHA — `.data` VMA delta is per-section.** For these carves the only thing that
 > matters is `.rodata` (where every blob lives), which **is** identity-mapped
@@ -83,7 +84,7 @@ All offsets/sizes/sha256 below are anchored to these exact binaries.
 
 Every EXTISA accessor in `internal.so` is the identical 4-instruction stub that returns
 an image pointer and a size through two out-pointers (`%rdi` = `*out_ptr`,
-`%rsi` = `*out_len`). Disassembled exact this session:
+`%rsi` = `*out_len`):
 
 ```asm
 ; CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_get  @ .text VA 0x9b3aa0
@@ -101,8 +102,8 @@ an image pointer and a size through two out-pointers (`%rdi` = `*out_ptr`,
 
 * `*_SO_get` returns `(ELF-ptr, ELF-size)`; `*_JSON_get` returns `(stub-ptr, 0x20)`. The
   `movq $0x20` is **identical in all 16 `JSON_get` accessors** — the host API only ever
-  surfaces the 32-byte stub (decisive for the decoy verdict, §4). *[HIGH/OBSERVED]*
-* The `MAVERICK_0_SO_get` @ `0x9b5ba0` follows the same form with `movq $0x7fb0`. *[HIGH/OBSERVED]*
+  surfaces the 32-byte stub (decisive for the decoy verdict, §4).
+* The `MAVERICK_0_SO_get` @ `0x9b5ba0` follows the same form with `movq $0x7fb0`.
 
 ### 2b. Symbol census — where the "16/13/29" come from
 
@@ -118,7 +119,7 @@ an image pointer and a size through two out-pointers (`%rdi` = `*out_ptr`,
 > function (`t … _SO_get`) **and** its `.rodata` data symbol (`r … _SO_get.data`) — plus
 > the one SUNDA weak-undef. The headline **16** is the count of **accessor functions**:
 > `nm … | rg ' t .*EXTISA_[0-9]+_SO_get$' | wc -l` = 16. Always disambiguate the symbol
-> *type* before quoting an EXTISA count. *[HIGH/OBSERVED]*
+> *type* before quoting an EXTISA count.
 
 So the host accessor surface is **16 SO getters + 16 JSON getters** (4 generations ×
 4 engine-index libs) + **2 SUNDA weak-undef placeholders** with no body in this binary
@@ -129,7 +130,7 @@ So the host accessor surface is **16 SO getters + 16 JSON getters** (4 generatio
 Each container blob is **byte-identical (by sha256)** to the same-generation `internal.so`
 getter blob — both carves are therefore proven correct (§8). Engine-index ⇄ size mapping
 is fixed: `0xa260 → idx0`, `0xf5c → idx1`, `0x1500 → idx2`, `0x6974 → idx3` (the
-container stores them in **reverse** order idx3,2,1,0). *[HIGH/OBSERVED]*
+container stores them in **reverse** order idx3,2,1,0).
 
 | gen/idx | `SO_get` (.text VA) | SO blob VA (internal) | size | `JSON_get` (.text VA) | JSON stub VA | container ELF foff | entry | sha256\[:16\] |
 |---|---|---|---|---|---|---|---|---|
@@ -153,9 +154,9 @@ container stores them in **reverse** order idx3,2,1,0). *[HIGH/OBSERVED]*
 
 * **MAVERICK** is `ET_DYN` (PIC) — its entry/funcVAs are `.text`-relative (`0x594c`, …),
   not the `0x010xxxxx` band the `ET_EXEC` images use. It exists **only** in
-  `internal.so` (not in the container, not in `libnrtucode.a`). *[HIGH/OBSERVED]*
+  `internal.so` (not in the container, not in `libnrtucode.a`).
 * **SUNDA** is the inverse: present **only** in the container (`@0x921660`, `0xd308` —
-  the single largest image), bound in `internal.so` as the two weak-undef symbols. *[HIGH/OBSERVED]*
+  the single largest image), bound in `internal.so` as the two weak-undef symbols.
 
 ### 2d. Distinct-image accounting (16 + 13 carves, 13 *unique*)
 
@@ -177,7 +178,7 @@ Tally: CAYMAN{0,1,2,3}=4 + MARIANA{0,1,2,3}=4 (== MPLUS) + MAVERICK{0,1,2,3}=4 +
 
 The runtime does not address blobs by name — it selects the ext-ISA **library set** by
 **coretype** (silicon generation), then by **lib-index** (0..3 = engine-index tier). Two
-dispatcher functions in `internal.so` encode this, both re-disassembled this session.
+dispatcher functions in `internal.so` encode this, both disassembled below.
 
 ### 3a. `nrtucode_get_num_ext_isa_libs` @ `0x9b2c90` — how many libs per gen
 
@@ -196,7 +197,7 @@ dispatcher functions in `internal.so` encode this, both re-disassembled this ses
 ```
 
 `0x2020202000` sets bits **{13, 21, 29, 37}** (verified by direct bit-scan). The
-per-gen library count is therefore: *[HIGH/OBSERVED]*
+per-gen library count is therefore:
 
 | gen | ext_isa coretype | libs | image identity | toolchain (`.comment`) |
 |---|---|---|---|---|
@@ -249,13 +250,13 @@ int nrtucode_get_ext_isa_internal(uint32_t coretype, uint32_t flavor,
 
 The **32-byte out-struct** is therefore
 `{ void* so_ptr; size_t so_len; void* json_ptr; size_t json_len; }` — the substantive
-part being the SO image; the JSON is a 32-byte sidecar (§4). *[HIGH/OBSERVED]*
+part being the SO image; the JSON is a 32-byte sidecar (§4).
 
 ### 3c. The per-gen lib tables (recovered from relocations)
 
 Each `*_libs` table is an array of 16-byte `{SO_get, JSON_get}` entries. Because the
 tables sit in the writable segment, their pointer values are the **`R_X86_64_RELATIVE`
-addends** (and `R_X86_64_64` for SUNDA), recovered with `readelf -rW`: *[HIGH/OBSERVED]*
+addends** (and `R_X86_64_64` for SUNDA), recovered with `readelf -rW`:
 
 | table | VA | entry\[0\] `{SO_get, JSON_get}` | … last entry |
 |---|---|---|---|
@@ -271,22 +272,21 @@ addends** (and `R_X86_64_64` for SUNDA), recovered with `readelf -rW`: *[HIGH/OB
 > accessor bodies. SUNDA's `_get` functions have **no body in `internal.so`**; they are
 > satisfied only when `libnrtucode_extisa.so` (which carries the SUNDA image + its real
 > JSON manifest) is in the link. This is why SUNDA is the one generation whose blob is
-> *absent* from `internal.so`'s `.rodata`. *[HIGH/OBSERVED]*
+> *absent* from `internal.so`'s `.rodata`.
 
 A **separate** coretype enum drives `nrtucode_get_hwdecode_table` @ `0x9b2cd0`
 (`hwdecode_table_list@0x9b9090`, stride `0x10`) — the per-(generation, engine)
 `PROF_CAM`/`PROF_TABLE` accessors (`which` ∈ {0,1} → slot +0/+8). That enum is
 `{7-10, 15-18, 23-26, 31-33}` and is **orthogonal** to the ext-ISA `{6,13,21,29,37}`
 enum; it is documented at [prof-cam-table-formats.md](prof-cam-table-formats.md). Do not
-conflate the two. *[HIGH/OBSERVED]*
+conflate the two.
 
 ---
 
 ## 4. JSON-decoy verdict
 
 **VERDICT: CONFIRMED DECOY for 12 of the 13 container sub-images; the 13th (SUNDA) is a
-genuine build-time opcode manifest.** Four independent lines of evidence, all re-run this
-session. *[HIGH/OBSERVED]*
+genuine build-time opcode manifest.** Four independent lines of evidence.
 
 **(i) Content.** The 32 bytes immediately preceding each of the 12 non-SUNDA embedded
 ELFs are byte-for-byte identical (single sha256 `ba7458eb462a9866…6212a7d`):
@@ -325,10 +325,10 @@ decode.
 > SUNDA JSON names **17** of those — exactly the set minus **opcode 68 (`0x44`)**, a
 > scalar-arith variant the JSON does not list (and which shares `funcVA 0x0100a0d8` with
 > op 67/`0x43`). So `JSON ⊆ SO`: the real JSON is a faithful, *slightly abridged*
-> descriptor of the SO — confirming it is genuine metadata, not a decoy. *[HIGH/OBSERVED]*
+> descriptor of the SO — confirming it is genuine metadata, not a decoy.
 
 **SUNDA real-JSON opcode→function table** (re-extracted, `library "all.stripped.so"`,
-`ulib_to_ucode_version 1.21.1.0`, 17 functions): *[HIGH/OBSERVED]*
+`ulib_to_ucode_version 1.21.1.0`, 17 functions):
 
 | fn | op | fn | op |
 |---|---|---|---|
@@ -351,7 +351,7 @@ legacy `all.stripped.so` (SUNDA) build still emits the real JSON. The **observab
 Either way, for a reverse engineer the effect is identical: **the JSON is a decoy — read
 the SO.**
 
-JSON-blob inventory (all 13 container sub-images): *[HIGH/OBSERVED]*
+JSON-blob inventory (all 13 container sub-images):
 
 | sha256 | len | count | verdict |
 |---|---|---|---|
@@ -362,7 +362,7 @@ JSON-blob inventory (all 13 container sub-images): *[HIGH/OBSERVED]*
 > `internal.so` (4 gens × 4 libs, *including* MAVERICK) but **12** in both the container
 > and the front lib (CAYMAN + MARIANA + MARIANA_PLUS only — MAVERICK is internal-only and
 > SUNDA carries the real JSON). The 12-vs-16 split is itself a consequence of MAVERICK
-> living only in `internal.so`. *[HIGH/OBSERVED]*
+> living only in `internal.so`.
 
 ---
 
@@ -373,7 +373,7 @@ JSON-blob inventory (all 13 container sub-images): *[HIGH/OBSERVED]*
 (`e_ident`, `e_type`, `e_machine=94`, `e_shoff`/`e_shentsize`/`e_shnum` self-consistent)
 and the shipped `xtensa-elf-objdump` reads sections without any unwrap step.
 **ELF size = `e_shoff + e_shentsize·e_shnum`** (for CAYMAN_0:
-`0x9ce8 + 0x28·35 = 0xa260` ✓). *[HIGH/OBSERVED]*
+`0x9ce8 + 0x28·35 = 0xa260` ✓).
 
 **Container layout.** `libnrtucode_extisa.so` `.rodata` (file-off `0xb000`, VA==off)
 holds **4 generation blocks**. A `\x7fELF` scan finds **14** magics — 1 host container
@@ -389,7 +389,7 @@ SUNDA        : 0x921660                             (block 4, single image)
 
 Within each block the 4 POOL libs are packed in **reverse engine order**
 (idx3,idx2,idx1,idx0 by size `0x6974`/`0x1500`/`0xf5c`/`0xa260`), each as
-`[32B dummy JSON | ELF]`, inter-sub-image gap ≈ `0x20`. *[HIGH/OBSERVED]*
+`[32B dummy JSON | ELF]`, inter-sub-image gap ≈ `0x20`.
 
 > **GOTCHA — JSON-delimited, NOT sentinel-delimited.** There is **no
 > `ffffffff00000000` sub-image delimiter** at block boundaries: a boundary is
@@ -398,7 +398,7 @@ Within each block the 4 POOL libs are packed in **reverse engine order**
 > acts as a delimiter.) The large inter-block gaps (`0x2cffe0`/`0x29dd40`/`0x366740`
 > bytes) are **not empty**: they carry the per-generation **base** POOL IRAM/DRAM/SRAM
 > firmware (the non-EXTISA base getters of [image-catalog-index.md](image-catalog-index.md)).
-> Do not mistake those base images for EXTISA blobs. *[HIGH/OBSERVED]*
+> Do not mistake those base images for EXTISA blobs.
 
 ---
 
@@ -408,7 +408,7 @@ The blobs are not opaque data — they disassemble as live **Vision-Q7 FLIX/VLIW
 code with the native `xtensa-elf-objdump --xtensa-core=ncore2gp`, confirming `ncore2gp`
 (NOT scalar-LX). Extract `.text` (`xtensa-elf-objcopy -O binary --only-section=.text`)
 and disassemble (`-D -b binary -m xtensa --adjust-vma=0x01000000`; objdump auto-detects
-FLIX from the format bytes). For **CAYMAN_0** this session: *[HIGH/OBSERVED]*
+FLIX from the format bytes). For **CAYMAN_0**:
 
 * `.comment` = `XtensaTools-14.09 clang version 10.0.1`; `.text @VA 0x01000000`
   (AX, align 32); `kernel_info_table @VA 0x02000380` (WA, 8-aligned).
@@ -437,7 +437,7 @@ FLIX from the format bytes). For **CAYMAN_0** this session: *[HIGH/OBSERVED]*
 > (uncovered by property records). A raw linear sweep decodes the recognizable FLIX
 > bundles correctly but loses bundle-sync across some literal/selector-byte boundaries,
 > rendering those spans as `.byte`. This is a disassembler-mode artifact, **not** a data
-> defect, and does not affect the inventory or the ELF-identity proof. *[HIGH/OBSERVED]*
+> defect, and does not affect the inventory or the ELF-identity proof.
 
 ---
 
@@ -488,7 +488,7 @@ assert(sha256(INT[0x2ef7e0 : +0xa260]) == sha256(EXT[0x5b0cc0 : +0xa260]));   //
 ## 8. Four-view byte-identity (one corpus, four packagings)
 
 For CAYMAN_0 (representative) the **same firmware bytes** (sha256 `910d41c3ededce67…`)
-appear in four independent packaging views, all verified identical this session: *[HIGH/OBSERVED]*
+appear in four independent packaging views, all verified identical:
 
 1. `libnrtucode_extisa.so` container ELF (carved `@foff 0x5b0cc0, sz 0xa260`).
 2. `libnrtucode_internal.so` getter blob (`.rodata[0x2ef7e0 : +0xa260]`) — `cmp` == (1).
@@ -504,7 +504,7 @@ JSON travels with it as an inert sidecar in every view.
 
 ## 9. Confidence ledger + honest gaps
 
-**HIGH / OBSERVED (binary-exact, re-derived this session):**
+**HIGH / OBSERVED (binary-exact):**
 
 * 16 internal getters + 13 container sub-images = 29 carves, 13 unique; `ELFCLASS32` /
   LE / `e_machine=94` confirmed on `ET_EXEC` (CAYMAN/MARIANA/SUNDA) and `ET_DYN`

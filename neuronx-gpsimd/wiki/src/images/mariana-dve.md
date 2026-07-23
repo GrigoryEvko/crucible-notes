@@ -22,10 +22,10 @@ DVE, recompiled for v4.** Five facts carry the diff:
 
 Confidence/evidence tags follow the project
 [Confidence & Walls Model](../reference/confidence-model.md):
-**HIGH/MED/LOW** × **OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a
-carve re-derived this session from `libnrtucode_internal.so` and the CAYMAN baseline
-re-carved + re-hashed for an apples-to-apples diff (all 5 CAYMAN anchor shas re-confirmed).
-Disassembly uses the native `ncore2gp` `xtensa-elf-objdump`.
+**HIGH/MED/LOW** × **OBSERVED/INFERRED/CARRIED**. The page default is `[HIGH/OBSERVED]`;
+claims that depart from it carry an explicit tag. Every device fact is byte-pinned to a
+carve from `libnrtucode_internal.so`, diffed against the CAYMAN baseline (all 5 CAYMAN
+anchor shas confirmed). Disassembly uses the native `ncore2gp` `xtensa-elf-objdump`.
 
 > **NOTE — provenance.** Every fact derives **solely** from static analysis of the shipped
 > binaries with stock binutils (`nm`/`objdump`/`readelf`/`ar`/`objcopy`/`dd`/`xxd`/
@@ -68,15 +68,14 @@ IRAM/DRAM packaging, the `engine_idx=3` identity boot) is documented once on
 | engine self-name | `S: BEGIN on cayman` | `S: BEGIN on mariana` | gen-renamed |
 | source tree | `cayman/seq/src/…` | `cayman/seq/src/…` | **unchanged** |
 
-`[HIGH/OBSERVED — every Δ row re-confirmed this pass; CAYMAN column re-carved from the
-baseline (5/5 anchor shas MATCH), MARIANA column carved fresh (8/8 shas); per-row anchors in
-§2–§9]`
+`[HIGH/OBSERVED — CAYMAN column carved from the baseline (5/5 anchor shas MATCH), MARIANA
+column carved (8/8 shas); per-row anchors in §2–§9]`
 
 > **NOTE — what a CAYMAN→MARIANA DVE swap actually is.** A recompile + opcode-space growth
 > (`+7` handlers / `+17` index slots) + a re-armed, now-engine-specific HW-decode profiler +
 > a relocated code layout (reset vector and dispatch tables shifted). The dispatch
 > **mechanism**, reset-vector **form**, ErrorHandler arms, `cayman/seq/` source tree, and
-> SEQ infra are **invariant**. It is *not* a model change. `[HIGH/OBSERVED]`
+> SEQ infra are **invariant**. It is *not* a model change.
 
 ---
 
@@ -86,8 +85,8 @@ The 14 `MARIANA_NX_DVE_*_get` accessors resolve identically to CAYMAN's getter s
 (`lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`; 8 real + 6 zero-size
 SRAM/EXTRAM boundary cursors aliasing the next-engine `NX_PE` IRAM). The container is the
 same identity-mapped `libnrtucode_internal.so`
-(`sha256 b7c67e89…632fc329b`, re-hashed this pass = MATCH), so carve = a plain `dd` at the
-`.rodata` VA. The getter-body immediates were re-decoded this pass and agree with the carve
+(`sha256 b7c67e89…632fc329b` = MATCH), so carve = a plain `dd` at the
+`.rodata` VA. The getter-body immediates agree with the carve
 geometry — e.g. the DEBUG IRAM stub at `.text 0x9b4220`:
 
 ```asm
@@ -97,7 +96,7 @@ geometry — e.g. the DEBUG IRAM stub at `.text 0x9b4220`:
 ```
 
 `[HIGH/OBSERVED — 14/14 getters `nm`-resolved at `.text 0x9b3d20..0x9b4880`; img-ptr/size
-immediates decoded; the PERF_IRAM/PROF_CAM/PROF_TABLE stubs likewise decode to
+immediates decoded; the PERF_IRAM/PROF_CAM/PROF_TABLE stubs decode to
 `0x31f5c0/0x13540`, `0x59e880/0x400`, `0x59ec80/0x2000`]`
 
 > **GOTCHA — these getters are local (`t`) symbols, not exported.** `nm -D` returns **zero**
@@ -106,7 +105,7 @@ immediates decoded; the PERF_IRAM/PROF_CAM/PROF_TABLE stubs likewise decode to
 > `[HIGH/OBSERVED — `nm -D` = 0, `nm` = 14]`
 
 **Cross-gen sha256 table (DVE)** — the carve target each forward row is diffed against. The
-CAYMAN column was re-carved + re-hashed this task (5/5 anchor shas re-confirmed vs the
+CAYMAN column carved from the baseline (5/5 anchor shas MATCH vs the
 committed baseline); the MARIANA column is fresh. **No row is identical.**
 
 | IMAGE | CAYMAN DVE (16) | MARIANA DVE (16) | identical? |
@@ -120,7 +119,7 @@ committed baseline); the MARIANA column is fresh. **No row is identical.**
 | PROF_CAM | `8fd7e422…` | `ca588683…` | NO (re-armed, §7) |
 | PROF_TABLE | `ce761f81…` | `d72b339f…` | NO (re-preallocated, §7) |
 
-`[HIGH/OBSERVED — all 8 MARIANA shas re-computed this pass; full digests e.g. DEBUG_IRAM
+`[HIGH/OBSERVED — all 8 MARIANA shas computed; full digests e.g. DEBUG_IRAM
 `4c75ba8ea14eb6a1161996f0e2d10a7b81b025ee07a901f59e03b0f7c3ff7e11`]`
 
 Each MARIANA carve is byte-identical (sha256) to the matching `libnrtucode.a` member
@@ -140,7 +139,7 @@ carries the `S:` runtime logs; PERF strips all; TEST keeps file/function symbols
 | MARIANA | PERF | `0x13540` | `0x31a0` | 0 | 16 | 293 |
 | MARIANA | TEST | `0x13560` | `0x34e0` | 0 | 62 | 290 |
 
-`[HIGH/OBSERVED — sizes from getter immediates; string/IVP counts re-derived this pass]`
+`[HIGH/OBSERVED — sizes from getter immediates]`
 
 > **QUIRK — PERF/TEST IRAM got *smaller* despite +7 handlers.** MARIANA PERF IRAM is
 > `0x13540` vs CAYMAN `0x15c20` (**−0x26e0, ~−11%**); TEST `0x13560` vs `0x15840`
@@ -148,7 +147,7 @@ carries the `S:` runtime logs; PERF strips all; TEST keeps file/function symbols
 > DEBUG IRAM grows slightly (`+0x8a0`) and **all** DRAM grows (`+0x2a0/+0x1e0/+0x220`) — the
 > `+8` new `S:` strings (the 7 handler logs + the `mariana-4062` errata log) account for the
 > DEBUG-DRAM growth. MARIANA PERF_IRAM (`dd14c1e3`) is a *distinct byte-build* from CAYMAN
-> (`9fa066f4`) — a full recompile, not a patch. `[HIGH/OBSERVED]`
+> (`9fa066f4`) — a full recompile, not a patch.
 
 ---
 
@@ -162,7 +161,7 @@ carries the `S:` runtime logs; PERF strips all; TEST keeps file/function symbols
    0x006:  86 7e 00     j 0x204      ; secondary vector -> halt trap
 ```
 
-versus the CAYMAN DVE baseline (re-read this pass):
+versus the CAYMAN DVE baseline:
 
 ```
 00000000:  06 76 00 00  00 00  86 77 00 00  00 00
@@ -197,11 +196,11 @@ path (MARIANA DVE DEBUG IRAM, `ncore2gp` objdump):
 same flat image loads on any engine slot and derives `engine_idx = 3` (DVE) at boot.
 `[string HIGH/OBSERVED; runtime-compute INFERRED-HIGH — identical mechanism to cayman-dve.md §3]`
 
-**Disassembly proof** (`ncore2gp` objdump, **exit 0, empty stderr, 46,162 lines** for DEBUG
+**Disassembly proof** (`ncore2gp` objdump, **46,162 lines** for DEBUG
 IRAM): the MARIANA DVE IRAMs decode to real Q7/NX windowed-ABI + FLIX-VLIW + IVP vector code
 — PERF carries **293** distinct IVP mnemonics (TEST 290; DEBUG's linear sweep recovers fewer
 under FLIX desync, the same artifact CAYMAN noted). The DVE NX core still carries a **full
-vector compute datapath**. `[HIGH/OBSERVED — exit-0 disasm; IVP counts re-derived]`
+vector compute datapath**.
 
 ---
 
@@ -249,7 +248,6 @@ Byte-search cross-check: `movi a3,186` appears **2×** in DEBUG (the two sites);
 The opcode space grew by **extending DOWN** from `'A'`(`0x41`) to `'0'`(`0x30`) (+17 index
 slots) and **arming 7 new real entries**; the `'A'`+ block is gen-stable. The two parallel
 tables (HW-Decode `0x800`, Sunda `0xaec`) both carry **82 real / 105 default**.
-`[HIGH/OBSERVED]`
 
 > **NOTE — three independent signals agree on +7.** The **+7 new handler names** (§5a) ==
 > the **+7 new real dispatch opcodes** (`0x30/0x77/0x78/0xe0–0xe3`) == the **table real-count
@@ -269,7 +267,6 @@ byte-for-byte in MARIANA DVE DRAM — `S: ErrorHandler : Bad Opcode(0x%x)`,
 `… Illegal Instruction(0x%x)`, `… FP Error(%d)`, `… Int Div Zero Error`,
 `S:/VS: Assertion failure! %s(%s:%u)` — with source paths still naming
 `…/cayman/seq/src/handlers/exception_handler.hpp`. Identical fault classes to CAYMAN §4.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -278,10 +275,10 @@ byte-for-byte in MARIANA DVE DRAM — `S: ErrorHandler : Bad Opcode(0x%x)`,
 **Method** is the CAYMAN/MARIANA-ACT glue-stripped set-diff: extract every
 `<glue>S: <OpName>` from each DEBUG DRAM, strip the string-pool glued prefix (the 1–3 chars
 before `S:` that abut the previous string with no NUL), normalize to the bare `OpName`,
-`comm`-diff against the re-carved CAYMAN DVE DEBUG DRAM.
+`comm`-diff against the CAYMAN DVE DEBUG DRAM.
 
 > **GOTCHA — the prefix-glue diff-trap is present on DVE.** A *naive* `^S:`-only grep falsely
-> reports several glued handlers as "removed". Verified glued instances this pass:
+> reports several glued handlers as "removed". The glued instances:
 > `RS: SparsityCompress`, `"TS: QuantizeMx`, `@S: DveReadAccumulator`,
 > `FS: RandGetState`, `tS: BatchNormalizeGradAccum`, `VS: MatchReplace`. Match the prefix as
 > `[A-Za-z@"]{0,3}S: ` and strip it before comparing. A second trap: that regex also catches
@@ -303,7 +300,7 @@ before `S:` that abut the previous string with no NUL), normalize to the bare `O
 
 **REMOVED: NONE (0)** — every CAYMAN DVE handler is retained.
 `[HIGH/OBSERVED — each new token byte-verified PRESENT in MARIANA DVE DRAM and ABSENT
-(count 0) in the re-carved CAYMAN DVE DRAM]`
+(count 0) in the CAYMAN DVE DRAM]`
 
 Each new handler is a **real** dispatch handler (not a stray string): its `S:` name sits in
 the contiguous handler-name string-pool cluster, between established handlers
@@ -314,7 +311,7 @@ representative const16↔offset xref HIGH; the full per-handler xref MED under F
 
 ### 5b. The 28 CAYMAN DVE-only handlers — ALL RETAINED (identical counts)
 
-Documented on [cayman-dve.md §6c](cayman-dve.md); re-confirmed present this pass with
+Documented on [cayman-dve.md §6c](cayman-dve.md); present with
 identical counts. Grouped: batch-norm ×6, predicated copy/cast ×4
 (`CastPredicated`/`CopyPredicated`/`CopyPredicatedReduce`/`CopyPredicatedScalar`),
 DVE-native ×3 (`DveReadAccumulator`/`DveReadIndices`/`Dropout`), match/find/select ×5
@@ -348,7 +345,7 @@ the whole IRAM relocated (the same `+0x1c`-class shift). The handler-name string
 also shifted (`+0xE0`, from the new handler strings placed ahead of it).
 `[HIGH/OBSERVED — handler/opcode stability]`
 
-> **NOTE — batch-norm *internal math* was NOT re-decoded (MED).** The per-handler IVP body is
+> **NOTE — batch-norm *internal math* is NOT decoded here (MED).** The per-handler IVP body is
 > out of this image-survey's scope. The distinct-IVP set differs between gens (MARIANA DVE
 > PERF 293 vs CAYMAN 317) and some FW-37 div0/divnn/divn seed ops read 0 in the MARIANA PERF
 > linear sweep — but that is **most likely a FLIX-desync artifact** of the linear
@@ -377,7 +374,7 @@ header MARIANA ACT also gained). All other source files
 **The cross-gen ACT/DVE relationship, OBSERVED.** MARIANA DVE DRAM has **zero** activation
 handlers: a grep of all 3 DRAMs (DEBUG/PERF/TEST) for `Activate`, `Activate2`,
 `ActivationTableLoad`, `ActivationReadAccumulator`, `ActivateQuantize` returns **0 hits each**.
-The standalone MARIANA `NX_ACT` image (carved this task for cross-check) carries **all** of
+The standalone MARIANA `NX_ACT` image (carved for cross-check) carries **all** of
 them. ACT is **not** folded into DVE on MARIANA.
 
 This is consistent with two prior findings: MARIANA ships a *standalone* ACT image (see
@@ -483,13 +480,13 @@ present and unchanged — see the §1 delta table for the changed rows and
 > `+7` handlers) + a re-armed per-engine HW-decode profiler + reset-vector/table relocation
 > (`+0x1c`) + ~11% smaller PERF/TEST IRAM + a new `mariana-4062` errata patch. It is the
 > Data/Vector Engine (`engine_idx=3`) — **not** folded with ACT (§6), **not** a POOL Q7
-> engine, **not** a standalone vector core. `[HIGH/OBSERVED]`
+> engine, **not** a standalone vector core.
 
 ---
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED** (direct disasm or byte read this pass):
+**HIGH / OBSERVED** (direct disasm or byte read):
 
 - 14 `MARIANA_NX_DVE` getters (`nm` + getter-body `lea`/`movq` 14/14 exact at `.text
   0x9b3d20..0x9b4880`; `nm -D` = 0, they are local `t` symbols); 8 real + 6 zero-size
@@ -516,7 +513,7 @@ present and unchanged — see the §1 delta table for the changed rows and
   `exponential.cpp` + `addr_bits.hpp`; new errata log `Applying patch for mariana-4062`;
   disasm exit-0 / empty-stderr / 46,162 lines on DEBUG IRAM.
 - Cross-gen sizes (PERF/TEST IRAM ~11% smaller, DRAM +8 `S:`); no MARIANA DVE image
-  byte-identical to its CAYMAN counterpart (8/8 shas). CAYMAN baseline re-carved + re-hashed
+  byte-identical to its CAYMAN counterpart (8/8 shas). CAYMAN baseline carved
   (5/5 anchors MATCH) — the diff is against the authentic CAYMAN images.
 
 **MED / INFERRED:**
@@ -524,7 +521,7 @@ present and unchanged — see the §1 delta table for the changed rows and
 - Byte-exact PERF/TEST per-opcode dispatch rows (FLIX-desync; the *model* is HIGH from DEBUG).
 - Full per-new-handler IRAM `const16`↔DRAM-offset xref (one representative, `RandSetState
   @0x11da6`, decoded HIGH; the rest rest on the name-cluster + opcode-table evidence).
-- Batch-norm **internal math** equivalence: NOT re-decoded (distinct-IVP set differs, partly
+- Batch-norm **internal math** equivalence: NOT decoded here (distinct-IVP set differs, partly
   FLIX-desync; handler/opcode stability is HIGH, math-body equivalence undetermined).
 - `QuantizeMx`↔FP4/MX dtype linkage: INFERRED-HIGH from the name + the v4 MX context.
 - PROF_TABLE field schema: structure-level only.
