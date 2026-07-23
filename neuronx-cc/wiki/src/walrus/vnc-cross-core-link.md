@@ -63,7 +63,7 @@ struct bir_MemoryLocation {              // partial; offsets CONFIRMED from libB
 };
 ```
 
-`MemoryLocation::isRemote()` is simply `*(byte*)(this+0x170)` — "is remote" is defined as "has a `RemoteLocalTarget`". `getRemoteLocalTargetHierarchicalName()` resolves the *name to use* for the remote: if no target is engaged it returns the location's own hierarchical name; otherwise, for external-input/output tensor kinds (the boundary tensors that actually cross cores), it returns the remote target's name; internal tensors fall back to their own name. The string half of the pair is therefore the qualified name of the peer tensor this location aliases. *(CONFIRMED — `getRemoteLocalTarget`/`isRemote`/`getRemoteLocalTargetHierarchicalName` symbols in `libBIR.so` dynamic symtab; offsets from set/get disasm.)*
+`MemoryLocation::isRemote()` is simply `*(byte*)(this+0x170)` — "is remote" is defined as "has a `RemoteLocalTarget`". `getRemoteLocalTargetHierarchicalName()` resolves the *name to use* for the remote: if no target is engaged it returns the location's own hierarchical name; otherwise, for external-input/output tensor kinds (the boundary tensors that actually cross cores), it returns the remote target's name; internal tensors fall back to their own name. The string half of the pair is therefore the qualified name of the peer tensor this location aliases. *Anchors: `getRemoteLocalTarget` / `isRemote` / `getRemoteLocalTargetHierarchicalName` in the `libBIR.so` dynamic symtab; the offsets come from the set/get bodies.*
 
 ### Who sets it — the producers
 
@@ -79,7 +79,7 @@ for (MemoryLocation *loc : locs) {
 }
 ```
 
-This is the path behind the recovered log line **`"Skipping shared tensor allocations on core 1, marking as remoteLocalTarget instead"`** (verified present in `libwalrus.so`). The tensor is allocated once, on the owner core; every other core gets a same-named `MemoryLocation` marked remote. Because the name is reused verbatim across the SPMD cores, `vnc_remote_addr_map` can find the owner's copy by name in the owner's module. The second producer is `LowerLocalCollectives::getMemoryLocation @0x161ab30`, which mints `RemoteLocalTarget`s for collective (all-reduce / all-gather) staging buffers — tying this link to [Part 8's collectives lowering]. *(CONFIRMED — both producer symbols in the `setRemoteLocalTarget` call set; the log string is in the binary.)*
+This is the path behind the recovered log line **`"Skipping shared tensor allocations on core 1, marking as remoteLocalTarget instead"`** (verified present in `libwalrus.so`). The tensor is allocated once, on the owner core; every other core gets a same-named `MemoryLocation` marked remote. Because the name is reused verbatim across the SPMD cores, `vnc_remote_addr_map` can find the owner's copy by name in the owner's module. The second producer is `LowerLocalCollectives::getMemoryLocation @0x161ab30`, which mints `RemoteLocalTarget`s for collective (all-reduce / all-gather) staging buffers — tying this link to [Part 8's collectives lowering]. Both producers appear in the `setRemoteLocalTarget` call set, and the log string is present in the binary.
 
 Note the division of labour with the earlier shared-DRAM machinery documented on [the DRAM allocator page](dram-allocator.md): `sync_shared_allocations` (order 83, `run(vector<Module>&) @0x16b2da0`) already equalizes the *owner's* physical `{address, partition, bank}` across the sibling modules **before** the linker runs, and `bir_linker` unifies the per-core *names*. `vnc_remote_addr_map` is the **post-link, low-level finalizer** (roster position L34): after the linker has reassembled the per-core subgraphs, it re-derives the concrete cross-core `MemoryLocation` on each consuming core so that codegen emits real address targets. The two passes share a mechanism (copy the owner's physical tuple onto the alias) but run at different points and for different reasons.
 
@@ -99,7 +99,11 @@ if ( *(uint*)(*(PassOptions**)(this+40) + 420) != (v3 - v4) ) {   // vnc_nc_coun
 }
 ```
 
-So **one `bir::Module` per virtual NeuronCore** — the module vector *is* the per-core split, and `vnc_nc_count` is the virtual-core count. *(CONFIRMED — `ErrorCode` value `1513`, source path `vnc_remote_addr_map.cpp:19`, and `+420` offset all read from the `@0x164e300` body. As in L35, the `1513`/`1514` are the `ErrorCode` enum argument to `NeuronAssertion`, **not** line numbers — the line is the separate `.cpp:NN` path string.)*
+So **one `bir::Module` per virtual NeuronCore** — the module vector *is* the per-core split, and `vnc_nc_count` is the virtual-core count.
+
+> **GOTCHA — `1513` and `1514` are `ErrorCode` enum values, not source line numbers.** They are the first argument to `NeuronAssertion`; the source line travels separately, inside the `.cpp:NN` path string. The same holds for L35's `1509`/`1511`/`1512`.
+
+*Anchors: `ErrorCode` `1513`, source path `vnc_remote_addr_map.cpp:19`, and the `+420` option offset all read from the `@0x164e300` body.*
 
 ### The walk
 
@@ -140,7 +144,9 @@ for (Module *m : modules)                                    // outer: per core
   }
 ```
 
-The `node.kind != 16` test reads a kind tag at list-node `-0x8` of the iterator (`*(uint*)*(v11-8) != 16`). `16` is the `Storage`/entry-kind enum value that owns a `MemoryLocation`. *(Value `0x10` is CONFIRMED from disasm; the enum-name is INFERRED.)* The `remote_mloc != nullptr` assert (`ErrorCode=1514`) at `vnc_remote_addr_map.cpp:43` fires when the owner's named copy cannot be found. *(CONFIRMED — `ErrorCode` values `1513`/`1514`, the `getFunctionByName → getMemoryLocationByName → MemoryLocationSet::getMemoryLocationByName` fallback chain, and the `getRemoteLocalTarget` filter all read from the body.)*
+The `node.kind != 16` test reads a kind tag at list-node `-0x8` of the iterator (`*(uint*)*(v11-8) != 16`). `16` is the `Storage`/entry-kind enum value that owns a `MemoryLocation` — the value `0x10` is in the disassembly, though the enum member's *name* is INFERRED. The `remote_mloc != nullptr` assert (`ErrorCode=1514`) at `vnc_remote_addr_map.cpp:43` fires when the owner's named copy cannot be found.
+
+*Anchors: the `getFunctionByName → getMemoryLocationByName → MemoryLocationSet::getMemoryLocationByName` fallback chain and the `getRemoteLocalTarget` filter are both in the `@0x164e300` body.*
 
 ### The alias copy — byte-anchored
 
@@ -176,7 +182,9 @@ Mapped to the signature `allocate_no_check(MemoryType, MemoryAddressSpace, u64 a
 | partition (r9) | `rml->getBasePartition()` (`*(rml+0x230)`) | remote partition base |
 | flag (stack) | `*(byte*)(rml+0xF8)` | remote allocated/space flag |
 
-Every operand is the owner core's value; nothing is added, scaled, or offset. **`vnc_remote_addr_map` copies the owner location's full physical allocation tuple onto the local handle verbatim.** After it runs, `loc` physically references the owner core's memory cell. `allocate_no_check` is the force-assign primitive — it stamps `{type, space, addr, bank, partition, flag}` without the allocator's usual placement check (the address is dictated by the owner, not chosen here) and resets the location's cached `PhysicalAccessPattern` intervals. The worker returns an empty `ErrorResult` on success. *(CONFIRMED — disasm `@0x164e5bc`–`0x164e635`; this is the single strongest claim on the page and it is byte-anchored at the call site.)*
+Every operand is the owner core's value; nothing is added, scaled, or offset. **`vnc_remote_addr_map` copies the owner location's full physical allocation tuple onto the local handle verbatim.** After it runs, `loc` physically references the owner core's memory cell. `allocate_no_check` is the force-assign primitive — it stamps `{type, space, addr, bank, partition, flag}` without the allocator's usual placement check (the address is dictated by the owner, not chosen here) and resets the location's cached `PhysicalAccessPattern` intervals. The worker returns an empty `ErrorResult` on success.
+
+*Anchors: the whole argument harvest is visible at `@0x164e5bc`–`0x164e635` — this is the page's central claim and it is pinned at the call site itself.*
 
 ### Why the verbatim copy is valid — the `Shared` address space
 
@@ -189,11 +197,15 @@ The copy is correct only because the address it reuses is *already* globally mea
 | `2` | `Debug` | debug space |
 | (else) | — | `"Unknown memory address space"` |
 
-Because L34 copies the owner's `MemoryAddressSpace`, a tensor the producer placed in `Shared` keeps `Shared` on the alias, and the alias's reused `{partition, bank, addr}` is valid on the consuming core too. `Local`-space tensors are **not** cross-core-addressable; only locations already in `Shared` — in practice the DRAM/HBM-resident boundary tensors the DRAM allocator marks — get a valid remote address. This is why the producer is the *DRAM* allocator and why the [LNC memory model](../arch/lnc-memory-model.md) finds the entire cross-core machinery keyed to DRAM alone: there is no `sharedSBUF`/`sharedPSUM` — the only cross-core data channel is shared HBM, and an alias into it reuses the owner's physical address. *(CONFIRMED enum from `libBIR` string table; the verbatim-copy / no-base-add observation is from the L34 disasm — there is no arithmetic between the `getAddress` result and the `allocate_no_check` `addr` argument.)*
+Because L34 copies the owner's `MemoryAddressSpace`, a tensor the producer placed in `Shared` keeps `Shared` on the alias, and the alias's reused `{partition, bank, addr}` is valid on the consuming core too. `Local`-space tensors are **not** cross-core-addressable; only locations already in `Shared` — in practice the DRAM/HBM-resident boundary tensors the DRAM allocator marks — get a valid remote address. This is why the producer is the *DRAM* allocator and why the [LNC memory model](../arch/lnc-memory-model.md) finds the entire cross-core machinery keyed to DRAM alone: there is no `sharedSBUF`/`sharedPSUM` — the only cross-core data channel is shared HBM, and an alias into it reuses the owner's physical address.
+
+*Anchors: the enum comes from the `libBIR` string table; the verbatim-copy reading rests on the L34 disassembly showing no arithmetic at all between the `getAddress` result and the `allocate_no_check` `addr` argument.*
 
 ## `vnc_link` (L35) — the Semaphore Relocator
 
-`vnc_remote_addr_map` placed the remote *data* addresses; `vnc_link` links the remote *sync*. After a producer core's DMA writes a shared buffer, it must signal a semaphore that the consumer core waits on — but the cross-core `sync::Update` initially names only `(targetCore, symbolic)`. L35 walks into the destination core's mirror instruction, finds the matching local update there, and patches the real semaphore id into the update. This is the same relocation idea as L34 but in the synchronization domain. The mechanism it links is the one behind the recovered string **`"Replace finishing CoreBarrier instruction with remote update of semaphore by DMACopy"`** (in `.rodata @0x1d7fef0`, referenced by `sub_7E0F10` — an *upstream* pass that lowers a cross-core barrier into a remote-semaphore update piggybacked on a `DMACopy`; it is **not** emitted by `VncLink::run` itself). L35's own diagnostics are a `fort::table` summary (`"DMA Blocks: "` per-core, `"Found N remote updates"`). *(CONFIRMED — the CoreBarrier string's sole xref is `sub_7E0F10 @0x7e10a1`, a different function; L35's `"DMA Blocks: "`/`"Found … remote updates"` libfort table is in the `@0x1648de0` body.)*
+`vnc_remote_addr_map` placed the remote *data* addresses; `vnc_link` links the remote *sync*. After a producer core's DMA writes a shared buffer, it must signal a semaphore that the consumer core waits on — but the cross-core `sync::Update` initially names only `(targetCore, symbolic)`. L35 walks into the destination core's mirror instruction, finds the matching local update there, and patches the real semaphore id into the update. This is the same relocation idea as L34 but in the synchronization domain. The mechanism it links is the one behind the recovered string **`"Replace finishing CoreBarrier instruction with remote update of semaphore by DMACopy"`** (in `.rodata @0x1d7fef0`, referenced by `sub_7E0F10` — an *upstream* pass that lowers a cross-core barrier into a remote-semaphore update piggybacked on a `DMACopy`; it is **not** emitted by `VncLink::run` itself). L35's own diagnostics are a `fort::table` summary (`"DMA Blocks: "` per-core, `"Found N remote updates"`).
+
+*Anchors: the CoreBarrier string's sole xref is `sub_7E0F10 @0x7e10a1`; L35's libfort table lives in the `@0x1648de0` body.*
 
 ### Collect the remote-notifying DMA blocks
 
@@ -206,7 +218,7 @@ for (Module *m : modules)
         perCore[core].push_back(I);
 ```
 
-`bir::isRemoteUpdateInstruction(Instruction const&) @0x30f930` (`libBIR`) returns true iff the instruction has `SyncInfo`, is an `InstDMABlock`, and `InstDMABlock::getRemoteNotification() @0x2518e0` returns a non-empty `vector<unsigned int>`. The notification vector holds the cross-core semaphore/core ids the DMA must signal on completion — the hardware handshake L35 fills in concretely. *(CONFIRMED — `isRemoteUpdateInstruction`, `getRemoteNotification`, `setRemoteNotification @0x2518f0` all in `libBIR` dynamic symtab.)*
+`bir::isRemoteUpdateInstruction(Instruction const&) @0x30f930` (`libBIR`) returns true iff the instruction has `SyncInfo`, is an `InstDMABlock`, and `InstDMABlock::getRemoteNotification() @0x2518e0` returns a non-empty `vector<unsigned int>`. The notification vector holds the cross-core semaphore/core ids the DMA must signal on completion — the hardware handshake L35 fills in concretely. `isRemoteUpdateInstruction`, `getRemoteNotification`, and `setRemoteNotification @0x2518f0` are all in the `libBIR` dynamic symtab.
 
 ### The all-equal lockstep check
 
@@ -220,7 +232,9 @@ if ( !allEqual(perCoreCounts) ) {
 }
 ```
 
-This invariant is *why* L35 can index the peer's mirror instruction by the shared ordinal. *(CONFIRMED — `ErrorCode` enum value `1512` (`esi=0x5E8 @0x1649ccf`), string `"allEqual"`, source path `vnc_link.cpp:92`, and the `fort::table` report path all read from the body at lines ~647–693. Note: the `1509`/`1511`/`1512` values are the **`ErrorCode` enum argument** to `NeuronAssertion`, **not** source line numbers — the line is carried separately in the `.cpp:NN` path string. The pairing in this pass is `:25↔1509`, `:92↔1512`, `:103↔1511`.)*
+This invariant is *why* L35 can index the peer's mirror instruction by the shared ordinal. The `ErrorCode`↔source-path pairing in this pass is `:25↔1509`, `:92↔1512`, `:103↔1511`.
+
+*Anchors: `ErrorCode` `1512` appears as `esi=0x5E8` at `0x1649ccf`, alongside the string `"allEqual"`, the source path `vnc_link.cpp:92`, and the `fort::table` report path.*
 
 ### The relink — copy the peer's semaphore id
 
@@ -284,19 +298,21 @@ The `Update` ctor call site `@0x164992e` pins exactly which fields come from whe
 0x164992e  call bir::sync::Update::Update(SyncType, uint, UpdateMode, uint, optional<uint>)
 ```
 
-Only `id` (edx, `var_4E0`) is resolved from the destination core; `{type, mode, value, targetCore}` are preserved from the original remote update. **`vnc_link` is a pure relocation of the symbolic remote-semaphore reference: it copies the peer core's concrete semaphore id into the local remote update and leaves everything else.** After it runs, the instruction's sync update carries the exact semaphore the destination core's hardware will signal/wait on, and `InstDMABlock::setRemoteNotification` binds the DMA block's notification vector to the resolved target-core id(s). The `ErrorCode=1511` assert at `vnc_link.cpp:103` fires if the peer instruction has no matching local update. *(CONFIRMED — ctor call `@0x164992e` with the five register loads; the peer-`getId` source (`getId(peer)@0x16498f4 → var_4E0`) and the `while(isRemote) skip → getId` at decompiled lines 1253–1259; `ErrorCode` value `1511` (`esi=0x5E7`), source path `:103`.)*
+Only `id` (edx, `var_4E0`) is resolved from the destination core; `{type, mode, value, targetCore}` are preserved from the original remote update. **`vnc_link` is a pure relocation of the symbolic remote-semaphore reference: it copies the peer core's concrete semaphore id into the local remote update and leaves everything else.** After it runs, the instruction's sync update carries the exact semaphore the destination core's hardware will signal/wait on, and `InstDMABlock::setRemoteNotification` binds the DMA block's notification vector to the resolved target-core id(s). The `ErrorCode=1511` assert at `vnc_link.cpp:103` fires if the peer instruction has no matching local update.
+
+*Anchors: the ctor call at `@0x164992e` with its five register loads; the peer id source `getId(peer) @0x16498f4 → var_4E0`; the `while(isRemote) skip → getId` sequence; and `ErrorCode` `1511` as `esi=0x5E7`.*
 
 ## The Hardware Mechanism — Same-Die Shared HBM, DMA-Carried Remote Semaphores
 
-The headline correction: VNC cross-core is **not** an off-chip NeuronLink fabric address. It is a *same-device LNC split* — the virtual cores are partitions of one physical Trainium/Inferentia die, sharing that die's HBM and its on-chip sync. The evidence chain:
+VNC cross-core traffic is a *same-device LNC split* — the virtual cores are partitions of one physical Trainium/Inferentia die, sharing that die's HBM and its on-chip sync. The evidence chain:
 
-1. **Shared address space, not fabric.** The cross-core-visible window is `MemoryAddressSpace::Shared (1)`. A tensor the owner placed in `Shared` is addressable by every virtual core at the owner's own `{partition, bank, addr}`, and L34 reuses that physical address *verbatim* — there is no per-core base added in this pass (the disasm shows a copy, not an arithmetic combine). The base-plus-offset that makes the address global was realized **earlier**, when the owner allocated into `Shared`. Supporting strings (verified in the binary): `"Skipping shared tensor allocations on core 1, marking as remoteLocalTarget instead"`, `" based on its remote local target "`, plus the `cl::opt<bir::MemoryAddressSpace>` parser family. *(STRONG — the Shared enum is CONFIRMED; that the cross-core address is a verbatim reuse rather than a fabric address is the structural reading of the L34 copy.)*
+1. **Shared address space, not fabric.** The cross-core-visible window is `MemoryAddressSpace::Shared (1)`. A tensor the owner placed in `Shared` is addressable by every virtual core at the owner's own `{partition, bank, addr}`, and L34 reuses that physical address *verbatim* — there is no per-core base added in this pass (the disasm shows a copy, not an arithmetic combine). The base-plus-offset that makes the address global was realized **earlier**, when the owner allocated into `Shared`. Supporting strings (verified in the binary): `"Skipping shared tensor allocations on core 1, marking as remoteLocalTarget instead"`, `" based on its remote local target "`, plus the `cl::opt<bir::MemoryAddressSpace>` parser family. The `Shared` enum itself is read straight from the string table; that the cross-core address is a verbatim reuse rather than a fabric address is the structural reading of the L34 copy.
 
-2. **The shared window lives in HBM.** The owner of the remote address is the *DRAM* allocator; the [LNC memory model](../arch/lnc-memory-model.md) verifies the negative directly — there is no `sharedSBUF`/`sharedPSUM` symbol or string in either `libwalrus.so` or `libBIR.so`; the entire shared/cross-core machinery is keyed to DRAM/HBM alone. Inter-core data movement therefore has exactly one channel: shared HBM. *(STRONG — corroborated by the sibling page's exhaustive negative sweep and by the DRAM allocator owning `mark_remote`.)*
+2. **The shared window lives in HBM.** The owner of the remote address is the *DRAM* allocator; the [LNC memory model](../arch/lnc-memory-model.md) verifies the negative directly — there is no `sharedSBUF`/`sharedPSUM` symbol or string in either `libwalrus.so` or `libBIR.so`; the entire shared/cross-core machinery is keyed to DRAM/HBM alone. Inter-core data movement therefore has exactly one channel: shared HBM. This is corroborated by the sibling page's exhaustive negative sweep and by the DRAM allocator owning `mark_remote`.
 
-3. **The remote semaphore is a DMA write.** Cross-core sync is `"remote update of semaphore by DMACopy"`: the DMA engine, on completion, writes a semaphore at the destination core's address. `InstDMABlock::getRemoteNotification()` carries the target sem/core ids; L35 links those to the peer's real semaphore id. A remote semaphore signal is thus a small DMA write into the sibling's semaphore address in shared HBM — **not** a fabric message. *(STRONG — `isRemoteUpdateInstruction`/`getRemoteNotification`/`setRemoteNotification` symbols + the barrier-to-DMACopy string.)*
+3. **The remote semaphore is a DMA write.** Cross-core sync is `"remote update of semaphore by DMACopy"`: the DMA engine, on completion, writes a semaphore at the destination core's address. `InstDMABlock::getRemoteNotification()` carries the target sem/core ids; L35 links those to the peer's real semaphore id. A remote semaphore signal is thus a small DMA write into the sibling's semaphore address in shared HBM — **not** a fabric message. The evidence is the `isRemoteUpdateInstruction` / `getRemoteNotification` / `setRemoteNotification` symbol set plus the barrier-to-DMACopy string.
 
-What this binary does **not** pin (upstream-of-binary): the physical base address of each per-core `Shared` window (a runtime/firmware constant — the compiler reuses the owner's already-assigned address, it does not add a per-core base in either pass), and the provenance of the owner-core index inside `mark_remote`'s pair (it comes from `DRAM_Allocator` state not visible in the `@0xa76080` body). *(INFERRED / UPSTREAM-OF-BINARY.)*
+What this binary does **not** pin (upstream-of-binary): the physical base address of each per-core `Shared` window (a runtime/firmware constant — the compiler reuses the owner's already-assigned address, it does not add a per-core base in either pass), and the provenance of the owner-core index inside `mark_remote`'s pair (it comes from `DRAM_Allocator` state not visible in the `@0xa76080` body). Both are INFERRED, and both sit upstream of anything these `.so`s record.
 
 ## Configuration and Registration
 
@@ -312,17 +328,17 @@ Both passes register through a `std::function` generator lambda in the backend p
 
 The VNC pair sits inside the post-codegen low-level pass tail (`sub_805870`, the `L#` band). Three neighbours are worth pinning because they bracket and follow the VNC link and operate on the same per-core BIR.
 
-**`mem2reg` (L25, `Mem2Reg::run(bir::Module&) @0x1720dd0`)** is textbook Cytron SSA construction applied to BIR *register* operands — it promotes scalar SP/control values written-then-read through a `MemoryLocation`-backed `Register` into single-def SSA form. `run()` drives three CRTP visitors per function: `JoinAnalysisImpl` (builds a `CFG`, runs `ComputeDominatorFrontier` for phi placement, keying a `DenseMap<pair<BasicBlock*,Register*>, PhiInfo>` — one placed phi per merge-block/register), `SSARenameImpl` (DFS the dominator tree, mint versioned registers via `Function::addRegister`, rewrite each use to its reaching SSA name — semaphore-wait register reads via `sync::Wait::getReg()` are renamed too, keeping sync operands consistent with the new SSA names), and `CheckRegOpSSAImpl` (post-condition verifier). `Mem2Reg::checkSSA(bir::Module&) @0x1723130` re-runs only the third visitor as a standalone legality re-check after later passes. The recovered `SmallVector` inline capacities (6 blocks / 6 regs) are the tuning constants. *(CONFIRMED — the three `enterFunction` call sequences and DenseMap key types are byte-anchored; see Strand-H D-H40.)*
+**`mem2reg` (L25, `Mem2Reg::run(bir::Module&) @0x1720dd0`)** is textbook Cytron SSA construction applied to BIR *register* operands — it promotes scalar SP/control values written-then-read through a `MemoryLocation`-backed `Register` into single-def SSA form. `run()` drives three CRTP visitors per function: `JoinAnalysisImpl` (builds a `CFG`, runs `ComputeDominatorFrontier` for phi placement, keying a `DenseMap<pair<BasicBlock*,Register*>, PhiInfo>` — one placed phi per merge-block/register), `SSARenameImpl` (DFS the dominator tree, mint versioned registers via `Function::addRegister`, rewrite each use to its reaching SSA name — semaphore-wait register reads via `sync::Wait::getReg()` are renamed too, keeping sync operands consistent with the new SSA names), and `CheckRegOpSSAImpl` (post-condition verifier). `Mem2Reg::checkSSA(bir::Module&) @0x1723130` re-runs only the third visitor as a standalone legality re-check after later passes. The recovered `SmallVector` inline capacities (6 blocks / 6 regs) are the tuning constants. The three `enterFunction` call sequences and the DenseMap key types are all byte-anchored.
 
-**`seq_inst_opt` (L26, `SeqInstOpt::run(bir::Module&) @0x155e0e0`, `visitInstRegisterMove @0x155e980`)** is block-local copy-propagation + dead-copy-elimination over the sequencer register file. `enterModule @0x155e090` reads `ModuleAttribute` index 18 (a per-module enable/safety gate) and `run()` skips the walk if set. `enterBasicBlock @0x155c7c0` `memset`s a 0x20-byte control block — the copy-tracking map is cleared per block, so the analysis is strictly block-local. `visitInstRegisterMove` tracks a `_Hashtable<pair<uint, EngineType>, Register*>` keyed by `(register-slot, EngineType)` valued by the last `Register` written there; a move whose source already equals the tracked last-def is redundant, its readers are rewritten to the source via `ConvertReaderWriter<RegisterAccess>`, and the dead move is queued. `leaveBasicBlock @0x155d860` performs the batched `BasicBlock::removeInstruction` deletions. *(CONFIRMED — map key type, `memset` clear, and `removeInstruction` all byte-anchored.)*
+**`seq_inst_opt` (L26, `SeqInstOpt::run(bir::Module&) @0x155e0e0`, `visitInstRegisterMove @0x155e980`)** is block-local copy-propagation + dead-copy-elimination over the sequencer register file. `enterModule @0x155e090` reads `ModuleAttribute` index 18 (a per-module enable/safety gate) and `run()` skips the walk if set. `enterBasicBlock @0x155c7c0` `memset`s a 0x20-byte control block — the copy-tracking map is cleared per block, so the analysis is strictly block-local. `visitInstRegisterMove` tracks a `_Hashtable<pair<uint, EngineType>, Register*>` keyed by `(register-slot, EngineType)` valued by the last `Register` written there; a move whose source already equals the tracked last-def is redundant, its readers are rewritten to the source via `ConvertReaderWriter<RegisterAccess>`, and the dead move is queued. `leaveBasicBlock @0x155d860` performs the batched `BasicBlock::removeInstruction` deletions. The map key type, the `memset` clear, and the `removeInstruction` call are all byte-anchored.
 
-**`branch_hint` (L36, `BranchHint::run(bir::Module&) @0x16913b0`)** stamps a static-prediction `InstBranchHint` onto branches so the SP sequencer can prefetch the predicted target. Gated by the global `enableBranchHint` (`.bss 0x3df7fa0`). `run()` builds a `CFG`, and for each branch terminator queries `CFG::isBackEdge(from, to)` — the heuristic is "predict the loop back-edge **taken**" — then calls `BranchHintImpl::insertBranchHint @0x1694060`, which inserts the hint via `NamedObjectContainer::insertElement<InstBranchHint>` at `getFirstWithin` of the predicted target region. The `InstBranchHint` carries a `BranchOutcomeHint ∈ {0,1}` = not-taken / taken (an `InstSyncType=sequencer` op); back-edge ⇒ taken=1. *(STRONG→CONFIRMED — `CFG::isBackEdge` + `insertElement<InstBranchHint>` are the load path; the non-loop fallback prediction value is INFERRED = not-taken.)*
+**`branch_hint` (L36, `BranchHint::run(bir::Module&) @0x16913b0`)** stamps a static-prediction `InstBranchHint` onto branches so the SP sequencer can prefetch the predicted target. Gated by the global `enableBranchHint` (`.bss 0x3df7fa0`). `run()` builds a `CFG`, and for each branch terminator queries `CFG::isBackEdge(from, to)` — the heuristic is "predict the loop back-edge **taken**" — then calls `BranchHintImpl::insertBranchHint @0x1694060`, which inserts the hint via `NamedObjectContainer::insertElement<InstBranchHint>` at `getFirstWithin` of the predicted target region. The `InstBranchHint` carries a `BranchOutcomeHint ∈ {0,1}` = not-taken / taken (an `InstSyncType=sequencer` op); back-edge ⇒ taken=1. `CFG::isBackEdge` plus `insertElement<InstBranchHint>` are the readable load path; the non-loop fallback prediction value is INFERRED to be not-taken.
 
 This trio brackets the VNC link in the L-band roster (`L24 expand_inst_late → L25 mem2reg → L26 seq_inst_opt → … → L34 vnc_remote_addr_map → L35 vnc_link → L36 branch_hint → L37 expand_all_engine_final_pre_codegen → L40 codegen`).
 
-## Confidence Ledger
+## Evidence summary
 
-**CONFIRMED (disasm / symbol grounded):**
+**Read directly from the disassembly and symbol tables:**
 - All symbol names and addresses (IDA `names.json`; `libBIR.so` `nm -DC`).
 - L34 alias copy — `allocate_no_check` argument harvest, every operand from the remote location, `this` = local alias (disasm `@0x164e5bc`–`0x164e635`). **The single strongest claim; byte-anchored at the call site.**
 - L34 precondition (`vnc_nc_count` at `+420`, `ErrorCode=1513`, source `:19`), the `node.kind==16` + `getRemoteLocalTarget.engaged` filter, the `getFunctionByName → getMemoryLocationByName` resolve with fallback, `ErrorCode=1514` (`remote_mloc != nullptr`, source `:43`).
@@ -333,19 +349,16 @@ This trio brackets the VNC link in the L-band roster (`L24 expand_inst_late → 
 - Producers `DRAM_Allocator::mark_remote @0xa76080` and `LowerLocalCollectives::getMemoryLocation @0x161ab30` (the two `setRemoteLocalTarget` callers); the `"Skipping shared tensor allocations…"` / `"based on its remote local target"` strings present in the binary. The `"Replace finishing CoreBarrier…by DMACopy"` string is present (`@0x1d7fef0`) but emitted by `sub_7E0F10`, **not** by `VncLink::run`.
 - `mem2reg` / `seq_inst_opt` algorithm structure.
 
-**STRONG (multiple corroborating strings + structure):**
-- HW = same-die `Shared` (DRAM/HBM) window + DMA-carried remote semaphore (the verbatim-copy reading of L34, the DRAM-only negative from the LNC page, the DMA-notification symbols).
-- `getRemoteNotification` vector = cross-core notify list.
-- `branch_hint` back-edge-taken heuristic.
+**Reconstructed from several corroborating strings plus structure:**
+- The hardware picture — a same-die `Shared` (DRAM/HBM) window plus a DMA-carried remote semaphore — resting on the verbatim-copy reading of L34, the DRAM-only negative from the LNC page, and the DMA-notification symbols.
+- `getRemoteNotification` vector as the cross-core notify list.
+- The `branch_hint` back-edge-taken heuristic.
 
-**INFERRED:**
-- Storage/entry-kind value `16` (`0x10` CONFIRMED; enum-name unknown).
-- L34 reuses an already-global address (verbatim copy, no base+offset add *in this pass*); the base+offset was realized earlier at owner allocation into `Shared`.
-- `branch_hint` non-loop fallback = not-taken default.
+### Limits of this reading
 
-**UPSTREAM-OF-BINARY (cannot be pinned from these `.so`s):**
-- Physical base of each per-core `Shared` HBM window (runtime/firmware constant).
-- Provenance of the owner-core index in `mark_remote`'s pair (`DRAM_Allocator` internal state).
+Three items are INFERRED rather than read. The Storage/entry-kind value `16` is in the disassembly, but the enum member's name is not. That L34 reuses an already-global address — a verbatim copy with no base+offset add *in this pass*, the base+offset having been realized earlier when the owner allocated into `Shared` — is a structural reading, not a traced computation. And the `branch_hint` non-loop fallback of not-taken is a default inferred from the back-edge rule, not observed.
+
+Two further things sit upstream of these `.so`s entirely and cannot be pinned from them: the physical base of each per-core `Shared` HBM window, which is a runtime/firmware constant, and the provenance of the owner-core index in `mark_remote`'s pair, which comes from `DRAM_Allocator` internal state.
 
 ## Cross-References
 

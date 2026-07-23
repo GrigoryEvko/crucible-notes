@@ -1,6 +1,6 @@
 # NkiTypeSystem and Traced-Tile Operator Overloading
 
-> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22, cp310 wheel. The tracer lives in three Cython extension modules under `neuronxcc/nki/compiler/backends/neuron/`: `NkiTypeSystem.cpython-310-x86_64-linux-gnu.so` (the n-ary tracer), `NkiTypeSystemCmpOp.…so` (comparison synthesis), and `NkiTypeSystemLogicalOp.…so` (logical synthesis), all Cython 3.0.10 with `debug_info` — class and method names below are real `__pyx_pw_…` / `__pyx_n_s_…` symbols. cp311/cp312 are byte-twins. Addresses are pinned to the cp310 artifact's `.so`; the offsets quoted from the D-W09 report belong to a particular Cython output and the cp310 wheel's addresses differ (e.g. the base module's generator trampoline is at `0xbe30`, not `0x10b70`) — treat offsets as **module-relative landmarks**, the symbols and strings as the hard anchors.*
+> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22, cp310 wheel. The tracer lives in three Cython extension modules under `neuronxcc/nki/compiler/backends/neuron/`: `NkiTypeSystem.cpython-310-x86_64-linux-gnu.so` (the n-ary tracer), `NkiTypeSystemCmpOp.…so` (comparison synthesis), and `NkiTypeSystemLogicalOp.…so` (logical synthesis), all Cython 3.0.10 with `debug_info` — class and method names below are real `__pyx_pw_…` / `__pyx_n_s_…` symbols. cp311/cp312 are byte-twins. Addresses are pinned to the cp310 artifact's `.so`; per-method offsets shift between Cython outputs, so a figure such as `0x10b70` for the base module's generator trampoline belongs to a different build — in the cp310 wheel that trampoline is at `0xbe30`. Treat offsets as **module-relative landmarks** and the symbols and strings as the hard anchors.*
 
 ## Abstract
 
@@ -8,7 +8,7 @@ When a NKI kernel writes `lo <= x < hi`, or `i < N`, or `(a < b) & (c >= 0)` ove
 
 The machinery has three layers. **`NkiTypeSystem`** (the "TypeTraceContext" tracer) holds the only hand-written method bodies: it lowers Python *chained* comparisons (`a < b < c`) and `in` / `not in` into n-ary folds over the per-operator methods, and it provides `logical_and_nary` / `logical_or_nary` reductions. **`NkiTypeSystemCmpOp`** synthesizes `__eq__/__ne__/__lt__/__le__/__gt__/__ge__` onto traced-value classes via two class decorators, choosing a result type from a `TypeCategory` lattice. **`NkiTypeSystemLogicalOp`** synthesizes `__and__/__or__/__invert__` (and the `logical_and/logical_or/logical_not` the n-ary folds consume) over an *extended* `TypeCategory` lattice with a **promotion map** that coerces heterogeneous logical operands (mask, predicate, scalar, bool) to a common logical type before combining.
 
-The single docstring fragment recovered from the base module states the purpose: *"This file define the TypeTraceContext class, it defines a tracer that implement NKI's core type system"* (`.rodata`, CONFIRMED). This page reconstructs the synthesis factories, the two `TypeCategory` lattices, the promotion lattice, and the exact dispatch each operator performs.
+The single docstring fragment recovered from the base module states the purpose: *"This file define the TypeTraceContext class, it defines a tracer that implement NKI's core type system"* (`.rodata`). This page reconstructs the synthesis factories, the two `TypeCategory` lattices, the promotion lattice, and the exact dispatch each operator performs.
 
 ### What a reimplementer must reproduce
 
@@ -54,7 +54,7 @@ The traced-value classes — `scalar`, `tensor`, `tile_index`, and the predicate
    logical_or logical_not
 ```
 
-Each injected dunder is a thin `make_binary_method` / `make_unary_method` wrapper around a *handler closure* produced by one of three factories (`make_equality_operation`, `make_comparison_operation`, `make_logical_operation` / `make_logical_not`). The handler is where the type-category dispatch lives. All factory and wrapper symbols are CONFIRMED in the modules' `_strings.json`:
+Each injected dunder is a thin `make_binary_method` / `make_unary_method` wrapper around a *handler closure* produced by one of three factories (`make_equality_operation`, `make_comparison_operation`, `make_logical_operation` / `make_logical_not`). The handler is where the type-category dispatch lives. Every factory and wrapper symbol appears verbatim in the modules' `_strings.json`:
 
 ```text
 NkiTypeSystemCmpOp:      make_equality_operation   make_comparison_operation
@@ -71,7 +71,7 @@ NkiTypeSystemLogicalOp:  make_logical_operation     make_logical_not
 
 ## 2. The `TypeCategory` lattices and `get_type_category`
 
-The dispatch key is an `IntEnum` *category* assigned to each operand by an `isinstance` chain. There are **two** lattices — `CmpOp` has four members, `LogicalOp` has six. Both are CONFIRMED: every member name appears as a `__pyx_n_s_<MEMBER>` string in the respective module, and each module ships a `TypeCategory.__str__` symbol (pretty enum printing).
+The dispatch key is an `IntEnum` *category* assigned to each operand by an `isinstance` chain. There are **two** lattices — `CmpOp` has four members, `LogicalOp` has six. Both member sets are readable directly: every member name appears as a `__pyx_n_s_<MEMBER>` string in the respective module, and each module ships a `TypeCategory.__str__` symbol (pretty enum printing).
 
 ### 2.1 CmpOp lattice (comparisons)
 
@@ -109,11 +109,11 @@ TypeCategory get_type_category(PyObject *x) {
 }
 ```
 
-> **GOTCHA — the `isinstance` probe order is not the precedence order.** `get_type_category` returns the *first* matching class, so its chain order is just classification, not dominance. The dominance order — which category "wins" when two operands differ — is the `IntEnum` *integer* ordering consumed by `highest_category(a,b) = max(get_type_category(a), get_type_category(b))`. With members declared `OTHER, SCALAR, TILE_INDEX, MASK, PREDICATE, TENSOR`, the auto-assigned `IntEnum` values (0..5) put **`TENSOR` highest**, so any operation touching a real tensor takes the tensor path. The *exact integer values* are **INFERRED** from declaration order — `IntEnum` member values are interned at import and not readable from a fixed struct — but the relative ordering (`TENSOR` dominant, `OTHER` least) is corroborated by the dispatch: the tensor branch is checked first in every handler, and `promote_to_logical_type` explicitly refuses `TENSOR`. Tagged **STRONG** for the ordering, **INFERRED** for the literal ints.
+> **GOTCHA — the `isinstance` probe order is not the precedence order.** `get_type_category` returns the *first* matching class, so its chain order is just classification, not dominance. The dominance order — which category "wins" when two operands differ — is the `IntEnum` *integer* ordering consumed by `highest_category(a,b) = max(get_type_category(a), get_type_category(b))`. With members declared `OTHER, SCALAR, TILE_INDEX, MASK, PREDICATE, TENSOR`, the auto-assigned `IntEnum` values (0..5) put **`TENSOR` highest**, so any operation touching a real tensor takes the tensor path. The *exact integer values* are **INFERRED** from declaration order — `IntEnum` member values are interned at import and not readable from a fixed struct — but the relative ordering (`TENSOR` dominant, `OTHER` least) is corroborated by the dispatch itself: the tensor branch is checked first in every handler, and `promote_to_logical_type` explicitly refuses `TENSOR`.
 
-There is also a `get_target_type_category` symbol (CONFIRMED, `…_3get_target_type_c_0xfb50_…`) and a `PROMOTION_TARGET_MAP` (CONFIRMED name): these map an `(catA, catB)` pair to the *target* logical category (MASK vs PREDICATE) that the promotion should produce. The precise contents of `PROMOTION_TARGET_MAP` are **INFERRED** (the map is built at import; only its name and the two target categories are byte-confirmable).
+Alongside it sit a `get_target_type_category` function (`…_3get_target_type_c_0xfb50_…`) and a `PROMOTION_TARGET_MAP`: together they map an `(catA, catB)` pair to the *target* logical category (MASK vs PREDICATE) that the promotion should produce. The precise contents of `PROMOTION_TARGET_MAP` are **INFERRED** — the map is built at import, so only its name and the two target categories are readable from the binary.
 
-`TYPE_COMBINATIONS = itertools.product(TypeCategory, repeat=2)` (CONFIRMED names `product`, `repeat`, `TYPE_COMBINATIONS` in both modules) — the full Cartesian set of category pairs, used to drive the synthesis loop and/or validate dispatch coverage.
+`TYPE_COMBINATIONS = itertools.product(TypeCategory, repeat=2)` — the names `product`, `repeat`, and `TYPE_COMBINATIONS` are present in both modules — is the full Cartesian set of category pairs, used to drive the synthesis loop and/or validate dispatch coverage.
 
 ---
 
@@ -174,11 +174,11 @@ PyObject *handler(self, a, b) {
 }
 ```
 
-> **QUIRK — ordered comparisons build an *Intersection*, not a bare leaf.** `i < N` does not return a single `EQTileMask`; it returns a `TileMaskIntersection` wrapping `combine_tile_with` of the two operands and the relation `pred_lt`. This is what makes a chained compare `lo <= x < hi` fold cleanly — every link is already an intersection-shaped mask, and `compare_nary` just `&`-folds them (§5). Equality (`==`/`!=`) takes the simpler `EQTileMask(a,b,op)` leaf path. The split is CONFIRMED by the disjoint result-class strings in the two factories.
+> **QUIRK — ordered comparisons build an *Intersection*, not a bare leaf.** `i < N` does not return a single `EQTileMask`; it returns a `TileMaskIntersection` wrapping `combine_tile_with` of the two operands and the relation `pred_lt`. This is what makes a chained compare `lo <= x < hi` fold cleanly — every link is already an intersection-shaped mask, and `compare_nary` just `&`-folds them (§5). Equality (`==`/`!=`) takes the simpler `EQTileMask(a,b,op)` leaf path. The split shows up as disjoint result-class strings in the two factories.
 
 ### 3.3 Wrappers and decorators
 
-`make_binary_method(op)` wraps a handler into a real `method(self, b)` that re-runs the dispatch on the bound `self`. `make_commutative_binary_method(op)` additionally pulls in `operator.itemgetter` (CONFIRMED — `itemgetter` string present) to order the operand pair by category, so `a OP b` and `b OP a` route identically. The two decorators install them:
+`make_binary_method(op)` wraps a handler into a real `method(self, b)` that re-runs the dispatch on the bound `self`. `make_commutative_binary_method(op)` additionally pulls in `operator.itemgetter` (the `itemgetter` string is in the pool) to order the operand pair by category, so `a OP b` and `b OP a` route identically. The two decorators install them:
 
 ```c
 // synthesize_equality_comparisons(cls)   (CONFIRMED class decorator)
@@ -199,7 +199,7 @@ for ((name, op, numpy_op, pred_op) in
 }
 ```
 
-The op-name lists are CONFIRMED: `equal/not_equal/less/less_equal/greater/greater_equal` (the `np` ufunc `.lower()` names) and `eq/ne/lt/le/gt/ge` (dunder stems) all appear in `_strings.json`, alongside `lower` (the `.lower()` call) and the `pred_*` constructors.
+Both op-name lists are readable in full: `equal/not_equal/less/less_equal/greater/greater_equal` (the `np` ufunc `.lower()` names) and `eq/ne/lt/le/gt/ge` (dunder stems) all appear in `_strings.json`, alongside `lower` (the `.lower()` call) and the `pred_*` constructors.
 
 ---
 
@@ -227,7 +227,7 @@ PyObject *promote_to_logical_type(PyObject *value, TypeCategory highest_category
 }
 ```
 
-The `PROMOTION_MAP` entries are the module functions `promote_to_mask` and `promote_to_predicate` (both CONFIRMED as names in the pool) plus `promote_other_to_predicate` for the `OTHER` slot. **The exact key→value pairing of `PROMOTION_MAP` is INFERRED** — the dict is constructed at import and only the participating function names and the `GetItem` lookup are byte-confirmable. The structurally-implied map:
+The `PROMOTION_MAP` entries are the module functions `promote_to_mask` and `promote_to_predicate` (both present as names in the pool) plus `promote_other_to_predicate` for the `OTHER` slot. **The exact key→value pairing of `PROMOTION_MAP` is INFERRED** — the dict is constructed at import, so only the participating function names and the `GetItem` lookup are readable from the binary. The structurally-implied map:
 
 | `highest_category` (key) | promoter (value) — **INFERRED pairing** |
 |---|---|
@@ -252,7 +252,7 @@ PyObject *handler(self, a, b) {
 }
 ```
 
-`a_promoted` / `b_promoted` are CONFIRMED local-variable names in the decompiled handler.
+`a_promoted` / `b_promoted` are the handler's real local-variable names, preserved in the decompiled body.
 
 ### 4.3 `make_logical_not` — `~`
 
@@ -267,7 +267,7 @@ PyObject *handler(self, a) {
 }
 ```
 
-> **GOTCHA — a tensor has no logical truth value in tracing.** `&` / `|` over two real tensors lower to an elementwise `np.int8` op (a tensor *result*, not a predicate), but `~tensor` and any bool-test of a tensor raise `err_ambiguous_tensor_truth_value` (CONFIRMED string + sema error factory). This mirrors NumPy's "truth value of an array is ambiguous" and is the tracer's way of forcing the user to write an explicit comparison (which *does* produce a predicate) before combining. The asymmetry — binary logical over tensors is allowed but unary invert is not — is intentional: `a & b` has a defined elementwise meaning, `~a` over an int8 tensor would silently mean bitwise-not, which is not a mask negation.
+> **GOTCHA — a tensor has no logical truth value in tracing.** `&` / `|` over two real tensors lower to an elementwise `np.int8` op (a tensor *result*, not a predicate), but `~tensor` and any bool-test of a tensor raise `err_ambiguous_tensor_truth_value` — a real string and a real sema error factory. This mirrors NumPy's "truth value of an array is ambiguous" and is the tracer's way of forcing the user to write an explicit comparison (which *does* produce a predicate) before combining. The asymmetry — binary logical over tensors is allowed but unary invert is not — is intentional: `a & b` has a defined elementwise meaning, `~a` over an int8 tensor would silently mean bitwise-not, which is not a mask negation.
 
 ### 4.4 The decorator
 
@@ -285,7 +285,7 @@ setattr(cls, "__invert__",  make_unary_method(not_handler));   // ~
 setattr(cls, "logical_not", make_unary_method(not_handler));
 ```
 
-This is what gives `NkiTypeSystem` its `logical_and` / `logical_or` (the n-ary folds in §5 call `self.logical_and`), and gives every traced predicate/mask value its `&` / `|` / `~`. `nki_method` decoration (sema integration) is applied at factory time — `nki_method` is CONFIRMED imported in both `CmpOp` and `LogicalOp`.
+This is what gives `NkiTypeSystem` its `logical_and` / `logical_or` (the n-ary folds in §5 call `self.logical_and`), and gives every traced predicate/mask value its `&` / `|` / `~`. `nki_method` decoration (sema integration) is applied at factory time; `nki_method` is imported by both `CmpOp` and `LogicalOp`.
 
 ---
 
@@ -325,7 +325,7 @@ class NkiTypeSystem {                       // decorated by all three synthesize
 }
 ```
 
-So `lo <= x < hi`, which Python would normally evaluate as `(lo <= x) and (x < hi)` (short-circuiting to a bool), is instead routed through `compare_nary([le, lt], [lo, x, hi])`, producing `(lo <= x) & (x < hi)` — two `TileMaskIntersection`/`ScalarPredicateIntersection` objects AND-folded by `self.logical_and` into a single combined mask/predicate. The `genexpr` trampoline is CONFIRMED present in the base module (`Pyx_Generator_Next` at `0xbe30`), and `compare_nary` calling `self.logical_and_nary` is the recovered tail of its body.
+So `lo <= x < hi`, which Python would normally evaluate as `(lo <= x) and (x < hi)` (short-circuiting to a bool), is instead routed through `compare_nary([le, lt], [lo, x, hi])`, producing `(lo <= x) & (x < hi)` — two `TileMaskIntersection`/`ScalarPredicateIntersection` objects AND-folded by `self.logical_and` into a single combined mask/predicate. The `genexpr` trampoline is present in the base module (`Pyx_Generator_Next` at `0xbe30`), and `compare_nary` calling `self.logical_and_nary` is the recovered tail of its body.
 
 > **NOTE — why the tracer, not the operators, owns chained compares.** Python evaluates `a < b < c` with built-in short-circuit `and`, which would force a `bool` out of `a < b` before the second comparison runs — defeating the entire predicate machinery. NKI's front-end therefore *rewrites* chained comparisons at trace time (the nisa validators in the W-strand call `compare_nary` when they encounter a chained relation on traced operands) so that each link is evaluated independently to a predicate/mask object and then `&`-folded. A reimplementer must intercept chained comparisons at the AST/trace level — they cannot be recovered from the `__lt__`/`__le__` dunders alone.
 
@@ -349,21 +349,23 @@ The predicate/mask objects produced here flow into the algebra of [§6.2.4 Mask 
 
 ---
 
-## 7. Confidence ledger
+## 7. Evidence summary
 
-| Claim | Tag | Evidence |
+| Claim | Confidence | Evidence |
 |---|---|---|
-| Comparisons/logicals never yield `bool` | **CONFIRMED** | handlers return `EQTileMask`/`EQScalarPredicate`/`*Intersection`/`tensor._binop`; no `Py_True`/`Py_False` return path; corroborated by §6.2.4 |
-| CmpOp `TypeCategory` = `{OTHER,SCALAR,TILE_INDEX,TENSOR}` | **CONFIRMED** | only these four `__pyx_n_s_<MEMBER>` strings in `NkiTypeSystemCmpOp`; no `MASK`/`PREDICATE` |
-| LogicalOp `TypeCategory` adds `MASK`,`PREDICATE` | **CONFIRMED** | `__pyx_k_MASK` + `__pyx_n_s_PREDICATE`; `get_type_category` `isinstance` chain probes `nki_mask`→MASK, `predicate`→PREDICATE |
-| `get_type_category` `isinstance` order (both modules) | **CONFIRMED** | decompiled bodies (`…_1get_type_categor_0x15cb0`, CmpOp `…_1get_type_category`) |
-| `make_equality_operation`/`make_comparison_operation` result-type dispatch | **CONFIRMED** | factory symbols + `EQTileMask`/`EQScalarPredicate`/`TileMaskIntersection`/`ScalarPredicateIntersection`/`_binop`/`combine_tile_with`/`return_tensor_or_extracted_scalar` strings |
-| `promote_to_logical_type` refuses TENSOR, indexes `PROMOTION_MAP` | **CONFIRMED** | decompiled body: TENSOR `getattr`+RichCompare, `PyObject_GetItem_Slow(PROMOTION_MAP, …)`, `"Cannot promote from "` |
-| `promote_other_to_predicate` → AlwaysTrue/False | **CONFIRMED** | decompiled `PyObject_IsTrue` → `AlwaysFalsePredicate`/`AlwaysTruePredicate` |
-| `~tensor` raises ambiguous-truth error | **CONFIRMED** | `err_ambiguous_tensor_truth_value` string in `make_logical_not` |
-| `compare_nary` AND-folds pairwise via `logical_and_nary` | **CONFIRMED** (assert+slices+zip+genexpr) / **STRONG** (full body) | base-module symbols + `Pyx_Generator_Next` trampoline |
-| `TENSOR` highest in dominance ordering | **STRONG** | declaration order + tensor-branch-first dispatch + TENSOR-refused promotion |
-| Exact IntEnum integer values | **INFERRED** | interned at import; only declaration order recoverable |
-| `PROMOTION_MAP` / `PROMOTION_TARGET_MAP` key→value pairings | **INFERRED** | dict built at import; only names + participating functions byte-confirmable |
+| Comparisons/logicals never yield `bool` | CERTAIN | handlers return `EQTileMask`/`EQScalarPredicate`/`*Intersection`/`tensor._binop`; no `Py_True`/`Py_False` return path; corroborated by §6.2.4 |
+| CmpOp `TypeCategory` = `{OTHER,SCALAR,TILE_INDEX,TENSOR}` | CERTAIN | only these four `__pyx_n_s_<MEMBER>` strings in `NkiTypeSystemCmpOp`; no `MASK`/`PREDICATE` |
+| LogicalOp `TypeCategory` adds `MASK`,`PREDICATE` | CERTAIN | `__pyx_k_MASK` + `__pyx_n_s_PREDICATE`; `get_type_category` `isinstance` chain probes `nki_mask`→MASK, `predicate`→PREDICATE |
+| `get_type_category` `isinstance` order (both modules) | CERTAIN | decompiled bodies (`…_1get_type_categor_0x15cb0`, CmpOp `…_1get_type_category`) |
+| `make_equality_operation`/`make_comparison_operation` result-type dispatch | CERTAIN | factory symbols + `EQTileMask`/`EQScalarPredicate`/`TileMaskIntersection`/`ScalarPredicateIntersection`/`_binop`/`combine_tile_with`/`return_tensor_or_extracted_scalar` strings |
+| `promote_to_logical_type` refuses TENSOR, indexes `PROMOTION_MAP` | CERTAIN | decompiled body: TENSOR `getattr`+RichCompare, `PyObject_GetItem_Slow(PROMOTION_MAP, …)`, `"Cannot promote from "` |
+| `promote_other_to_predicate` → AlwaysTrue/False | CERTAIN | decompiled `PyObject_IsTrue` → `AlwaysFalsePredicate`/`AlwaysTruePredicate` |
+| `~tensor` raises ambiguous-truth error | CERTAIN | `err_ambiguous_tensor_truth_value` string in `make_logical_not` |
+| `compare_nary` AND-folds pairwise via `logical_and_nary` | HIGH | assert + slices + zip + genexpr are byte-visible; the full body is reconstructed from base-module symbols and the `Pyx_Generator_Next` trampoline |
+| `TENSOR` highest in dominance ordering | HIGH | declaration order + tensor-branch-first dispatch + TENSOR-refused promotion |
+| Exact IntEnum integer values | MEDIUM | interned at import; only declaration order recoverable |
+| `PROMOTION_MAP` / `PROMOTION_TARGET_MAP` key→value pairings | MEDIUM | dict built at import; only names + participating functions readable |
 
-> **CORRECTION — module-relative offsets, not absolute cp310 addresses.** The backing D-W09 report quotes per-method offsets (e.g. `compare_nary @ 0xbf80`, `compare_nary.<locals>.genexpr @ 0x10b70`) that belong to a *specific* Cython output; the cp310 wheel's `NkiTypeSystem.…so` places the generator trampoline at `0xbe30` and does not expose a dedicated `_strings.json` (the base module has only disasm/decompiled sidecars). Cite the **symbols and strings** as anchors, not the absolute offsets. The CmpOp/LogicalOp offsets (`0x15cb0`, `0x16a10`, `0x13750`, `0xfb50`, etc.) *do* match the cp310 decompiled filenames and are reliable for those two modules.
+### Limits of this reading
+
+Per-method offsets are a weak anchor for the base module. `NkiTypeSystem.…so` is a plain Cython output with no dedicated `_strings.json` — only disasm and decompiled sidecars — and its function offsets move between Cython versions, so figures such as `compare_nary @ 0xbf80` or a generator trampoline at `0x10b70` do not survive a rebuild; in the cp310 wheel the trampoline sits at `0xbe30`. Cite the symbols and strings, not the absolute offsets. The `CmpOp` / `LogicalOp` offsets (`0x15cb0`, `0x16a10`, `0x13750`, `0xfb50`) are a different matter: they match the cp310 decompiled filenames exactly and are dependable for those two modules.

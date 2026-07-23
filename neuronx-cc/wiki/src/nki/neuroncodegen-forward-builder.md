@@ -6,7 +6,9 @@
 
 `NeuronCodegen` is the **forward builder** of the NKI compiler: the single public class of `KernelBuilder.py` (Cython-compiled to `KernelBuilder.so`), whose ~150 emit methods translate one lowered `nl`/`nisa` Python call at a time into one **Penguin-IR instruction node**. It is the **Penguin-IR-producing front layer** of the matmul lowering descent. When a kernel author writes `nisa.nc_matmul(out, w, x)`, the call ultimately reaches `NeuronCodegen.matmult`, which validates the operands, computes the SBUF/PSUM shape split, constructs a Penguin `MatMulOp` value-object, and appends it to the current basic block via the inherited `add_named_instruction` primitive. Downstream, the Penguin IR reaches BIR through **one of two parallel front-ends** ([6.5.0](architecture-overview.md), [6.5.10](bircodegenloop.md)): the **beta3** driver `BirCodeGenLoop.codegenMatMulOp`, which builds `birpy`/`bir::Instruction` objects **directly** (no KLR), or the **beta2** path `KlirToBirCodegen::codegenNcMatMul` (klr→BIR, the separate `libwalrus` C++ driver). The two are *alternatives that produce the same BIR*, not serial stages; this page owns the Penguin-IR-producing layer.
 
-> **CORRECTION (binary-verified — `BirCodeGenLoop` emits BIR directly, not KLR).** An earlier draft framed the downstream as a serial 3-stage chain `BirCodeGenLoop → klr → KlirToBirCodegen → BIR`, with `BirCodeGenLoop` labelled "Penguin→klr". The binary contradicts this: `BirCodeGenLoop.so` imports `neuronxcc.starfish.birpy.{Instruction,Opcodes,MemoryLocation,Function,Module,BirAffineExpr}` and its `codegenMatMulOp`/`codegenMatMulMXOp`/`codegenMatMulSparseOp` build `birpy` objects directly; the only `klr`/`KLIR` tokens in it belong to the *separate* `codegenExternalNativeNkiKlirKernel` branch, not the matmul lowering. `BirCodeGenLoop` (beta3) and `KlirToBirCodegen` (beta2/klr) are **parallel** drivers onto the same `bir::Inst` model — see the explicit corrections on [6.5.0](architecture-overview.md) and [6.5.10](bircodegenloop.md). The 3-layer diagram below is retained only as the *beta2/klr* descent (the path on which `KlirToBirCodegen` is genuinely downstream of a klr AST); on the beta3 path Layer 2 emits BIR directly with no Layer-2-klr stage. [CONFIRMED — `strings`/imports on `BirCodeGenLoop.so`]
+That the two descents are alternatives rather than stages is visible in the binary. `BirCodeGenLoop.so` imports `neuronxcc.starfish.birpy.{Instruction,Opcodes,MemoryLocation,Function,Module,BirAffineExpr}`, and its `codegenMatMulOp` / `codegenMatMulMXOp` / `codegenMatMulSparseOp` build `birpy` objects directly — there is no klr AST anywhere in the matmul lowering. The only `klr`/`KLIR` tokens in that module belong to the *separate* `codegenExternalNativeNkiKlirKernel` branch. `BirCodeGenLoop` (beta3) and `KlirToBirCodegen` (beta2/klr) are therefore parallel drivers onto one `bir::Inst` model; the layer diagram in [§1](#1-where-neuroncodegen-sits--the-front-layer--two-parallel-bir-descents) shows the klr stage only on the beta2 branch, where `KlirToBirCodegen` genuinely is downstream of a klr AST.
+
+> **GOTCHA — the descent is not a serial three-stage chain.** The natural reading of the module names — Penguin → `BirCodeGenLoop` → klr → `KlirToBirCodegen` → BIR — is wrong. `BirCodeGenLoop` never produces klr; it emits `birpy` instructions itself. Pick one of the two drivers per compilation, selected by the `beta2`/`beta3` switch. See [6.5.0](architecture-overview.md) and [6.5.10](bircodegenloop.md).
 
 The module docstring, recovered verbatim from `.rodata`, states the class's job exactly:
 
@@ -14,7 +16,7 @@ The module docstring, recovered verbatim from `.rodata`, states the class's job 
 KernelBuilder.py - All the intermediate AST representation of Neuron Kernel Interface (nki)
 ```
 
-The reader should leave this page able to (a) place `NeuronCodegen` precisely in the lowering stack and distinguish it from the *re-emit printer* that walks Penguin IR back to NKI text ([NkiCodegen printer](nkicodegen-printer.md)); (b) reimplement the four matmul-family emitters — `matmult`, `matmult_mx`, `matmult_sparse`, `matmult_transpose` — naming the real method symbol, the Penguin `Op` class each constructs, and the per-Op keyword vocabulary; and (c) understand the cached 128×128 identity matrix used by the transpose-via-matmul path. Two facts dominate everything below. First, `matmult` is the **largest single method in the binary** — its arg-parse wrapper at `0x266520` is 64,948 bytes, and `matmult_mx` at `0x279fe0` is larger still at 106,470 bytes; these are not thin shims but the geometric-validation heart of the PE-array contract. Second, the *emit* primitive is `add_named_instruction`, a name the body resolves and calls on an inherited builder — **not** a method of the separate HLO-facing `penguin.ir.IRBuilder` class (which inserts via `insert`/`insert_inst`); confusing the two is the single most common layer-1 error and is corrected explicitly in [§2.4](#24-the-emit-add_named_instruction-not-an-irbuilder-method).
+The reader should leave this page able to (a) place `NeuronCodegen` precisely in the lowering stack and distinguish it from the *re-emit printer* that walks Penguin IR back to NKI text ([NkiCodegen printer](nkicodegen-printer.md)); (b) reimplement the four matmul-family emitters — `matmult`, `matmult_mx`, `matmult_sparse`, `matmult_transpose` — naming the real method symbol, the Penguin `Op` class each constructs, and the per-Op keyword vocabulary; and (c) understand the cached 128×128 identity matrix used by the transpose-via-matmul path. Two facts dominate everything below. First, `matmult` is the **largest single method in the binary** — its arg-parse wrapper at `0x266520` is 64,948 bytes, and `matmult_mx` at `0x279fe0` is larger still at 106,470 bytes; these are not thin shims but the geometric-validation heart of the PE-array contract. Second, the *emit* primitive is `add_named_instruction`, a name the body resolves and calls on an inherited builder — **not** a method of the separate HLO-facing `penguin.ir.IRBuilder` class (which inserts via `insert`/`insert_inst`); confusing the two is the single most common layer-1 error, and [§2.4](#24-the-emit-add_named_instruction-not-an-irbuilder-method) pins the distinction.
 
 | | |
 |---|---|
@@ -51,7 +53,7 @@ A single `nisa.nc_matmul` first becomes a Penguin IR node here (THIS PAGE); from
                                       bir::InstMatmult(8) / InstMatmultMx(95)   (same BIR model)
 ```
 
-> The two descents converge on the identical `bir::Inst` data model and are selected by the `beta2`/`beta3` switch ([6.5.0 §3.1](architecture-overview.md)). `BirCodeGenLoop` (beta3) constructs `birpy` objects directly — there is **no** Penguin→klr stage on this path; the klr AST exists only on the beta2 descent. [CONFIRMED — `BirCodeGenLoop.so` imports `birpy.*`; klr tokens belong only to `codegenExternalNativeNkiKlirKernel`]
+The two descents converge on the identical `bir::Inst` data model and are selected by the `beta2`/`beta3` switch ([6.5.0 §3.1](architecture-overview.md)). `BirCodeGenLoop` (beta3) constructs `birpy` objects directly, so there is no Penguin→klr stage on that path; the klr AST exists only on the beta2 descent.
 
 The layering is real, not nominal: `NeuronCodegen` is the per-instruction emit *surface* that runs first; the compiled-vs-readable kernel selector `_INTERNAL_KERNEL_REGISTRY` is **not** here — it lives in layer 2 (`BirCodeGenLoop.so`), consulted later. Keeping the layers straight matters because the same conceptual field — say `tile_position` — is a named Python kwarg here, then either a `birpy` Instruction attribute set directly by `BirCodeGenLoop` (beta3) or a klr slot then a `tile_position[2]` BIR array via `KlirToBirCodegen` (beta2).
 
@@ -97,15 +99,13 @@ Every index, name, address, and body size below was read directly from the `Kern
 | 284/285 | `shared_identity_matrix` | `285shared_identity_matrix` | `0x7b490` | 4,915 B | def @ 4426 |
 | 92/93 | `get_sb_and_psum_shape` | `93get_sb_and_psum_shape` | `0x6ec10` | 2,830 B | def @ 700 (matmult shape helper) |
 
-> **CONFIRMED.** The indices 101 / 103 / 105 / 107 (`matmult` / `matmult_sparse` / `matmult_transpose` / `matmult_mx`) and the addresses above were re-verified against the `KernelBuilder.so` `__pyx_pw_*` symbol table for this page — they match the 6.0.1 architecture-overview index table exactly. The closure `__pyx_pw_…NeuronCodegen_10matmult_mx_1split_par_shape` (the MX scale-partition split) is also present as a real symbol.
+The indices 101 / 103 / 105 / 107 (`matmult` / `matmult_sparse` / `matmult_transpose` / `matmult_mx`) and the addresses above come straight from the `KernelBuilder.so` `__pyx_pw_*` symbol table and match the index table in the architecture overview exactly. The MX scale-partition split closure `__pyx_pw_…NeuronCodegen_10matmult_mx_1split_par_shape` is present as its own symbol.
 
-The **source order** in `KernelBuilder.py` (from the DWARF `DW_AT_decl_line` of each `__pyx_pw_*` wrapper) is `get_sb_and_psum_shape`(700) < `matmult`(777) < `matmult_sparse`(908) < `matmult_transpose`(1019) < `matmult_mx`(1056) < `get_identity_tensor`(1220) < `transpose`(1269) < `shared_identity_matrix`(4426) — a useful sanity anchor when cross-reading the line numbers in any DWARF dump.
-
-> **CORRECTION (DWARF-verified — three line ranges and the source-order anchor were wrong).** An earlier draft listed `KernelBuilder.py` line ranges of `~748 – 773` for `matmult_sparse`, `~241 – 300` for `matmult_transpose`, and `~329 – 338` for `shared_identity_matrix`, and a source order beginning `matmult_transpose`(241) < `shared_identity_matrix`(329) < `matmult_sparse`(748) < `matmult`(777). The binary contradicts all three: reading `DW_AT_decl_line` straight off each method's `__pyx_pw_*` subprogram DIE (`objdump --dwarf=info`) gives `matmult` **777**, `matmult_sparse` **908**, `matmult_transpose` **1019**, `matmult_mx` **1056**, `get_identity_tensor` **1220**, `transpose` **1269**, `shared_identity_matrix` **4426** (and `get_sb_and_psum_shape` **700**). `matmult_sparse`, `matmult_transpose`, and `shared_identity_matrix` are *after* `matmult`, not before it; `shared_identity_matrix` in particular lives near line 4426, far down the file. The addresses, body sizes, and indices in the table above are unaffected — only the `KernelBuilder.py` line column was wrong, and is corrected to the exact `decl_line` of each wrapper. [CONFIRMED — `DW_AT_decl_line` for each `__pyx_pw_…NeuronCodegen_<idx>` DIE]
+The **source order** in `KernelBuilder.py` is `get_sb_and_psum_shape`(700) < `matmult`(777) < `matmult_sparse`(908) < `matmult_transpose`(1019) < `matmult_mx`(1056) < `get_identity_tensor`(1220) < `transpose`(1269) < `shared_identity_matrix`(4426) — a useful sanity anchor when cross-reading line numbers in any DWARF dump. Every one of those numbers is the `DW_AT_decl_line` of the corresponding `__pyx_pw_…NeuronCodegen_<idx>` subprogram DIE, readable with `objdump --dwarf=info`; note that the whole matmul family except `get_sb_and_psum_shape` sits *after* `matmult`, and `shared_identity_matrix` lives near line 4426, far down the file.
 
 ### 1.3 Module-level tile-combine helpers
 
-Three **free functions** at module scope (not `NeuronCodegen` methods) recombine per-column / per-double-row matmul tiles back into one logical matmul — the Penguin-side analog of the I-strand column-tiled accumulate group. All three names are confirmed string literals:
+Three **free functions** at module scope (not `NeuronCodegen` methods) recombine per-column / per-double-row matmul tiles back into one logical matmul — the Penguin-side analog of the column-tiled accumulate group at the BIR layer. All three names are string literals in the binary:
 
 ```text
   combine_matmult_tiles
@@ -125,20 +125,20 @@ These tie the matmul family to the column / double-row tiling that the PE array 
 
 ### 2.2 Method signature — 14 keyword arguments
 
-> **CORRECTION — kwarg count is 14, not 13.** D-P01 §2.2 stated "`pw_101matmult` issues exactly 13 `__Pyx_GetKwValue_FASTCALL` calls ⇒ 13 keyword parameters." Re-counting the callees of `__pyx_pw_…NeuronCodegen_101matmult` for this page yields **14** `__Pyx_GetKwValue_FASTCALL` calls, not 13. (For contrast, `matmult_mx` issues **11**.) The named-parameter *vocabulary* the report recovered is unchanged and correct; only the call count was off by one. Treat the signature as 14-keyword.
+The keyword count is readable without decompiling the body: `__pyx_pw_…NeuronCodegen_101matmult` issues **14** `__Pyx_GetKwValue_FASTCALL` calls, one per keyword parameter. (`matmult_mx`, for contrast, issues 11.)
 
-The parameter/local name set, from the interned `.rodata` identifiers tied to the `matmult` code object and confirmed present in this binary, is:
+The parameter/local name set, from the interned `.rodata` identifiers tied to the `matmult` code object, is:
 
 ```text
   stationary, moving, psum, outputs, perf_mode, tile_position, tile_size,
   is_transpose, engine, name                (+ sb_shape / psum_shape locals)
 ```
 
-`psum`/`outputs` are the destination PSUM result; `sb_shape`/`psum_shape` are locals produced by the shape helper ([§2.3](#23-shape-split-get_sb_and_psum_shape)). The exact byte position of each of the 14 `GetKwValue` calls maps the keyword *order*, but the keyword **names** are not captured as direct string references (Cython routes them through the module-state struct), so the name-to-position binding is **STRONG**, not byte-traced.
+`psum`/`outputs` are the destination PSUM result; `sb_shape`/`psum_shape` are locals produced by the shape helper ([§2.3](#23-shape-split-get_sb_and_psum_shape)). The byte position of each of the 14 `GetKwValue` calls maps the keyword *order*, but the keyword **names** are not captured as direct string references — Cython routes them through the module-state struct — so the name-to-position binding is reconstructed from the vocabulary rather than byte-traced.
 
 ### 2.3 Shape split — `get_sb_and_psum_shape`
 
-`matmult` calls `self.get_sb_and_psum_shape` (method 92/93, body `0x6ec10`) to split the operand shapes into the SBUF-side shape `sb_shape` (covering `stationary`/`moving`) and the PSUM-side shape `psum_shape` (the result geometry). The destination-buffer guard is a confirmed `.rodata` literal:
+`matmult` calls `self.get_sb_and_psum_shape` (method 92/93, body `0x6ec10`) to split the operand shapes into the SBUF-side shape `sb_shape` (covering `stationary`/`moving`) and the PSUM-side shape `psum_shape` (the result geometry). The destination-buffer guard is a `.rodata` literal:
 
 ```text
   "Result buffer of matmult must be psum!"
@@ -148,7 +148,7 @@ i.e. `matmult` asserts the `dst` is a PSUM buffer before emitting. This mirrors 
 
 ### 2.4 The emit — `add_named_instruction` (not an IRBuilder method)
 
-The body constructs a Penguin `MatMulOp` value-object and appends it through the inherited builder. Reconstructed emit (**STRONG** — shape inferred from the confirmed `MatMulOp` kwarg vocabulary + the `add_named_instruction` call, *not* a byte-traced call list, because the per-name loads go through the Cython mstate indirection):
+The body constructs a Penguin `MatMulOp` value-object and appends it through the inherited builder. The emit below is reconstructed: its shape follows from the `MatMulOp` kwarg vocabulary plus the `add_named_instruction` call, rather than a byte-traced call list, because the per-name loads go through the Cython module-state indirection.
 
 ```c
 /* NeuronCodegen.matmult, pw body @ 0x266520 (KernelBuilder.so, lines ~777-880).
@@ -180,19 +180,21 @@ PyObject *matmult(self, stationary, moving, psum, outputs, perf_mode,
 }
 ```
 
-> **CORRECTION — `add_named_instruction` is inherited, not an `IRBuilder` method.** D-P01 phrased the emit as "via `IRBuilder.add_named_instruction`," which is imprecise. Ground truth, re-verified for this page: (a) the string `add_named_instruction` is present in `KernelBuilder.so` as a name constant; (b) it is **not** a `__pyx_pw_*`/`__pyx_pf_*` method symbol of *this* `.so` (a grep for `…add_named_instruction` in the function symbol table returns nothing); (c) it is **not** a method of the separate `penguin.ir.IRBuilder` class — that class's insertion primitives are `insert`/`insert_inst`, and it builds the *high-level HLO Operator* graph (conv/softmax/collectives), a different surface entirely. `add_named_instruction` is therefore a name that the `NeuronCodegen` body **resolves and calls on an inherited builder** — it comes in through the `GeneratedNeuronCodegen` base (the gen-base split that supplies the low-level Inst-naming primitive). Same `insert`-family plumbing as `IRBuilder`, different op vocabulary. Reimplementers: model `add_named_instruction(inst)` as "name `inst` and append it to the cursor's current basic block," inherited from the gen base, not a method you put on the HLO `IRBuilder`.
+Three observations pin down where `add_named_instruction` actually lives. The string is present in `KernelBuilder.so` as a name constant, so the body definitely resolves and calls it. It is *not* a `__pyx_pw_*`/`__pyx_pf_*` method symbol of this `.so` — the function symbol table has no entry for it — so it is not defined here. And it is not a method of `penguin.ir.IRBuilder` either: that class's insertion primitives are `insert` and `insert_inst`, and it builds the high-level HLO Operator graph (conv, softmax, collectives), a different surface entirely. What remains is the `GeneratedNeuronCodegen` base, the gen-base split that supplies the low-level Inst-naming primitive. `add_named_instruction` uses the same `insert`-family plumbing as `IRBuilder` over a different op vocabulary; model it as "name `inst` and append it to the cursor's current basic block."
+
+> **GOTCHA — `add_named_instruction` is not an `IRBuilder` method.** The name is easy to attribute to `penguin.ir.IRBuilder`, which `KernelBuilder.so` does import. It arrives instead through the `GeneratedNeuronCodegen` base class; a reimplementation should put it on the gen base, not on the HLO `IRBuilder`.
 
 The operand marshalling is the `{stationary, moving}` pair plus the single-element `outputs=[psum]` list; `tile_position`/`tile_size` are passed straight through (the same 2-element tile descriptor that the BIR layer reads as `tile_size[2]`/`tile_position[2]`).
 
 ### 2.5 `perf_mode` and `is_transpose`
 
-`perf_mode` selects the PE double-pumping mode. The enum *values* are confirmed `.rodata` literals:
+`perf_mode` selects the PE double-pumping mode. The enum *values* are `.rodata` literals:
 
 ```text
   "double_row", "double_row_gen3"    (+ None/Default = no special mode)
 ```
 
-`matmult` validates double-row geometry with these confirmed error literals (each names a hard constraint a reimplementer must enforce):
+`matmult` validates double-row geometry with these error literals, each naming a hard constraint a reimplementer must enforce:
 
 ```text
   "The double_row matmult only support fp8e4m3 and fp8e5m2"
@@ -203,13 +205,13 @@ The operand marshalling is the `{stationary, moving}` pair plus the single-eleme
   "perf_mode=`double_row_gen3` is not supported on <target>"
 ```
 
-The double-row path is backed by locals `lhs_free_and_double_row_shape`, `double_row_indices`, `is_fp8_kernel`, and the `combine_trn2_double_row_matmult_tiles` recombiner. At the BIR layer this `perf_mode="double_row"` becomes the numeric `DoubleRow(1)` code (I-strand) — the field name matches end-to-end.
+The double-row path is backed by locals `lhs_free_and_double_row_shape`, `double_row_indices`, `is_fp8_kernel`, and the `combine_trn2_double_row_matmult_tiles` recombiner. At the BIR layer this `perf_mode="double_row"` becomes the numeric `DoubleRow(1)` code — the field name matches end-to-end.
 
 `is_transpose` is a boolean kwarg selecting the PE-array transpose mode (matmul-against-identity performed by the PE engine itself). Its validation literal — `"'nc_matmul' transpose mode on trn2 only supports matching input dtypes…"` — gates the transpose-via-matmul trick that `matmult_transpose` ([§5](#5-transpose--matmult_transpose--the-identity-matrix-cache)) drives.
 
 ### 2.6 The accumulate group is structural
 
-`matmult` does **not** itself resolve PSUM start/stop accumulate flags. The accumulate-group identity is carried *structurally*: by the `tile_position == [0,0]` head, the `combine_matmult_tiles` column-tile recombination, and the shared-PSUM `outputs` target. No explicit accumulate-group-id field appears in the `matmult` vocabulary (**STRONG** — absence of a group-id field, grouping is by shared PSUM + tile position). The downstream "head iff `tilePosition[0]|tilePosition[1]==0`" rule reads exactly the `tile_position` this emitter sets.
+`matmult` does **not** itself resolve PSUM start/stop accumulate flags. The accumulate-group identity is carried *structurally*: by the `tile_position == [0,0]` head, the `combine_matmult_tiles` column-tile recombination, and the shared-PSUM `outputs` target. No explicit accumulate-group-id field appears anywhere in the `matmult` vocabulary; grouping is by shared PSUM plus tile position. The downstream "head iff `tilePosition[0]|tilePosition[1]==0`" rule reads exactly the `tile_position` this emitter sets.
 
 ---
 
@@ -222,13 +224,13 @@ The double-row path is backed by locals `lhs_free_and_double_row_shape`, `double
 ### 3.2 Method and Op
 
 ```text
-  Op class : MatMulMXOp                          (.rodata, confirmed)
+  Op class : MatMulMXOp                          (.rodata)
   Op kwargs: stationary, moving, stationary_scale, moving_scale, perf_mode,
              tile_position, tile_size, is_transpose, outputs, engine, name
   scale ops: stationary_scale, moving_scale      (.rodata — the TWO E8M0 scale operands)
 ```
 
-Reconstructed emit (**STRONG**):
+Reconstructed emit:
 
 ```c
 /* NeuronCodegen.matmult_mx, pw body @ 0x279fe0 (lines ~1056-1135+).
@@ -251,7 +253,7 @@ PyObject *matmult_mx(self, stationary, moving, stationary_scale, moving_scale, .
 
 ### 3.3 Scale validation — `check_mx_scale` + `split_par_shape`
 
-`matmult_mx` holds a `<locals>` closure `split_par_shape` (confirmed symbol `…NeuronCodegen_10matmult_mx_1split_par_shape`) and calls the module helper `check_mx_scale` (confirmed `.rodata` name) to validate the `[P/8, F/4]` E8M0 block-scale geometry. The `check_mx_scale` error literals reveal that geometry directly (all byte-confirmed):
+`matmult_mx` holds a `<locals>` closure `split_par_shape` (symbol `…NeuronCodegen_10matmult_mx_1split_par_shape`) and calls the module helper `check_mx_scale` (a `.rodata` name) to validate the `[P/8, F/4]` E8M0 block-scale geometry. The `check_mx_scale` error literals reveal that geometry directly:
 
 ```text
   "src_buffer and index must have same partition dimension size"
@@ -267,7 +269,7 @@ This is the Penguin-level enforcement of the OCP MXFP block geometry: `block_siz
 ### 3.4 MX restrictions
 
 ```text
-  "nc_matmul_mx does not support column PE tiling"     (.rodata, confirmed)
+  "nc_matmul_mx does not support column PE tiling"     (.rodata)
 ```
 
 `matmult_mx` forbids column tiling — `MatMulMXOp` is excluded from the column-tiled accumulate grouping that the plain path uses. The data dtype is x4-packed FP4/FP8 (`float4_e2m1fn_x4`, `float8_e4m3fn_x4`, `float8_e5m2_x4`); the scale dtype is E8M0 (uint8). MX is always a PE, non-transpose op — it does not exercise the `is_transpose`/`perf_mode` special cases the plain path does.
@@ -277,12 +279,12 @@ This is the Penguin-level enforcement of the OCP MXFP block geometry: `block_siz
 ## 4. `matmult_sparse` — sparse matmul → Penguin `MatMulSparseOp`
 
 ```text
-  Op class : MatMulSparseOp                       (.rodata, confirmed)
+  Op class : MatMulSparseOp                       (.rodata)
   genexpr  : NeuronCodegen.matmult_sparse.<locals>.genexpr   (operand marshalling)
   helper   : combine_sparse_matmult_tiles         (module-level tile recombiner)
 ```
 
-Validation literals (all confirmed):
+Validation literals:
 
 ```text
   "matmult_sparse tile_size must be a 2D tuple"
@@ -290,7 +292,7 @@ Validation literals (all confirmed):
   "matmult_sparse cannot work with column tiling"
 ```
 
-Sparse matmul requires 2-D `tile_size`/`tile_position` (the same 2-element tile descriptor as the plain and MX paths) and **forbids** column tiling. `MatMulSparseOp` is the Penguin node that layer 2 (`BirCodeGenLoop.codegenMatMulSparseOp`, with its `addSparseMatmulAP` access-pattern builder) lowers toward the BIR sparse-matmul path. The silicon sparse-PE encoding itself is owned by the J-strand; this page confirms the Op name, the genexpr operand marshalling, and the AP-builder hand-off (**STRONG**).
+Sparse matmul requires 2-D `tile_size`/`tile_position` (the same 2-element tile descriptor as the plain and MX paths) and **forbids** column tiling. `MatMulSparseOp` is the Penguin node that layer 2 (`BirCodeGenLoop.codegenMatMulSparseOp`, with its `addSparseMatmulAP` access-pattern builder) lowers toward the BIR sparse-matmul path. The silicon sparse-PE encoding itself belongs to the ISA pages; what is readable here is the Op name, the genexpr operand marshalling, and the AP-builder hand-off.
 
 ---
 
@@ -300,17 +302,17 @@ The hardware has no native transpose unit on the PE array; a transpose is *compu
 
 ### 5.1 `matmult_transpose` (idx 104/105, `0x127670`)
 
-The PE-array transpose-via-matmul-against-identity emitter. It pairs the input with an identity `stationary` matrix and emits a `MatMulOp` with `is_transpose` semantics, so the PE array produces the transpose directly. Engine = PE/Tensor. It shares `matmult`'s `MatMulOp` + `is_transpose` machinery (**STRONG** — same Op class, same emit path) and draws its identity operand from `get_identity_tensor` / `shared_identity_matrix` ([§5.3](#53-the-identity-matrix-cache)).
+The PE-array transpose-via-matmul-against-identity emitter. It pairs the input with an identity `stationary` matrix and emits a `MatMulOp` with `is_transpose` semantics, so the PE array produces the transpose directly. Engine = PE/Tensor. It shares `matmult`'s `MatMulOp` + `is_transpose` machinery (same Op class, same emit path) and draws its identity operand from `get_identity_tensor` / `shared_identity_matrix` ([§5.3](#53-the-identity-matrix-cache)).
 
 ### 5.2 `transpose` (idx 110/111, `0x2235f0`)
 
-Emits a Penguin `TransposeOp` (confirmed `.rodata`), later lowered by the `LowerTranspose` pass (`…targets.transforms.LowerTranspose`, imported §1.1) into the engine-specific realization. The engine selector is gated by a confirmed validation literal:
+Emits a Penguin `TransposeOp` (`.rodata`), later lowered by the `LowerTranspose` pass (`…targets.transforms.LowerTranspose`, imported §1.1) into the engine-specific realization. The engine selector is gated by a validation literal:
 
 ```text
   "Transpose engine can only be Tensor or Vector or Unknown."
 ```
 
-so the transpose engine ∈ {Tensor (PE, the identity-matmul path), Vector (a vector-engine shuffle), Unknown (the pass decides)}. The transpose variants and permutation guards are confirmed `.rodata`:
+so the transpose engine ∈ {Tensor (PE, the identity-matmul path), Vector (a vector-engine shuffle), Unknown (the pass decides)}. The transpose variants and permutation guards are `.rodata` literals:
 
 ```text
   variants  : CaymanPackedPETranspose, DMATransposeLoad, DMATransposeCopy,
@@ -327,7 +329,7 @@ i.e. `transpose` supports only the full-reverse permutation per rank; the locals
 
 `get_identity_tensor` (idx 108/109, `0xa3470`) materializes the identity operand used as the **stationary** input for transpose-via-matmul. `shared_identity_matrix` (idx 284/285, `0x7b490`) is the **cached** 128×128 identity, built at most once and shared across transposes.
 
-The cache mechanism is confirmed structurally from the `shared_identity_matrix` body's callees: it calls `PyDict_GetItemWithError` (the lookup), and on a miss `PyDict_New`/`PyDict_SetItem` (the populate-and-store) — a memoizing dict keyed (by dtype) so the 128×128 identity is constructed once per dtype and reused. This is the Penguin-layer-1 analog of the BIR-layer per-dtype `getIdentityMatrix(bir::Dtype)` cache (I-strand) and `legalizeIdentityMatrices()`: the identity is created **here** at the Penguin level and re-materialized/cached again at BIR.
+The cache mechanism is readable from the `shared_identity_matrix` body's callees: it calls `PyDict_GetItemWithError` (the lookup), and on a miss `PyDict_New`/`PyDict_SetItem` (the populate-and-store) — a memoizing dict keyed (by dtype) so the 128×128 identity is constructed once per dtype and reused. This is the Penguin-layer-1 analog of the BIR-layer per-dtype `getIdentityMatrix(bir::Dtype)` cache and `legalizeIdentityMatrices()`: the identity is created **here** at the Penguin level and re-materialized/cached again at BIR.
 
 > **GOTCHA — the identity exists twice.** A reimplementer who caches the identity matrix only at the BIR layer will still see `NeuronCodegen` construct one at the Penguin layer (and vice-versa). The two caches are independent: the Penguin `shared_identity_matrix` dict feeds the *forward* transpose emit; the BIR `getIdentityMatrix` feeds the *back-half* codegen. Both are per-dtype, both 128×128, but they are not the same object and neither subsumes the other.
 
@@ -335,7 +337,7 @@ The cache mechanism is confirmed structurally from the `shared_identity_matrix` 
 
 ## 6. The Penguin MatMul Op nodes — attributes and the handoff
 
-The per-Op keyword vocabularies (all confirmed `.rodata`) define the layer-1 output contract:
+The per-Op keyword vocabularies, all `.rodata` literals, define the layer-1 output contract:
 
 ```text
   MatMulOp        : stationary, moving, outputs, perf_mode, tile_position,
@@ -357,35 +359,31 @@ The field lineage is end-to-end name-preserving on **both** descents. On the **b
   (beta3: BirCodeGenLoop.codegenMatMulOp sets tile_position on the birpy Instruction DIRECTLY)
 ```
 
-and likewise (beta2) `is_transpose` → klr byte 50 → BIR `+0x1B8`, `perf_mode="double_row"` → klr perfMode → BIR `DoubleRow(1)`. `BirCodeGenLoop`'s `codegenMatMul*Op` bodies (the beta3 `birpy`-direct emit) are documented on [BirCodeGenLoop](bircodegenloop.md); the BIR-level `InstMatmult` encoding on the I-strand BIR pages. This page's job ends at `self.add_named_instruction(inst)`.
+and likewise (beta2) `is_transpose` → klr byte 50 → BIR `+0x1B8`, `perf_mode="double_row"` → klr perfMode → BIR `DoubleRow(1)`. `BirCodeGenLoop`'s `codegenMatMul*Op` bodies (the beta3 `birpy`-direct emit) are documented on [BirCodeGenLoop](bircodegenloop.md); the BIR-level `InstMatmult` encoding on the BIR instruction pages. This page's job ends at `self.add_named_instruction(inst)`.
 
 ---
 
-## 7. Confidence ledger
+## 7. Evidence summary
 
-**CONFIRMED** (symbol table + `.rodata` literals + DWARF line table, re-verified against `KernelBuilder.so` for this page):
+**Read directly** from the symbol table, the `.rodata` literals, and the DWARF line table of `KernelBuilder.so`:
 
 - Class `NeuronCodegen` in `KernelBuilder.cpython-310…so` (unstripped, DWARF); module docstring verbatim; 194 mdef methods, indices to 379.
 - Matmul-family method **indices, symbols, addresses, and body sizes**: `matmult` 101 @ `0x266520` (64,948 B), `matmult_sparse` 103 @ `0x1d3c20`, `matmult_transpose` 105 @ `0x127670`, `matmult_mx` 107 @ `0x279fe0` (106,470 B), `get_identity_tensor` 109 @ `0xa3470`, `transpose` 111 @ `0x2235f0`, `shared_identity_matrix` 285 @ `0x7b490`, `get_sb_and_psum_shape` 93 @ `0x6ec10`.
 - Op class names `MatMulOp`/`MatMulMXOp`/`MatMulSparseOp`/`TransposeOp`; `add_named_instruction` as a name constant; the kwarg vocabularies; `perf_mode` enum {`double_row`,`double_row_gen3`,None}; transpose engine set {Tensor,Vector,Unknown}; `split_par_shape` closure symbol.
 - Validation literals: `"Result buffer of matmult must be psum!"`, `"nc_matmul_mx does not support column PE tiling"`, the `matmult_sparse` 2D-tile / no-column literals, the `check_mx_scale` `[P/8,F/4]`/`i*32+j`/multiple-of-16 literals, the double_row fp8/uint8 geometry literals, the transpose permutation guards.
-- `matmult` issues **14** `__Pyx_GetKwValue_FASTCALL` calls (correcting D-P01's 13); `matmult_mx` issues 11.
+- `matmult` issues **14** `__Pyx_GetKwValue_FASTCALL` calls; `matmult_mx` issues 11.
 - `shared_identity_matrix` cache mechanism: `PyDict_GetItemWithError` lookup + `PyDict_New`/`PyDict_SetItem` populate (the memoizing identity cache).
 - `add_named_instruction` is **not** a `__pyx_pw`/`pf` symbol of this `.so` and **not** a `penguin.ir.IRBuilder` method (whose primitives are `insert`/`insert_inst`) — it is inherited via `GeneratedNeuronCodegen`.
 
-**STRONG** (vocabulary + line-range + downstream-contract inferred, not byte-traced):
+**Reconstructed** from the string vocabulary, the DWARF line ranges, and the downstream contract, rather than byte-traced:
 
 - The exact emit call shape (`MatMulOp(...); self.add_named_instruction(inst)`).
 - The 14-kwarg name-to-position binding for `matmult`; the `get_sb_and_psum_shape` split.
 - `matmult_transpose` = `MatMulOp` + `is_transpose` against `get_identity_tensor`.
 - Accumulate group = structural (shared PSUM `outputs` + `tile_position[0,0]` head), no group-id field.
 
-**INFERRED:**
+### Limits of this reading
 
-- Per-instruction *call order* inside each body — the Cython module-state name indirection (`mov OFF(%rbx),%rax` for name loads) blocks a byte-traced opcode→Python listing; the emit order is reconstructed from the string vocabulary, DWARF line ranges, and the downstream klr/BIR contract.
+The per-instruction *call order* inside each body is **INFERRED**. Cython routes every name load through the module-state struct (`mov OFF(%rbx),%rax`), which blocks a byte-traced opcode→Python listing; the emit order here comes from the string vocabulary, the DWARF line ranges, and the downstream klr/BIR contract instead. Recovering it properly needs a Cython module-state offset resolver.
 
-**GAPS / followups:**
-
-- A byte-level trace of the `matmult` body's `GetAttrStr`/`Call` sequence (blocked by mstate indirection; needs a Cython mstate-offset resolver).
-- The `split_par_shape` closure internals (MX scale partition split) — symbol + role confirmed, body not traced.
-- Layer-2 `BirCodeGenLoop.codegenMatMul*Op` bodies — owned by [BirCodeGenLoop](bircodegenloop.md).
+Two other things remain open. The `split_par_shape` closure (the MX scale-partition split) is pinned as a symbol with a known role, but its body has not been traced. And the layer-2 `BirCodeGenLoop.codegenMatMul*Op` bodies are out of scope here — they belong to [BirCodeGenLoop](bircodegenloop.md).

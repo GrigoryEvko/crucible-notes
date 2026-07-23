@@ -14,12 +14,12 @@ The bar for this page is that a reader can **encode or decode any ADDR4 word by 
 
 | Field | Bits | Mask | Meaning | Confidence |
 |---|---|---|---|---|
-| Byte address | `0..28` | `0x1FFFFFFF` | 29-bit on-chip byte address (SBUF or PSUM) | CONFIRMED |
-| Region class | `25..28` | `0x1E000000` | high addr bits; `0` ⇒ SBUF, nonzero ⇒ PSUM | CONFIRMED |
-| Mode bit 0 | `29` | `0x20000000` | INDIRECT-gather (the index/offset slot) | CONFIRMED |
-| Mode bit 1 | `30` | `0x40000000` | ACTIVE / dynamic-AP marker | CONFIRMED (consumer); INFERRED (name) |
-| Register-mode flag | `31` | `0x80000000` | RM=1 ⇒ byte 0 is a register id, bits `8..30` zero | CONFIRMED |
-| Register id | `0..7` | `0xFF` | only when RM=1; valid range `0..63` (`< 0x40`) | CONFIRMED |
+| Byte address | `0..28` | `0x1FFFFFFF` | 29-bit on-chip byte address (SBUF or PSUM) | CERTAIN |
+| Region class | `25..28` | `0x1E000000` | high addr bits; `0` ⇒ SBUF, nonzero ⇒ PSUM | CERTAIN |
+| Mode bit 0 | `29` | `0x20000000` | INDIRECT-gather (the index/offset slot) | CERTAIN |
+| Mode bit 1 | `30` | `0x40000000` | ACTIVE / dynamic-AP marker | CERTAIN (consumer); MEDIUM (name) |
+| Register-mode flag | `31` | `0x80000000` | RM=1 ⇒ byte 0 is a register id, bits `8..30` zero | CERTAIN |
+| Register id | `0..7` | `0xFF` | only when RM=1; valid range `0..63` (`< 0x40`) | CERTAIN |
 
 **Mode nibble** = `byte3 & 0x60` = word bits `[30:29]`: `0b00` static · `0b01` indirect-gather · `0b10` active/dynamic · `0b11` **dead** (no producer, no consumer).
 
@@ -52,21 +52,21 @@ Every body below is a real, disassembled function in `libwalrus.so` (the dynamic
 
 | Role | Symbol | Address | Confidence |
 |---|---|---|---|
-| **Encoder** | `Generator::assignStartAddr<core_v2::…ADDR4>` | `0x1172e10` | CONFIRMED |
-| | `Generator::assignStartAddr<core_v4::…ADDR4>` | `0x1508df0` | CONFIRMED (byte-identical to v2) |
-| **Decoder** | `core_v2::tensor_start_addr_valid` | `0x127f590` | CONFIRMED |
-| | `core_v3::tensor_start_addr_valid` | `0x136ed70` | CONFIRMED |
-| | `core_v4::tensor_start_addr_valid` | `0x1446480` | CONFIRMED (twin of v3) |
-| **Aligner** | `core_v2::addr_aligned_dtype` | `0x127f530` | CONFIRMED |
-| | `core_v3::addr_aligned_dtype` | `0x136ed10` | CONFIRMED |
-| | `core_v4::addr_aligned_dtype` | `0x1446420` | CONFIRMED (one delta, §Alignment) |
-| **PSUM-dtype helper** | `sub_1343c70` (v3) / `0x142de60` (v4) | `0x1343c70` | CONFIRMED |
-| **Nibble consumer** | `core_v3::mem4d_valid` | `0x136ee40` | CONFIRMED |
-| | `core_v3::tensor1d_valid` | `0x136f200` | CONFIRMED |
-| **Indirect stamp** | `CoreV4GenImpl::assignIndirectPatternForMX<MXINDIRECT16B>` | `0x150de90` | CONFIRMED |
-| **MX dual-ADDR4 leaf** | `CoreV4GenImpl::assignAccessForMX<MXMEM_PATTERN1D>` | `0x150e2f0` | CONFIRMED |
+| **Encoder** | `Generator::assignStartAddr<core_v2::…ADDR4>` | `0x1172e10` | CERTAIN |
+| | `Generator::assignStartAddr<core_v4::…ADDR4>` | `0x1508df0` | CERTAIN (byte-identical to v2) |
+| **Decoder** | `core_v2::tensor_start_addr_valid` | `0x127f590` | CERTAIN |
+| | `core_v3::tensor_start_addr_valid` | `0x136ed70` | CERTAIN |
+| | `core_v4::tensor_start_addr_valid` | `0x1446480` | CERTAIN (twin of v3) |
+| **Aligner** | `core_v2::addr_aligned_dtype` | `0x127f530` | CERTAIN |
+| | `core_v3::addr_aligned_dtype` | `0x136ed10` | CERTAIN |
+| | `core_v4::addr_aligned_dtype` | `0x1446420` | CERTAIN (one delta, §Alignment) |
+| **PSUM-dtype helper** | `sub_1343c70` (v3) / `0x142de60` (v4) | `0x1343c70` | CERTAIN |
+| **Nibble consumer** | `core_v3::mem4d_valid` | `0x136ee40` | CERTAIN |
+| | `core_v3::tensor1d_valid` | `0x136f200` | CERTAIN |
+| **Indirect stamp** | `CoreV4GenImpl::assignIndirectPatternForMX<MXINDIRECT16B>` | `0x150de90` | CERTAIN |
+| **MX dual-ADDR4 leaf** | `CoreV4GenImpl::assignAccessForMX<MXMEM_PATTERN1D>` | `0x150e2f0` | CERTAIN |
 
-> **NOTE — there is no `core_v3` template instantiation of the encoder.** `CoreV3` reuses the `core_v2::ADDR4` `assignStartAddr` body verbatim; only the decoder and aligner have a distinct `core_v3` copy. The decoder symbol `tensor_start_addr_valid @ 0x136ed70` and aligner `addr_aligned_dtype @ 0x136ed10` are **core_v3** functions (CONFIRMED from the demangled `7core_v3` in the symbol name). The gen4 copies are `0x1446480` / `0x1446420`.
+> **NOTE — there is no `core_v3` template instantiation of the encoder.** `CoreV3` reuses the `core_v2::ADDR4` `assignStartAddr` body verbatim; only the decoder and aligner have a distinct `core_v3` copy. The decoder symbol `tensor_start_addr_valid @ 0x136ed70` and aligner `addr_aligned_dtype @ 0x136ed10` are **core_v3** functions — the demangled name carries `7core_v3`. The gen4 copies are `0x1446480` / `0x1446420`.
 
 ## The 29-bit address field — bits 0..28
 
@@ -77,7 +77,9 @@ The decoder's first move on the non-register path is to mask off everything but 
 0x136eda5:  e8 …                     call   addr_aligned_dtype(r15d, dtype)
 ```
 
-Bits `29..31` are stripped before the address is interpreted; the alignment check, the PSUM-window subtraction, and the region-class mask all operate on this 29-bit value (`r15d`). The encoder side asserts the resolved 64-bit byte address fits in `u32` (`shr rax,0x20; setz dil` → the error string *"memory address out of uint32 range"*) and stores the low 32 bits verbatim. **CONFIRMED** at `0x136ed96` (v3), `0x14464a6` (v4), `0x127f5bf` (v2).
+Bits `29..31` are stripped before the address is interpreted; the alignment check, the PSUM-window subtraction, and the region-class mask all operate on this 29-bit value (`r15d`). The encoder side asserts the resolved 64-bit byte address fits in `u32` (`shr rax,0x20; setz dil` → the error string *"memory address out of uint32 range"*) and stores the low 32 bits verbatim.
+
+*Anchors: the 29-bit mask at `0x136ed96` (v3), `0x14464a6` (v4), `0x127f5bf` (v2).*
 
 ⇒ The addressable on-chip space per descriptor is `2^29 = 512 MiB` of byte address. Both physical windows fit comfortably inside it — SBUF (192 KiB/partition × 128 partitions) and PSUM (8 banks × 2 KiB × 128 partitions); see [SBUF/PSUM geometry](../arch/sbuf-psum-geometry.md) (1.05).
 
@@ -97,10 +99,10 @@ The nibble is read off byte 3 of the word. The multi-dim validators isolate it w
 
 | Nibble | Bits 30:29 | Meaning | Producer | Consumer | Confidence |
 |---|---|---|---|---|---|
-| `0x00` | `00` | STATIC physical address | default (no stamp) | static-addr path | CONFIRMED |
-| `0x20` | `01` | INDIRECT-GATHER index | `assignIndirectPatternForMX` (`or +3,0x20`) | `memNd_valid` (`cmp 0x20`) | CONFIRMED |
-| `0x40` | `10` | ACTIVE / dynamic | upstream descriptor template (**not** the ADDR4 encoder) | `tensor1d_valid` (`test 0x40000000`) | CONFIRMED (consumer); INFERRED (name) |
-| `0x60` | `11` | UNUSED / dead | NONE | NONE | CONFIRMED |
+| `0x00` | `00` | STATIC physical address | default (no stamp) | static-addr path | CERTAIN |
+| `0x20` | `01` | INDIRECT-GATHER index | `assignIndirectPatternForMX` (`or +3,0x20`) | `memNd_valid` (`cmp 0x20`) | CERTAIN |
+| `0x40` | `10` | ACTIVE / dynamic | upstream descriptor template (**not** the ADDR4 encoder) | `tensor1d_valid` (`test 0x40000000`) | CERTAIN (consumer); MEDIUM (name) |
+| `0x60` | `11` | UNUSED / dead | NONE | NONE | CERTAIN |
 
 The encoder stamps **only** the indirect bit, and only onto the index slot of a gather:
 
@@ -117,7 +119,9 @@ The `0x40` (ACTIVE) branch is exercised by `tensor1d_valid`, which tests bit 30 
 0x136f23d:  79 29                jns   <static addr path>; (bit31 clear ⇒ static; set ⇒ register)
 ```
 
-> **CORRECTION — bit 30 (ACTIVE) is never set by the ADDR4 encoder.** An exhaustive `.text` sweep finds zero `+3 |= 0x40` and zero `+3 |= 0x60` writes. The ACTIVE marker is carried in the *descriptor template* the dynamic-AP path materializes upstream, and only *consumed* here. The only mode bit `assignStartAddr` itself writes is bit 29 (`0x20`, the gather-index marker). A prior preliminary table conflated the template bit with an encoder output; it is fixed in place. The `0b11` nibble is genuinely dead — no producer emits it and no validator accepts it.
+Bit 30 is read here but never written here. An exhaustive `.text` sweep turns up zero `+3 |= 0x40` and zero `+3 |= 0x60` writes anywhere in `libwalrus.so`: the ACTIVE marker is stamped into the *descriptor template* that the dynamic-AP path materializes upstream, and `tensor1d_valid` only consumes it. The single mode bit `assignStartAddr` writes is bit 29 (`0x20`, the gather-index marker). The `0b11` nibble is genuinely dead — no producer emits it, no validator accepts it.
+
+> **GOTCHA — the encoder writes one mode bit, not two.** Reading `assignStartAddr` alone will not show you where ACTIVE comes from, because it never sets `0x40`. Look upstream at the dynamic-AP descriptor template.
 
 ## PSUM-window detection + region class — bits 25..28
 
@@ -143,7 +147,7 @@ Decoded:
 
 A PSUM access must set bits `25..28` (at minimum bit 25 = `!scaleFlag`); a SBUF access must clear them. The physical PSUM content (8 banks × 2 KiB × 128 partitions = 2 MiB) sits inside the 4 MiB address window; see [SBUF/PSUM geometry](../arch/sbuf-psum-geometry.md) (1.05). The 4 MiB literal is exactly `0x3FFFFF + 1`.
 
-> **CORRECTION — bits 25..28 are not a separate "region + size class" nibble.** They are the high bits of the 29-bit byte address that the PSUM window base (`0x2000000 = 1<<25`) forces nonzero for PSUM and zero for SBUF. The window-subtract test and the `& 0x1E000000` test are two views of one region split, both present in the validator. (G-2, STRONG: the validator only tests the *aggregate* `& 0x1E000000`; it does not individually decode bits 26..28, which carry the PSUM bank/partition overflow of the Hwm `(part<<15)+(bank<<11)` terms.)
+> **NOTE — bits 25..28 are not a separate "region + size class" nibble.** They are simply the high bits of the 29-bit byte address, which the PSUM window base (`0x2000000 = 1<<25`) forces nonzero for PSUM and zero for SBUF. The window-subtract test and the `& 0x1E000000` test are two views of one region split, and the validator contains both.
 
 **PSUM-dtype restriction.** A PSUM *write* must target a 4-byte accumulator type. The helper isolates that:
 
@@ -154,11 +158,11 @@ A PSUM access must set bits `25..28` (at minimum bit 25 = `!scaleFlag`); a SBUF 
 0x1343c77:  0f 96 c0      setbe  al          ; ⇒ wireTag ∈ {8,9,10,11}
 ```
 
-`wireTag ∈ {8,9,10,11}` = `{int32, uint32, float32, float32r}`. A PSUM *read* (`WRITE_TENSOR==0`) is allowed with any dtype; for SBUF the post-base `addr > 0x3FFFFF` term is `1`, so the restriction is vacuously satisfied (SBUF accepts all dtypes on this axis). **CONFIRMED**.
+`wireTag ∈ {8,9,10,11}` = `{int32, uint32, float32, float32r}`. A PSUM *read* (`WRITE_TENSOR==0`) is allowed with any dtype; for SBUF the post-base `addr > 0x3FFFFF` term is `1`, so the restriction is vacuously satisfied (SBUF accepts all dtypes on this axis).
 
 ## Per-dtype byte alignment — `addr_aligned_dtype`
 
-`addr_aligned_dtype(unsigned addr, DTYPE wireTag)` returns `(addr & (align-1)) == 0`. It is keyed on the **NEURON_ISA_TPB_DTYPE wire-tag**, not the BIR Dtype — to get the alignment for a BIR Dtype, first map `wire_tag = byte_1DFBAD0[dt]` (the dtype→wire-tag table). The branch decode (CONFIRMED, core_v3 `0x136ed10`):
+`addr_aligned_dtype(unsigned addr, DTYPE wireTag)` returns `(addr & (align-1)) == 0`. It is keyed on the **NEURON_ISA_TPB_DTYPE wire-tag**, not the BIR Dtype — to get the alignment for a BIR Dtype, first map `wire_tag = byte_1DFBAD0[dt]` (the dtype→wire-tag table). The branch decode, from core_v3 `0x136ed10`:
 
 ```asm
 0x136ed10:  lea  eax, [rsi-2]   ; cmp al,1  setbe   ; wireTag-2 ≤ 1  ⇒ {2,3}
@@ -175,15 +179,15 @@ A PSUM access must set bits `25..28` (at minimum bit 25 = `!scaleFlag`); a SBUF 
 
 | Wire-tag set | Align | Mask | BIR dtypes (via the dtype→wire-tag table) | Confidence |
 |---|---|---|---|---|
-| `{2,3,13,14,15}` | 1 | — | `int8`(2), `uint8`/`e8m0`(3), `float8_e3`(13), `e4m3`(14), `float8_e5`(15) | CONFIRMED |
-| `{4,5,6,7}` | 2 | `&1` | `int16`(4), `uint16`(5), `bfloat16`(6), `float16`(7) | CONFIRMED |
-| `{8,9,10,11}` | 4 | `&3` | `int32`(8), `uint32`(9), `float32`(10), `float32r`(11) | CONFIRMED |
-| `{1,12}` | 8 | `&7` | `uint64`(1), `int64`(12) | CONFIRMED |
-| `{0,16,…}` | n/a | `false` | wireTag 16 = FP4-x4 (gen4-only; see delta) | CONFIRMED |
+| `{2,3,13,14,15}` | 1 | — | `int8`(2), `uint8`/`e8m0`(3), `float8_e3`(13), `e4m3`(14), `float8_e5`(15) | CERTAIN |
+| `{4,5,6,7}` | 2 | `&1` | `int16`(4), `uint16`(5), `bfloat16`(6), `float16`(7) | CERTAIN |
+| `{8,9,10,11}` | 4 | `&3` | `int32`(8), `uint32`(9), `float32`(10), `float32r`(11) | CERTAIN |
+| `{1,12}` | 8 | `&7` | `uint64`(1), `int64`(12) | CERTAIN |
+| `{0,16,…}` | n/a | `false` | wireTag 16 = FP4-x4 (gen4-only; see delta) | CERTAIN |
 
 The required alignment **equals the element byte-size** of the wire container (1/2/4/8) — the start address must be naturally aligned to its element. The aligner is the **first gate** on the static path: `tensor_start_addr_valid` calls it on the 29-bit address (`r15d = a1 & 0x1FFFFFFF`) *before* the region test, and returns `false` if it fails (`0x136eda5`).
 
-> **CORE_V4 DELTA — FP4-x4 joins the no-alignment set.** The gen4 aligner widens the second group: `cmp dl, 3` (gen2/3 use `cmp dl, 2`) ⇒ `wireTag-0xd ≤ 3` ⇒ `{13,14,15,16}`. So core_v4 adds **wire-tag 16** (FP4-x4, BIR Dtype `float4_e2m1fn_x4`) to ALIGN-1 — on gen4 the packed FP4-x4 type is "always aligned". On gen2/3, wire-tag 16 hits the default (`false`, no defined alignment) because FP4-x4 is a gen4-only type. **CONFIRMED**: `0x144642d: cmp dl, 3` (v4) vs. `0x136ed1b: cmp dl, 2` (v3). The `{4,5,6,7}→&1` group is refactored into a tail-called inline helper (`0x142de70: sub edi,4; cmp dil,3; setbe`) — same `{4..7}⇒align-2` semantics, no functional change.
+> **CORE_V4 DELTA — FP4-x4 joins the no-alignment set.** The gen4 aligner widens the second group: `cmp dl, 3` (gen2/3 use `cmp dl, 2`) ⇒ `wireTag-0xd ≤ 3` ⇒ `{13,14,15,16}`. So core_v4 adds **wire-tag 16** (FP4-x4, BIR Dtype `float4_e2m1fn_x4`) to ALIGN-1 — on gen4 the packed FP4-x4 type is "always aligned". On gen2/3, wire-tag 16 hits the default (`false`, no defined alignment) because FP4-x4 is a gen4-only type. The one-byte difference is at `0x144642d: cmp dl, 3` (v4) against `0x136ed1b: cmp dl, 2` (v3). The `{4,5,6,7}→&1` group is refactored into a tail-called inline helper (`0x142de70: sub edi,4; cmp dil,3; setbe`) — same `{4..7}⇒align-2` semantics, no functional change.
 
 ## Register mode — bit 31 set, byte 0 = register id
 
@@ -209,9 +213,11 @@ When an access pattern carries a colored register instead of a static address, t
 0x136ee0e:  0f 92 c0              setb  al               ; ⭐ return (regid < 0x40)
 ```
 
-The gen2 decoder enforces the same invariant with a stricter combined mask — `(a1 & 0xFFFFFF00) == 0x80000000` (bits `8..30` zero *and* bit 31 set), then `regid ≤ 0x3F`. **Register-id packing**: an 8-bit field in byte 0, valid range `0..63` (`< 0x40`); the register was minted by `lower_ap`/`convertSymAP` before register allocation, and `assignStartAddr` only stamps the id and the flag. **CONFIRMED** across both arch families. See [Part 7 — codegenAccess](../bir/).
+The gen2 decoder enforces the same invariant with a stricter combined mask — `(a1 & 0xFFFFFF00) == 0x80000000` (bits `8..30` zero *and* bit 31 set), then `regid ≤ 0x3F`. **Register-id packing**: an 8-bit field in byte 0, valid range `0..63` (`< 0x40`); the register was minted by `lower_ap`/`convertSymAP` before register allocation, and `assignStartAddr` only stamps the id and the flag. Both arch families enforce this identically. See [Part 7 — codegenAccess](../bir/).
 
-> **GOTCHA — the register-mode bit is bit 31, NOT bit 30; the two are independently tested.** This page carries one contested seam, and it resolves decisively from the masks. Bit 29 (the indirect mode bit) is co-verified — both the encoder stamp (`or [rax+3],0x20`) and the consumer (`and 0x60; cmp 0x20`) agree it is `0x20`. But the register-mode bit was open between bit 30 and bit 31. The binary settles it: the decoder isolates byte 3 and takes the register branch on a **sign test** (`shr eax,18h; test al,al; js`) — a sign test on the *byte-3* value is bit 7 of byte 3 = **word bit 31** (`0x80`), and the encoder stamps exactly `0x80` (`or [rbx+3], 80h`). Bit **30** (`0x40`) is a *different* bit: it is the second mode-nibble bit (ACTIVE), tested by `test edi, 40000000h` and by the `& 0x60` nibble mask — never by the register branch. RM (bit 31, `&0x80`, sign) and the mode nibble (bits `30:29`, `&0x60`) are **orthogonal**: a register-AP word has mode nibble `0b00` and `RM=1`. **Resolution: register-mode = bit 31 (`0x80000000`), CONFIRMED; bit 30 (`0x40000000`) = ACTIVE nibble bit, distinct.** Do not assert "bit 30 register-mode" — the disassembly does not support it.
+> **GOTCHA — register mode is bit 31, and bit 30 is a different bit entirely.** The two are easy to conflate because both live in byte 3, but they are tested independently and mean unrelated things: RM (bit 31, `0x80`, reached by a sign test on byte 3) says "byte 0 holds a register id", while bit 30 (`0x40`) is the second mode-nibble bit, reached only through the `& 0x60` nibble mask. They are orthogonal — a register-AP word carries mode nibble `0b00` together with `RM=1`.
+
+*Anchors: the encoder stamps `or [rbx+3], 80h` at `0x1508f58`; the decoder's register branch is the sign test `shr eax,18h; test al,al; js` at `0x136ed76`–`0x136ed87`, which reads bit 7 of byte 3 = word bit 31. Bit 30 is instead tested by `test edi, 40000000h` at `0x136f221` and by the `and eax, 60h` nibble mask at `0x136ee5a` — never by the register branch.*
 
 ## The data-vs-scale resolver fork — the `a4` argument
 
@@ -235,23 +241,29 @@ The gen2 decoder enforces the same invariant with a stricter combined mask — `
 0x150e563:               …   call assignStartAddr<ADDR4>
 ```
 
-The tri-ADDR4 gather leaf (`assignIndirectPatternForMX<MXINDIRECT16B>`) likewise passes `a4=1` only for the E8M0 scale slot (`@+8`); index (`@+0`) and data (`@+4`) use `a4=0`. So **"scale" is an exclusively-MX concept** — the resolver fork exists to route the E8M0 block-scale stream to `getStartAddressForMXScale` (SB-only, `(basePart<<18)&0xFF800000`). **CONFIRMED**: `0x150e544`/`0x150e554`, cross-checked against the MX dual-ADDR4 layout (data@+0 / scale@+4). See [tensor4d / mempattern4d](tensor4d-mempattern4d.md) (2.4).
+The tri-ADDR4 gather leaf (`assignIndirectPatternForMX<MXINDIRECT16B>`) likewise passes `a4=1` only for the E8M0 scale slot (`@+8`); index (`@+0`) and data (`@+4`) use `a4=0`. So **"scale" is an exclusively-MX concept** — the resolver fork exists to route the E8M0 block-scale stream to `getStartAddressForMXScale` (SB-only, `(basePart<<18)&0xFF800000`). See [tensor4d / mempattern4d](tensor4d-mempattern4d.md) (2.4).
+
+*Anchors: the `a4` selectors at `0x150e544` (data) and `0x150e554` (scale), matching the MX dual-ADDR4 layout data@+0 / scale@+4.*
 
 ## Arch-universality
 
-- **Encoder**: `core_v2 @ 0x1172e10` is byte-identical to `core_v4 @ 0x1508df0` (same 3-way kind switch, same mode/region/register stamps); `CoreV3` reuses the v2 template. CONFIRMED.
-- **Decoder**: v2/v3/v4 share every constant — 29-bit mask `0x1FFFFFFF`, PSUM window base `0x2000000` + span `0x3FFFFF`, region mask `0x1E000000`, register branch (bit 31 + bits `8..23` zero + `regid<0x40`), PSUM-dtype helper `{8,9,10,11}`. CONFIRMED byte-exact.
-- **Aligner**: v2 `0x127f530` == v3 `0x136ed10`; v4 `0x1446420` adds wire-tag 16 (FP4-x4) to the no-align set and refactors the `{4..7}→&1` group into helper `0x142de70` — no semantic change beyond the new gen4 type. CONFIRMED.
+- **Encoder**: `core_v2 @ 0x1172e10` is byte-identical to `core_v4 @ 0x1508df0` (same 3-way kind switch, same mode/region/register stamps); `CoreV3` reuses the v2 template.
+- **Decoder**: v2/v3/v4 share every constant — 29-bit mask `0x1FFFFFFF`, PSUM window base `0x2000000` + span `0x3FFFFF`, region mask `0x1E000000`, register branch (bit 31 + bits `8..23` zero + `regid<0x40`), PSUM-dtype helper `{8,9,10,11}` — byte-exact across all three.
+- **Aligner**: v2 `0x127f530` == v3 `0x136ed10`; v4 `0x1446420` adds wire-tag 16 (FP4-x4) to the no-align set and refactors the `{4..7}→&1` group into helper `0x142de70` — no semantic change beyond the new gen4 type.
 
-## Adversarial self-verification — the five strongest claims
+## Evidence summary
 
-1. **Register-mode = bit 31, not bit 30.** *Challenge*: could the `js` sign test be on a different byte? *Re-derive*: the sign test is at `0x136ed85` on `al`, where `eax = a1 >> 0x18` (`0x136ed76`), so `al` = byte 3; bit 7 of byte 3 = word bit 31 = `0x80000000`. The encoder writes the same bit at `0x1508f58: or [rbx+3], 80h`. **Holds — CONFIRMED.**
-2. **The address field is 29 bits (`0x1FFFFFFF`).** *Challenge*: is the mask really `0x1FFFFFFF` and not `0x0FFFFFFF`? *Re-derive*: `0x136ed96: and r15d, 1FFFFFFFh` — five `F` nibbles + leading `1` = bits `0..28`. **Holds — CONFIRMED.**
-3. **The mode nibble is `byte3 & 0x60` (bits 30:29).** *Challenge*: could it be `& 0xE0` (3 bits)? *Re-derive*: `0x136ee5a: and eax, 60h` isolates exactly bits 5–6 of byte 3 = word bits 29–30; bit 7 (`0x80`) is masked out (it's RM, tested separately). The `0xE0` test at `0x136ee8a` is a *different* assertion on the data slot (all three top bits zero). **Holds — CONFIRMED.**
-4. **PSUM window = `[0x2000000, 0x23FFFFF]`.** *Challenge*: off-by-one on the span? *Re-derive*: `sub r15d, 2000000h; cmp r15d, 3FFFFFh; ja <SBUF>` — `ja` (unsigned >) means the PSUM-accept range is `≤ 0x3FFFFF`, i.e. `0x400000` = 4 MiB inclusive. **Holds — CONFIRMED.**
-5. **`a4` selects vtable `+0x20` (data) vs `+0x28` (scale).** *Challenge*: are 0x20/0x28 truly data/scale and not reversed? *Re-derive*: `test cl,cl; jne 0x1508ed0` jumps to `call [rax+0x28]` when `a4!=0`; the MX leaf passes `a4=1` for the `lea rsi,[rbx+4]` (the scale slot at +4). So `a4=1 ⇒ +0x28 ⇒ scale`. **Holds — CONFIRMED.**
+Every bit position on this page is pinned to a literal mask or shift in the disassembly, not to a name or a docstring.
 
-> **NOTE — the two STRONG (not CONFIRMED) items.** (G-1) The *name* "ACTIVE/dynamic" for bit 30 is read from the structure of the `tensor1d_valid` validation arm, not from a string literal; the bit's *consumer* is CONFIRMED but its label is inferred. (G-2) The validator tests only the aggregate region mask `& 0x1E000000`; it does not decode bits 26..28 individually, so their precise PSUM bank/partition meaning is read from the encoder's Hwm math rather than the decoder.
+- **Register mode = bit 31.** The sign test at `0x136ed85` operates on `al`, and `eax = a1 >> 0x18` was set at `0x136ed76`, so `al` is byte 3 — bit 7 of byte 3 is word bit 31, `0x80000000`. The encoder writes that same bit at `0x1508f58: or [rbx+3], 80h`.
+- **The address field is 29 bits.** `0x136ed96: and r15d, 1FFFFFFFh` — five `F` nibbles plus a leading `1`, i.e. bits `0..28`, not `0x0FFFFFFF`.
+- **The mode nibble is `byte3 & 0x60`.** `0x136ee5a: and eax, 60h` isolates exactly bits 5–6 of byte 3, which are word bits 29–30; bit 7 (`0x80`, RM) is masked out and tested separately. The `0xE0` test at `0x136ee8a` is a different assertion entirely — it requires all three top bits zero on the *data* slot.
+- **The PSUM window is `[0x2000000, 0x23FFFFF]`.** `sub r15d, 2000000h; cmp r15d, 3FFFFFh; ja <SBUF>` uses unsigned-greater, so the accept range is `≤ 0x3FFFFF` inclusive — `0x400000` = 4 MiB.
+- **`a4` selects vtable `+0x20` (data) over `+0x28` (scale), not the reverse.** `test cl,cl; jne 0x1508ed0` jumps to `call [rax+0x28]` when `a4 != 0`, and the MX leaf passes `a4=1` for the `lea rsi,[rbx+4]` slot, which is the scale slot at `+4`.
+
+### Limits of this reading
+
+Two items are weaker than the rest. The *name* "ACTIVE/dynamic" for bit 30 is read from the shape of the `tensor1d_valid` validation arm rather than from any string literal — the bit's consumer is unambiguous, its label is INFERRED. And the validator only ever tests the aggregate region mask `& 0x1E000000`; it never decodes bits 26..28 individually, so their PSUM bank/partition meaning comes from the encoder's Hwm `(part<<15)+(bank<<11)` math rather than from the decoder.
 
 ## Cross-References
 
