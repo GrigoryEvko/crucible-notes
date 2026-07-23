@@ -15,8 +15,7 @@ The deliverable here is exhaustive: the **8-byte entry format** decoded byte-by-
 the **full CAYMAN table dump** (every one of the 17 rows, with resolved kernel name),
 the **lookup method**, the **entry count proven three independent ways**, and **every
 `funcVA` validated against the live instruction stream** and resolved to a named
-function. Everything below was re-carved and re-decoded from the shipped binary this
-session.
+function.
 
 The POOL core runs on the Vision-Q7 NX `ncore2gp` ("Cairo") datapath core
 (`XCHAL_HAVE_VISION = 1`, `XCHAL_VISION_TYPE = 7` — the FLIX/VLIW layer). All
@@ -25,7 +24,7 @@ disassembly below is the native Cadence `xtensa-elf-objdump` with
 management core and is wrong here.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/string read from the shipped image this session; `INFERRED` =
+`OBSERVED` = a byte/string read from the shipped image; `INFERRED` =
 reasoned over OBSERVED facts (often across a FLIX/literal-pool desync); `CARRIED` =
 consolidated from a cited cross-page anchor at its original confidence. Crossed with
 `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
@@ -56,7 +55,6 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
 > used (iram `8e4412b9…` / dram `7bdf6ed7…`): that DEBUG build carries the `'P%i:'`
 > runtime log strings; **this PERF image strips them**, so kernel names below come from
 > the image's own `.xt.prop.<mangled>` section names, not from runtime strings.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -85,7 +83,7 @@ reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
 
 ---
 
-## 1. Entry format — byte-exact `[HIGH/OBSERVED]`
+## 1. Entry format — byte-exact
 
 The table is a flat array of fixed **8-byte** records. There is no header and no
 embedded count. Each record is:
@@ -111,7 +109,7 @@ across the POOL cluster:
 > reimplementer comparing keys must build the comparand the *same way the firmware
 > does*: as a native-LE `u32` equal to `opcode<<24 | spec<<16`. The byte-exact
 > invariant is `opcode @ entry+3, spec @ entry+2`; the `<<24/<<16` form is the LE `u32`
-> view of those bytes. Do not byte-swap one side only. `[HIGH/OBSERVED]`
+> view of those bytes. Do not byte-swap one side only.
 
 ### 1.1 Worked byte example (row 0)
 
@@ -141,7 +139,7 @@ Raw 8 bytes of record 0 at file offset `0x7400`:
 ```
 
 Read each 8 bytes as `[BE key u32][LE funcVA u32]`. (xxd shows these byte-for-byte; the
-grouping above pairs them for readability.) `[HIGH/OBSERVED]`
+grouping above pairs them for readability.)
 
 ### 1.3 The only relocated field
 
@@ -159,11 +157,11 @@ for `i = 0..16` — one per record, each pointing at the `funcVA` slot, **stride
 
 This independently proves four things at once: 8-byte stride, `funcVA` at `+4`, the key
 is **not** relocated (so it is a literal compared value, not a pointer), and there are
-**17** records. `[HIGH/OBSERVED]`
+**17** records.
 
 ---
 
-## 2. Section geometry `[HIGH/OBSERVED]`
+## 2. Section geometry
 
 `readelf -S` on the carved CAYMAN EXTISA_0 image places the table as its own section,
 immediately followed by `.globstruct`:
@@ -182,7 +180,7 @@ scan terminator.
 > section boundary `0x02000408`. The four bytes immediately after are `.globstruct` data
 > (`0x6099cb34 …`), **not** a `0x00000000` or `0xffffffff` terminator. The table length
 > comes *only* from the section size and the base/end getter pair (§4). A reimplementer
-> must not scan for a null/`-1` row — there isn't one. `[HIGH/OBSERVED]`
+> must not scan for a null/`-1` row — there isn't one.
 
 ---
 
@@ -234,11 +232,11 @@ On a hit, the matched record's `funcVA` is the absolute VMA of the per-opcode ke
 **entry trampoline**, reached via a single register-indirect call (`callx8`). The 17
 `funcVA`s are distinct and follow trampoline-layout order
 (`0x080, 0x3f8, 0x410, 0xb90, …, 0x4dc4`), **independent of the key order** — confirming
-this is a *value table*, not an index-as-offset table. `[HIGH/OBSERVED]`
+this is a *value table*, not an index-as-offset table.
 
 ---
 
-## 4. Entry count — 17, three independent ways `[HIGH/OBSERVED]`
+## 4. Entry count — 17, three independent ways
 
 | # | method | computation | result |
 |:--|:-------|:------------|:------:|
@@ -262,11 +260,11 @@ The base/end constants are decoded directly from the getter byte streams
 the `34 08 04`/`40 33 c0`/`30 33 41` sequence is `const16 a3,0x408 ; sub a3,a3,a4 ;
 srli a3,a3,3`. The `>> 3` (== `÷8`) independently re-confirms the 8-byte stride. All
 three methods agree on **17**. The table is delimited by these getters and by the
-section size — **never** by an in-band sentinel (§2). `[HIGH/OBSERVED]`
+section size — **never** by an in-band sentinel (§2).
 
 ---
 
-## 5. `funcVA` validation — every entry lands on a real prologue `[HIGH/OBSERVED]`
+## 5. `funcVA` validation — every entry lands on a real prologue
 
 Each `funcVA` was checked against the raw `.text` byte stream (and spot-checked through
 the native `xtensa-elf-objdump`). All 17 begin with the Xtensa windowed-ABI `entry`
@@ -283,7 +281,7 @@ entry. (Record-by-record first bytes: `0x01000080 = 36 41 00`, …, `0x010037a8 
 
 Three `funcVA`s point **directly** at a named function start (see §6 EXACT); the rest
 point at a thin per-opcode entry trampoline that builds a `.bss` state-struct pointer
-and then `const16`/`callx8`s into a named `decode_*`/`*_impl` worker. `[HIGH/OBSERVED]`
+and then `const16`/`callx8`s into a named `decode_*`/`*_impl` worker.
 
 > **NOTE — kernel names come from `.xt.prop`, not runtime strings.** This PERF image
 > carries **no** `'P%i:'`/`'P%d:'` runtime log strings (those live in the DEBUG DRAM
@@ -297,7 +295,7 @@ and then `const16`/`callx8`s into a named `decode_*`/`*_impl` worker. `[HIGH/OBS
 > `get_sequence_bounds_impl@0x01004284`,
 > `nonzero_with_count_impl<int>@0x01004b80` / `<float>@0x01004940`,
 > `decode_tensor_dequantize@0x01004df0`,
-> `iota_impl<true>@0x01000100` / `<false>@0x010002c0`. `[HIGH/OBSERVED]`
+> `iota_impl<true>@0x01000100` / `<false>@0x010002c0`.
 
 ---
 
@@ -360,14 +358,14 @@ Naming bases:
 > worker attribution — `0xbe` was mis-tagged "no SUNDA entry / unresolved", and `0xf2`
 > was mis-attributed to `get_sequence_bounds`/`tensor_dequantize`. The binary shows
 > `0xbe → get_sequence_bounds_impl` and `0xf2 → nonzero_with_count_impl<int>` (with a
-> `<float>@0x01004940` alt branch). Corrected here. `[HIGH/OBSERVED]`
+> `<float>@0x01004940` alt branch). Corrected here.
 
 > **NOTE — trampoline `.bss` state pointers.** The state-struct pointers loaded by the
 > trampolines (`0x02000458` record 3, `0x0200045c` record 5, `0x02000468` record 8,
 > `0x0200046c` record 9, `0x02000470` record 10, `0x0200047c` record 15, `0x02000480`
 > record 16) fall **past `.globstruct`** (which ends at `0x02000450`) into the image's
 > `.bss` (VMA `0x02000450`, size `0x3c`). They are zero-initialized per-opcode scratch
-> blocks, one per kernel — not part of the dispatch table itself. `[HIGH/OBSERVED]`
+> blocks, one per kernel — not part of the dispatch table itself.
 
 ---
 
@@ -456,8 +454,8 @@ export XTENSA_SYSTEM="$NESTED/tools/XtensaTools/config" XTENSA_CORE=ncore2gp
 - [Cross-generation kernel-info matrix](../images/cross-gen-kernel-info-matrix.md) —
   *(forward link; Part 6, not yet authored)* — the per-image `kernel_info_table`s
   across CAYMAN/MARIANA/MAVERICK and the sub-images, side by side.
-- [The Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md) — *(stub; the master
-  opcode→kernel ledger this table feeds)* — every per-kernel page resolves its opcode's
+- [The Opcode Catalog Ledger](../kernels/opcode-catalog-ledger.md) — the master
+  opcode→kernel ledger this table feeds — every per-kernel page resolves its opcode's
   `funcVA` through this table.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the normative
   definition of the `[HIGH/OBSERVED]`-style tags used throughout.

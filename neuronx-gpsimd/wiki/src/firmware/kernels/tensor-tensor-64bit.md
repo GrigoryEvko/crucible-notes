@@ -28,7 +28,7 @@ customop-lib (`0.21.2.0`) package, and the function signatures are read from the
 table of `libnrtucode_internal.so` itself. The `extracted/` and `ida/` trees are gitignored — reach
 them with `fd --no-ignore` or absolute paths. Confidence/evidence tags follow the project
 [Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
-read-from-byte / read-from-header this pass, `[MED/INFERRED]` = reasoned over OBSERVED,
+read-from-byte / read-from-header, `[MED/INFERRED]` = reasoned over OBSERVED,
 `[…/CARRIED]` = re-used at a cited sibling page's confidence.
 
 > **Scope of the device disassembly.** The CAYMAN POOL PERF image is **FLIX VLIW with interleaved
@@ -54,11 +54,11 @@ read-from-byte / read-from-header this pass, `[MED/INFERRED]` = reasoned over OB
 
 1. **Sub-case of the BASE decode, not the 0xF0 extended one.** `decode_tensor_tensor_arith`
    (`0x01000f60`) detects a 64-bit dtype and branches (7 reloc-pinned call edges, *all inside its
-   own body*) to five dedicated functions. The 0xF0 extended decoder is uninvolved (§7). `[HIGH/OBSERVED]`
+   own body*) to five dedicated functions. The 0xF0 extended decoder is uninvolved (§7).
 2. **Detection predicate.** `is_valid_64b_int_dtype(d) == (d == INT64 || d == UINT64)`
    (`common.h:2451`), with `INT64 = 0xC`, `UINT64 = 0x1`. The Pool legality gate
    (`is_valid_tensor_tensor_arith_pool`) requires the 64-bit dtype on **all three** operands
-   (`out`, `dtype_lo`, `dtype_hi`) **and** an int-aluop. `[HIGH/OBSERVED]`
+   (`out`, `dtype_lo`, `dtype_hi`) **and** an int-aluop.
 3. **Five functions:** `setup_64bit_rw` (the register-pair r/w setup, called first by *both*
    sub-branches), `tensor_tensor_64bit_dispatch<VectorInt64>`/`<VectorUint64>` (arith), and
    `tensor_tensor_64bit_bitvec_dispatch<VectorInt64>`/`<VectorUint64>` (bitwise). Signedness is the
@@ -66,7 +66,7 @@ read-from-byte / read-from-header this pass, `[MED/INFERRED]` = reasoned over OB
 4. **Register-PAIR carry.** Each 64-bit element = an even-numbered register/lane pair
    (`reg n` = lo32, `reg n+1` = hi32); `mem_2d.h:67` makes the even-pair rule explicit and
    `mem2d_u64_register_check` *rejects* odd registers for u64. Throughput halves (4 u64 vs 8 u32 per
-   immediate store) — the addressing stride per *element* doubles. `[HIGH/OBSERVED]`
+   immediate store) — the addressing stride per *element* doubles.
 5. **Emulated, not native.** `ncore2gp` has no 64-bit-lane ALU (the IVP roster tops at `*_2x32` /
    `*_2x16`). Add/sub thread a carry/borrow; multiply is a 32×32→64 partial-product MAC; max/min/
    abs-diff are 2-lane-wide compares; the halves are reassembled with `ivp_dextrprn_2x32` /
@@ -74,10 +74,10 @@ read-from-byte / read-from-header this pass, `[MED/INFERRED]` = reasoned over OB
 6. **Which ops.** The ARITH dispatchers admit exactly the `is_valid_int_aluop` set (26 ops: the int
    band `0xC4..0xDD` minus the four argmax/argmin, **plus** `MOD 0x1B`) — which *includes*
    `MULT_INT`/`MULT_UINT`, `DIVIDE_INT`/`DIVIDE_UINT`, `MOD_INT`/`MOD_UINT`. The BITVEC dispatchers
-   run the bitwise set (`BYPASS`/`NOT`/`AND`/`OR`/`XOR` + shifts). There is **no fp64** at all. `[HIGH/OBSERVED]`
+   run the bitwise set (`BYPASS`/`NOT`/`AND`/`OR`/`XOR` + shifts). There is **no fp64** at all.
 7. **Per-gen.** Present gen-wide across the POOL_PERF Neuron+ family
    (`CAYMAN`/`MARIANA`/`MARIANA_PLUS`/`MAVERICK`), **absent in `SUNDA`**, which merged the path into
-   one `tensor_tensor_arith` worker (§6). `[HIGH/OBSERVED]`
+   one `tensor_tensor_arith` worker (§6).
 
 ---
 
@@ -99,8 +99,7 @@ and after it (the four dispatchers):
 | `0x01002fc4` | `36 41 00` `entry a1,32` | `tensor_tensor_64bit_bitvec_dispatch<VectorUint64>(uint, ALU_OP)` | **u64 BITVEC** (unsigned) |
 | `0x010034b0` | `36 41 00` `entry a1,32` | `decode_extended_inst_tensor_tensor_arith(bool, uint)` | the SEPARATE 0xF0 path (§7) |
 
-`[HIGH/OBSERVED — .xt.prop function-start records + entry prologue bytes, CAYMAN POOL PERF EXTISA;
-demangled names re-read from libnrtucode_internal.so this pass]`
+`[HIGH/OBSERVED — .xt.prop function-start records + entry prologue bytes]`
 
 The mangled symbols recovered directly from the host driver's string table corroborate the
 signatures *byte-for-byte* — in particular the **two extra `j` (`unsigned int`) parameters** on the
@@ -130,7 +129,7 @@ tensor_tensor_64bit_bitvec_dispatchI12VectorUint64Evj21NEURON_ISA_TPB_ALU_OP
 > **NOTE — `setup_64bit_rw`'s 48-byte frame.** `setup_64bit_rw` (`entry a1,48`) sits between the
 > decoder (32 B) and the arith dispatchers (176 B): larger than the decoder because it materialises
 > the 64-bit *lo/hi* strided read/write temporaries, smaller than the dispatchers because it does
-> not perform the carry-chained arithmetic — it only *prepares* the dual-lane operand streams. `[HIGH/OBSERVED]`
+> not perform the carry-chained arithmetic — it only *prepares* the dual-lane operand streams.
 
 ---
 
@@ -253,7 +252,7 @@ void decode_tensor_tensor_arith(unsigned int idx) {
 `setup_64bit_rw(unsigned idx, NEURON_ISA_TPB_ALU_OP op)` @ `0x01001108`, prologue `entry a1,48`
 (OBSERVED). It is called by **both** 64-bit sub-branches (the two sites at `0xfb3`, `0x1090`)
 *before* the templated dispatcher runs, to prepare the strided 64-bit read/write of the three
-`TENSOR3D` operand patterns (`src0`@16, `src1`@32, `dst`@48 of the `S3S3D3_TT` struct). `[HIGH/OBSERVED]`
+`TENSOR3D` operand patterns (`src0`@16, `src1`@32, `dst`@48 of the `S3S3D3_TT` struct).
 
 ### 3.1 The even-register-PAIR model (header-exact)
 
@@ -561,7 +560,7 @@ driver (CAYMAN / MARIANA / MARIANA_PLUS). `[HIGH/OBSERVED — strings table, 3×
   other and a uniform **+0x0c** (setup) / **+0x20** (the four dispatchers) over `CAYMAN` — a pure
   build/layout delta, **not** a structural change. (`tensor-tensor.md` §8 tabulates the same deltas.)
   There is **no `MARIANA_PLUS`-specific addition**: `MARIANA` already carries the family byte-for-byte
-  identically. `[HIGH/OBSERVED]`
+  identically.
 * **MAVERICK** ships the POOL_PERF image but is **fully stripped** (0 `.xt.prop`, no kernel symbol
   table). The five functions are nonetheless present **structurally**, pinned by the distinctive
   entry-frame fingerprint: the two ARITH dispatchers carry the rare `entry a1,0xb0` (176-byte)
@@ -580,7 +579,7 @@ driver (CAYMAN / MARIANA / MARIANA_PLUS). `[HIGH/OBSERVED — strings table, 3×
   alone. `[HIGH/OBSERVED that the separated family is absent / MED how SUNDA services 64-bit]`
 
 > **CORRECTION — the "64-bit int allowed … POOL" comment is in ALL gens, including SUNDA (reworded).**
-> A prior report read had this comment *dropped* in SUNDA. Re-checked this pass: the comment is
+> A prior report read had this comment *dropped* in SUNDA. Re-checked: the comment is
 > present in **all four** s3s3d3_tt.h headers — `// 64-bit int allowed on Neuron+ POOL` at
 > `s3s3d3_tt.h:207` (cayman) / `:237` (mariana, maverick), and **reworded** `// 64-bit int allowed on
 > Cayman+ POOL` at `:256` (**sunda**). So the comment is *not* the per-gen discriminator. SUNDA's
@@ -591,8 +590,7 @@ driver (CAYMAN / MARIANA / MARIANA_PLUS). `[HIGH/OBSERVED — strings table, 3×
 > hi==UINT32` arm; (3) it **adds** an `is_valid_tensor_tensor_bf16(i)` arm absent in the other gens;
 > and (4) `is_valid_64b_int_dtype` is referenced **0** times in its `s3s3d3_tt.h` (vs 1 in the others),
 > though still **defined** in its `common.h` (count 9 vs 13). Combined with the **device-side absence**
-> of the five functions, these are the actual SUNDA discriminators. `[HIGH/OBSERVED — re-read across
-> all four s3s3d3_tt.h this pass]`
+> of the five functions, these are the actual SUNDA discriminators. `[HIGH/OBSERVED — all four s3s3d3_tt.h]`
 
 ---
 
@@ -605,7 +603,7 @@ route**, and it shares **no code** with the 64-bit family:
 * From the **extended** side: the 0xF0 decoder has zero relocs/calls to any of the five 64-bit
   functions — its only reloc targets its own `.bss` state slot, and its IVP vocabulary tops out at
   16→32 MACs with **no** 64-bit reach.
-* From the **64-bit** side (this pass): all seven call edges into the five functions originate
+* From the **64-bit** side: all seven call edges into the five functions originate
   **inside** the base decoder's `0xf60..0x1108` span (§2); **none** of the seven call sites lies in
   the 0xF0 extended body (`0x010034b0..`).
 * The 0xF0 path also reads a **different** struct (`EXTENDED_TTA`, `op` at offset **16** not 14, 2-D
@@ -622,14 +620,13 @@ reloc-pinned both directions]`
 > branch inside the **base** `0x41`/`0x51` decoder; 0xF0 is an *opcode-extension* escape with its own
 > struct and an add/multiply-only `op`. A 64-bit `INT64` `MultInt` flows base-decode →
 > `setup_64bit_rw` → `tensor_tensor_64bit_dispatch<VectorInt64>`; it never touches the 0xF0 decoder.
-> `[HIGH/OBSERVED]`
 
 ---
 
 ## 8. The switch default (string-anchored — proves it's a compiled switch)
 
 An `op` outside the legal class hits the C++ switch default, which logs a baked DEBUG string. The
-**two distinct** strings — recovered directly from the host driver this pass — prove the 32-bit and
+**two distinct** strings — recovered directly from the host driver — prove the 32-bit and
 64-bit paths are *separate* compiled switches (the 32-bit one prints the op hex; the 64-bit dispatch
 does not):
 

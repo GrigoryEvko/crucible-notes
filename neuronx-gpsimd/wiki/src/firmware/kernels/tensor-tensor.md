@@ -26,7 +26,7 @@ arch-isa headers and `instruction_mapping.json` shipped in the same customop-lib
 (`0.21.2.0`) package. The `extracted/` and `ida/` trees are gitignored — reach them with
 `fd --no-ignore` or absolute paths. Confidence/evidence tags follow the project
 [Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
-read-from-byte / read-from-header this pass, `[MED/INFERRED]` = reasoned over OBSERVED,
+read-from-byte / read-from-header, `[MED/INFERRED]` = reasoned over OBSERVED,
 `[…/CARRIED]` = re-used at a cited sibling page's confidence.
 
 > **Scope of the device disassembly.** The CAYMAN POOL PERF image is **FLIX VLIW with
@@ -54,7 +54,7 @@ struct and one ALU-op enum**, plus an *extended-instruction* third entry point:
 | `0x51` | 81 | `TensorTensorBitvecOp` | `S3S3D3_TT` | `0x0100105c` → `decode_tensor_tensor_arith@0x01000f60` | bitwise / shift ops (integer-only) |
 | `0xf0`/spec 2 | — | `ExtendedInstTensorTensorArith` | `EXTENDED_TTA` | `0x01003484` → `decode_extended_inst_tensor_tensor_arith@0x010034b0` | narrowed add/multiply, 2-D patterns |
 
-`[HIGH/OBSERVED — opcode constants common.h:166–167; entry VMAs from .xt.prop records, SX-FW-18/SX-FW-15 trampolines]`
+`[HIGH/OBSERVED — opcode constants common.h:166–167; entry VMAs from .xt.prop records, FW-18/FW-15 trampolines]`
 
 The opcode numbers are read from the arch-isa header verbatim:
 
@@ -113,7 +113,7 @@ Verified `entry` prologues (native `xtensa-elf-objdump --adjust-vma`, binary mod
 0x0100105c:  36 41 00   entry a1,32     ; op-0x51 trampoline (body FLIX-desyncs on `4f 00 ..`)
 ```
 
-`[HIGH/OBSERVED — re-anchored prologue disasm]` The pervasive `unsigned int` first argument is
+`[HIGH/OBSERVED — prologue disasm]` The pervasive `unsigned int` first argument is
 the per-instruction descriptor index / SBUF-resident instruction-word pointer the POOL
 front-end hands the kernel; the two extra `unsigned int` args of
 `tensor_tensor_arith_impl(j,j,j)` are the decoded loop bounds (`num_tensor_elements`,
@@ -557,15 +557,13 @@ The arch-isa header spells the dtype legality out as the predicates the validato
 
 * **ARITH op (`0x41`):** `out_dtype` may be any of `{fp8_e3/e4/e5, fp16, bf16, fp32, fp32r,
   int8/16/32/64, uint8/16/32/64}` (FP32R **allowed** on out). `src0`/`src1` are the same set
-  **minus FP32R** (sources cannot be the round-mode partial fp32 type). `[HIGH/OBSERVED]`
+  **minus FP32R** (sources cannot be the round-mode partial fp32 type).
 * **Int-signedness (`s3s3d3_tt_valid_int_signness`):** *only* applies when `op` is an int-aluop.
   A signed int op requires `src0`/`src1`/`out` **all signed-int**; an unsigned int op requires
   all three **unsigned-int**. (Shared ops accept either, consistently across all three.)
-  `[HIGH/OBSERVED]`
 * **BITVEC op (`0x51`):** `out_dtype` **must** be a valid INT dtype (`s3s3d3_tt_dtype` =>
   `is_valid_int_dtype(out)` — bitvec ops are integer-only). And `s3s3d3_tt_src_dst_dtype`
   requires `src0 == src1 == out` (dtype identity) — **except** for the shift sub-case below.
-  `[HIGH/OBSERVED]`
 
 ```c
 // s3s3d3_tt_src_dst_dtype(i)  — bitvec opcode only
