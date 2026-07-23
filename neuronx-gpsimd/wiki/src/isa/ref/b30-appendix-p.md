@@ -25,6 +25,7 @@ Two deliverables on one page:
 
 Confidence tags per the project model: `[HIGH/OBSERVED]` = read-from-byte / proven-by-tooling,
 `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — the two frames, and which number this page pins.** There are **two** rosters and they differ by a
 > documented **fold**. The **shipped runtime roster** is the set of mnemonics that own at least one encode
@@ -32,20 +33,20 @@ Confidence tags per the project model: `[HIGH/OBSERVED]` = read-from-byte / prov
 > **pre-fold TIE-DB roster** is the larger set the assembler's decode descriptor enumerates including the
 > non-emittable scaffolding — **1607** mnemonics over **12642** `<OPCODEDEF>` placements. Every count below
 > is reproduced from `nm` (never a decompile grep, which inflates 2–12×). The exact commands are shown
-> inline. `[HIGH/OBSERVED]`
+> inline.
 
-> **NOTE — address arithmetic re-confirmed this pass.** `libisa-core.so` (9 690 712 B, ET_DYN x86-64, **not
-> stripped**). `readelf -SW` this pass: `.text` (VMA `0x312c10` ↔ file `0x312c10`) and `.rodata`
+> **NOTE — address arithmetic.** `libisa-core.so` (9 690 712 B, ET_DYN x86-64, **not
+> stripped**). Per `readelf -SW`: `.text` (VMA `0x312c10` ↔ file `0x312c10`) and `.rodata`
 > (VMA `0x3b6e40` ↔ file `0x3b6e40`) are **VMA == file-offset**, so `objdump -d` of the encode thunks and
 > of `num_encode_fns` reads live bytes directly. `.data` (VMA `0x764040` ↔ file `0x564040`) carries the
 > per-binary delta **`0x200000`** — **not** the `0x400000` seen in libtpu — so any walk of the
 > `Opcode_*_args` operand-descriptor leaves resident in `.data` must subtract `0x200000`. The config DLLs
 > are under `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/` (gitignored; reach with
-> `fd --no-ignore` or an absolute path). `[HIGH/OBSERVED]`
+> `fd --no-ignore` or an absolute path).
 
 ---
 
-## 0. Headline `[HIGH/OBSERVED]`
+## 0. Headline
 
 Batch 30 = the **49 residual mnemonics** that belong to no `<SEMANTIC>` group. Of the 1607 distinct
 pre-fold `<OPCODEDEF>` mnemonics, **1558** are `<SEMANTIC>`-group members (the 304-group cover, zero
@@ -60,16 +61,16 @@ into three classes:
 
 So of the 49: **43 fold out** (P-a + P-c — no encode thunk, not in the shipped 1534) and **6 ship** (P-b —
 they survive the fold with an iclass and an encode thunk, but still have **no datapath**). The fence/escape
-leaves are the *only* no-datapath mnemonics in the entire shipped runtime roster. `[HIGH/OBSERVED]`
+leaves are the *only* no-datapath mnemonics in the entire shipped runtime roster.
 
 The final tally (§3): **1174** IVP-vector (B01–B24) + **384** base-Xtensa (B25–B29) + **49** Appendix P
 (B30) = **1607** distinct mnemonics — pre-fold exact; folds to the **1534** shipped roster the runtime DLL
 carries (`Δ = +73`). The partition is a perfect non-overlapping cover: 0 mnemonics in >1 batch, 0 residual
-unassigned. `[HIGH/OBSERVED]`
+unassigned.
 
 ---
 
-## 1. Roster derivation — the exact 49 `[HIGH/OBSERVED]`
+## 1. Roster derivation — the exact 49
 
 ### 1.1 The two rosters, both from `nm`
 
@@ -109,7 +110,7 @@ P    = ALL − SEM                                          #   49  (Batch 30)
 ```
 
 `|ALL| = 1607`, `|SEM| = 1558`, `|P| = 49`, `SEM ∩ P = ∅`. The 304 semantic groups have zero
-cross-membership. `[HIGH/OBSERVED]`
+cross-membership.
 
 The 49, sorted, with class:
 
@@ -129,7 +130,7 @@ The 49, sorted, with class:
 | `SYNCT`   | P-a | `WSR`    | P-a | `WUR`    | P-a | `XSR`    | P-a |
 | `XUR`     | P-c | | | | | | |
 
-**37 interior (P-a) + 6 fence/escape (P-b) + 6 terminal (P-c) = 49.** `[HIGH/OBSERVED]`
+**37 interior (P-a) + 6 fence/escape (P-b) + 6 terminal (P-c) = 49.**
 
 ### 1.3 The no-datapath proof — three independent binary signatures
 
@@ -152,13 +153,13 @@ done
 Each P-b leaf owns **exactly one** thunk, in `Slot_inst` (the bare 24-bit base-Xtensa instruction slot — a
 *scalar* slot, not a FLIX vector slot): e.g. `Opcode_isync_Slot_inst_encode`,
 `Opcode_simcall_Slot_inst_encode`. The 43 fold-out mnemonics have **zero** thunks — they never assemble to
-a standalone instruction, so the runtime never builds an encoder for them. `[HIGH/OBSERVED]`
+a standalone instruction, so the runtime never builds an encoder for them.
 
 **(ii) No value leaf** (`libfiss-base.so`). The instruction-set value functions are
 `module__xdref_<mnemonic>_<widths>` leaves (e.g. `module__xdref_add_16_16_16`). The DLL holds **864** such
 leaves (`nm libfiss-base.so | rg -c 'module__xdref_'`). **None of the 49** residual mnemonics has an xdref
 leaf — including the 6 P-b fences. A fence *encodes* (signature i) but *computes nothing* (signature ii):
-its effect is a pipeline-ordering constraint, not a register/memory value. `[HIGH/OBSERVED]`
+its effect is a pipeline-ordering constraint, not a register/memory value.
 
 **(iii) Assembler rejection** (device oracle, `xtensa-elf-as`, `XTENSA_CORE=ncore2gp`). The P-a interior
 nodes are not emittable mnemonics at all. The assembler classifies them as decode-tree format names, not
@@ -170,11 +171,11 @@ $ printf '\trsr\n'  | xtensa-elf-as     →  Error: not enough operands (0) for 
 ```
 
 `QRST` is rejected outright (pure interior node). `RSR` exists only as a generic carrier whose concrete
-`RSR.<SR>` *children* assemble — the bare interior name never stands alone. `[HIGH/OBSERVED]`
+`RSR.<SR>` *children* assemble — the bare interior name never stands alone.
 
 **Placement count.** Each of the 49 contributes **exactly 1** `<OPCODEDEF>` placement — they are single
 base-Xtensa decode nodes, not FLIX-slot-replicated leaves (contrast a vector ALU op spread over 17–42 slot
-placements). `Σ residual placements = 49`. `[HIGH/OBSERVED]`
+placements). `Σ residual placements = 49`.
 
 ---
 
@@ -187,10 +188,10 @@ signature + architectural effect**. Words below are 24-bit base-Xtensa, quoted *
 folded field constant; the device `objdump`/`as` regroups the same bytes little-endian (e.g. MSB-first
 `0x0020f0` ↔ objdump byte-grouping `f02000`) — same physical word.
 
-### 2.1 P-b — the 5 pipeline-ordering sync fences (shipped) `[HIGH/OBSERVED]`
+### 2.1 P-b — the 5 pipeline-ordering sync fences (shipped)
 
 All five live under the `SYNC`/`SYNCT` subtree of `ST0 ← RST0 ← QRST` (`op0=0, op1=0, op2=0, r=2`); the
-`SYNCT` `t`-field discriminates the variant. Round-tripped this pass through the device assembler and
+`SYNCT` `t`-field discriminates the variant. Round-tripped through the device assembler and
 disassembler (`xtensa-elf-as` then `xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`):
 
 | mnemonic | iclass | decode chain | word (MSB-first) | as → objdump |
@@ -205,24 +206,24 @@ disassembler (`xtensa-elf-as` then `xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`)
 * **OPERANDS** — `ISYNC`/`RSYNC`/`ESYNC`/`DSYNC` none architectural (`RSYNC`/`ESYNC`/`DSYNC` carry a
   `gen_sig` `XTSYNC` pipeline pseudo-state, not a regfile operand). `FSYNC` takes an 8-bit immediate
   selector (`imms8`), so `fsync 0` is the canonical encoding (`0x002800`); a bare `fsync` is an assembler
-  error ("too few operands"). `[HIGH/OBSERVED]`
+  error ("too few operands").
 * **STATE / EXC** — none. These are base-ISA ordering ops, not vector-coprocessor ops (no `CPENABLE`, no
   `Coprocessor1Exception`).
 * **SEMANTICS** — pipeline **ordering only**, no register/memory side-effect: `ISYNC` = instruction-fetch
   sync (flush prefetch after self-modifying code / IRAM update); `DSYNC` = data/load-store sync; `ESYNC` =
   execution sync; `RSYNC` = register-write (special-register) sync; `FSYNC` = fetch/format sync
   (immediate-qualified). The full semantics *are* "drain/order the pipeline at this barrier" — there is no
-  datapath to render. Categorical, **not** a coverage gap. `[HIGH/OBSERVED]`
+  datapath to render. Categorical, **not** a coverage gap.
 * **TIMING** — no `<INSTR_SCHEDULE>` body; a fence has no USE/DEF stage delta, only a funcUnit ordering
-  constraint. `[HIGH/OBSERVED]`
+  constraint.
 
 > **NOTE — the SYNCT siblings are *not* in Batch 30.** The other children of `SYNCT` — `NOP` (`0x0020f0`),
 > `MEMW` (`0x0020c0`), `EXTW` (`0x0020d0`), `EXCW` (`0x002080`) — **are** `<SEMANTIC>`-grouped
 > (`xt_sem_sync` / `xt_core`) and resolved in the base batches B27/B29. They were spot-confirmed bit-exact
 > on the same oracle run (`f02000 → nop`, `c02000 → memw`, `d02000 → extw`, `802000 → excw`). Only the 5
-> fences fall out of the semantic cover into Appendix P. `[HIGH/OBSERVED]`
+> fences fall out of the semantic cover into Appendix P.
 
-### 2.2 P-b — `SIMCALL` (simulator-call escape; shipped) `[HIGH/OBSERVED]`
+### 2.2 P-b — `SIMCALL` (simulator-call escape; shipped)
 
 | field | value |
 |---|---|
@@ -238,10 +239,10 @@ disassembler (`xtensa-elf-as` then `xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`)
 * **SEMANTICS** — host-trap escape used by the instruction-set simulator (FISS) to invoke a host service;
   **no architectural datapath** on real silicon (a no-op / trap on the device). It ships (encode thunk
   `Opcode_simcall_Slot_inst_encode`, iclass present) but has no xdref value leaf — the canonical
-  "encodes, computes nothing" residual. Categorical. `[HIGH/OBSERVED]`
+  "encodes, computes nothing" residual. Categorical.
 * **TIMING** — no pipeline body.
 
-### 2.3 P-c — the 6 reserved / terminal decode placeholders (not shipped) `[HIGH/OBSERVED]`
+### 2.3 P-c — the 6 reserved / terminal decode placeholders (not shipped)
 
 These pin a major/sub-opcode constant but enable **no child** and **no body** in this config — empty decode
 terminals (absent-feature or customer-TIE placeholders). All six have no encode thunk, no xdref leaf, no
@@ -260,7 +261,7 @@ Pure reserved decode scaffolding — not in the shipped 1534 (fold-out). The "ab
 is **inferred** from `0` enabled children + `0` body: the major-opcode cell exists for ISA-format
 completeness; the feature unit is not instantiated in the Cairo config. `[MED/INFERRED]`
 
-### 2.4 P-a — the 37 decode-tree interior nodes (not shipped; pure dispatch) `[HIGH/OBSERVED]`
+### 2.4 P-a — the 37 decode-tree interior nodes (not shipped; pure dispatch)
 
 Each is a **non-leaf** node: it constrains an opcode-field constant and names a set of child opcodes. By
 construction it carries no instruction body — its field constraint is inherited by every descendant leaf,
@@ -314,7 +315,6 @@ wrapper name never assembles, only its `.<SR>` children do:
 
 Oracle spot-check of the **concrete** (semantic) leaves: `0x03ea00 → rsr.ccount a0`,
 `0x13e000 → wsr.cpenable a0` — the wrapper interior names `RSR`/`WSR`/`XSR`/`RUR`/`WUR` never stand alone.
-`[HIGH/OBSERVED]`
 
 **Branch / call / immediate sub-groups:**
 
@@ -336,11 +336,11 @@ Oracle spot-check of the **concrete** (semantic) leaves: `0x03ea00 → rsr.ccoun
 
 For **all 37**: `GROUP = none`, `ICLASS = none` (interior), `STATE/EXC = none`,
 `SEMANTICS = "dispatch to children (no body)"`, `TIMING = n/a`. The folded word is the major/sub-opcode
-prefix every descendant inherits; it is **not** independently emittable. `[HIGH/OBSERVED]`
+prefix every descendant inherits; it is **not** independently emittable.
 
 ---
 
-## 3. Final ISA-coverage tally — all 30 batches summed + reconciled `[HIGH/OBSERVED]`
+## 3. Final ISA-coverage tally — all 30 batches summed + reconciled
 
 ### 3.1 The 30-batch partition (distinct mnemonics per batch)
 
@@ -382,7 +382,6 @@ Check: `243+232+195+56+44+42+33+32+31+30+29+28+27+27+24+21+18+18+14+8+6+6+5+2+2+
 > `1174 − 1065 = 109` = the B24 scalar-FP population, which the shipped frame counts in the **469 scalar**
 > axis, not the vector axis. So `1174` (pre-fold IVP, this §3 frame) and `1065` (shipped vector,
 > [B24](b24-composite.md) §7 frame) are **the same partition viewed in two frames**, not a disagreement.
-> `[HIGH/OBSERVED]`
 
 **Base-Xtensa (B25–B29).** The non-ivp / non-residual semantic membership, **384** mnemonics spread over
 278 base semantic groups (many singletons — each `RSR.X`/`WSR.X`/`XSR.X` concrete SR form is its own
@@ -408,7 +407,7 @@ B25–B29 split is by **package/function**, not by group:
 > **360** (`469 scalar − 109 B24 scalar-FP`). They bridge exactly: `384 − 24 = 360`, where the **24** is the
 > `xt_wide_branch` `_w15` branch set that is pre-fold-only in this base region (the fold-out the §3.4 table
 > places at "B28/base"). The 6 virtualops + 43 no-body fold-out members live in the B25/B30 slices, not in
-> this base subtotal. Same partition, two frames. `[HIGH/OBSERVED]`
+> this base subtotal. Same partition, two frames.
 
 ### 3.2 Grand total — distinct mnemonics (pre-fold frame)
 
@@ -418,8 +417,6 @@ B25–B29 split is by **package/function**, not by group:
 | base-Xtensa | B25–B29 | 384 |
 | Appendix P | B30 | 49 |
 | **GRAND TOTAL** | | **1607** == \|distinct `<OPCODEDEF>`\| **EXACT** |
-
-`[HIGH/OBSERVED]`
 
 ### 3.3 Placement reconciliation (pre-fold `<OPCODEDEF>` frame)
 
@@ -434,9 +431,8 @@ Each mnemonic occupies 1..42 (mnemonic × format × slot) placements:
 
 IVP ops are FLIX-replicated across 14–17 slots each → high placement density; base-Xtensa ops are mostly
 single 24-bit placements; the 49 residual are exactly 1 placement each (decode nodes, never slot-scattered).
-`[HIGH/OBSERVED]`
 
-### 3.4 1607 pre-fold ↔ 1534 shipped reconciliation (the +73 fold) `[HIGH/OBSERVED]`
+### 3.4 1607 pre-fold ↔ 1534 shipped reconciliation (the +73 fold)
 
 The TIE-DB roster (**1607**) is the pre-fold superset; the binary runtime roster (the encode-thunk set,
 **1534**) is the shipped set. `Δ = 1607 − 1534 = +73` fold-out, with **0 shipped-only** → 1534 is a **clean
@@ -469,7 +465,6 @@ Of Batch 30's 49: **43 fold out** (= P-a 37 + P-c 6, no encode thunk) + **6 ship
 `DSYNC/ESYNC/FSYNC/ISYNC/RSYNC/SIMCALL` — they survive the fold with an iclass and an encode thunk, but have
 no datapath). So among the shipped 1534, the **only** no-datapath members are these 6 fences/escape
 (1528 bit-precise datapath ops + 6 categorical fences). No shipped datapath mnemonic lacks a body.
-`[HIGH/OBSERVED]`
 
 The shipped split is nm-direct: `1534 = 469 scalar + 1065 vector` with `num_encode_fns() = 0x3119 = 12569`
 opcode×slot thunks (§1.1).
@@ -485,25 +480,25 @@ batch (1558 by semantic group → B01–B29; 49 residual → B30). No uncovered 
 * **(iii) PLACEMENT COVER** — `Σ placements = 12642 (10358 + 2235 + 49)`. ✓
 
 The 30-batch partition is a **perfect, complete, non-overlapping cover** of the full GPSIMD / Vision-Q7
-`ncore2gp` TIE instruction set. `[HIGH/OBSERVED]`
+`ncore2gp` TIE instruction set.
 
 ---
 
-## 4. Adversarial self-verification — the 5 load numbers re-challenged against `nm`
+## 4. Adversarial self-verification — the 5 load numbers checked against `nm`
 
-Every figure re-run this pass from the shipped DLLs (`ISA = …/config/libisa-core.so`,
-`FISS = …/config/libfiss-base.so`):
+The five headline figures, each with the command that produces it from the shipped DLLs
+(`ISA = …/config/libisa-core.so`, `FISS = …/config/libfiss-base.so`). Every row is `[HIGH/OBSERVED]`:
 
 | # | claim | command | result | verdict |
 |---|---|---|---|---|
-| 1 | shipped roster total = 1534 | `nm $ISA \| rg -o 'Opcode_(.+)_Slot_.+_encode' -r '$1' \| sort -u \| wc -l` | `1534` | **PASS** `[HIGH/OBSERVED]` |
-| 2 | scalar/vector split = 469 / 1065 | same, then `rg -vc '^ivp'` / `rg -c '^ivp'` | `469` / `1065` | **PASS** `[HIGH/OBSERVED]` |
-| 3 | placement total = 12569 = `num_encode_fns()` | `nm $ISA \| rg -c 'Opcode_.+_Slot_.+_encode'`; `objdump -d` @`0x3b6130` → `mov $0x3119` | `12569` = `0x3119` | **PASS** `[HIGH/OBSERVED]` |
-| 4 | residual = 49 = 6 fence (encode thunk present) + 43 fold-out (no encode thunk) | scan 49 vs encode-mnemonic set | 6 present, 43 absent | **PASS** `[HIGH/OBSERVED]` |
-| 5 | fold delta = +73 (mnemonic) = +73 (placement) | `1607 − 1534`; `12642 − 12569` | `73` = `73` | **PASS** `[HIGH/OBSERVED]` |
+| 1 | shipped roster total = 1534 | `nm $ISA \| rg -o 'Opcode_(.+)_Slot_.+_encode' -r '$1' \| sort -u \| wc -l` | `1534` | **PASS** |
+| 2 | scalar/vector split = 469 / 1065 | same, then `rg -vc '^ivp'` / `rg -c '^ivp'` | `469` / `1065` | **PASS** |
+| 3 | placement total = 12569 = `num_encode_fns()` | `nm $ISA \| rg -c 'Opcode_.+_Slot_.+_encode'`; `objdump -d` @`0x3b6130` → `mov $0x3119` | `12569` = `0x3119` | **PASS** |
+| 4 | residual = 49 = 6 fence (encode thunk present) + 43 fold-out (no encode thunk) | scan 49 vs encode-mnemonic set | 6 present, 43 absent | **PASS** |
+| 5 | fold delta = +73 (mnemonic) = +73 (placement) | `1607 − 1534`; `12642 − 12569` | `73` = `73` | **PASS** |
 
 Supporting: `nm $FISS \| rg -c 'module__xdref_'` = **864** value leaves, **none** named for any of the 49
-residual mnemonics (no-datapath, signature ii). `[HIGH/OBSERVED]`
+residual mnemonics (no-datapath, signature ii).
 
 ---
 
@@ -513,12 +508,12 @@ residual mnemonics (no-datapath, signature ii). `[HIGH/OBSERVED]`
 > that own an encode thunk (`Opcode_<m>_Slot_inst_encode`) **and** have **no** `module__xdref_*` value leaf.
 > A reimplementation must build an *encoder* for them (they assemble to real bytes and round-trip on the
 > device oracle) but **no value function** — their architectural effect is a pipeline-ordering / host-trap
-> constraint, not a register/memory write. `[HIGH/OBSERVED]`
+> constraint, not a register/memory write.
 
 > **QUIRK — interior nodes are format names, not opcodes.** `xtensa-elf-as` rejects bare `QRST` as "unknown
 > opcode or format name" and rejects bare `RSR` for missing operands — the 37 P-a nodes never assemble to a
 > standalone instruction. A from-scratch assembler must model them as **decode-tree internal nodes** (each
-> pinning a major/sub-opcode field that its children inherit), *not* as emittable mnemonics. `[HIGH/OBSERVED]`
+> pinning a major/sub-opcode field that its children inherit), *not* as emittable mnemonics.
 
 > **NOTE — pre-fold vs post-fold, the +73.** The partition is defined over the **1607** pre-fold TIE roster;
 > the runtime ships **1534**. The `+73` fold is fully accounted: `24 wide-branch macro forms + 6 virtualops
@@ -526,19 +521,19 @@ residual mnemonics (no-datapath, signature ii). `[HIGH/OBSERVED]`
 > naming is CARRIED, see §3.4 correction).
 > The mnemonic fold and the placement fold are both exactly 73 because every fold-out op is a single
 > placement. Do not confuse the two totals: count claims about the *shipped engine* use 1534/12569; count
-> claims about the *decode DB partition* use 1607/12642. `[HIGH/OBSERVED]`
+> claims about the *decode DB partition* use 1607/12642.
 
 > **CORRECTION / naming trap (carried from [B24](b24-composite.md)).** `IVP_ADDMOD16U` is an `ivp_`-prefixed
 > mnemonic — so it counts toward the **1065 vector** subtotal by prefix — even though its semantics are a
 > *scalar* AR `(a + b) mod 2^16` wrap-add. The prefix, not the datapath shape, decides the scalar/vector
 > split (`rg '^ivp'`). `nm $ISA … \| rg -i addmod` = exactly `ivp_addmod16u`. A tally that classified by
-> semantics rather than prefix would mis-split the 469/1065 boundary. `[HIGH/OBSERVED]`
+> semantics rather than prefix would mis-split the 469/1065 boundary.
 
 > **NOTE — the SR/UR wrapper aliasing.** `RSR`/`WSR`/`XSR`/`RUR`/`WUR` appear in **both** the residual (the
 > bare interior wrapper, B30) **and** the base batches (their concrete `.<SR>` children, B27/B29). This is
 > not a cross-membership violation: the residual mnemonic is the *wrapper node name*; the semantic-grouped
 > mnemonics are the distinct `RSR.CCOUNT`/`WSR.CPENABLE`/… child names. They are different strings in the
-> `<OPCODEDEF>` roster, each assigned to exactly one batch. `[HIGH/OBSERVED]`
+> `<OPCODEDEF>` roster, each assigned to exactly one batch.
 
 > **LOW — per-fence funcUnit scope.** Which exact pipeline stages each barrier drains is categorical
 > (system/sync semantics), not bit-traced — there is no datapath body to trace. Correct, not a gap. `[LOW]`
@@ -560,4 +555,4 @@ with no gap and no overlap.
 This page feeds the engine-wide [coverage-tally](../core/coverage-tally.md) (the P2.10 roll-up) and closes
 the [30-batch partition](template-and-partition.md). The vector subtotal it relies on is closed at
 [B24](b24-composite.md) (1065 `ivp_`, zero residual); the base subtotal across
-[B25](b25-xt-core.md)–[B29](b29-xt-system2.md) supplies the 384. `[HIGH/OBSERVED]`
+[B25](b25-xt-core.md)–[B29](b29-xt-system2.md) supplies the 384.
