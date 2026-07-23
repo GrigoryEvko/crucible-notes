@@ -8,7 +8,7 @@ A single `neuronx_cc` invocation is a **process pipeline**: the driver parses th
 
 The job pipeline is assembled in one place: `CompileCommand.buildPipeline` (`0x619d0`, `CompileCommand.py:1146–1349`) concatenates three collector sub-lists — `collectFrontendPipeline` + `collectWalrusPipeline` + `collectBackendPipeline` — into a flat name list, which `JobRegistry.makePipeline` (`0xbb80`) turns into `Job` instances, and `runPipeline` (`0x7a3a0`) executes sequentially. The string list those three collectors return **is** the canonical compile order. There is no hidden scheduler; the pipeline shape is exactly what those three functions concatenate.
 
-Two facts shape everything downstream and are easy to get wrong. First, the MLIR front half (`hlo2penguin`, emitted as the `HLOToTensorizer` job) runs **first** — before the `hlo-opt`-backed `Frontend` job and before the golden reference evaluator — so the "optimize HLO, then lower to Penguin" mental order does not match the process order. Second, `WalrusDriver` is a **single** Job whose ~18 backend stages (`lsa`, `coloring`, `pre_sched`, …) are forwarded as `--walrus-passes` to one `walrus_driver` process, not separate jobs.
+Two facts shape everything downstream and are easy to get wrong. First, the MLIR front half (`hlo2penguin`, emitted as the `HLOToTensorizer` job) runs **first** — before the in-process `Frontend` job and before the golden reference evaluator — so the "optimize HLO, then lower to Penguin" mental order does not match the process order. Second, `WalrusDriver` is a **single** Job whose ~18 backend stages (`lsa`, `coloring`, `pre_sched`, …) are forwarded as `--walrus-passes` to one `walrus_driver` process, not separate jobs.
 
 | | |
 |---|---|
@@ -27,7 +27,7 @@ Two facts shape everything downstream and are easy to get wrong. First, the MLIR
 |---|---|---|---|---|
 | F0 | `HLOToTensorizer` | `hlo2penguin` (forked) | always | [Part 4](../hlo-opt/) |
 | F1 | `XLAInferGoldens` / `InferGoldens` | `xla_infergoldens` / in-proc | unless `--meta-module`; `XLA*` iff `framework==XLAInterface` | [3.16](../frontend/xla-infergoldens.md) |
-| F2 | `Frontend` | `hlo-opt` (`--passes=…`) | always | [Part 4](../hlo-opt/) |
+| F2 | `Frontend` | in-process (`neuronxcc.starfish.penguin.Penguin`) | always | [3.2](../frontend/compilecommand-pipeline.md) |
 | F3 | `StaticIOTranspose` | in-process Python (`io_transposes.json`) | unless `--meta-module` | [3.15](../frontend/static-io-transpose.md) |
 | W0 | `WalrusDriver` | `walrus_driver` → `libwalrus.so` | always | [Part 8](../walrus/) |
 | B0 | `Backend` | emits `backend.bir` | legacy-standalone flow only | [Part 8](../walrus/) |
@@ -36,16 +36,18 @@ Two facts shape everything downstream and are easy to get wrong. First, the MLIR
 
 > **GOTCHA — `WalrusDriver` is one Job, not a chain.** `collectWalrusPipeline` (`0x29e00`, py 1655–1725) returns the single-element list `["WalrusDriver"]`. The ~18 stage names it appears to contain — `lsa`, `coloring`, `unroll`, `lower_ac`, `pre_sched`, `partitioner`, `bir_splitter`, `coloring_allocator` / `linear_scan_allocator`, `dma_optimization`, `anti_dependency_analyzer`, `vn_splitter`, `post_sched`, `tensorcopy_accel`, `dep_reduction`, `print_metrics`, and finally `birverifier` / `bir_sim` — are accumulated into `self.walrus_passes` and handed to the one `walrus_driver` process as `--walrus-passes`. They are *backend pass* names, not driver Jobs. See [Part 8](../walrus/).
 
+> **GOTCHA — the `Frontend` job does not fork `hlo-opt`.** Every job that forks a tool names that tool in its own module's string pool — `hlo2penguin` in `jobs/HLOToTensorizer.so`, `walrus_driver` in `jobs/WalrusDriver.so`, `xla_infergoldens` in `jobs/XLAInferGoldens.so`, `hlo-neff-wrapper` in `jobs/NeffWrapper.so`. The literal `hlo-opt` occurs in exactly **one** file in the whole wheel: the ELF `neuronxcc/starfish/bin/hlo-opt` itself (`grep -rl --binary-files=text hlo-opt neuronxcc/`). `jobs/Frontend.so` names no tool, carries no `Popen`/`Job.shellCommand` reference, and imports `neuronxcc.starfish.penguin.Penguin` with the entry names `runXLAFrontend` / `runPenguin` — it runs the HLO/penguin frontend **in-process**. `hlo-opt` is a standalone pass-driver ELF wired to no Job; the [`hlo-opt` pass registry](../hlo-opt/pass-registry.md) documents passes reachable through that ELF, not through F2.
+
 > **GOTCHA — `--optlevel` does not add or remove top-level jobs.** It is a string (`"0".."3"`, default `"2"`) that tunes the `--walrus-passes` set and the `enable_internal_*` flags the collectors read. Only indirectly — when it flips `enable_internal_new_backend` or selects the modular / bir-linker flow — does it change which jobs appear. The Backend sub-list (B0–B2) is suppressed entirely in the modular, bir-linker, and legacy-standalone flows; in the common modular path `walrus_driver`'s output is consumed directly and `Backend`/`Kelper` never run.
 
 ## The IR descent
 
-Underneath the job schedule, the program descends six IR levels. The mapping to jobs is not one-to-one — the heavy HLO→Penguin lowering and HLO optimization are split across the `HLOToTensorizer` (hlo2penguin) and `Frontend` (hlo-opt) jobs, and the exact division of HLO-level optimization between those two invocations is not fully resolved from the binaries (both carry `runXLAFrontend` / `runPenguin` entry strings). What *is* firm is the level sequence and the binary that owns each.
+Underneath the job schedule, the program descends six IR levels. The mapping to jobs is not one-to-one — the heavy HLO→Penguin lowering and HLO optimization are split across the forked `HLOToTensorizer` (`hlo2penguin`) job and the in-process `Frontend` job, and the exact division of HLO-level optimization between the two is not fully resolved from the binaries (both reach `runXLAFrontend` / `runPenguin` entry names). What *is* firm is the level sequence and the code that owns each.
 
 ```text
   framework graph ──libneuronpjrt──►  XLA HLO  (HloModule protobuf)
                                           │
-        ┌─────────────── hlo-opt / hlo2penguin (the F0+F2 jobs) ───────────────┐
+        ┌────────── hlo2penguin (F0, forked) + Frontend (F2, in-process) ──────┐
         │  HLO / MHLO / StableHLO / CHLO  →  Penguin Python IR (.py emission)   │
         │  collectives→custom-call, layout, quantize legalize, NeuronOpFusion,  │
         │  TensorizerLegalization, PenguinizeFunctions, MhloToPythonPrinter     │
@@ -70,7 +72,7 @@ The six levels, the dialect each speaks, and the part that owns the full detail:
 
 | IR level | Form | Owned by | Part |
 |---|---|---|---|
-| HLO | `HloModule` protobuf | `hlo-opt` `--passes` | [Part 4](../hlo-opt/) |
+| HLO | `HloModule` protobuf | `hlo2penguin` (F0) + the in-process `Frontend` (F2); the same pass family is also drivable standalone by the `hlo-opt` ELF | [Part 4](../hlo-opt/) |
 | MHLO / StableHLO / CHLO | MLIR dialects | `hlo2penguin` ingestion | [Part 4](../hlo-opt/) |
 | Penguin IR | tile-and-loop SSA (Python+Cython) | `penguin.*`; `pelican::Expr` index algebra | [Part 5](../penguin/) |
 | NKI | traced kernel → Penguin IR | `KernelBuilder.NeuronCodegen` (unstripped) | [Part 6](../nki/) |
@@ -85,7 +87,7 @@ The six levels, the dialect each speaks, and the part that owns the full detail:
 
 ## Two traps in the common mental model
 
-> **GOTCHA — the job order is not "optimize then lower".** `collectFrontendPipeline` (py 1636–1648) emits `HLOToTensorizer` (hlo2penguin) as F0, the golden evaluator as F1, and the `hlo-opt`-backed `Frontend` job as F2. Whatever HLO-level optimization `Frontend` performs is scheduled *after* the tensorizer job, not before it.
+> **GOTCHA — the job order is not "optimize then lower".** `collectFrontendPipeline` (py 1636–1648) emits `HLOToTensorizer` (hlo2penguin) as F0, the golden evaluator as F1, and the in-process `Frontend` job as F2. Whatever HLO-level optimization `Frontend` performs is scheduled *after* the tensorizer job, not before it.
 
 > **GOTCHA — `Watchpoint`, `SaveTemps`, and `BIRVerifier` are not collector jobs.** `Watchpoint` appears only as a name-equality special-case in `buildPipeline`'s post-`makePipeline` loop (`_Pyx_PyUnicode_Equals(name, "Watchpoint")` at `0x619d0`); none of the three collectors emit it, and the other two are debug/aux jobs wired by separate paths. Building the pipeline from the three collectors will not produce any of them.
 

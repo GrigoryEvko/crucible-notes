@@ -202,9 +202,9 @@ The gate envelope and per-step gating:
 
 **Modular / bir-linker / legacy-standalone-off flow:** backend sub-list empty; the schedule ends at `WalrusDriver` (its output consumed downstream).
 
-> **GOTCHA — `Frontend` runs the HLO frontend in-process; it does not fork `hlo-opt`.** `jobs/Frontend.so` contains no `hlo-opt` / `opt-driver` / `hlo_opt` string and no `Popen`: the HLO/penguin frontend runs in-process through `neuronxcc.starfish.penguin.Penguin` (`runPenguin` / `runXLAFrontend`), and `hlo-opt` ships as a standalone debug pass-driver ELF wired to no driver Job. `StaticIOTranspose` is likewise in-process — it writes `io_transposes.json` with Python's `json` module, not via an ELF. This page's table marks F2/F3 in-process for that reason.
+> **GOTCHA — `Frontend` runs the HLO frontend in-process; it does not fork `hlo-opt`.** Forking jobs name their tool: `hlo2penguin` appears in `jobs/HLOToTensorizer.so`, `walrus_driver` in `jobs/WalrusDriver.so`, `xla_infergoldens` in `jobs/XLAInferGoldens.so`, `hlo-neff-wrapper` in `jobs/NeffWrapper.so`. `grep -rl --binary-files=text hlo-opt neuronxcc/` over the unpacked wheel returns exactly one path — `neuronxcc/starfish/bin/hlo-opt`, the ELF itself — so **no** driver module references that tool by name. `jobs/Frontend.so` additionally carries no `Popen` and no reference to `Job.shellCommand` (the base-class spawn helper in `driver/Job.so`, which `WalrusDriver.so` and `XLAInferGoldens.so` do reference); it imports `neuronxcc.starfish.penguin.Penguin` and exposes `runXLAFrontend` / `runPenguin` / `runSingleInput`. `hlo-opt` ships as a standalone pass-driver ELF wired to no driver Job. `StaticIOTranspose` is likewise in-process — it writes `io_transposes.json` with Python's `json` module, not via an ELF. This page's table marks F2/F3 in-process for that reason.
 >
-> *Anchors: negative string evidence (no `hlo-opt`/`opt-driver`/`hlo_opt` literal) plus the absent `Popen`.*
+> *Anchors: the whole-wheel `hlo-opt` grep (one hit, the ELF); the four tool-name hits in the four forking job modules; the `shellCommand` reference counts per job module (`Frontend` 0, `WalrusDriver` 4, `XLAInferGoldens` 4); `neuronxcc.starfish.penguin.Penguin` + `runXLAFrontend` + `runPenguin` in `jobs/Frontend.so`.*
 
 ---
 
