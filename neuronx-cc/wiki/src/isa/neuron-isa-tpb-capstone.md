@@ -282,18 +282,23 @@ typedef struct {                                     /* 64 bytes total          
     uint8_t  in_dtype;          /* +0x20  ifmap/in DTYPE (ISA wire tag)            */
     uint8_t  perf_sel;          /* +0x21  matmul perf-mode selector 0/2/3          */
     uint8_t  _ctl22;            /* +0x22                                           */
-    uint8_t  dst_dtype_dense;   /* +0x23  DENSE matmul PSUM-DST DTYPE (op 0x02,     */
-                                /*        CoreV2/V3) = perfModeToDstDtype; perf-opt */
-                                /*        byte on LoadStationary. [2.10]           */
+    /* DST-DTYPE OFFSET IS GENERATION-SPECIFIC — the field below is present ONLY in
+     * the CoreV2 layout. This one C struct overlays three DISTINCT per-generation
+     * bundle layouts (core_v2 INST_UNION / core_v3 S3D3_MM_STRUCT / core_v4 MX with
+     * MEM_PATTERN3D); the PSUM-DST-DTYPE byte lands at a different offset in each and
+     * the two byte positions (+0x23, +0x28) are NEVER both live. See the QUIRK below. */
+    uint8_t  dst_dtype_v2;      /* +0x23  CoreV2 DENSE matmul PSUM-DST DTYPE (op 0x02)*/
+                                /*        = perfModeToDstDtype (generateMatMul write */
+                                /*        @0x1248882). CoreV3/V4 do NOT write here — */
+                                /*        in the CoreV3 layout +0x23 is a bool flag. */
     uint8_t  row_group;         /* +0x24  PE row-tile group (CoreV2; {1,2,4,8})    */
     uint8_t  col_group;         /* +0x25  PE col-tile group (CoreV2)               */
     uint8_t  wt_base_rows;      /* +0x26  weights base partition / num_active_rows  */
     uint8_t  num_active_cols;   /* +0x27                                           */
-    /* DST DTYPE is per-generation within Family A: DENSE matmul (op 0x02, CoreV2/V3)
-     * writes it at +0x23 (perf_opt byte above); MX matmul (op 0x100A, CoreV4) writes
-     * it at +0x28. The CoreV4 is_valid_matmul_regular validator reads union+0x28;
-     * the CoreV2 validator reads union+0x23. [2.10, both reads binary-checked] */
-    uint8_t  dst_dtype_mx;      /* +0x28  MX PSUM-DST DTYPE (op 0x100A); ==6 -> bf16 nc */
+    uint8_t  dst_dtype_v3v4;    /* +0x28  CoreV3-DENSE and CoreV4-MX PSUM-DST DTYPE  */
+                                /*        (CoreV3 generateMatMul write @0x1367a5c;   */
+                                /*        CoreV4 generateMatmultMx write @0x143eded);*/
+                                /*        ==6 -> bf16 nc. CoreV2 never writes +0x28. */
     uint8_t  _ctl29[2];         /* +0x29..+0x2A                                    */
     uint8_t  accumulate;        /* +0x2B  {b0 START / b1 STOP / b2 ACCUMULATE}     */
     uint8_t  rowcol_group_v3;   /* +0x2C  CoreV3 packed (col<<8|row) lands here    */
@@ -302,7 +307,10 @@ typedef struct {                                     /* 64 bytes total          
     uint8_t  psum_zero_region;  /* +0x2F  ceil(log2 bankspan)                      */
     NEURON_ISA_TPB_MEM_PATTERN3D psum_dst;  /* +0x30  PSUM dst slot (16 B)         */
 } NEURON_ISA_TPB_BUNDLE_MATMUL;
-/* Activation/TensorScalar reuse the +0x10/+0x30 slots; their control band differs
+/* WARNING: this is a DOCUMENTATION OVERLAY of three generation-specific layouts, not a
+ *   single wire struct. `dst_dtype_v2` (+0x23) and `dst_dtype_v3v4` (+0x28) are the SAME
+ *   logical PSUM-DST-DTYPE field at two mutually-exclusive positions — see the QUIRK below.
+ * Activation/TensorScalar reuse the +0x10/+0x30 slots; their control band differs
  *   (Act: +0x20 in-dtype, +0x21 out-dtype, +0x23 act_tbl_sel; TS: +0x20/+0x21 in/out
  *    dtype, +0x22 scalar-base, +0x24 op0 ALU, +0x25 op1 ALU, +0x26 reverse). [2.1]  */
 
@@ -492,10 +500,10 @@ Seven details in this area are routinely misread, usually because a plausible-lo
 | R-3 | **`MXMEM_PATTERN1D` is a 16-byte type of which 12 bytes are written**; `+0xC..+0xF` are reserved. Counting only the meaningful bytes gives 12 and is wrong for sizing. | [2.6](mxmem-pattern1d.md) |
 | R-4 | **`INDIRECT16B`'s indirect branch does not fill the `TENSOR3D` static region.** Bytes `+0xA..+0xF` are inert (`_inert[]`), and `num@+8 = getNumIndirectIndices` (vtbl `+0x90`) with **no** ×4 scaling. | [2.7](indirect-descriptors.md) |
 | R-5 | **No descriptor sits at bundle byte `+0x48`** — that number is a `setupHeader` vtable slot, not a bundle offset. The three-contiguous-slot layout is **Family B only**. | [2.1](instruction-bundle.md) |
-| R-6 | **PSUM bank rides in the ADDR4 high bits, and `accumulate@+0x2B`, `zero-region@+0x2F`, and dst-dtype are bundle control-band bytes, not descriptor fields.** The dst slot itself stays a plain `MEM_PATTERN3D`. The dst-dtype offset is per-generation within Family A: dense matmul (op `0x02`, CoreV2/V3) at `+0x23`, MX matmul (op `0x100A`, CoreV4) at `+0x28` — see R-7. | [2.5 §4](mempattern-2d-3d.md) |
-| R-7 | **Dense-matmul dst-dtype is `+0x23`; `+0x28` belongs to the MX struct.** The CoreV2 dense encoder `generateMatMul` (`0x1248650`) writes it at `+0x23` (`mov [r15+0x23],al` @ `0x1248882`) and never touches `+0x28`, which stays pxor-zero; the CoreV2 validator `core_v2::is_valid_matmul_regular` (`0x12de340`) reads `union+0x23` (`[rsp+0xe3]`). `generateMatmultMx` (`0x143ebd0`) writes dst-dtype at `+0x28` (@ `0x143eded`) and `core_v4::is_valid_matmul_regular` (`0x14b5c60`) reads `union+0x28` (`[rsp+0x158]`, compared `==6` for the bf16 `nc` path). The two offsets are per-generation, not a contradiction. | [2.10](pe-matmul-encoding.md) |
+| R-6 | **PSUM bank rides in the ADDR4 high bits, and `accumulate@+0x2B`, `zero-region@+0x2F`, and dst-dtype are bundle control-band bytes, not descriptor fields.** The dst slot itself stays a plain `MEM_PATTERN3D`. The dst-dtype offset is per-generation within Family A: CoreV2 dense (op `0x02`) at `+0x23`; CoreV3 dense **and** CoreV4 MX (op `0x100A`) at `+0x28` — see R-7. | [2.5 §4](mempattern-2d-3d.md) |
+| R-7 | **The PSUM-dst-dtype byte moves by generation: CoreV2 at `+0x23`, CoreV3 and CoreV4 at `+0x28` — three layouts, one logical field.** The CoreV2 dense encoder `generateMatMul` (`0x1248650`) writes it at `+0x23` (`mov [r15+0x23],al` @ `0x1248882`) and never touches `+0x28`; `core_v2::is_valid_matmul_regular` (`0x12de340`) reads `union+0x23` (`[rsp+0xe3]`). The CoreV3 dense encoder `CoreV3GenImpl::generateMatMul` (`0x13643d0`) writes dst-dtype at **`+0x28`** (`mov [r13+0x28],al` @ `0x1367a5c`, e.g. `0xa`=float32) and uses `+0x23` for an unrelated boolean flag (`mov byte [r13+0x23],1` @ `0x1367778`). `CoreV4GenImpl::generateMatmultMx` (`0x143ebd0`) writes dst-dtype at `+0x28` (@ `0x143eded`) and `core_v4::is_valid_matmul_regular` (`0x14b5c60`) reads `union+0x28` (`[rsp+0x158]`, compared `==6` for the bf16 `nc` path). So "dense=`+0x23`, MX=`+0x28`" is wrong: CoreV3 dense is also `+0x28`. | [2.10](pe-matmul-encoding.md) |
 
-The `BUNDLE_MATMUL` struct above therefore carries both `dst_dtype_dense@+0x23` and `dst_dtype_mx@+0x28`; the `==6` → bf16-`nc` semantics apply to whichever offset the generation in question uses.
+> **GOTCHA — the `BUNDLE_MATMUL` C struct is a documentation overlay of three per-generation layouts, not one wire struct with two dst-dtype fields.** `dst_dtype_v2@+0x23` and `dst_dtype_v3v4@+0x28` are the **same** logical PSUM-DST-DTYPE field at two mutually-exclusive positions — no single matmul bundle populates both. The three encoders emit into three genuinely different structs: `core_v2::NEURON_ISA_TPB_INST_UNION` (dtype `+0x23`), `core_v3::NEURON_ISA_TPB_S3D3_MM_STRUCT` (dtype `+0x28`, and `+0x23` holds a *different*, boolean field), and the CoreV4 MX path built on `core_v4::NEURON_ISA_TPB_MEM_PATTERN3D` (dtype `+0x28`; `MEM_PATTERN3D` exists only in the `core_v4` namespace). Reading the overlay as one struct that "carries both" bytes at once misrepresents every generation. The `==6` → bf16-`nc` semantics apply to whichever single offset the target generation uses.
 
 ---
 
@@ -504,7 +512,7 @@ The `BUNDLE_MATMUL` struct above therefore carries both `dst_dtype_dense@+0x23` 
 1. **The `INST_UNION` is 64 B with `raw[0]` (opcode) as discriminant.** The length can never be non-16: `setupHeader` writes `byte[1] = 0x10` as a hardcoded immediate (`c6 46 01 10` — `mov byte[rsi+1],0x10`) with zero data dependence, byte-exact at `0x1172120`, and the emit skeleton `memset`s 64 and `fwrite`s `0x40`.
 2. **The three bundle-family slot offsets (A `0x10/0x30`, B `0x10/0x20/0x30`, C `0x0C/0x2C`).** These are family-fixed, not per-op. The witnesses are `lea [base+OFF]` immediately before `assignAccess<…>` — `generateMatMul` (`+0x10`/`+0x30`), `visitInstTensorTensor` (`+0x10`/`+0x20`/`+0x30`), `visitInstTensorCopy` (`+0x0C`/`+0x2C`), each cited in [2.1](instruction-bundle.md). The control band fills the one-descriptor gap each family leaves.
 3. **Descriptor sizes 8/12/16/20.** No size is off by a partition word: the four `.rodata` asserts `"ISA mem pattern {1,2,3,4}D must have {8,12,16,20} bytes to encode"` are read directly from `libwalrus.so`, giving `slot_size(N) = 4 + 4N` exactly. The partition dim folds into ADDR4 and is *not* a stride/num word.
-4. **The op→family map.** Matmul's dst does ride at `+0x30` as a `MEM_PATTERN3D`: `core_v4::is_valid_matmul_regular` decodes `[rsp+0x160] = union+0x30` as the PSUM-dst slot and `union+0x28` as its dtype byte (this is the **MX/CoreV4** struct), validated by `mm_dst_mem3d_valid_nc_v4` (symbol at `0x1447fe0` in the dynsym). The **dense** CoreV2 path instead carries the dst-dtype at `union+0x23` (`generateMatMul` write @ `0x1248882`; `core_v2::is_valid_matmul_regular` read `[rsp+0xe3]`) — the per-generation split of R-7. The accumulate/zero-region siblings at `+0x2B`/`+0x2F` are control-band bytes, not descriptor fields.
+4. **The op→family map.** Matmul's dst does ride at `+0x30` as a `MEM_PATTERN3D`: `core_v4::is_valid_matmul_regular` decodes `[rsp+0x160] = union+0x30` as the PSUM-dst slot and `union+0x28` as its dtype byte (this is the **MX/CoreV4** struct), validated by `mm_dst_mem3d_valid_nc_v4` (symbol at `0x1447fe0` in the dynsym). Only the **CoreV2** dense path carries the dst-dtype at `union+0x23` (`generateMatMul` write @ `0x1248882`; `core_v2::is_valid_matmul_regular` read `[rsp+0xe3]`); the **CoreV3** dense path already moved it to `+0x28` (`0x1367a5c`), so `+0x28` is the dst-dtype offset for both later generations — the per-generation split of R-7. The accumulate/zero-region siblings at `+0x2B`/`+0x2F` are control-band bytes, not descriptor fields.
 5. **The enum ordinals.** The dtype wire-tag table and `ISA_ADDR_INDIRECT = 0x20` both hold. The dtype→wire-tag LUT at `.rodata 0x1dfbad0` reads `03 02 10 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 0a 0b 01 0c` — index 2 → `0x10` (FP4-x4), index 6 → `0x03` (E8M0), 8/9 → `0x0E`/`0x0F`, and the alignment classes follow. The ADDR4 mode nibble `{0x00,0x20,0x40,0x60}` comes from the `& 0x60` consumer plus the `or [slot+3],0x20` encoder stamp ([2.2](addr4.md)).
 
 ---
@@ -519,7 +527,7 @@ Pinned byte-exact, consolidated from the eight sub-pages and direct binary reads
 - `MXMEM_PATTERN1D` 16-byte (12 written), data+scale ADDR4, x4-K, step-dir, scalePart; CoreV4-only; the "MX Scale Tensor can only be in SB" assert. [2.6]
 - the three indirect descriptors (bit29 marker, num source, 16/20-byte). [2.7]
 - the three slot-offset families (A `0x10/0x30`, B `0x10/0x20/0x30`, C `0x0C/0x2C`). [2.1]
-- the matmul control band (`in-dtype@+0x20`, dst-dtype `@+0x23` dense / `@+0x28` MX, `accumulate@+0x2B`, `zero-region@+0x2F`, row/col group). [2.5/2.10]
+- the matmul control band (`in-dtype@+0x20`, dst-dtype `@+0x23` CoreV2 / `@+0x28` CoreV3 & CoreV4-MX, `accumulate@+0x2B`, `zero-region@+0x2F`, row/col group). [2.5/2.10]
 - the TensorTensor (B) control band `@+0x0C..+0x0F`; the Pool/Copy (C) band `@+0x20..+0x2B`. [2.1]
 - the 64-byte semaphore record + embedded-events predicate `@+0x04`. [1.14]
 - the control/branch bundle (`comp_op@+0x0C`, regs `@+0x20/+0x21`, PC `@+0x30`).
