@@ -33,7 +33,7 @@ For reimplementation, the contract is:
 
 ## 1. The host/engine split — DebuggerCallbacks is the seam
 
-The debugger does not live where the brief's title suggests. **[CONFIRMED]** — `nm -CD libBIRSimulator.so | rg birsim::debugger` returns **zero** class typeinfos; all 287 `birsim::debugger::` dynsyms, all 38 debugger typeinfos, and the entire cppdap integration are in `libwalrus.so`. This is the correct factoring: `libBIRSimulator.so` is the pure per-opcode kernel engine ([§7.34](sim-dispatch-state.md)); `libwalrus.so` is the driver/host that *owns and drives* the engine. The debugger is a host-side concern.
+The debugger does not live in the simulator library. `nm -CD libBIRSimulator.so | rg birsim::debugger` returns **zero** class typeinfos; all 287 `birsim::debugger::` dynsyms, all 38 debugger typeinfos, and the entire cppdap integration are in `libwalrus.so`. This is the correct factoring: `libBIRSimulator.so` is the pure per-opcode kernel engine ([§7.34](sim-dispatch-state.md)); `libwalrus.so` is the driver/host that *owns and drives* the engine. The debugger is a host-side concern.
 
 The two halves are stitched together by one interface defined on the **engine** side:
 
@@ -59,7 +59,7 @@ birsim::InstVisitor::getRegState()                 @0x1aa740 (libBIRSimulator) �
 birsim::InstVisitor::getMemory() / Memory          (libBIRSimulator)          → §7.34 Memory
 ```
 
-The walrus-side `Controller` *is* the `DebuggerCallbacks` implementation. **[CONFIRMED]** — the `Controller` typeinfo is `si` (single-inheritance) onto `birsim::DebuggerCallbacks`, and `Controller::start` calls `BirSim::setDebuggerCallbacks(this)` before spawning the worker thread. So when the engine's step loop fires `onInstPtrSet`, it is calling straight into the debugger.
+The walrus-side `Controller` *is* the `DebuggerCallbacks` implementation: its typeinfo is `si` (single-inheritance) onto `birsim::DebuggerCallbacks`, and `Controller::start` calls `BirSim::setDebuggerCallbacks(this)` before spawning the worker thread. So when the engine's step loop fires `onInstPtrSet`, it is calling straight into the debugger.
 
 > **QUIRK — DAP over a tensor interpreter.** Every familiar DAP noun is remapped to a simulator concept. A *thread* is a Neuron core (`ThreadsRequest` → `getNumCores`); a *stack frame* is a BIR call frame (`SmallVector<bir::Instruction*,2>`, ≤2 inline); a *variable* is a slice of device memory rendered through an access-pattern expression; a *breakpoint* is a `bir::Instruction*`. The wire is 100% standard DAP, so an off-the-shelf IDE drives it unmodified — but what it drives is a numerical reference interpreter, not a CPU.
 
@@ -77,7 +77,7 @@ Content-Length: <N>\r\n
 <N bytes of UTF-8 JSON>
 ```
 
-The header literal is read by cppdap's `ContentReader`. **[CONFIRMED]** — `dap::ContentReader::read[abi:cxx11]() @0x1816a40` opens with a `match("Content-Length:")` then a `scan("Content-Length:")` over the byte stream; the write side is `dap::ContentWriter`. The duplex pair is `dap::ReaderWriter::create(Reader, Writer)`, bound to a transport by the `Adapter`:
+The header literal is read by cppdap's `ContentReader`: `dap::ContentReader::read[abi:cxx11]() @0x1816a40` opens with a `match("Content-Length:")` then a `scan("Content-Length:")` over the byte stream; the write side is `dap::ContentWriter`. The duplex pair is `dap::ReaderWriter::create(Reader, Writer)`, bound to a transport by the `Adapter`:
 
 ```text
 birsim::debugger::Adapter::bindio()                         @0x85b020   — stdio (default)
@@ -99,7 +99,7 @@ field("stopOnStart", TypeOf<optional<boolean>>::type()); // bound to the member 
 // OMITTED from the emitted JSON object (present-or-absent semantics).
 ```
 
-There are **201** such `BasicTypeInfo<dap::X>` registrations. **[CONFIRMED — typeinfo enumeration]** — this is the canonical count (the "213" cited in some earlier notes over-counts a dozen `TypeOf`-only primitive/`optional<>` singletons that drift with the toolchain). The breakdown:
+There are **201** such `BasicTypeInfo<dap::X>` registrations, enumerated from the typeinfo table. The breakdown:
 
 | Group | Count | What |
 |-------|-------|------|
@@ -109,7 +109,9 @@ There are **201** such `BasicTypeInfo<dap::X>` registrations. **[CONFIRMED — t
 | Named structs / scalars | 34 | `Source`, `StackFrame`, `Scope`, `Variable`, `Breakpoint`, `Capabilities`, … + `any`/`boolean`/`integer`/`number` + `LaunchRequestEx` |
 | Container TypeInfos | 58 | `optional<…>` / `vector<…>` / `variant<…>` / `map<…>` per-container descriptors (not protocol messages) |
 
-cppdap statically registers the **entire** DAP spec surface even though the debugger handles a small subset; the unused 184 types are linked but never reach a handler. See [§7.41-sibling D-R08](sim-dispatch-state.md) for the full roster.
+cppdap statically registers the **entire** DAP spec surface even though the debugger handles a small subset; the unused 184 types are linked but never reach a handler. See [the sibling dispatch page](sim-dispatch-state.md) for the full roster.
+
+> **GOTCHA — count `BasicTypeInfo`, not `TypeOf`.** Enumerating `TypeOf<…>` singletons instead yields a larger figure (around 213) because it also picks up primitive and `optional<>` descriptors that are not protocol types and that drift with the toolchain. 201 is the `BasicTypeInfo<dap::X>` count.
 
 ### 2.3 Envelope correlation
 
@@ -123,7 +125,7 @@ Impl::send(TypeInfo* req, TypeInfo* resp, void*, callback)     — emit request 
 Impl::send(TypeInfo*, void*)                                   — emit an event / response
 ```
 
-**[STRONG]** — these `(anon)::Impl::*` names come from the cppdap closure typeinfo strings; the envelope keys are cppdap-standard. The dispatch on the inbound `command` string is performed inside cppdap's `Session` (a typed handler table keyed by `TypeOf<RequestT>::type()`), not by a hand-rolled string switch in the debugger — the debugger registers *typed* handlers and cppdap routes the `command` field to them.
+These `(anon)::Impl::*` names are recovered from the cppdap closure typeinfo strings rather than from a decompile; the envelope keys are cppdap-standard. The dispatch on the inbound `command` string is performed inside cppdap's `Session` (a typed handler table keyed by `TypeOf<RequestT>::type()`), not by a hand-rolled string switch in the debugger — the debugger registers *typed* handlers and cppdap routes the `command` field to them.
 
 ---
 
@@ -141,7 +143,7 @@ DisconnectRequest   → sub_85C6D0   (Controller::kill + release Adapter::run)
 
 ### 3.2 Debug handlers — `registerDebugger @0x85a860` (15, in registration order)
 
-**[CONFIRMED — verbatim from the decompiled body]**: each row is a `TypeOf<Req>::type()` paired with its thunk via `_mm_insert_epi64(closure, thunk, 1)`, in exactly this order.
+Each row below is a `TypeOf<Req>::type()` paired with its thunk via `_mm_insert_epi64(closure, thunk, 1)`, read from the decompiled body in exactly this order.
 
 | # | Request (`command`) | Thunk | Debugger / Controller method |
 |---|---|---|---|
@@ -165,7 +167,7 @@ DisconnectRequest   → sub_85C6D0   (Controller::kill + release Adapter::run)
 
 ### 3.3 The two-flag capability advertisement
 
-The `initialize` handler default-constructs a `dap::InitializeResponse` (whose `body` is a `dap::Capabilities`) and forces exactly **two** `optional<bool>` capabilities to `{value=1, set=1}`. **[CONFIRMED — decompile of `sub_85C7A0`]**: only two source `0x101` half-word writes (`v45=257`, `v88=257`) and their two present-flag copies into the response body (`v129=1`, `v173=1`) appear in the whole handler; every other capability is left `set=0` and is therefore **omitted** from the JSON, i.e. treated as `false` by the client.
+The `initialize` handler default-constructs a `dap::InitializeResponse` (whose `body` is a `dap::Capabilities`) and forces exactly **two** `optional<bool>` capabilities to `{value=1, set=1}`. In the decompile of `sub_85C7A0` there are only two source `0x101` half-word writes (`v45=257`, `v88=257`) and their two present-flag copies into the response body (`v129=1`, `v173=1`) appear in the whole handler; every other capability is left `set=0` and is therefore **omitted** from the JSON, i.e. treated as `false` by the client.
 
 ```c
 // sub_85C7A0 — the Initialize handler, capability population (verbatim shape):
@@ -179,7 +181,7 @@ v88 = 257; /* 0x101 */                         // source optional<bool> #2
 send(resp);                                    // → InitializeResponse, then InitializedEvent
 ```
 
-The two byte offsets (178, 222) index the `Capabilities` struct exactly at `supportsConfigurationDoneRequest` and `supportsStepInTargetsRequest` per the field-order table in `TypeOf<Capabilities>::serializeFields @0x17fb750`. **[CONFIRMED]**
+The two byte offsets (178, 222) index the `Capabilities` struct exactly at `supportsConfigurationDoneRequest` and `supportsStepInTargetsRequest` per the field-order table in `TypeOf<Capabilities>::serializeFields @0x17fb750`.
 
 > **GOTCHA — advertise only what the client must gate on.** The debugger handles 15 debug requests but advertises only 2 capabilities. The reason: `configurationDone` and `stepInTargets` are precisely the two whose *client-side use* is gated on a capability flag. Continue/Next/StepIn/StepOut/Pause/StackTrace/Scopes/Variables/Evaluate/Threads/SetBreakpoints are **base DAP** — no advertisement needed, they just work. `Hover` is served even though `supportsEvaluateForHovers` is **not** set, because it is routed as the cppdap-extension `HoverRequest` independently of that flag. A reimplementer who advertises Disassemble/ReadMemory/EvaluateForHovers to "match the handlers" would mislead the client into issuing requests with no handler.
 
@@ -194,7 +196,7 @@ Only **four** of the 18 registered events are ever sent:
 | `OutputEvent` | `output` | `DapSink::consume` + `Callbacks::output` | log records + program `DevicePrint` → debug console |
 | `InitializedEvent` | `initialized` | `InitializeResponse` "sent" callback | after the initialize response is flushed |
 
-`StoppedEvent.reason` is the `birsim::debugger::to_string(StopReason)` literal. **[CONFIRMED — `to_string @0x873c10`]** returns `"step"` / `"pause"` / `"breakpoint"`; any out-of-range value falls to a `"Please open a support ticket…"` assert, proving the enum has **exactly three** values: `step=0`, `pause=1`, `breakpoint=2`. These are exactly the DAP-standard `StoppedEvent.reason` strings.
+`StoppedEvent.reason` is the `birsim::debugger::to_string(StopReason)` literal. `to_string @0x873c10` returns `"step"` / `"pause"` / `"breakpoint"`; any out-of-range value falls to a `"Please open a support ticket…"` assert, proving the enum has **exactly three** values: `step=0`, `pause=1`, `breakpoint=2`. These are exactly the DAP-standard `StoppedEvent.reason` strings.
 
 ---
 
@@ -219,7 +221,7 @@ Adapter::run @0x85a6b0                   Controller::start spawns it (BirSim::se
 
 ### 4.2 The pause point — `Controller::onInstPtrSet @0x871b70`
 
-This is the central halt mechanism. The engine calls it for every instruction; it decides whether to stop and, if so, blocks the engine thread on a condition variable. **[CONFIRMED — decompile]**:
+This is the central halt mechanism. The engine calls it for every instruction; it decides whether to stop and, if so, blocks the engine thread on a condition variable:
 
 ```c
 // Controller::onInstPtrSet(bir::Instruction* inst, unsigned core)  — engine-thread hook
@@ -258,7 +260,7 @@ struct StepIn   : StepType { StepIn(unsigned core, bir::Function* target); }; //
 struct StepOut  : StepType { StepOut(unsigned core); }; // stop when stack depth < entry depth
 ```
 
-**[CONFIRMED]** — only `StepIn` carries a `bir::Function*` (the call target to descend into); `StepOver`/`StepOut`/`Cont` take only the core id. The step decision is therefore a stack-depth comparison over the inline-2 `SmallVector` — exactly enough state for over/in/out.
+Only `StepIn` carries a `bir::Function*` (the call target to descend into); `StepOver`/`StepOut`/`Cont` take only the core id. The step decision is therefore a stack-depth comparison over the inline-2 `SmallVector` — exactly enough state for over/in/out.
 
 ### 4.4 Two breakpoint editors — source line ↔ instruction
 
@@ -333,7 +335,7 @@ Controller : public birsim::DebuggerCallbacks   @ctor 0x86e0b0   (the engine-thr
 
 ### 5.4 `LaunchRequestEx` — the one custom field
 
-The debugger does **not** handle the stock `dap::LaunchRequest`; it registers and handles a custom subclass `dap::LaunchRequestEx`. **[CONFIRMED — `TypeOf<LaunchRequestEx>::serializeFields @0x878fe0`]**: it adds exactly **one** field on top of the inherited launch arguments:
+The debugger does **not** handle the stock `dap::LaunchRequest`; it registers and handles a custom subclass `dap::LaunchRequestEx`. Per `TypeOf<LaunchRequestEx>::serializeFields @0x878fe0`, it adds exactly **one** field on top of the inherited launch arguments:
 
 ```c
 field("stopOnStart", TypeOf<optional<boolean>>::type());  // break at the first instruction
@@ -418,7 +420,7 @@ Memory-space keyword tokens are `"sb"` (SBUF), `"psum"` (PSUM), `"dram"` (DRAM) 
 
 ---
 
-## 7. Reimplementation Notes & Confidence
+## 7. Reimplementation Notes
 
 ### 7.1 Function map
 
@@ -430,7 +432,7 @@ Memory-space keyword tokens are `"sb"` (SBUF), `"psum"` (PSUM), `"dram"` (DRAM) 
 | `Adapter::bindio` | `0x85b020` / `0x85ce30` | stdio / path transport | CERTAIN |
 | `sub_85C7A0` (Initialize handler) | `0x85c7a0` | Capabilities = the two flags | CERTAIN |
 | `to_string(StopReason)` | `0x873c10` | `"step"`/`"pause"`/`"breakpoint"` | CERTAIN |
-| `DapCallbacks::stop` | `0x85a110` | → `StoppedEvent` (decompile failed; disasm + call-site confirm) | HIGH |
+| `DapCallbacks::stop` | `0x85a110` | → `StoppedEvent` (read from disasm + call sites; no decompile) | HIGH |
 | `DapSink::consume` | `0x8749a0` | log record → `OutputEvent` | CERTAIN |
 | `Controller::onInstPtrSet` | `0x871b70` | pause point: shouldStop → mutex → cv-wait | CERTAIN |
 | `Controller::cont` / `kill` | `0x86e610` / `0x86e6d0` (body frame) | resume / stop engine | HIGH |
@@ -443,20 +445,20 @@ Memory-space keyword tokens are `"sb"` (SBUF), `"psum"` (PSUM), `"dram"` (DRAM) 
 | `TypeOf<Capabilities>::serializeFields` | `0x17fb750` | capability field/offset order | CERTAIN |
 | `dap::ContentReader::read` | `0x1816a40` | `"Content-Length:"` frame reader | CERTAIN |
 
-### 7.2 Adversarial self-verification (5 strongest claims)
+### 7.2 Evidence summary
 
-1. **"15 debug handlers in this exact order with these thunks."** Verified verbatim in the decompiled `registerDebugger @0x85a860`: the `TypeOf<XRequest>::type()` / `sub_XXXXXX` pairs match the §3.2 table 1:1. **Holds — CERTAIN.**
-2. **"Exactly two capabilities advertised."** Verified in `sub_85C7A0`: the only capability writes are `v45=257`/`v88=257` (=`0x101`) plus two present-flag copies (`v129=1`/`v173=1`) at body offsets 178/222 — matching `supportsConfigurationDoneRequest`/`supportsStepInTargetsRequest` in the `Capabilities` serializer field order. **Holds — CERTAIN.**
-3. **"StopReason has exactly 3 values mapped to the DAP reason strings."** `to_string @0x873c10` returns `"breakpoint"`/`"pause"`/`"step"` and falls to a support-ticket assert for any other value. **Holds — CERTAIN.**
-4. **"The engine thread blocks on a condition variable at a stop."** `onInstPtrSet @0x871b70` shows `getStack` → `shouldStop` → `pthread_mutex_lock(this+352)` → vtable-slot-59 callback (the `DapCallbacks` stop → `StoppedEvent`) → `std::condition_variable::wait()`. **Holds — CERTAIN** for the mechanism; the exact StoppedEvent construction is read from the call site since `stop()`'s own decompile failed (so the *event-build* step is HIGH, not CERTAIN).
-5. **"Wire is Content-Length-framed JSON."** `ContentReader::read @0x1816a40` literally `match`/`scan`s `"Content-Length:"`. **Holds — CERTAIN.**
+- **15 debug handlers in this exact order with these thunks** — the decompiled `registerDebugger @0x85a860` pairs `TypeOf<XRequest>::type()` with `sub_XXXXXX` 1:1 against the §3.2 table.
+- **Exactly two capabilities advertised** — in `sub_85C7A0` the only capability writes are `v45=257` / `v88=257` (= `0x101`) plus two present-flag copies (`v129=1` / `v173=1`) at body offsets 178/222, matching `supportsConfigurationDoneRequest` / `supportsStepInTargetsRequest` in the `Capabilities` serializer field order.
+- **`StopReason` has exactly three values** — `to_string @0x873c10` returns `"breakpoint"` / `"pause"` / `"step"` and falls to a support-ticket assert for any other value.
+- **The engine thread blocks on a condition variable at a stop** — `onInstPtrSet @0x871b70` runs `getStack` → `shouldStop` → `pthread_mutex_lock(this+352)` → the vtable-slot-59 callback → `std::condition_variable::wait()`.
+- **The wire is Content-Length-framed JSON** — `ContentReader::read @0x1816a40` literally `match`/`scan`s `"Content-Length:"`.
 
-### 7.3 Honest ceiling
+### 7.3 Limits of this reading
 
-- The **address-frame duality** is real: the per-symbol IDA sidecars report some functions at a different base than the cross-symbol disassembly (e.g. `Controller::cont` at `0x86e610` in the body frame vs `0x5efae0` in its own sidecar; `start` at `0x5eea60`). Both are this binary; a reimplementer cross-referencing addresses must check both frames before concluding a mismatch. The §7.1 table notes which frame each address is in where they diverge.
-- `DapCallbacks::stop @0x85a110` did **not** decompile (Hex-Rays produced no `cfunc`); its `StoppedEvent` emission is inferred from the disasm and the `to_string`/`dap::StoppedEvent` references plus the `onInstPtrSet` call site — **HIGH, not CERTAIN**.
-- The cppdap `Session` internals (`Impl::processRequest`/`send`, `seq`/`request_seq` machine) are read from closure typeinfo strings, not a full decompile of every thunk — **STRONG**. The `command`-string routing being inside cppdap's typed `Session` (not a hand-rolled switch in the debugger) is a structural inference from the typed `registerHandler<RequestT>` registration shape — **STRONG**.
-- `libwalrus.so` itself is not materialized as a standalone file in the on-disk snapshot; all addresses derive from its IDA decompiled/disasm sidecars (md5 `1d93972b81e619ce6d178a0e4b9003b3`). VA==file-offset holds for `.text`/`.rodata`; the vtable/typeinfo addresses in `.data.rel.ro` carry the section delta.
+- **Two address frames coexist.** The per-symbol IDA sidecars report some functions at a different base than the cross-symbol disassembly — `Controller::cont` is `0x86e610` in the body frame and `0x5efae0` in its own sidecar; `start` is `0x5eea60`. Both describe this binary. Check both frames before concluding an address mismatch; the §7.1 table marks the frame wherever they diverge.
+- `DapCallbacks::stop @0x85a110` produced no Hex-Rays `cfunc`. Its `StoppedEvent` emission is **[INFERRED]** from the disassembly, the `to_string` / `dap::StoppedEvent` references, and the `onInstPtrSet` call site.
+- The cppdap `Session` internals (`Impl::processRequest` / `send`, the `seq` / `request_seq` machine) are recovered from closure typeinfo strings, not from a decompile of every thunk. That `command`-string routing lives inside cppdap's typed `Session` rather than a hand-rolled switch in the debugger is **[INFERRED]** from the typed `registerHandler<RequestT>` registration shape.
+- `libwalrus.so` is not materialized as a standalone file in the on-disk snapshot; all addresses derive from its IDA decompiled/disasm sidecars (md5 `1d93972b81e619ce6d178a0e4b9003b3`). VA == file-offset holds for `.text` / `.rodata`; the vtable/typeinfo addresses in `.data.rel.ro` carry the section delta.
 
 ---
 

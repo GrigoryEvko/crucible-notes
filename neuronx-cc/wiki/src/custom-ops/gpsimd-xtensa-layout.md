@@ -6,7 +6,7 @@
 
 The "GPSIMD CPUs" that run NKI builtin custom-ops are not a SIMD lane array and not part of the BIR ISA — they are **eight Tensilica Xtensa DSP cores**, each running its own copy of a stripped, statically-linked Xtensa ELF. The eight images ship under `data/custom_op/` as `libbuiltincustomop_cpu0..cpu7.stripped.so`. Each is 579,380 bytes, `ELF 32-bit LSB executable, Tensilica Xtensa, statically linked, stripped`, built with `XtensaTools-14.09 clang version 10.0.1`. This page reconstructs their **memory map**: the per-core 2 MiB aperture, the segment/section layout, the entry point, and the proof — by direct byte-diff — that the eight images are one program re-linked at eight bases with zero per-core baked constants.
 
-> **NOTE — there are no recoverable Xtensa code bodies.** This page is grounded in **ELF structure, segment/section headers, a byte-for-byte diff between the eight per-core images, and `.rodata`/`.data` strings — not in decompiled logic.** No Xtensa disassembler was available in this extraction: host binutils has no Xtensa backend (`objdump -i | rg xtensa` → empty), and IDA's auto-analysis recovered only **2** trivial functions with **0** decompiled bodies (`total_functions=2, decompiled=0, flirt=null` in the cpu0 sidecar metadata). The only named entry IDA recovered is the ELF `start` at `0x8400cd94`. Every claim about *what the code does* (the cpu_id derivation, the merge orchestration, the window-mapped DMA) is therefore **INFERRED from strings and structure**, tagged accordingly, and never presented as observed instruction-level behaviour. What *is* CONFIRMED here is the layout: the headers, the sizes, the entry, and the diff.
+> **NOTE — there are no recoverable Xtensa code bodies.** This page is grounded in **ELF structure, segment/section headers, a byte-for-byte diff between the eight per-core images, and `.rodata`/`.data` strings — not in decompiled logic.** No Xtensa disassembler was available in this extraction: host binutils has no Xtensa backend (`objdump -i | rg xtensa` → empty), and IDA's auto-analysis recovered only **2** trivial functions with **0** decompiled bodies (`total_functions=2, decompiled=0, flirt=null` in the cpu0 sidecar metadata). The only named entry IDA recovered is the ELF `start` at `0x8400cd94`. Every claim about *what the code does* — the cpu_id derivation, the merge orchestration, the window-mapped DMA — is therefore **[INFERRED]** from strings and structure, and is tagged as such wherever it appears. What is read directly is the layout: the headers, the sizes, the entry, and the diff.
 
 This page is the structural foundation for Part 11. The **op-runtime ABI** that these images implement (arg parsing, the dtype map, the `data_scratch_map_t` contract) is documented on the [SDK-ABI page (11.3)](customop-cpu-abi.md). The **multicore SORT/TopK** algorithm these cores execute, and the merge-tree topology, are covered on [the bitonic SORT/TopK page (11.2)](bitonic-sort-topk.md); the two-GPSIMD name collision is settled in full on [the reconciliation page (11.9)](two-gpsimd-reconciliation.md). And critically — this GPSIMD (the Xtensa custom-op substrate) is **a different thing** from the on-chip GPSIMD *engine* documented at [1.13](../arch/gpsimd-engine.md); see the [two-GPSIMD warning](#two-gpsimd-the-pool-engine-alias-vs-the-xtensa-cpus) below before reading further.
 
@@ -58,7 +58,7 @@ The eight Xtensa cores do not share an address space for their code. Each core r
 
 ### The aperture law
 
-The per-core base is a single affine function of the core index, CONFIRMED for all eight images by reading the ELF entry (`readelf -h`) and the `.text` section address (`readelf -S`):
+The per-core base is a single affine function of the core index, read for all eight images from the ELF entry (`readelf -h`) and the `.text` section address (`readelf -S`):
 
 ```text
 base(id) = 0x84000000 + id · 0x200000          stride = 0x200000 = 2 MiB
@@ -92,7 +92,7 @@ window      = 0x200000 = 2,097,152 B  (2 MiB)
 headroom    = 0x200000 − 0xa03a0     = 0x15fc60 = 1,440,864 B  (≈1.37 MiB) per core
 ```
 
-That ≈1.37 MiB of unused window per core is where the running image puts its **stack, heap, and DMA scratch** — none of which is in the file image (`.bss` is `NOBITS`; stack/heap are allocated at runtime). The aperture is sized to hold the static image plus a generous runtime working set with room to spare. [Span/headroom CONFIRMED by arithmetic on the section addresses; the stack/heap *use* of the headroom is INFERRED — no allocator code is disassembled.]
+That ≈1.37 MiB of unused window per core is where the running image puts its **stack, heap, and DMA scratch** — none of which is in the file image (`.bss` is `NOBITS`; stack/heap are allocated at runtime). The aperture is sized to hold the static image plus a generous runtime working set with room to spare. The span and headroom are arithmetic on the section addresses; that the headroom holds stack/heap/scratch is **[INFERRED]** — no allocator code is disassembled.
 
 ---
 
@@ -140,7 +140,7 @@ Two load segments, mapped at the link base:
 
 The sections are 64-byte aligned, so there are small alignment gaps between them in the virtual address space (e.g. between `.text` end `0x840737d8` and `.clib.rodata` `0x84073800`). Those gaps are padding, not segments.
 
-> **CORRECTION — there are 2 PT_LOAD segments, not a "9-segment table".** An earlier reconstruction (carried from the IDA `_segments.json` sidecar) listed nine "segments" including several 28–60-byte `LOAD(pad)` entries between the real sections. Those `LOAD(pad)` entries are **IDA's segmentation of the inter-section alignment gaps**, not ELF program headers. The canonical ELF view from `readelf -l` is **two** `PT_LOAD` program headers (the `RWE` image and the `RW` `.bss`); the gaps belong to no segment. The ten *sections* are real; the extra "segments" were a tooling artifact. This page uses the `readelf` ground truth.
+> **GOTCHA — IDA's `_segments.json` reports nine "segments"; the ELF has two.** Several of IDA's entries are 28–60-byte `LOAD(pad)` records: they are IDA's segmentation of the inter-section alignment gaps, not ELF program headers. `readelf -l` gives the canonical view — **two** `PT_LOAD` headers, the `RWE` image and the `RW` `.bss` — and the alignment gaps belong to no segment at all. The ten sections are real; the extra segments are a tooling artifact.
 
 ### The constructor table
 
@@ -159,7 +159,7 @@ The sections are 64-byte aligned, so there are small alignment gaps between them
   .dtors = { 0xffffffff, 0x00000000 }   sentinel + NULL → zero real destructors
 ```
 
-So the section is **8 words wide but holds 6 real constructors** (then a NULL). These six ctors run at image start — they register the in-library ATen/c10 statics and populate the op-name table — before control reaches the SDK main. Their *bodies* are Xtensa and not disassembled; the addresses and the count are CONFIRMED from the `.ctors` bytes, the binding to "ATen + op-table registration" is STRONG (from the `.rodata` strings those bodies reference, not from the code).
+So the section is **8 words wide but holds 6 real constructors** (then a NULL). These six ctors run at image start — they register the in-library ATen/c10 statics and populate the op-name table — before control reaches the SDK main. Their bodies are Xtensa and not disassembled. The addresses and the count come straight from the `.ctors` bytes; the binding to "ATen + op-table registration" is **[INFERRED]** from the `.rodata` strings those bodies reference.
 
 ---
 
@@ -221,7 +221,7 @@ To rule out any per-core textual constant, extract the printable strings from ea
 ### What this proves about cpu_id
 
 ```c
-// CONCLUSION (CONFIRMED by the diff): there is NO cpu_id literal in any image.
+// CONCLUSION (from the diff): there is NO cpu_id literal in any image.
 //
 // If a core's id were baked in, two images would differ by that id somewhere —
 // a word with delta ≠ N·0x200000, or a string that varies per core. Neither
@@ -238,9 +238,9 @@ The runtime mechanism is named in the binary, though its code is not disassemble
   READ_LOCAL_UREG64(MEM_WINDOW0_LO) == SUNDA_APB_BASE
 ```
 
-A core reads the 64-bit **local user register `MEM_WINDOW0_LO`** (the low base of hardware memory-window #0) and checks it against the compile-time `SUNDA_APB_BASE`. This UREG read is how a core derives/confirms its own memory window — and, combined with `data_transfer.cpp:171`'s `cpu_id < 8`, how the runtime indexes this core's slot among the eight. [The `MEM_WINDOW0_LO` / `cpu_id < 8` strings are CONFIRMED; the *derivation* — that the window register yields the id without a baked literal — is STRONG, forced by the byte-diff result above. The numeric `SUNDA_APB_BASE` value is an Xtensa immediate and is not recoverable from strings: SPECULATIVE.]
+A core reads the 64-bit **local user register `MEM_WINDOW0_LO`** (the low base of hardware memory-window #0) and checks it against the compile-time `SUNDA_APB_BASE`. This UREG read is how a core derives/confirms its own memory window — and, combined with `data_transfer.cpp:171`'s `cpu_id < 8`, how the runtime indexes this core's slot among the eight. The `MEM_WINDOW0_LO` and `cpu_id < 8` strings are present verbatim. That the window register is what yields the id — with no baked literal anywhere — is **[INFERRED]**, though forced by the byte-diff result above. The numeric value of `SUNDA_APB_BASE` is an Xtensa immediate and does not appear in any string: **[UNRESOLVED]**.
 
-> **NOTE — "no baked cpu_id" is a hard, byte-level fact; "id comes from the window register" is the strong inference.** The diff *proves* the negative (no per-core constant exists). The positive mechanism (which register, how the loader seeds it) rests on the `MEM_WINDOW0_LO`/`cpu_id` strings plus the absence of any alternative, because the bodies are Xtensa and unavailable. Tag them apart when reusing this.
+> **NOTE — the negative is byte-level; the positive is inference.** The diff *proves* the negative (no per-core constant exists). The positive mechanism (which register, how the loader seeds it) rests on the `MEM_WINDOW0_LO`/`cpu_id` strings plus the absence of any alternative, because the bodies are Xtensa and unavailable. Tag them apart when reusing this.
 
 ---
 
@@ -248,38 +248,38 @@ A core reads the 64-bit **local user register `MEM_WINDOW0_LO`** (the low base o
 
 The full dispatch and ABI live on 11.3/11.9; only the *structural* skeleton is in scope here, and only at the level the headers and strings support:
 
-- **Library selection is external, by cpu_id.** There is one image per core. The compiler/runtime side stages `libbuiltincustomop_cpu{0..7}.stripped.so` keyed by cpu_id and loads cpu`id`'s image at `0x84000000 + id·0x200000`. The image itself contains no dispatcher that picks a core — it *is* core `id`'s program. [STRONG, from the per-core link bases + the BIR-side staging documented elsewhere; the in-image absence of a selector is consistent with the stripped 2-function IDA view but not independently proven from code.]
-- **Entry is always `base + 0xcd94`.** The Xtensa `start` runs the six `.ctors`, then enters the SDK main. CONFIRMED entry; ctor *count/addresses* CONFIRMED; ctor *bodies* unavailable.
-- **The four op entry-point names live in `.data`** as a contiguous NUL-terminated table — `sort_singlecore_compute`, `sort_multicore_compute`, `partial_sort_multicore_compute`, `partial_merge_multicore_compute` (all four CONFIRMED present in every image). They are the funcName keys the BIR side binds to FunctionIds, not separate libraries; every core carries all four. The op chosen inside a core is keyed by FunctionId through a plain function table, *not* a c10 dispatcher (the runtime Dispatcher/OperatorHandle symbols are absent; `noop_dispatch_fn` is the deliberate no-op). [Op names CONFIRMED from strings; the table-vs-dispatcher claim is STRONG, from the string surface, not from disassembly.]
+- **Library selection is external, by cpu_id.** There is one image per core. The compiler/runtime side stages `libbuiltincustomop_cpu{0..7}.stripped.so` keyed by cpu_id and loads cpu`id`'s image at `0x84000000 + id·0x200000`. The image itself contains no dispatcher that picks a core — it *is* core `id`'s program. *This rests on the per-core link bases plus the BIR-side staging documented elsewhere; the in-image absence of a selector is consistent with the stripped 2-function IDA view but is not independently proven from code.*
+- **Entry is always `base + 0xcd94`.** The Xtensa `start` runs the six `.ctors`, then enters the SDK main. The entry and the ctor count/addresses are read from the headers and the `.ctors` bytes; the ctor bodies are unavailable.
+- **The four op entry-point names live in `.data`** as a contiguous NUL-terminated table — `sort_singlecore_compute`, `sort_multicore_compute`, `partial_sort_multicore_compute`, `partial_merge_multicore_compute` (all four present in every image). They are the funcName keys the BIR side binds to FunctionIds, not separate libraries; every core carries all four. The op chosen inside a core is keyed by FunctionId through a plain function table, *not* a c10 dispatcher (the runtime Dispatcher/OperatorHandle symbols are absent; `noop_dispatch_fn` is the deliberate no-op). *The op names come from strings; the table-vs-dispatcher reading is **[INFERRED]** from the string surface, not from disassembly.*
 
 The multicore SORT/TopK these names implement — the per-core bitonic sort, the 3-level pairwise merge tree, the `doSyncPhysicalCores` barrier over the shared DRAM window — is reconstructed from assert strings and cross-wave evidence (no Xtensa bodies) and is documented on 11.9. It is deliberately **not** re-derived here: this page stops at the ELF layout.
 
 ---
 
-## Evidence and confidence
+## Evidence summary
 
 | Claim | Tag | Anchor |
 |---|---|---|
-| 8 Xtensa ELF32 images, 579,380 B each, `Flags 0x300`, stripped | CONFIRMED | `file`, `readelf -h` all 8 |
-| `base(id) = 0x84000000 + id·0x200000`, stride 2 MiB | CONFIRMED | `readelf -h`/`-S` entry + `.text` addr, all 8 |
-| entry = `base + 0xcd94` for all 8 | CONFIRMED | `readelf -h` e_entry, all 8 |
-| 8 windows tile `[0x84000000, 0x85000000)` = 16 MiB | CONFIRMED | base table + 0xa03a0 span |
-| image span `0xa03a0` (≈641 KiB), headroom `0x15fc60` (≈1.37 MiB) | CONFIRMED | `.bss` end − `.text` base |
-| 2 `PT_LOAD` (RWE image + RW `.bss`); no DYNAMIC/INTERP/RELRO | CONFIRMED | `readelf -l` |
-| 10 allocated sections (`.text`…`.bss`) + `.comment` + `.shstrtab` | CONFIRMED | `readelf -S` |
-| toolchain `XtensaTools-14.09 clang 10.0.1` | CONFIRMED | `.comment` |
-| `.ctors` = sentinel + 6 ctors + NULL; `.dtors` = 0 real | CONFIRMED | `.ctors`/`.dtors` bytes |
-| identical-modulo-rebase: 12,706 byte diffs, all `+N·0x20` | CONFIRMED | `cmp -l` cpu0↔cpu1/cpu7 |
-| `.rodata`: 1,834 word diffs, all `0x200000`, **0** non-rebase | CONFIRMED | Python uint32 diff |
-| string *content* byte-identical per section across cores | CONFIRMED | per-section printable-string set compare |
-| cp310/cp311/cp312 cpu0 byte-identical | CONFIRMED | md5 across wheels |
-| **no cpu_id baked into any image** | CONFIRMED | the zero-non-rebase diff + identical strings |
-| cpu_id read at runtime from `MEM_WINDOW0_LO` | STRONG | `data_transfer.cpp:240`/`:171` strings; bodies absent |
-| 6 ctors register ATen + op-name table | STRONG | ctor addrs + `.rodata` strings; bodies absent |
-| op selected by FunctionId via plain table, no dispatcher | STRONG | string surface (Dispatcher symbols absent) |
-| `SUNDA_APB_BASE` numeric value | SPECULATIVE | Xtensa immediate, not in strings |
+| 8 Xtensa ELF32 images, 579,380 B each, `Flags 0x300`, stripped | CERTAIN | `file`, `readelf -h` all 8 |
+| `base(id) = 0x84000000 + id·0x200000`, stride 2 MiB | CERTAIN | `readelf -h`/`-S` entry + `.text` addr, all 8 |
+| entry = `base + 0xcd94` for all 8 | CERTAIN | `readelf -h` e_entry, all 8 |
+| 8 windows tile `[0x84000000, 0x85000000)` = 16 MiB | CERTAIN | base table + 0xa03a0 span |
+| image span `0xa03a0` (≈641 KiB), headroom `0x15fc60` (≈1.37 MiB) | CERTAIN | `.bss` end − `.text` base |
+| 2 `PT_LOAD` (RWE image + RW `.bss`); no DYNAMIC/INTERP/RELRO | CERTAIN | `readelf -l` |
+| 10 allocated sections (`.text`…`.bss`) + `.comment` + `.shstrtab` | CERTAIN | `readelf -S` |
+| toolchain `XtensaTools-14.09 clang 10.0.1` | CERTAIN | `.comment` |
+| `.ctors` = sentinel + 6 ctors + NULL; `.dtors` = 0 real | CERTAIN | `.ctors`/`.dtors` bytes |
+| identical-modulo-rebase: 12,706 byte diffs, all `+N·0x20` | CERTAIN | `cmp -l` cpu0↔cpu1/cpu7 |
+| `.rodata`: 1,834 word diffs, all `0x200000`, **0** non-rebase | CERTAIN | Python uint32 diff |
+| string *content* byte-identical per section across cores | CERTAIN | per-section printable-string set compare |
+| cp310/cp311/cp312 cpu0 byte-identical | CERTAIN | md5 across wheels |
+| **no cpu_id baked into any image** | CERTAIN | the zero-non-rebase diff + identical strings |
+| cpu_id read at runtime from `MEM_WINDOW0_LO` | HIGH | `data_transfer.cpp:240`/`:171` strings; bodies absent |
+| 6 ctors register ATen + op-name table | HIGH | ctor addrs + `.rodata` strings; bodies absent |
+| op selected by FunctionId via plain table, no dispatcher | HIGH | string surface (Dispatcher symbols absent) |
+| `SUNDA_APB_BASE` numeric value | LOW | Xtensa immediate, not in strings |
 | **Xtensa instruction-level behaviour (any)** | NOT RECOVERABLE | no Xtensa disassembler; IDA `decompiled=0` |
 
 **Hard limit (restated):** the `cpu{0..7}.so` Xtensa code is not disassembled (`total_functions=2`, `decompiled=0`, `flirt=null`). Everything on this page is ELF structure, the cross-image byte-diff, and `.rodata`/`.data` strings. No claim here rests on a recovered Xtensa instruction sequence, and none is fabricated to look like one.
 
-*Backing analysis: D-AC06 (per-CPU link layout + multicore merge topology), D-Q04 (the bitonic SORT/TopK builtin), D-Q05 (the `extended_isa::sdk` custom-op CPU ABI). Cross-refs: [1.13 GPSIMD engine = Pool-engine alias](../arch/gpsimd-engine.md); [11.3 SDK custom-op ABI](customop-cpu-abi.md); [11.2 the bitonic SORT/TopK builtin + merge tree](bitonic-sort-topk.md); [11.9 two-GPSIMD reconciliation](two-gpsimd-reconciliation.md).*
+*Cross-refs: [1.13 GPSIMD engine = Pool-engine alias](../arch/gpsimd-engine.md); [11.3 SDK custom-op ABI](customop-cpu-abi.md); [11.2 the bitonic SORT/TopK builtin + merge tree](bitonic-sort-topk.md); [11.9 two-GPSIMD reconciliation](two-gpsimd-reconciliation.md).*

@@ -8,7 +8,7 @@ Off chip, a NeuronCore sees one flat memory: **HBM** (high-bandwidth DRAM), the 
 
 The single most important fact on this page is that **two different HBM sizes exist and the compiler gates on the smaller one.** `Core::dramSizeGb` is the per-NeuronCore HBM window; `Device::dramSizeGb` is the whole-device HBM. They are independent immediates and need not relate by `numCores` — on Inferentia the device carries 32 GiB but each of its four cores gets a 16 GiB window, so `4 × 16 ≠ 32`. The budget check (`HBMUsage::run`) reads `Core+0x30` (the per-core window), not `Device+0x8`. A reimplementer who sizes the allocator off device HBM will over-budget every part where the two disagree.
 
-The numbers are corroborated three ways. The constructor immediates are read directly off the `<Arch>Core` ctor bodies (`movl $imm,0x60(%rsp)` into the `CoreParamSet`, then `Core::Core` copies `CoreParamSet+0x60 → Core+0x30`); the read-chain is read off `HBMUsage::run` (`mov 0x30(%rax),%eax; shl $0x1e`); and the field **name** comes from a real C++ header shipped in the wheel, `data/include/hwm/ctm/ctm.hpp`, which declares `const unsigned dramSizeGb; // dram/hbm per core` (`ctm.hpp:187`). All three agree, so the geometry here is CONFIRMED at the strongest available level.
+The numbers are corroborated three ways. The constructor immediates are read directly off the `<Arch>Core` ctor bodies (`movl $imm,0x60(%rsp)` into the `CoreParamSet`, then `Core::Core` copies `CoreParamSet+0x60 → Core+0x30`); the read-chain is read off `HBMUsage::run` (`mov 0x30(%rax),%eax; shl $0x1e`); and the field **name** comes from a real C++ header shipped in the wheel, `data/include/hwm/ctm/ctm.hpp`, which declares `const unsigned dramSizeGb; // dram/hbm per core` (`ctm.hpp:187`). All three agree.
 
 For reimplementation, the contract is:
 
@@ -29,7 +29,7 @@ For reimplementation, the contract is:
 | **Soft margin** | `× 1.1` (`0x3FF199999999999A` @ `0x1dbf5b0`) |
 | **Split pass** | `split_huge_dram_tensor` (`neuronxcc::backend::VNSplitter::runTransform` @ `0xd5a3d0`; cl::opt `splitHugeDramTensor` @ `0x3dfa780`) |
 | **Split-disable knob** | `no_split_dram` / `noSplitDram` @ `0x3dfacc0`; budget-disable `hbm-usage-check` (flag var `DisableHBMUsageCheck` @ `0x3df7560`) |
-| **Field-name source** | `data/include/hwm/ctm/ctm.hpp` (shipped header — names CONFIRMED) |
+| **Field-name source** | `data/include/hwm/ctm/ctm.hpp` (shipped header — the field names come from here) |
 
 ---
 
@@ -43,7 +43,7 @@ This split is invisible on parts where the numbers coincide and decisive where t
 
 ### Record layout
 
-Both fields are plain `unsigned` (4-byte) scalars. The names and types are CONFIRMED from `ctm.hpp`; the offsets are read off the `Core::Core` / `Device::Device` constructor store sequences.
+Both fields are plain `unsigned` (4-byte) scalars. The names and types come from `ctm.hpp`; the offsets are read off the `Core::Core` / `Device::Device` constructor store sequences.
 
 | Field | Class | Offset | Type | `ctm.hpp` | Meaning |
 |---|---|---|---|---|---|
@@ -57,7 +57,7 @@ The values flow from a per-arch `CoreParamSet` (`ctm.hpp:147`), where the per-co
 
 ```c
 // Core::Core(const CoreParamSet& p)  @0x1734220
-//   the dramSizeGb copy, CONFIRMED @0x1734294:
+//   the dramSizeGb copy @0x1734294:
 this[0x30] = *(uint32*)(p + 0x60);   // 0x1734294 mov 0x60(%rsi),%ecx
                                      // 0x173429b mov %ecx,0x30(%rdi)
 ```
@@ -66,11 +66,11 @@ The device size is passed as the third `Device::Device` argument and stored dire
 
 ```c
 // Device::Device(Core& core, unsigned numCores, unsigned dramSizeGb)  @0x1734480
-//   CONFIRMED @0x1734484:
+//   @0x1734484:
 this[0x08] = dramSizeGb;             // 0x1734484 mov %ecx,0x8(%rdi)
 ```
 
-> **CORRECTION (D-M12 → ctm.hpp) —** an earlier reading of the bare immediates labelled `Core+0x30` a "per-Core ring/queue count (16/16/24/36)". The shipped header settles it: `ctm.hpp:187` declares `const unsigned dramSizeGb; // dram/hbm per core`. The values 16/16/24/36 are GiB of HBM per NeuronCore, and `Device+0x8` is `Device::dramSizeGb`, the whole-device HBM (`ctm.hpp:229`). [1.01](arch-object-model.md) carries the same correction for the geometry tree as a whole.
+> **GOTCHA — 16/16/24/36 are GiB, not a count.** Read as bare immediates in the ctor bodies, these values invite a reading as a per-core ring or queue count. The shipped header settles it: `ctm.hpp:187` declares `const unsigned dramSizeGb; // dram/hbm per core`, and `ctm.hpp:229` gives `Device+0x8` as the whole-device `dramSizeGb`.
 
 ### Per-generation immediates
 
@@ -78,29 +78,29 @@ Each `<Arch>Core` constructor builds a `CoreParamSet` on the stack, writes the p
 
 | Arch (gen) | per-core (`CPS+0x60`) | addr | per-device (`Device` `ecx`) | addr | `numCores` (`edx`) | `numDevices` | Confidence |
 |---|---|---|---|---|---|---|---|
-| gen1 Inferentia | `0x10` = 16 GiB | `0x17347b6` | `0x20` = 32 GiB | `0x1734995` | `0x4` (4) | `0x2` (2) | CONFIRMED |
-| gen2 Sunda/Trn1 | `0x10` = 16 GiB | `0x1734ba6` | `0x20` = 32 GiB | `0x1734d85` | `0x2` (2) | `0x2` (2) | CONFIRMED |
-| gen3 Cayman/Trn2 | `0x18` = 24 GiB | `0x1734f96` | `0x18` = 24 GiB | `0x1735175` | `0x2` (2) | `0x2` (2) | CONFIRMED |
-| gen4 CoreV4/Trn3 | `0x24` = 36 GiB | `0x1735396` | `0x24` = 36 GiB | `0x1735575` | `0x2` (2) | `0x2` (2) | CONFIRMED |
+| gen1 Inferentia | `0x10` = 16 GiB | `0x17347b6` | `0x20` = 32 GiB | `0x1734995` | `0x4` (4) | `0x2` (2) | CERTAIN |
+| gen2 Sunda/Trn1 | `0x10` = 16 GiB | `0x1734ba6` | `0x20` = 32 GiB | `0x1734d85` | `0x2` (2) | `0x2` (2) | CERTAIN |
+| gen3 Cayman/Trn2 | `0x18` = 24 GiB | `0x1734f96` | `0x18` = 24 GiB | `0x1735175` | `0x2` (2) | `0x2` (2) | CERTAIN |
+| gen4 CoreV4/Trn3 | `0x24` = 36 GiB | `0x1735396` | `0x24` = 36 GiB | `0x1735575` | `0x2` (2) | `0x2` (2) | CERTAIN |
 
 > **GOTCHA — per-core and per-device HBM are independent, and on Inferentia they disagree.** gen1 sets `numCores=4` and `Device::dramSizeGb=32`, but `Core::dramSizeGb=16` — so `Σ per-core windows = 4 × 16 = 64 GiB`, not the 32 GiB device figure. The device immediate (`0x20`) is its own constant, not a product. gen2 happens to satisfy `2 × 16 = 32`; gen3/gen4 set the device figure *equal to* the per-core window (24/24, 36/36). A reimplementer must read both fields as independent immediates and must drive the **per-core** one into the allocator and budget check.
 
 ### Considerations
 
-HBM size is a **baked compile-time constant per codename**, not device-config or runtime-probe driven (CONFIRMED — every value is a `movl $imm` in the per-arch ctor; there is no read of any runtime descriptor). gen5/`core_v5` has no `Core` ctor and `getArchModel` falls through to `__assert_fail`, so this build has no gen5 HBM figure ([1.01](arch-object-model.md)).
+HBM size is a **baked compile-time constant per codename**, not device-config or runtime-probe driven: every value is a `movl $imm` in the per-arch ctor, and no runtime descriptor is read. gen5/`core_v5` has no `Core` ctor and `getArchModel` falls through to `__assert_fail`, so this build has no gen5 HBM figure ([1.01](arch-object-model.md)).
 
 The per-arch Core constructors live at `0x1734720` (Inferentia), `0x1734b10` (Sunda), `0x1734f00` (Cayman), `0x1735300` (CoreV4) — the same addresses the SBUF/PSUM geometry reads from ([1.05](sbuf-psum-geometry.md)), because the HBM size is just another field of the same `Core` object those ctors build. Both `libwalrus.so` and `libBIR.so` compile the geometry tree from the one `ctm` source and carry it byte-identically; the budget check on this page reads the `libwalrus` copy.
 
 | Function / Symbol | Address | Role | Confidence |
 |---|---|---|---|
-| `Core::Core(CoreParamSet const&)` | `0x1734220` | copies `CoreParamSet+0x60 → Core+0x30` | CONFIRMED |
-| `Device::Device(Core&,uint,uint)` | `0x1734480` | stores `dramSizeGb` at `Device+0x8` | CONFIRMED |
-| `Board::Board(Device&,uint)` | `0x17344a0` | builds `Board` (`numDevices` at `+0x0`) | CONFIRMED |
-| `InferentiaCore::InferentiaCore` | `0x1734720` | gen1 immediates (16/32, 4 cores) | CONFIRMED |
-| `SundaCore::SundaCore` | `0x1734b10` | gen2 immediates (16/32, 2 cores) | CONFIRMED |
-| `CaymanCore::CaymanCore` | `0x1734f00` | gen3 immediates (24/24, 2 cores) | CONFIRMED |
-| `CoreV4Core::CoreV4Core` | `0x1735300` | gen4 immediates (36/36, 2 cores) | CONFIRMED |
-| `getArchModel(string const&)` | `0x17344c0` | codename → `Board*` dispatch | CONFIRMED |
+| `Core::Core(CoreParamSet const&)` | `0x1734220` | copies `CoreParamSet+0x60 → Core+0x30` | CERTAIN |
+| `Device::Device(Core&,uint,uint)` | `0x1734480` | stores `dramSizeGb` at `Device+0x8` | CERTAIN |
+| `Board::Board(Device&,uint)` | `0x17344a0` | builds `Board` (`numDevices` at `+0x0`) | CERTAIN |
+| `InferentiaCore::InferentiaCore` | `0x1734720` | gen1 immediates (16/32, 4 cores) | CERTAIN |
+| `SundaCore::SundaCore` | `0x1734b10` | gen2 immediates (16/32, 2 cores) | CERTAIN |
+| `CaymanCore::CaymanCore` | `0x1734f00` | gen3 immediates (24/24, 2 cores) | CERTAIN |
+| `CoreV4Core::CoreV4Core` | `0x1735300` | gen4 immediates (36/36, 2 cores) | CERTAIN |
+| `getArchModel(string const&)` | `0x17344c0` | codename → `Board*` dispatch | CERTAIN |
 
 ---
 
@@ -132,7 +132,7 @@ The limit read is the same four-hop `getArchModel` walk as SBUF/PSUM, terminatin
 
 ```c
 // HBMUsage::run(vector<unique_ptr<Module>>&)  @0x16b94b0
-//   limit read-chain @0x16ba2ef..0x16ba386, CONFIRMED instruction-for-instruction
+//   limit read-chain @0x16ba2ef..0x16ba386, instruction-for-instruction
 function HBMUsage_run(modules):
     codename = module.getArch()                      // 0x16ba2ef call bir::Module::getArch
     board    = getArchModel(codename)                // 0x16ba2f7 call getArchModel → rbx
@@ -152,13 +152,13 @@ function HBMUsage_run(modules):
     assert(TotalDRAMUsage <= HBMLimit)                // "TotalDRAMUsage <= HBMLimit"
 ```
 
-> **QUIRK — two thresholds, one limit.** `HBMLimit` is the raw per-core window in bytes. The `mulsd` by `1.1` (the IEEE-754 double `0x3FF199999999999A` at `0x1dbf5b0`, CONFIRMED `9a 99 99 99 99 99 f1 3f`) is a **soft 10% over-budget margin**: usage in `[HBMLimit, 1.1 × HBMLimit]` passes the `comisd`/`jbe` warning gate, but the separate raw `cmp`/`ja` (`usage > HBMLimit`) still flags it for the over-budget diagnostic. A reimplementer must keep the warning margin and the hard limit distinct — the soft margin is a reporting nicety, not a relaxation of the assert.
+> **QUIRK — two thresholds, one limit.** `HBMLimit` is the raw per-core window in bytes. The `mulsd` by `1.1` (the IEEE-754 double `0x3FF199999999999A` at `0x1dbf5b0`, bytes `9a 99 99 99 99 99 f1 3f`) is a **soft 10% over-budget margin**: usage in `[HBMLimit, 1.1 × HBMLimit]` passes the `comisd`/`jbe` warning gate, but the separate raw `cmp`/`ja` (`usage > HBMLimit`) still flags it for the over-budget diagnostic. A reimplementer must keep the warning margin and the hard limit distinct — the soft margin is a reporting nicety, not a relaxation of the assert.
 
 `HBMLimit` per generation is `dramSizeGb << 30`: gen1/gen2 = `0x4_0000_0000` (16 GiB), gen3 = `0x6_0000_0000` (24 GiB), gen4 = `0x9_0000_0000` (36 GiB). This is the per-core window — `Device::dramSizeGb` is never read here.
 
 ### Diagnostics and metrics
 
-The pass emits a "HBM scratchpad usage summary (post-allocation)" with a labelled breakdown. The strings are CONFIRMED in `libwalrus`:
+The pass emits a "HBM scratchpad usage summary (post-allocation)" with a labelled breakdown. The strings are present verbatim in `libwalrus`:
 
 | String fragment (rodata) | Role |
 |---|---|
@@ -168,7 +168,7 @@ The pass emits a "HBM scratchpad usage summary (post-allocation)" with a labelle
 | `HBM total usage: ` / `HBM intermediate usage: ` / `HBM I/O usage: ` / `HBM peak internal usage: ` | per-category lines |
 | `Peak internal HBM memory usage of ` / `Total estimated HBM usage is: ` | summary totals |
 
-The machine-readable metric map (`neuronxcc::backend::hbmMetrics`, populated by `printHBMMetrics`) is keyed by the strings `hbm_internal`, `hbm_intermediate`, `hbm_io`, `hbm_usage`, `hbm_size`, `hbm_limit`, plus `end_address` and `private_hbm` — all CONFIRMED present in `libwalrus`. The usage keys `hbm_internal` / `hbm_intermediate` / `hbm_io` correspond to `getModelUsage` / `getTensorUsage` / `getDescUsage`; `hbm_limit` is the per-core window (`Core::dramSizeGb << 30`) above; `hbm_size` carries the same window figure for the summary line.
+The machine-readable metric map (`neuronxcc::backend::hbmMetrics`, populated by `printHBMMetrics`) is keyed by the strings `hbm_internal`, `hbm_intermediate`, `hbm_io`, `hbm_usage`, `hbm_size`, `hbm_limit`, plus `end_address` and `private_hbm` — all present in `libwalrus`. The usage keys `hbm_internal` / `hbm_intermediate` / `hbm_io` correspond to `getModelUsage` / `getTensorUsage` / `getDescUsage`; `hbm_limit` is the per-core window (`Core::dramSizeGb << 30`) above; `hbm_size` carries the same window figure for the summary line.
 
 ### The disable knob
 
@@ -176,7 +176,7 @@ The machine-readable metric map (`neuronxcc::backend::hbmMetrics`, populated by 
 |---|---|---|---|---|
 | `hbm-usage-check` | `cl::opt<bool>` | `DisableHBMUsageCheck` @ `0x3df7560` | `0x1dc3562` | help: "Disable total HBM usage check" — when set, the pass still computes/reports metrics but does not assert/fail on over-budget |
 
-The option string (`0x1dc3562`), help text, and `.bss` flag variable (`0x3df7560`) are CONFIRMED — note the address `0x3df7560` is the flag *variable*, not the string literal. That the check is on by default is INFERRED from the `Disable…` naming. The pass is registered like the other backend generators (`register_generator_*` family).
+The option string (`0x1dc3562`), help text, and `.bss` flag variable (`0x3df7560`) are all present — note the address `0x3df7560` is the flag *variable*, not the string literal. That the check is on by default is **[INFERRED]** from the `Disable…` naming. The pass is registered like the other backend generators (`register_generator_*` family).
 
 ---
 
@@ -198,16 +198,16 @@ These are the cl::opt option names recovered from `libwalrus` with their verbati
 | `vn_split_dram_node` | `vnSplitDRAMNode` @ `0x3dfa9c0` | `0x1dc3052` | "Splitting dram node along guessed block dimension" |
 | `no_split_dram` | `noSplitDram` @ `0x3dfacc0` | `0x1dc302a` | "Do not split the vn if this would result in any of the splits having to be placed in DRAM (due to perSplitLimit exceeded)" |
 
-All three option names, flag variables, help-string addresses, and help text are CONFIRMED.
+All three option names, flag variables, help-string addresses, and help text are read verbatim from the binary.
 
-> **CORRECTION (D-AE03 source draft) —** the source draft conjectured a flag `enable-experimental-no-split-dram` and hyphenated forms `no-split-dram` / `split-dram`. No such strings exist anywhere in the wheel. The binary uses **underscore** option names: `split_huge_dram_tensor`, `vn_split_dram_node`, `no_split_dram`. The HBM-budget toggle is the separate `hbm-usage-check` option (`DisableHBMUsageCheck` flag variable), documented in the previous section.
+> **GOTCHA — these option names use underscores, not hyphens.** Most cl::opt names in this codebase are hyphenated, so `no-split-dram` / `split-dram` / `enable-experimental-no-split-dram` are natural guesses — and none of those strings exists anywhere in the wheel. The split knobs are `split_huge_dram_tensor`, `vn_split_dram_node`, `no_split_dram`. The separate HBM-budget toggle *is* hyphenated: `hbm-usage-check`.
 
 ### Algorithm
 
 The split is threshold-driven. The threshold is a GiB figure (the pass option) bounded by the per-core window; a DRAM tensor over threshold is sliced along a guessed block dimension into sub-tensors that each fit. The `no_split_dram` option suppresses the split when the resulting sub-tensors would themselves spill to DRAM beyond a `perSplitLimit`.
 
 ```c
-// split_huge_dram_tensor (high-level, INFERRED from option help + symbol roles)
+// split_huge_dram_tensor (high-level; [INFERRED] from option help + symbol roles)
 function split_huge_dram_tensor(module, thresholdGB):
     limit = thresholdGB << 30                         // bytes; bounded by Core::dramSizeGb window
     for each DRAM tensor T in module:
@@ -221,7 +221,7 @@ function split_huge_dram_tensor(module, thresholdGB):
         replace T with vn_split_dram_node(T, dim)     // emit window-sized sub-tensors
 ```
 
-> **NOTE — confidence boundary.** The *names, symbols, addresses, help strings, and the implementing class* (`VNSplitter::runTransform` @ `0xd5a3d0`, with `collectAccesses` @ `0xd52910`) are CONFIRMED (read from `libwalrus`). The *internal control flow* of the split (the exact block-dimension guess, the `perSplitLimit` derivation) was not traced instruction-by-instruction; the pseudocode above is INFERRED from the option help text and symbol roles. A reimplementer should treat the knob contract as authoritative and the body as a sketch.
+> **NOTE — what is read vs reconstructed here.** The names, symbols, addresses, help strings, and the implementing class (`VNSplitter::runTransform` @ `0xd5a3d0`, with `collectAccesses` @ `0xd52910`) are read from `libwalrus`. The *internal control flow* — the block-dimension guess and the `perSplitLimit` derivation — was not traced instruction-by-instruction, so the pseudocode above is **[INFERRED]** from the option help text and the symbol roles. Treat the knob contract as authoritative and the body as a sketch.
 
 ### Considerations
 
@@ -231,7 +231,7 @@ Split runs before the DRAM allocator so the allocator sees only window-sized ten
 
 ## At-a-glance: the per-generation HBM matrix
 
-Every cell is CONFIRMED from a constructor immediate, re-disassembled at the cited address. The HBM rows extend the consolidated geometry matrix on the [SBUF/PSUM page](sbuf-psum-geometry.md#at-a-glance-the-full-geometry-matrix).
+Every cell is a constructor immediate, read at the cited address. The HBM rows extend the consolidated geometry matrix on the [SBUF/PSUM page](sbuf-psum-geometry.md#at-a-glance-the-full-geometry-matrix).
 
 | HBM geometry | gen1 Inferentia | gen2 Sunda | gen3 Cayman | gen4 CoreV4 |
 |---|---|---|---|---|
