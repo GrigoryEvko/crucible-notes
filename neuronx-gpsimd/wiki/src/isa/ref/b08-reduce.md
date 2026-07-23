@@ -42,7 +42,7 @@ the shipped artifacts only.
 > the horizontal *argmax* — distinct from B03's per-lane `ivp_bmaxnx16`, which flags *which operand* won
 > *per lane*. B03 explicitly cedes the reduce-and-flag `r*t` / `ltr*` forms to B08
 > ([b03 §7](b03-vec-alu-rest.md)). The lane-wise conditional `ivp_minormax2nx8` (a per-lane min-OR-max
-> select, `_8_8_8_1` leaf) is **not** a reduce — it stays in B01/B03. `[HIGH/OBSERVED]`
+> select, `_8_8_8_1` leaf) is **not** a reduce — it stays in B01/B03.
 
 ---
 
@@ -77,8 +77,8 @@ source ([register-files](../core/register-files.md): `vec` idx2 512b×32), and t
 arithmetic reduces; `f0_s1_ld` for the load-pipe `ltr*/randb*/rorb*`). `opcode-sel word0` is the
 `movl $imm,(%rdi)` operand of that placement's `Opcode_<mn>_Slot_<slot>_encode` thunk
 ([flix-encoding §6.1](../core/flix-encoding.md); `word1 == 0` with zero exceptions, per
-[template §3.1](template-and-partition.md)). `dest` names the result file and width. `[conf]` is
-`[HIGH/OBSERVED]` for every row.
+[template §3.1](template-and-partition.md)). `dest` names the result file and width. Every row of
+§2.1–§2.5 is `[HIGH/OBSERVED]`.
 
 ### 2.1 Horizontal sum — `radd*` (12 mnemonics, 108 placements)
 
@@ -191,11 +191,11 @@ two halves live in **two distinct selector bands** of `word0`:
 
 * **Arithmetic reduces** (`radd/rmax/rmin/rbmax/rbmin`, int and fp) are `s3_alu` ops — their `word0`
   templates sit in the **`0x8480xxxx` / `0x8690xxxx` ALU band**, the same high-byte region as the B01/B03
-  lane-wise ALU. Re-read byte-exact this pass (`Opcode_ivp_<mn>_Slot_f0_s3_alu_encode`):
+  lane-wise ALU. Read byte-exact (`Opcode_ivp_<mn>_Slot_f0_s3_alu_encode`):
   `raddnx16 = 0x869080f1`, `rmaxnx16 = 0x869480f1`, `rbmaxnx16 = 0x84808040`.
 * **Fold / tail-predicate reduces** (`ltr*/randb*/rorb*`) are `s1_ld` ops — they run in the **load pipe**,
   and their `word0` templates sit in the **`0x004axxxx` load band** (`0x4a` is the load-slot opcode
-  region). Re-read this pass (`Opcode_ivp_<mn>_Slot_f0_s1_ld_encode`):
+  region). Read from `Opcode_ivp_<mn>_Slot_f0_s1_ld_encode`:
   `ltrn = 0x004a07e0`, `randbn = 0x004a13e0`, `rorbn = 0x004a16e0`.
 
 > **QUIRK — the boolean / tail-predicate reductions issue from the LOAD slot, not an ALU slot.** A
@@ -218,7 +218,7 @@ two halves live in **two distinct selector bands** of `word0`:
 ### 3.2 The load-band selector is a clean enumerated counter
 
 Within the `s1_ld` band the low bytes form a tight, contiguous enumeration (the `0x4a..e0` family),
-re-read byte-exact from the `f0_s1_ld` thunks this pass:
+read byte-exact from the `f0_s1_ld` thunks:
 
 ```
 ltrni    0x004a00e0   ltrn_2i  0x004a04e0   ltr2n   0x004a06e0   ltrn   0x004a07e0
@@ -237,7 +237,7 @@ group occupies sub-codes `0x0..0xb`, the bool-fold group `0x12..0x17`.
 > `ivp_ltrsn` is `0x004a0ae0` in `f0_s1_ld` but `0x000bca00` in `f11_s1_alu`, `0x005e0920` in `f1_s1_ld`,
 > `0x00221120` in `f2_s1_ld`. This is the two-tier format-local selector model of
 > [flix-encoding §6.2](../core/flix-encoding.md); the value **semantics are slot-invariant** but the
-> opcode word is not. Encode by table lookup, never by a global formula. `[HIGH/OBSERVED]`
+> opcode word is not. Encode by table lookup, never by a global formula.
 
 ### 3.3 The `…t` predicated-reduce forms drop into a distinct sub-band
 
@@ -269,7 +269,7 @@ The `rbmax*`/`rbmin*` reduce-and-flag forms carry a **second output**: the value
 full-reduce body (`module__xdref_rbmax_nx16_64_512_512` @ `0x859f00`) writes **two** pointers (`%r14` =
 data, `%r13` = predicate). This mirrors B03's B-variant operand discipline (two `0x6f` 'o' bytes), but
 where B03's `bmax` flag is **per-lane** ("did operand a win in this lane?"), B08's `rbmax` flag is
-**cross-lane** ("which lane(s) held the maximum?") — the horizontal argmax. `[HIGH/OBSERVED]`
+**cross-lane** ("which lane(s) held the maximum?") — the horizontal argmax.
 
 ---
 
@@ -352,8 +352,8 @@ Min is the polarity flip. The HW tree applies the same `max` to 16 lane-pairs in
 The fp forms `rmaxnum`/`rminnum` use the **`num` (NaN-skipping)** primitive: a NaN lane is treated as the
 identity (−∞ for max, +∞ for min) so it never poisons the reduction — the IEEE-754-2019 `maximumNumber`
 / `minimumNumber` semantics, matching the scalar-FP family ([fp-sub-isa](../core/fp-sub-isa.md)).
-`[HIGH/OBSERVED]` on the int divergence (execution); `[MED/INFERRED]` on the fp NaN-skip (read from the
-`num` leaf name + body, not sweep-driven this pass).
+The int divergence is execution-proven; the fp NaN-skip is `[MED/INFERRED]` (read from the `num` leaf
+name + body, not sweep-driven).
 
 ### 4.3 (c) Reduce-and-flag — the argmax/argmin predicate write — `rbmax`
 
@@ -379,7 +379,7 @@ void rbmax_step(int16_t nv, int lane, const acc_t *in, acc_t *out) {
 > replacing it, so `ivp_rbmaxnx16` over a vector with the maximum value in lanes 1 and 7 produces a `vbool`
 > with **both** bits 1 and 7 set — not a single "first/last argmax". A reimplementer building a
 > one-hot-argmax on top of `rbmax` must add a priority-encode pass; the ISA primitive returns the full
-> equality set. `[HIGH/OBSERVED]` (tie branch disassembled; value side driven live in §5.3).
+> equality set. (Tie branch disassembled; value side driven live in §5.3.)
 
 ### 4.4 (d) Tail-predicate reduce — lane-count → `vbool` mask — `ltrn`
 
@@ -443,7 +443,7 @@ horizontal tests that drive a scalar branch off a vector mask.
 `libfiss-base.so` (sha256 `260b110c…`, 864 `module__xdref_*` leaves) is callable in-process with no
 license. The **whole-vector reduce leaves** take a *pointer to a 512-bit `vec`* in `rsi` and write through
 an output pointer — distinct from the simple element leaves of [template §5.2](template-and-partition.md)
-(which take a scalar in `rsi`). Eleven leaves driven live this pass; transcripts are reproducible with
+(which take a scalar in `rsi`). Eleven leaves were driven live; transcripts are reproducible with
 `ctypes.CDLL("libfiss-base.so")`.
 
 ### 5.1 Horizontal sum — overflow/saturation (the required sum case)
@@ -480,8 +480,7 @@ lanes = [0x8000, 0x0001, 0 ×30]
 ```
 
 The same physical lane bits reduce to **different** extrema under the signed vs unsigned interpretation —
-the cleanest proof that `rmax`/`rmaxu` are genuinely distinct ops, not aliases. `[HIGH/OBSERVED by
-execution]`
+the cleanest proof that `rmax`/`rmaxu` are genuinely distinct ops, not aliases.
 
 ### 5.3 Reduce-and-flag — argmax value + predicate (the required flag case)
 
@@ -517,8 +516,7 @@ ltrn(31) = 0x3fffffffffffffff
 ltrn(32) = 0x0000000000000000      <- WRAP edge (§4.4): (1<<32)-1 = 0
 ```
 
-This is the reduce-and-flag predicate form a tail-masked reduction consumes. `[HIGH/OBSERVED by
-execution]`
+This is the reduce-and-flag predicate form a tail-masked reduction consumes.
 
 ### 5.5 Boolean fold — `randbn` (all-true) / `rorbn` (any-true)
 
@@ -533,8 +531,7 @@ v = 0x1 (lane0 low bit)        randbn = 0   rorbn = 1
 ```
 
 `randbn` = AND-reduce (all-lanes-true), `rorbn` = OR-reduce (any-lane-true); the `0xAAAA…` row proves the
-**predicate is the low bit of each 2-bit lane pair**, confirming the `vbool` geometry. `[HIGH/OBSERVED by
-execution]`
+**predicate is the low bit of each 2-bit lane pair**, confirming the `vbool` geometry.
 
 ---
 
@@ -552,7 +549,7 @@ execution]`
 * **Latency.** The horizontal fold is a log-depth tree (5 stages for 32 lanes), so the reduce result is
   available several cycles after the source `vec` is ready; the scalar/narrowed result lands in a single
   destination lane. `[MED/INFERRED]` — the exact cycle count is the `libcas-core.so` timing model's job;
-  the DWARF timing leaves were not resolvable to a per-op latency this pass, so the log-depth statement is
+  the DWARF timing leaves do not resolve to a per-op latency, so the log-depth statement is
   inferred from the 5-stage 32→1 fold structure, not read as a cycle constant.
 
 > **GOTCHA — a horizontal reduce writes ONE lane; the other 31 are undefined/zero, not broadcast.** The
@@ -562,14 +559,14 @@ execution]`
 > a `rep`/`splat` (B16). The `vbool`-producing forms (`rbmax`, `ltr`, `randb`/`rorb`) write the predicate
 > file, not `vec`. `[MED/INFERRED]` (the leaf writes a single output word; broadcast is not in the leaf —
 > consistent with the single-lane-result convention, but the exact lane index for each form is the ISS's
-> writeback stage, not re-confirmed per-form this pass).
+> writeback stage, not confirmed per-form).
 
 ---
 
 ## 7. Partition discipline — the exact family-prefix assignment
 
-To guarantee **no mnemonic is double-counted**, the per-prefix ownership, re-derived against the roster
-this pass (the first-match classifier of [template §4.2](template-and-partition.md)):
+To guarantee **no mnemonic is double-counted**, the per-prefix ownership, derived against the roster
+with the first-match classifier of [template §4.2](template-and-partition.md):
 
 | family / prefix | example | owner | why |
 |---|---|---|---|
@@ -606,7 +603,7 @@ fold test is the leaf's `_512`→narrow shape. `[HIGH/OBSERVED]`
 
 Cross-check: `108 = 12×9`; the min/max `192` (16 int × 9 + 8 fp `num` × 6), reduce-and-flag `156`
 (12 int × 9 + 8 fp `num` × 6), tail-predicate `81 = 9×9`, and bool fold `54 = 6×9` per-mnemonic counts
-sum to **591** — the figure **re-summed byte-exact this pass** from
+sum to **591** — the figure **summed byte-exact** from
 `Σ` over all 71 rows of `nm libisa-core.so | rg -c 'Opcode_<mn>_Slot_.*_encode'` (the authoritative
 total; the per-row arithmetic is a sanity rail). The int reduces carry **9** placements (s3_alu × 8 wide
 formats + n0); the fp `num` reduces carry **6** (the fp-capable s3_alu subset); the load-pipe
@@ -615,42 +612,41 @@ formats + n0); the fp `num` reduces carry **6** (the fp-capable s3_alu subset); 
 space without overlap (§7). The **value-leaf** footprint is ~85 distinct `module__xdref_*` leaves
 (`radd*`/`rmax*`/`rmin*`/`rbmax*`/`rbmin*`/`ltr*`/`randb*`/`rorb*` roots × dtype suffixes), rolling into
 the 864 denominator ([coverage-tally §6.3](../core/coverage-tally.md)). The 591 placements are part of —
-never additive beyond — the certified-perfect 12569. `[HIGH/OBSERVED]`
+never additive beyond — the certified-perfect 12569.
 
 ---
 
 ## 9. Adversarial self-verification — five strongest claims re-challenged
 
 1. **"B08 reductions are cross-lane: the leaf takes a whole 512-bit `vec` and returns a narrowed scalar."**
-   Re-challenged by disassembling `module__xdref_radd_nx16_32_512` (`0x858690`): the body reads **32**
+   Disassembling `module__xdref_radd_nx16_32_512` (`0x858690`): the body reads **32**
    distinct 16-bit lanes (`movzwl 0x3e(%rsi)`, `0x3c`, `0x3a`, … stepping by 2 down to `(%rsi)` — exactly
    32 reads), sign-extends each, sums into one `%eax`, and stores **one** 32-bit word. The input pointer
    spans a full 512-bit register; the output is a single scalar. This is the cross-lane signature, not a
-   per-element leaf. **Holds.** `[HIGH/OBSERVED]`
+   per-element leaf. **Holds.**
 2. **"The bool/tail-predicate reduces issue from the LOAD slot, the arithmetic reduces from `s3_alu`."**
-   Re-challenged by listing placements: `Opcode_ivp_ltrn_Slot_*` enumerates **`f{0..7}_s1_ld` + n2_s1_ld +
+   Listing placements: `Opcode_ivp_ltrn_Slot_*` enumerates **`f{0..7}_s1_ld` + n2_s1_ld +
    f11_s1_alu** and **no** `s3_alu`; `Opcode_ivp_raddnx16_Slot_*` enumerates **`f*_s3_alu` + n0_s3_alu**
    and **no** `s1_ld`. The selector bands match (`0x004axxxx` load vs `0x8690xxxx`/`0x8480xxxx` ALU).
-   Two disjoint slot regimes, byte-confirmed. **Holds.** `[HIGH/OBSERVED]`
+   Two disjoint slot regimes, byte-confirmed. **Holds.**
 3. **"`radd` is exact/widening; `radds` is a fractional-pack saturator, not an int16 clamp."**
-   Re-challenged by execution: `radd(32×32767) = 1048544` (exact, > INT16_MAX, **no** saturation) proves
+   By execution: `radd(32×32767) = 1048544` (exact, > INT16_MAX, **no** saturation) proves
    `radd` widens; `radds(32×32767) = 0x7FFF` and `radds(32×−32768) = 0x8000` (a sign-flagged field, **not**
    an `INT16_MIN` clamp) proves `radds` packs into a sign+magnitude 16-bit field via a 21-bit accumulator
    (`and $0x1fffff` in the disasm). A naive `clamp(Σ)` model diverges. **Holds (and corrects the naive
-   reading).** `[HIGH/OBSERVED by execution]`
-4. **"`rmax` and `rmaxu` genuinely diverge on signed-vs-unsigned ties."** Re-challenged by driving both
+   reading).**
+4. **"`rmax` and `rmaxu` genuinely diverge on signed-vs-unsigned ties."** Driving both
    over `[−1, +1, …]`: signed `rmax → +1`, unsigned `rmaxu → 0xFFFF` — the same physical lane bits reduce
    to different extrema. Confirmed again over `[0x8000, 1, …]` (signed `+1` vs unsigned `0x8000`). Distinct
-   ops, not aliases. **Holds.** `[HIGH/OBSERVED by execution]`
+   ops, not aliases. **Holds.**
 5. **"`ltrn(n)` is the tail-predicate `vb[l]=(l<n)`, 2 bits/lane, with a `n=32` wrap edge."**
-   Re-challenged by execution: `ltrn(1)=0x3`, `ltrn(8)=0xFFFF`, `ltrn(16)=0xFFFFFFFF` (2 bits per lane),
+   By execution: `ltrn(1)=0x3`, `ltrn(8)=0xFFFF`, `ltrn(16)=0xFFFFFFFF` (2 bits per lane),
    and **`ltrn(32)=0x0`** — the `(1<<32)−1 = 0` wrap the disasm predicts (`shl %cl ; sub $1`, no clamp).
    The saturating `ltrs2n` (`0x814420`) adds the `js`/`cmp $0x3f` clamp the plain form lacks. **Holds.**
-   `[HIGH/OBSERVED by execution]`
 
 **Ungrounded / flagged items.** (i) The **fp `num` (NaN-skip) min/max** semantics (`rmaxnum`/`rminnum`/
-`rbmaxnum`/`rbminnum`) are read from the `num` leaf bodies and the IEEE-754-2019 idiom, **not** sweep-driven
-this pass — `[MED/INFERRED]` on the exact NaN/−0 behaviour (the int reduces are execution-certified; the fp
+`rbmaxnum`/`rbminnum`) are read from the `num` leaf bodies and the IEEE-754-2019 idiom, **not**
+sweep-driven — `[MED/INFERRED]` on the exact NaN/−0 behaviour (the int reduces are execution-certified; the fp
 forms inherit the `num` primitive's behaviour). (ii) The **`…t` predicated-merge** fold-membership rule
 (only masked-in lanes contribute) is read from the `radd_nx16_32_512_t` leaf signature (it takes the extra
 mask arg) and the B03 `*t` operand-direction parallel, but the masked sum was **not** sweep-validated —
@@ -658,8 +654,8 @@ mask arg) and the B03 `*t` operand-direction parallel, but the masked sum was **
 tie-branch disasm (`je`→OR at `0x859ed8`) but the headline live drive certified the **value** fold; the
 flag-bit sweep is `[HIGH/OBSERVED]` (disasm) / not-yet-execution-certified. (iv) The **single-lane writeback
 index** of each reduce result (which lane holds the scalar) is the ISS writeback stage's job, stated
-`[MED/INFERRED]` (lane 0 convention), not re-read per-form. (v) The **latency** is `[MED/INFERRED]` from the
-5-stage 32→1 fold depth, not a `libcas-core` cycle constant (the timing DWARF was not resolvable this pass).
+`[MED/INFERRED]` (lane 0 convention), not read per-form. (v) The **latency** is `[MED/INFERRED]` from the
+5-stage 32→1 fold depth, not a `libcas-core` cycle constant (the timing DWARF does not resolve to one).
 
 ---
 
@@ -689,9 +685,9 @@ index** of each reduce result (which lane holds the scalar) is the ISS writeback
 
 ---
 
-*Provenance: selector templates and slot placements are re-disassembled from `libisa-core.so`
+*Provenance: selector templates and slot placements are disassembled from `libisa-core.so`
 (sha256 `8fe68bf4…`, `ncore2gp/config/`, not stripped; `.data.rel.ro` file = VMA − `0x200000`,
-`readelf -SW`-confirmed this pass); the value leaves in §4–§5 (`radd/raddu/radds_nx16`, `rmax/rmaxu_nx16`,
+`readelf -SW`-confirmed); the value leaves in §4–§5 (`radd/raddu/radds_nx16`, `rmax/rmaxu_nx16`,
 `rbmax_16`, `ltrn/ltrn_2/ltrs2n`, `randbn/rorbn`) are driven live via `ctypes` against `libfiss-base.so`
 (sha256 `260b110c…`), license-free. Counts via `nm | rg -c`; the `extracted/` tree is gitignored (reached
 with absolute paths). All prose is derived from static analysis and in-process execution of the shipped

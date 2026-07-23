@@ -16,8 +16,9 @@ slot-checked in [§9](#9-the-b06--b07-boundary).
 This page inherits the certified-perfect denominator from
 [the coverage tally](../core/coverage-tally.md): the `1534 / 12569` shipped mnemonic/placement cover.
 Counts are grounded with `nm | rg -c` against the binary `.symtab`, never a decompile grep; the
-`extracted/` tree is gitignored (reach it with `fd --no-ignore` or an absolute path). Confidence tags
-follow [the Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a byte /
+`extracted/` tree is gitignored (reach it with `fd --no-ignore` or an absolute path). The page default
+is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag,
+following [the Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a byte /
 immediate / symbol / **executed** value read from the shipped binary; `INFERRED` = reasoned over
 OBSERVED; `CARRIED` = re-used at a cited page's confidence; crossed with `HIGH`/`MED`/`LOW`. All prose is
 binary / static-analysis derived only.
@@ -26,7 +27,7 @@ binary / static-analysis derived only.
 > (`lsn_NxM*`/`lsnx*`/`lsr*`), the align-load rotate-merge family (`la*`/`lav*`/`lan*`/`l2a*`/`l2u*`),
 > the bit/bool loads (`lb*`), and the `valign` priming/management ops (`lalign*`/`malign`/`zalign`), in
 > the four addressing modes **`_i` / `_ip` / `_x` / `_xp`** (immediate / immediate-post-update /
-> AR-indexed / AR-indexed-post-update). **103 mnemonics, 1484 placements.** `[HIGH/OBSERVED]`
+> AR-indexed / AR-indexed-post-update). **103 mnemonics, 1484 placements.**
 
 ---
 
@@ -60,9 +61,10 @@ on the shape axis; the addressing modes are the within-family rows.
 Columns: `mnemonic` · `FLIX format·slot` (the memory-port slots hosting it) · `opcode-sel imm` (the
 `F0_S0_LdSt` encode-thunk template `WORD0`, the
 [universal `C7 07 imm32 C3` ABI](../core/flix-encoding.md#61-the-universal-encode-thunk-abi); per-format
-packing differs) · `dest/addr regfiles + field bits` · `bytes` (16 wide / 8 narrow) · one-line semantics
-· `[conf]`. Templates are byte-exact from `objdump -d` this pass; field bits from the `Field_*_get`
+packing differs) · `dest/addr regfiles + field bits` · `bytes` (16 wide / 8 narrow) · one-line
+semantics. Templates are byte-exact from `objdump -d`; field bits from the `Field_*_get`
 thunks and the `xtensa-elf-as` device round-trip ([§3](#3-encoding--where-loads-live-in-the-flix-grid)).
+Every row of §2.1–§2.4 is `[HIGH/OBSERVED]` except `ivp_lat2nx8_xp`, marked `[MED/OBSERVED]` inline.
 
 ### 2.1 Aligned vector loads (`lvn*` / `lv*` — the streaming spine)
 
@@ -70,16 +72,16 @@ A 512-bit load whose address is a multiple of 64 bytes. Reads one whole memory r
 `vec`. Four dtypes (signed/unsigned `8`-bit and `16`-bit; the `2x16s/2x16u` carry a sign-class), four
 addressing modes each.
 
-| mnemonic | fmt·slot | opcode-sel imm (F0·s0) | dest/addr (field bits) | bytes | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_lvnx8u_i` | F0/F1/F2/F3/F4/F6/F7/N0/N1/N2 · s0/s1 | `0x10900000` | `vr`=vec dest · `ar`=AR base · `i_bimm` (×8 scale) | 16/8 | aligned 512b load, `u8` lanes, no addr update | `[HIGH/OBSERVED]` |
-| `ivp_lvnx8u_ip` | (same) | `0x10f2c100` | + AR base **post-incremented** by imm | 16/8 | aligned load, then `base += imm` | `[HIGH/OBSERVED]` |
-| `ivp_lvnx8u_x` | (same) | `0x10ed0000` | `vr`·`ar` base·`art` AR index | 16/8 | aligned load at `base + AR_index`, no update | `[HIGH/OBSERVED]` |
-| `ivp_lvnx8u_xp` | (same) | `0x10ed0100` | + AR base **post-incremented** by AR stride | 16/8 | aligned load, then `base += AR_stride` | `[HIGH/OBSERVED]` |
-| `ivp_lvnx8s_{i,ip,x,xp}` | (same 16 each) | `0x10900000` / `0x10f2c100` / `0x10ed0000` / `0x10ed0100` | as above, **signed** `s8` lane class | 16/8 | aligned 512b load, `s8` lanes | `[HIGH/OBSERVED]` |
-| `ivp_lvn_2x16s_{i,ip,x,xp}` | (same) | `0x10940000`(i) | `vec` dest · 32×`s16` lanes | 16/8 | aligned 512b load, signed 16-bit lanes | `[HIGH/OBSERVED]` |
-| `ivp_lvn_2x16u_{i,ip,x,xp}` | (same) | — | 32×`u16` lanes | 16/8 | aligned 512b load, unsigned 16-bit lanes | `[HIGH/OBSERVED]` |
-| `ivp_lv2nx8_{i,ip,x,xp}` | (same) | — | 64×`8`-bit lanes (untyped byte vector) | 16/8 | aligned 512b byte load | `[HIGH/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm (F0·s0) | dest/addr (field bits) | bytes | semantics |
+|---|---|---|---|---|---|
+| `ivp_lvnx8u_i` | F0/F1/F2/F3/F4/F6/F7/N0/N1/N2 · s0/s1 | `0x10900000` | `vr`=vec dest · `ar`=AR base · `i_bimm` (×8 scale) | 16/8 | aligned 512b load, `u8` lanes, no addr update |
+| `ivp_lvnx8u_ip` | (same) | `0x10f2c100` | + AR base **post-incremented** by imm | 16/8 | aligned load, then `base += imm` |
+| `ivp_lvnx8u_x` | (same) | `0x10ed0000` | `vr`·`ar` base·`art` AR index | 16/8 | aligned load at `base + AR_index`, no update |
+| `ivp_lvnx8u_xp` | (same) | `0x10ed0100` | + AR base **post-incremented** by AR stride | 16/8 | aligned load, then `base += AR_stride` |
+| `ivp_lvnx8s_{i,ip,x,xp}` | (same 16 each) | `0x10900000` / `0x10f2c100` / `0x10ed0000` / `0x10ed0100` | as above, **signed** `s8` lane class | 16/8 | aligned 512b load, `s8` lanes |
+| `ivp_lvn_2x16s_{i,ip,x,xp}` | (same) | `0x10940000`(i) | `vec` dest · 32×`s16` lanes | 16/8 | aligned 512b load, signed 16-bit lanes |
+| `ivp_lvn_2x16u_{i,ip,x,xp}` | (same) | — | 32×`u16` lanes | 16/8 | aligned 512b load, unsigned 16-bit lanes |
+| `ivp_lv2nx8_{i,ip,x,xp}` | (same) | — | 64×`8`-bit lanes (untyped byte vector) | 16/8 | aligned 512b byte load |
 
 > **NOTE — `lvn` requires a 64-byte-aligned address; the hardware does not fault, it *masks*.** The
 > aligned loads drop the low 6 address bits (the `vec` is one full row). A reimplementer that hands a
@@ -93,19 +95,19 @@ The `lsn_NxM` forms load a **multi-row structured block** (e.g. `lsn_4x64` = fou
 `lsn_16x256` = a 16×256-bit tile) used for matrix-tile and transpose-feed streaming; `lsr*` is the
 strided/rotated streaming variant. All four addressing modes each.
 
-| mnemonic | shape (`N×M`) | opcode-sel imm (F0·s0) | bytes | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_lsn_2x16s_{i,ip,x,xp}` | 32×16b signed | (per-mode) | 16/8 | streaming load, signed 16-bit lanes | `[HIGH/OBSERVED]` |
-| `ivp_lsn_2x32_{i,ip,x,xp}` | 16×32b | — | 16/8 | streaming load, 32-bit lanes | `[HIGH/OBSERVED]` |
-| `ivp_lsn_4x64_{i,ip,x,xp}` | 4 × 64b sub-rows | `0x…`(per-fmt) | 16/8 | structured 4-lane 64-bit tile load (see device decode below) | `[HIGH/OBSERVED]` |
-| `ivp_lsn_8x128_{i,ip,x,xp}` | 8 × 128b | — | 16/8 | 8-lane 128-bit tile load | `[HIGH/OBSERVED]` |
-| `ivp_lsn_16x256_{i,ip,x,xp}` | 16 × 256b | — | 16/8 | 16-lane 256-bit tile load (widest stream form) | `[HIGH/OBSERVED]` |
-| `ivp_lsnx8s_{i,ip,x,xp}` / `ivp_lsnx16_{…}` | 8b·16b | — | 16/8 | narrow stream load, sign-class typed | `[HIGH/OBSERVED]` |
-| `ivp_ls2nx8_{i,ip,x,xp}` | 64×8b | — | 16/8 | byte stream load | `[HIGH/OBSERVED]` |
-| `ivp_lsr2nx8_{…}` / `ivp_lsrn_2x32_{…}` / `ivp_lsrn_4x64_{…}` / `ivp_lsrnx16_{…}` | 8b/32b/64b/16b | — | 16/8 | **rotated/strided** stream load (`lsr` = ld-stream-rotate; extra Ld-slot placements) | `[HIGH/OBSERVED]` |
+| mnemonic | shape (`N×M`) | opcode-sel imm (F0·s0) | bytes | semantics |
+|---|---|---|---|---|
+| `ivp_lsn_2x16s_{i,ip,x,xp}` | 32×16b signed | (per-mode) | 16/8 | streaming load, signed 16-bit lanes |
+| `ivp_lsn_2x32_{i,ip,x,xp}` | 16×32b | — | 16/8 | streaming load, 32-bit lanes |
+| `ivp_lsn_4x64_{i,ip,x,xp}` | 4 × 64b sub-rows | `0x…`(per-fmt) | 16/8 | structured 4-lane 64-bit tile load (see device decode below) |
+| `ivp_lsn_8x128_{i,ip,x,xp}` | 8 × 128b | — | 16/8 | 8-lane 128-bit tile load |
+| `ivp_lsn_16x256_{i,ip,x,xp}` | 16 × 256b | — | 16/8 | 16-lane 256-bit tile load (widest stream form) |
+| `ivp_lsnx8s_{i,ip,x,xp}` / `ivp_lsnx16_{…}` | 8b·16b | — | 16/8 | narrow stream load, sign-class typed |
+| `ivp_ls2nx8_{i,ip,x,xp}` | 64×8b | — | 16/8 | byte stream load |
+| `ivp_lsr2nx8_{…}` / `ivp_lsrn_2x32_{…}` / `ivp_lsrn_4x64_{…}` / `ivp_lsrnx16_{…}` | 8b/32b/64b/16b | — | 16/8 | **rotated/strided** stream load (`lsr` = ld-stream-rotate; extra Ld-slot placements) |
 
 A device-decoded `lsn_4x64` streaming sequence (assembled in `libhal.a`, decoded with the `ncore2gp`
-core this pass) shows the canonical four-lane tile readout co-issued with a predicate extract:
+core) shows the canonical four-lane tile readout co-issued with a predicate extract:
 
 ```
 c1: 00070b3208b3ab000ec823a60112000f
@@ -116,7 +118,6 @@ c1: 00070b3208b3ab000ec823a60112000f
 
 The `lsn_4x64_i v0, a2, 8` advances the in-bundle immediate offset each iteration (`8, 16, 24, …`);
 the closing bundle rewinds `a2` with `addi.a a2, a2, -128` — a software-managed circular tile walk.
-`[HIGH/OBSERVED]`
 
 ### 2.3 Align-loads — the unaligned rotate-merge read (`la*` / `lav*` / `lan*`)
 
@@ -127,18 +128,18 @@ aligned row; the wanted vector **spans two consecutive 64-byte rows**, so the da
 row, (b) extracts the aligned 512b vector from the `{carry ‖ new}` concat, and (c) updates the carry
 register for the next iteration — a one-instruction streaming unaligned read.
 
-| mnemonic | role | fmt·slot | opcode-sel imm (F0·s0) | operands | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_la2nx8_ip` | use+update | s0/s1 (17) | `0x10fa0080` | `v, u, a` | unaligned byte load via `u`, implicit post-incr | `[HIGH/OBSERVED]` |
-| `ivp_la2nx8_ipi` | use+update | s0/s1 | — | `v, u, a, imm` | unaligned byte load, explicit imm post-incr | `[HIGH/OBSERVED]` |
-| `ivp_la2nx8_xp` | use+update | s0/s1 + **F4 dual-Ld** | `0x10c30000` | `v, u, a, ar_stride` | unaligned byte load, AR-stride post-incr | `[HIGH/OBSERVED]` |
-| `ivp_lan_2x16{s,u}_{ip,xp}` | use+update | s0/s1 | — | `v, u, a[, str]` | unaligned 16-bit load (sign-typed) | `[HIGH/OBSERVED]` |
-| `ivp_lanx8{s,u}_{ip,xp}` | use+update | s0/s1 | — | `v, u, a[, str]` | unaligned 8-bit load (sign-typed) | `[HIGH/OBSERVED]` |
-| `ivp_lav2nx8_xp` | use+update (variable) | s0/s1 | `0x10c98000` | `v, u, a, str` | variable-stride unaligned byte load | `[HIGH/OBSERVED]` |
-| `ivp_lavn_2x16{s,u}_xp` / `ivp_lavnx8{s,u}_xp` | use+update (variable) | s0/s1 | — | `v, u, a, str` | variable-stride unaligned typed load | `[HIGH/OBSERVED]` |
-| `ivp_lat2nx8_xp` | use+update (transpose-feed) | s0/s1 | — | `v, u, a, str` | unaligned byte load, transpose-tap variant | `[MED/OBSERVED]` |
-| `ivp_labvdcmprs2nx8_xp` | use+update (compress) | s0/s1 (2) | — | `v, u, a, str` | **bool-mask decompressing** unaligned load (`dcmprs`) | `[HIGH/OBSERVED]` |
-| `ivp_l2a4nx8_ip` / `ivp_l2au2nx8_{ip,ipi,xp}` / `ivp_l2u2nx8_xp` | dual-load | s0/s1 | — | `v, u, a[, str]` | **two-row** dual align-load (loads a 1024-bit window) | `[HIGH/OBSERVED]` |
+| mnemonic | role | fmt·slot | opcode-sel imm (F0·s0) | operands | semantics |
+|---|---|---|---|---|---|
+| `ivp_la2nx8_ip` | use+update | s0/s1 (17) | `0x10fa0080` | `v, u, a` | unaligned byte load via `u`, implicit post-incr |
+| `ivp_la2nx8_ipi` | use+update | s0/s1 | — | `v, u, a, imm` | unaligned byte load, explicit imm post-incr |
+| `ivp_la2nx8_xp` | use+update | s0/s1 + **F4 dual-Ld** | `0x10c30000` | `v, u, a, ar_stride` | unaligned byte load, AR-stride post-incr |
+| `ivp_lan_2x16{s,u}_{ip,xp}` | use+update | s0/s1 | — | `v, u, a[, str]` | unaligned 16-bit load (sign-typed) |
+| `ivp_lanx8{s,u}_{ip,xp}` | use+update | s0/s1 | — | `v, u, a[, str]` | unaligned 8-bit load (sign-typed) |
+| `ivp_lav2nx8_xp` | use+update (variable) | s0/s1 | `0x10c98000` | `v, u, a, str` | variable-stride unaligned byte load |
+| `ivp_lavn_2x16{s,u}_xp` / `ivp_lavnx8{s,u}_xp` | use+update (variable) | s0/s1 | — | `v, u, a, str` | variable-stride unaligned typed load |
+| `ivp_lat2nx8_xp` | use+update (transpose-feed) | s0/s1 | — | `v, u, a, str` | unaligned byte load, transpose-tap variant — `[MED/OBSERVED]` |
+| `ivp_labvdcmprs2nx8_xp` | use+update (compress) | s0/s1 (2) | — | `v, u, a, str` | **bool-mask decompressing** unaligned load (`dcmprs`) |
+| `ivp_l2a4nx8_ip` / `ivp_l2au2nx8_{ip,ipi,xp}` / `ivp_l2u2nx8_xp` | dual-load | s0/s1 | — | `v, u, a[, str]` | **two-row** dual align-load (loads a 1024-bit window) |
 
 > **GOTCHA — `lavn`/`lav` is *variable*-stride; `lan`/`la` is fixed.** The `v` infix (`lav`/`lavn`)
 > marks the **variable-stride** align-load: the post-increment is an **AR-supplied** byte stride, so the
@@ -146,22 +147,22 @@ register for the next iteration — a one-instruction streaming unaligned read.
 > forms post-increment by the **fixed access width** (`_ip`) or a single AR stride (`_xp`). A
 > reimplementer's loop builder must pick `lavn_*_xp` when the row stride ≠ the vector width. Verified by
 > the operand grammar: `ivp_lavn_2x16s_xp v0, u0, a3, a4` (four operands incl. explicit stride `a4`)
-> vs `ivp_la2nx8_ip v0, u0, a2` (implicit). `[HIGH/OBSERVED]`
+> vs `ivp_la2nx8_ip v0, u0, a2` (implicit).
 
 ### 2.4 valign priming + management (`lalign*` / `malign` / `zalign`) and bit-loads (`lb*`)
 
 The ops that **establish** the carry state before the first `la*`, and the bit/bool loads.
 
-| mnemonic | fmt·slot | opcode-sel imm (F0·s0) | operands | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_lalign_i` | s0/s1 (18) | `0x11000000` | `u, a, imm` | **prime**: load 512b row into `valign u`, no addr update | `[HIGH/OBSERVED]` |
-| `ivp_lalign_ip` | s0/s1 (18) | `0x11020400` | `u, a, imm` | prime + `base += imm` post-update | `[HIGH/OBSERVED]` |
-| `ivp_la_pp` | s0/s1 | `0x11060400` | `u, a` | **priming-pair**: prime `u` from `[a]` (no vec dest) | `[HIGH/OBSERVED]` |
-| `ivp_la_ppxu` | s0/s1 | `0x11000400` | `u, a, str` | priming-pair, AR-stride, **circular** (`xu`) | `[HIGH/OBSERVED]` |
-| `ivp_malign` | s0/s1 (20) | `0x11060420` | `u, u'` | **make**: valign→valign move/derive (no memory access) | `[HIGH/OBSERVED]` |
-| `ivp_zalign` | s0/s1 | `0x11060424` | `u` | **zero**: clear `valign u` (`= malign \| 0x04`) | `[HIGH/OBSERVED]` |
-| `ivp_lb2n_i` / `ivp_lb2n_ip` | **s1_ld only** | (per-fmt) | `vb, a, imm` | bit/bool vector load into `vbool` (`vb0..vb15`) | `[HIGH/OBSERVED]` |
-| `ivp_lbn_i` / `ivp_lbn_ip` / `ivp_lbn_2_i` / `ivp_lbn_2_ip` | s1_ld | — | `vb, a, imm` | bool load (1-row / 2-row variants) | `[HIGH/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm (F0·s0) | operands | semantics |
+|---|---|---|---|---|
+| `ivp_lalign_i` | s0/s1 (18) | `0x11000000` | `u, a, imm` | **prime**: load 512b row into `valign u`, no addr update |
+| `ivp_lalign_ip` | s0/s1 (18) | `0x11020400` | `u, a, imm` | prime + `base += imm` post-update |
+| `ivp_la_pp` | s0/s1 | `0x11060400` | `u, a` | **priming-pair**: prime `u` from `[a]` (no vec dest) |
+| `ivp_la_ppxu` | s0/s1 | `0x11000400` | `u, a, str` | priming-pair, AR-stride, **circular** (`xu`) |
+| `ivp_malign` | s0/s1 (20) | `0x11060420` | `u, u'` | **make**: valign→valign move/derive (no memory access) |
+| `ivp_zalign` | s0/s1 | `0x11060424` | `u` | **zero**: clear `valign u` (`= malign \| 0x04`) |
+| `ivp_lb2n_i` / `ivp_lb2n_ip` | **s1_ld only** | (per-fmt) | `vb, a, imm` | bit/bool vector load into `vbool` (`vb0..vb15`) |
+| `ivp_lbn_i` / `ivp_lbn_ip` / `ivp_lbn_2_i` / `ivp_lbn_2_ip` | s1_ld | — | `vb, a, imm` | bool load (1-row / 2-row variants) |
 
 > **QUIRK — `zalign` = `malign | 0x04`, and `malign` is a register-only move.** Byte-exact:
 > `Opcode_ivp_malign_Slot_f0_s0_ldst_encode` = `movl $0x11060420,(%rdi)`,
@@ -169,7 +170,7 @@ The ops that **establish** the carry state before the first `la*`, and the bit/b
 > bit toggles "derive from another valign reg" → "zero". And `malign u0, u1` takes **two valign
 > registers, no memory operand** (assembler rejects an AR operand): it is the valign-file internal
 > move used to re-seed a fresh stream from an in-flight one. `zalign u0` clears the carry so the first
-> `la*` of a stream that *starts* row-aligned reads correctly. `[HIGH/OBSERVED]`
+> `la*` of a stream that *starts* row-aligned reads correctly.
 
 ---
 
@@ -196,13 +197,13 @@ format. So a load can co-issue with a second load (`s1`), a MAC (`s2`) and 1–3
 16-byte bundle — the structural basis of the streaming inner loop (a `lvn` feeding a `mul` while a
 `lalign` primes the next unaligned read; see the real two-load bundle in
 [§4.3](#43-a-real-load-bundle-from-device-code)). The bit-loads (`lb*`) place **only** in `s1_ld` (they
-target the `vbool` file). `[HIGH/OBSERVED]`
+target the `vbool` file).
 
 The placement total over the 103 B06 mnemonics is **1484** (summed `nm | rg -c` per mnemonic). The
 spread: most loads carry **13–17** placements (every memory-port slot of every format), the bit-loads
 carry fewer (`s1_ld` only), and the dual/special forms (`labvdcmprs`, `l2a4nx8`) carry **1–2**. `1484`
 is the contribution of B06 to the certified `12569` placement cover
-([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary-this-pass)).
+([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary)).
 `[HIGH/OBSERVED]`
 
 ### 3.2 The addressing mode is a selector cluster, not a single bit
@@ -223,7 +224,7 @@ the post-incrementing immediate load lives in a different iclass and is packed d
 auto-increment amount is folded into the selector). This mirrors the
 [two-tier selector model](../core/flix-encoding.md#62-the-two-tier-selector-model): a reimplementer's
 assembler must carry the full `(mnemonic, slot) → template` table — it cannot synthesize `_ip` from `_i`
-by OR-ing a constant. `[HIGH/OBSERVED]`
+by OR-ing a constant.
 
 ### 3.3 Operand field windows (read from the `Field_*_get` thunks)
 
@@ -247,7 +248,7 @@ extractor bodies and **confirmed by an `xtensa-elf-as` field sweep** ([§3.4](#3
 > immediate scattered across the word top, then the decoded value is multiplied by the access width. A
 > reimplementer that treats the immediate as a raw byte offset will under-stride by the element width.
 > The device sweep confirms the scale: `ivp_lvn_2x16s_i v0, a2, 64` and `… a2, 128` step the encoded
-> immediate by one unit each ([§3.4](#34-the-device-field-sweep)). `[HIGH/OBSERVED]`
+> immediate by one unit each ([§3.4](#34-the-device-field-sweep)).
 
 ### 3.4 The device field sweep (OBSERVED bit positions)
 
@@ -295,7 +296,7 @@ carry); phase (4) is the AR post-update modeled in [§5.3](#53-the-address-post-
 
 The simulator models the `valign` register-file as a small indexed store with a hazard scoreboard. The
 operand-semantic function `my_valign_0_opnd_ivp_sem_ld_st_valignr_set_use` (`libcas-core.so`
-`@0x17a6ec0`), disassembled this pass:
+`@0x17a6ec0`), disassembled:
 
 ```asm
 mov  0xac70(%rdi),%eax        ; eax = current valign write index (the rotating u-pointer)
@@ -312,7 +313,7 @@ the `0xa`/`0xb` constants are the read-stage bound, consistent with the **12-dee
 (`stage0..stage11`) and the `valign @10 read / @12 write` timing from
 [register-files §5](../core/register-files.md#5-readwrite-semantics-per-file). The three operand roles —
 `valignr` (the carry register), `uul` (align-**l**oad update), `uus` (align-store update, B07's side) —
-each have a `set_use`/`use` pair; B06 owns `valignr` + `uul`. `[HIGH/OBSERVED]`
+each have a `set_use`/`use` pair; B06 owns `valignr` + `uul`.
 
 > **QUIRK — there are exactly four `valign` registers, and the assembler proves it.** The field is 2
 > bits (`Field_…_valignr_…_get` = `and $0x3`), so the encoding can name only `u0..u3`. Assembling
@@ -366,7 +367,7 @@ multiplier's internal, not separately exposed).
 ### 4.3 A real load bundle from device code
 
 `libhal.a` (the shipped `ncore2gp` HAL archive) contains assembled vector code; decoded with
-`XTENSA_CORE=ncore2gp` this pass, the priming idiom appears verbatim:
+`XTENSA_CORE=ncore2gp`, the priming idiom appears verbatim:
 
 ```
  b: 029c48091852020f   { ivp_lv2nx8_i v0, a2, 0;       ivp_lalign_i u3, a2, 0x140 }
@@ -377,7 +378,7 @@ multiplier's internal, not separately exposed).
 Bundle `b` co-issues an **aligned load** (`lv2nx8_i v0`) on the `s0` port with a **valign prime**
 (`lalign_i u3`) on the `s1` Ld port — one bundle, two memory ops, priming the unaligned stream while the
 aligned spine advances. Bundle `13` primes **two** valign registers in a single 16-byte bundle (`u1`,
-`u2`) — the dual-Ld formats let a routine seed multiple unaligned streams in parallel. `[HIGH/OBSERVED]`
+`u2`) — the dual-Ld formats let a routine seed multiple unaligned streams in parallel.
 
 ---
 
@@ -396,7 +397,7 @@ and guessed.
 > `xdsem_ld_shifter_512` (load) / `xdsem_st_shifter_512` (store) in `libcas-core.so`. This is a
 > **naming-layer** difference (fiss leaf vs TIE module), not two distinct datapaths. See
 > [Formal Semantics II](../semantics/group-semantics-ii.md) §3, [B08 reduce](b08-reduce.md), and
-> [B12 shift](b12-shift.md). `[HIGH/OBSERVED]`
+> [B12 shift](b12-shift.md).
 
 ### 5.1 The two-row funnel shift (executed, bit-exact)
 
@@ -404,7 +405,7 @@ The `lashift` leaf is a byte-granular **funnel shift** over a 128-byte concatena
 inputs. Its body (disassembled `@0x85cc40`) copies input A (`%rdx`) to a stack buffer at offset `-0x38`,
 input B (`%rsi`) immediately above it, converts the byte-shift count to a bit offset
 (`lea 0x0(,%rcx,8),%edx`), and emits each output word from a `shl|shr`-merged window spanning two source
-words — the textbook double-word funnel. Driven live this pass (A = carry row, B = new row,
+words — the textbook double-word funnel. Driven live (A = carry row, B = new row,
 `shift = align`):
 
 ```python
@@ -448,7 +449,6 @@ driven with a control derived from `align` (`ctrl[j] = (align+j < 64) ? 64+(alig
 the leaf's `{B‖A}` index convention recovered by probing). For `align = 11` over an arbitrary 128-byte
 stream it reproduced the true unaligned vector `stream[11:75]` with **0 mismatches** across all 64 lanes,
 including the boundary bytes. Two distinct `libfiss-base` primitives agree on the rotate-merge math.
-`[HIGH/OBSERVED by execution]`
 
 ### 5.3 The address post-update (driven live)
 
@@ -463,7 +463,7 @@ base=0x00002000 += -128 -> 0x00001f80     base=0xffffffc0 += 64   -> 0x00000000 
 The AR pointer is a **32-bit modular** address: the post-update wraps at `2^32` with **no fault** — the
 basis of the circular-buffer walk a streaming kernel uses (the `addi.a a2, a2, -128` rewind in the
 device decode of [§2.2](#22-structured-stream-loads-lsn_nxm--lsnx--lsr) is the negative-stride form of
-the same add). `[HIGH/OBSERVED by execution]`
+the same add).
 
 ### 5.4 Loads have no `xdref` value leaf
 
@@ -474,7 +474,7 @@ computation* (base + scaled offset, post-update) plus, for `la*`, the *byte rota
 **`lashift`/`sel` extract** plus the **`add_32_32_32` address update** — both proven above — and the
 **`xtensa-elf-as`/`objdump` encode↔decode round-trip** of [§3.4](#34-the-device-field-sweep). The
 compares `le*`/`lt*` *do* have value leaves (`le_1_8_8`, `lt_1_8_8`) — which is exactly why they are
-**not** in B06 ([§9](#9-the-b06--b07-boundary)). `[HIGH/OBSERVED]`
+**not** in B06 ([§9](#9-the-b06--b07-boundary)).
 
 ---
 
@@ -509,7 +509,7 @@ cover, neither cross-paired with the `1607/12642` pre-fold superset
 complete: every mnemonic in the load/align-prime slice has a roster row; the placement sum equals its
 `nm`-counted total; and every row's *semantics* are grounded either by the executed extract/address
 leaves ([§5](#5-the-valign-extract--driven-live)) or by the device encode↔decode round-trip
-([§3.4](#34-the-device-field-sweep)). `[HIGH/OBSERVED]`
+([§3.4](#34-the-device-field-sweep)).
 
 ---
 
@@ -550,9 +550,9 @@ The split is mechanical and slot-checked — **no double count**:
 > (`u0..u3`) and the *same* scoreboard, but opposite directions: `valignr_set_use`/`uul` (load) vs
 > `uus` (store). B06 owns the load-side `valignr`+`uul` roles; B07 owns `uus`. The disambiguator is the
 > `l`/`s`/`m`/`z` lead letter, **not** the `align` token. Mis-binning `salign` into B06 would
-> double-count and corrupt both batches' tallies. Slot-checked this pass: `salign_i` =
+> double-count and corrupt both batches' tallies. Slot-checked: `salign_i` =
 > `Opcode_ivp_salign_i_Slot_f0_s0_ldst_encode` = `0x11000200` (store-direction bit `0x200` set),
-> 10 placements → B07. `[HIGH/OBSERVED]`
+> 10 placements → B07.
 
 > **NOTE — `le*`/`lt*`/`ltr*` are NOT loads, despite the `l` prefix.** `ivp_le2nx8`/`ivp_lt2nx8`
 > (less-equal / less-than compares) place in `s2_mul`/`s3_alu`/`s4_alu` **and** have value leaves
@@ -561,43 +561,41 @@ The split is mechanical and slot-checked — **no double count**:
 > **load-transpose** taps that place in `s1_alu`/`s1_ld` and carry a transpose value transform; they
 > belong with the transpose/shuffle family, not the pure addressing loads. B06 excludes all of
 > `{le,leu,lt,ltu,ltr,ltrn,ltrs,ltrsn}` — 21 mnemonics — on the OBSERVED grounds that they (a) issue in
-> compute slots and (b) have `xdref` value leaves, which no true load has. `[HIGH/OBSERVED]`
+> compute slots and (b) have `xdref` value leaves, which no true load has.
 
 ---
 
 ## 10. Adversarial self-verification — 5 strongest claims, re-challenged
 
-Each claim re-derived against the binary this pass; nothing taken on a report's word.
-
-1. **"103 load+align-prime mnemonics, 1484 placements."** Re-derived two ways: (a) the refined roster
+1. **"103 load+align-prime mnemonics, 1484 placements."** Derived two ways: (a) the refined roster
    file (true-load prefixes ∪ `malign`/`zalign`, minus the `le/lt/ltr` compares) = **103**; (b) a direct
    `nm | rg -o 'Opcode_(ivp_(lvn|lv2|lsn|…|lb)…|ivp_malign|ivp_zalign)' | sort -u`, then `rg -v
    '^ivp_(le|lt|lash)'` = **103**. The sub-family census ([§8](#8-sub-family-census-the-103-by-shape))
-   sums `20+32+16+22+5+6+2 = 103`. Placement re-sum = **1484**. *Challenge:* could `le2nx8` (a compare)
+   sums `20+32+16+22+5+6+2 = 103`. The placement sum = **1484**. *Challenge:* could `le2nx8` (a compare)
    have been wrongly counted as a load? No — it places in `s2_mul`/`s3_alu` and resolves to value leaf
-   `le_1_8_8`; no true load issues in a compute slot or has a value leaf. **Confirmed.** `[HIGH/OBSERVED]`
+   `le_1_8_8`; no true load issues in a compute slot or has a value leaf. **Confirmed.**
 
 2. **"There are exactly four `valign` registers, field = bits `[1:0]`."** *Challenge:* maybe the field
-   is wider and only `u0..u3` are used. Re-read the getter:
+   is wider and only `u0..u3` are used. The getter
    `Field_fld_ivp_sem_ld_st_valignr_Slot_f0_s0_ldst_get` = `mov (%rdi),%eax; and $0x3; ret` — a **2-bit**
    field, structurally capping at 4. And the shipped assembler **rejects** `ivp_lalign_i u4, a2, 0`
    (`register number out of range`). Two witnesses (field width + assembler) agree with the
    [idx-4 file geometry](../core/register-files.md#3-the-eight-register-files--the-authoritative-roster).
-   **Confirmed.** `[HIGH/OBSERVED]`
+   **Confirmed.**
 
 3. **"The `la*` unaligned read is a funnel byte-shift over `{carry ‖ new}`, bit-exact."** *Challenge:*
    maybe the model is approximate at the row boundary. Drove `module__xdref_lashift_512_512_6` live over
    all 64 shift values; every output matched the `{A‖B}` window model with **0 mismatches**, including
    `shift=63` which crosses the boundary (`…3f 40 41…`). A second independent leaf
    (`sel_2nx8_512_512_512_512`) reproduced the unaligned vector `stream[11:75]` with **0 mismatches**.
-   Two distinct primitives agree. **Confirmed.** `[HIGH/OBSERVED by execution]`
+   Two distinct primitives agree. **Confirmed.**
 
 4. **"The addressing mode is a distinct opcode, not a global post-update bit."** *Challenge:* the
-   AR-indexed `_x → _xp` delta is a clean `+0x100`, which looks like a bit. Counter-evidence from the
-   same pass: the **immediate** `_i (0x10900000) → _ip (0x10f2c100)` is a *wholly different* selector
+   AR-indexed `_x → _xp` delta is a clean `+0x100`, which looks like a bit. Counter-evidence: the
+   **immediate** `_i (0x10900000) → _ip (0x10f2c100)` is a *wholly different* selector
    word (the auto-increment is folded into a different iclass), and `lalign_i (0x11000000) → lalign_ip
    (0x11020400)` likewise. No single bit produces both deltas; the mode is a distinct
-   `(mnemonic, slot)` template. **Confirmed.** `[HIGH/OBSERVED]`
+   `(mnemonic, slot)` template. **Confirmed.**
 
 5. **"Loads have no `xdref` value leaf; the executed coverage is the extract + address leaves."**
    *Challenge:* maybe a load *does* have a hidden value leaf. `nm libfiss-base.so | rg
@@ -605,7 +603,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
    *extract* (`lashift`, `sel`, `dcmprs`) and the *address add* (`add_32_32_32`) — exactly the ops B06
    reuses and proves live ([§5](#5-the-valign-extract--driven-live)). Conversely the compares `le/lt`
    *do* have leaves — which is the OBSERVED grounds for excluding them ([§9](#9-the-b06--b07-boundary)).
-   **Confirmed.** `[HIGH/OBSERVED]`
+   **Confirmed.**
 
 ---
 
@@ -615,7 +613,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
 |---|---|---|
 | 103 load+align-prime mnemonics; 1484 placements; census sums to 103 | `[HIGH/OBSERVED]` | `nm libisa-core.so` `Opcode_*` roster + classifier + per-mnemonic `rg -c`; two derivations agree |
 | Loads occupy `s0` (LdSt/LdStALU/Ld) + `s1` (Ld); 13–17 placements typical; `lb*` = `s1_ld` only | `[HIGH/OBSERVED]` | `Opcode_*_Slot_<f>_s{0,1}_*_encode` symtab |
-| Opcode-sel templates (byte-exact `F0_S0_LdSt` `WORD0`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks this pass |
+| Opcode-sel templates (byte-exact `F0_S0_LdSt` `WORD0`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks |
 | Four addressing modes are distinct opcodes (no global update bit) | `[HIGH/OBSERVED]` | non-uniform template deltas (`_i→_ip` ≠ `_x→_xp`) |
 | Operand field windows (valign bits `[1:0]`, vec/AR/imm nibbles, width-scaled imm) | `[HIGH/OBSERVED]` | `Field_*_get` thunk bodies + `xtensa-elf-as` device field sweep |
 | Exactly 4 `valign` registers (`u0..u3`); `u4` rejected | `[HIGH/OBSERVED]` | 2-bit field + assembler `register number out of range` |
@@ -651,7 +649,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
 
 ---
 
-*Provenance: the encode templates and slot placements are `[HIGH/OBSERVED]` — re-disassembled
+*Provenance: the encode templates and slot placements are `[HIGH/OBSERVED]` — disassembled
 in-checkout from `libisa-core.so` (`ncore2gp/config/`); the operand field windows are `[HIGH/OBSERVED]`
 from the `Field_*_get` thunks **and** an `xtensa-elf-as`/`objdump` device round-trip; the valign
 rotate-merge extract and the AR post-update in [§5](#5-the-valign-extract--driven-live) are

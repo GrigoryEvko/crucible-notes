@@ -10,15 +10,16 @@ scalar-state bridges (`movvfs`/`movfsv`, `movvscf`/`movscfv`). It owns **27 mnem
 12 569 shipped placements** ([the coverage tally's certified denominator](../core/coverage-tally.md)),
 all in package `xt_ivp32`, all on the vector (`ivp_`) axis.
 
-Everything below is re-grounded against the shipped binaries this pass: the **encoding** from
+Everything below is grounded in the shipped binaries: the **encoding** from
 `libisa-core.so` (`Opcode_<mnem>_Slot_<slot>_encode` thunks, `Field_*_get` accessors, the `opcodes[]`
 table read directly for `opc#`/`iclass`/package), the **value semantics** by *executing* the matching
 `module__xdref_*` leaves in `libfiss-base.so` live in-process (license-free), the **pipeline/slot
 model** from `libcas-core.so` (the `…_inst_IVP_MOV*_issue` per-slot functions), and a byte-exact
 **encode/decode oracle** from the device-native `xtensa-elf-as`/`xtensa-elf-objdump`
-(`XTENSA_CORE=ncore2gp`). Confidence tags per [the Confidence & Walls model](../../reference/confidence-model.md):
-`[HIGH/OBSERVED]` = read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
-`[…/CARRIED]` = re-used at a sibling page's confidence.
+(`XTENSA_CORE=ncore2gp`). The page default is `[HIGH/OBSERVED]` (read-from-byte / proven-by-execution);
+claims that depart from it carry an explicit tag, per
+[the Confidence & Walls model](../../reference/confidence-model.md): `[MED/INFERRED]` = reasoned over
+OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
 
 > **Scope split — read this before pairing a mnemonic to a batch.** This batch is the **explicit
 > register-transfer / regfile-bridge core**. Four boundaries are enforced so the 30 batches don't
@@ -47,14 +48,14 @@ model** from `libcas-core.so` (the `…_inst_IVP_MOV*_issue` per-slot functions)
 
 | Fact | Value | Binary source |
 |---|---|---|
-| Axis / package | vector (`ivp_`) / **`xt_ivp32`** for all 27 | `opcodes[].package` @ `+0x08`, parsed for all 27 rows this pass `[HIGH/OBSERVED]` |
+| Axis / package | vector (`ivp_`) / **`xt_ivp32`** for all 27 | `opcodes[].package` @ `+0x08`, parsed for all 27 rows |
 | Mnemonics this batch | **27** | §2; `nm libisa-core.so` distinct `Opcode_ivp_mov*` minus `movgatherd` |
 | Placements this batch | **246** | per-mnemonic `nm \| rg -c` sum (§6) |
 | Register files bridged | all 8 — **AR, BR, vec, vbool, b32_pr, wvec, gvr(via scf), + scalar-FP state** | §3 bridge matrix; [register-files](../core/register-files.md) |
 | Dominant slot classes | **ALU** (intra-file + extract), **Ld** (broadcast/immediate inject), **Mul** (`movww`/`movscfv` wide) | `opcodedefs[]` slots + `libcas-core` issue fns (§3.4) |
 | Value-leaf family | `mov_<outw>_<inw>` width-typed leaves (e.g. `mov_512_512`, `mov_1_32`, `mov_64_64`) | `nm libfiss-base.so \| rg module__xdref_mov` (§4) |
 | Encode-thunk ABI | `C7 07 imm32 [C7 47 04 0] C3` — `imm32` = the `(opcode×slot)` selector, `word1==0` | [flix-encoding §6.1](../core/flix-encoding.md) |
-| Move latency (`movvv`) | rides the **LdSt slot** datapath (`F0_S0_LdSt_4_inst_IVP_MOVVV_issue` in cas-core) | `libcas-core.so` `[HIGH/OBSERVED]` |
+| Move latency (`movvv`) | rides the **LdSt slot** datapath (`F0_S0_LdSt_4_inst_IVP_MOVVV_issue` in cas-core) | `libcas-core.so` |
 | Oracle | `xtensa-elf-as`/`objdump`, `XTENSA_CORE=ncore2gp` | **19 of 27 round-trip byte-exact** (§5) |
 
 > **The batch is one mux, three datapaths, eight ports.** Every `ivp_mov*` op is a *route* through a
@@ -72,20 +73,22 @@ model** from `libcas-core.so` (the `…_inst_IVP_MOV*_issue` per-slot functions)
 ## 2. Batch roster — 27 register-transfer opcodes
 
 Columns: `mnemonic` · `lanes/width` · representative `FLIX slot` and its **opcode-selector imm** (the
-`Opcode_<mnem>_Slot_<slot>_encode` thunk's `movl $imm`, disassembled this pass) · `opc#` (the
+`Opcode_<mnem>_Slot_<slot>_encode` thunk's `movl $imm`, disassembled) · `opc#` (the
 `opcodes[]` row index) · `src→dst` register-file bridge · device byte-size of the bundle the op lands
-in · one-line semantics · `[conf]`. The selector imm is for the **named representative slot only** —
+in · one-line semantics. Every row of §2.1–§2.6 is `[HIGH/OBSERVED]` on the opcode; the cells that
+depart — the `p`/`q` half-selects of §2.5 and the scalar-state field maps of §2.6 — carry an inline
+`[MED/INFERRED]`. The selector imm is for the **named representative slot only** —
 the selector is per-`(opcode×slot)` (the [flix-encoding §6.2 two-tier rule](../core/flix-encoding.md);
 the B01 GOTCHA holds here too). `opc#`/`iclass`/package were read by walking `opcodes[]` at file
 offset `0x4ce6c0` (VMA `0x6ce6c0` − `0x200000`), stride 72, all 27 resolved.
 
 ### 2.1 Intra-file copies (no width change, source-file = dest-file)
 
-| mnemonic | shape | rep. slot · sel imm | opc# | src→dst | bytes | semantics | conf |
-|---|---|---|---|---|---|---|---|
-| `ivp_movvv`   | 512b | `F0_S0_LdSt` `0x10dc4002` | 407 | `vec`→`vec` | 8/2 | `vd = vs` (full 512-bit copy) | `[HIGH/OBSERVED]` |
-| `ivp_movprpr` | 64b  | `F0_S3_ALU` `0x82ba820a` | 1376 | `b32_pr`→`b32_pr` | 8/2 | `prd = prs` (64-bit predicate copy) | `[HIGH/OBSERVED]` |
-| `ivp_movww`   | 1536b| `F0_S2_Mul` `0x01043100` | 1074 | `wvec`→`wvec` | 8 | `wvd = wvs` (full 1536-bit accumulator copy) | `[HIGH/OBSERVED]` |
+| mnemonic | shape | rep. slot · sel imm | opc# | src→dst | bytes | semantics |
+|---|---|---|---|---|---|---|
+| `ivp_movvv`   | 512b | `F0_S0_LdSt` `0x10dc4002` | 407 | `vec`→`vec` | 8/2 | `vd = vs` (full 512-bit copy) |
+| `ivp_movprpr` | 64b  | `F0_S3_ALU` `0x82ba820a` | 1376 | `b32_pr`→`b32_pr` | 8/2 | `prd = prs` (64-bit predicate copy) |
+| `ivp_movww`   | 1536b| `F0_S2_Mul` `0x01043100` | 1074 | `wvec`→`wvec` | 8 | `wvd = wvs` (full 1536-bit accumulator copy) |
 
 ### 2.2 AR ↔ vec bridges (32-bit scalar register ⇄ vector lane)
 
@@ -93,31 +96,31 @@ offset `0x4ce6c0` (VMA `0x6ce6c0` − `0x200000`), stride 72, all 27 resolved.
 issues on the **Ld** slot class (a scalar→vec move is structurally a load). `movav*` **extract**: one
 `vec` lane is read out to an `AR` scalar with the dtype's zero/sign-extend; issues on the **ALU** class.
 
-| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | reshape | conf |
-|---|---|---|---|---|---|---|
-| `ivp_movva8`   | 8→32  | `F0_S1_Ld` `0x00602008` | 1088 | `AR`→`vec` | low 8b of AR → vec 8b lane | `[HIGH/OBSERVED]` |
-| `ivp_movva16`  | 16→32 | `F0_S1_Ld` `0x00602006` | 406 | `AR`→`vec` | low 16b of AR → vec 16b lane | `[HIGH/OBSERVED]` |
-| `ivp_movva32`  | 32→32 | `F0_S1_Ld` `0x00602007` | 1072 | `AR`→`vec` | 32b AR → vec 32b lane | `[HIGH/OBSERVED]` |
-| `ivp_movav8`   | 8→32  | `F0_S3_ALU` `0x82b9820a` | 1220 | `vec`→`AR` | vec 8b lane → AR (zero-ext) | `[HIGH/OBSERVED]` |
-| `ivp_movav16`  | 16→32 | `F0_S3_ALU` `0x82b9020a` | 522 | `vec`→`AR` | vec 16b lane → AR (sign-ext) | `[HIGH/OBSERVED]` |
-| `ivp_movav32`  | 32→32 | `F0_S3_ALU` `0x82b9020b` | 1073 | `vec`→`AR` | vec 32b lane → AR | `[HIGH/OBSERVED]` |
-| `ivp_movavu8`  | 8→32  | `F0_S3_ALU` `0x82ba020a` | 1089 | `vec`→`AR` | vec 8b lane → AR (zero-ext) | `[HIGH/OBSERVED]` |
-| `ivp_movavu16` | 16→32 | `F0_S3_ALU` `0x82b9820b` | 523 | `vec`→`AR` | vec 16b lane → AR (zero-ext) | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | reshape |
+|---|---|---|---|---|---|
+| `ivp_movva8`   | 8→32  | `F0_S1_Ld` `0x00602008` | 1088 | `AR`→`vec` | low 8b of AR → vec 8b lane |
+| `ivp_movva16`  | 16→32 | `F0_S1_Ld` `0x00602006` | 406 | `AR`→`vec` | low 16b of AR → vec 16b lane |
+| `ivp_movva32`  | 32→32 | `F0_S1_Ld` `0x00602007` | 1072 | `AR`→`vec` | 32b AR → vec 32b lane |
+| `ivp_movav8`   | 8→32  | `F0_S3_ALU` `0x82b9820a` | 1220 | `vec`→`AR` | vec 8b lane → AR (zero-ext) |
+| `ivp_movav16`  | 16→32 | `F0_S3_ALU` `0x82b9020a` | 522 | `vec`→`AR` | vec 16b lane → AR (sign-ext) |
+| `ivp_movav32`  | 32→32 | `F0_S3_ALU` `0x82b9020b` | 1073 | `vec`→`AR` | vec 32b lane → AR |
+| `ivp_movavu8`  | 8→32  | `F0_S3_ALU` `0x82ba020a` | 1089 | `vec`→`AR` | vec 8b lane → AR (zero-ext) |
+| `ivp_movavu16` | 16→32 | `F0_S3_ALU` `0x82b9820b` | 523 | `vec`→`AR` | vec 16b lane → AR (zero-ext) |
 
 ### 2.3 Predicate / boolean bridges (vbool · b32_pr · BR · AR)
 
-| mnemonic | shape | rep. slot · sel imm | opc# | src→dst | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_movvpr`   | 512b/64b | `F0_S3_ALU` `0x85000010` | 1375 | `b32_pr`→`vec` | predicate-reg → vec (1-bit-per-lane expand) | `[HIGH/OBSERVED]` (args: `vt←prr`) |
-| `ivp_movpra32` | 32→64 | `F0_S0_LdSt` `0x11040600` | 1377 | `AR`→`b32_pr` | AR 32b → 64b predicate, **sign-replicate high word** | `[HIGH/OBSERVED]` |
-| `ivp_movab1`   | 1b | `F0_S3_ALU` `0x64815000` | 855 | `BR`→`AR` | one boolean bit → AR (0/1) | `[HIGH/OBSERVED]` (args: `art←vbr`) |
-| `ivp_movba1`   | 1b | `F0_S1_Ld` `0x004a0ce0` | 854 | `AR`→`BR` | AR bit0 → one boolean | `[HIGH/OBSERVED]` (args: `vbt←ars`) |
+| mnemonic | shape | rep. slot · sel imm | opc# | src→dst | semantics |
+|---|---|---|---|---|---|
+| `ivp_movvpr`   | 512b/64b | `F0_S3_ALU` `0x85000010` | 1375 | `b32_pr`→`vec` | predicate-reg → vec (1-bit-per-lane expand); args `vt←prr` |
+| `ivp_movpra32` | 32→64 | `F0_S0_LdSt` `0x11040600` | 1377 | `AR`→`b32_pr` | AR 32b → 64b predicate, **sign-replicate high word** |
+| `ivp_movab1`   | 1b | `F0_S3_ALU` `0x64815000` | 855 | `BR`→`AR` | one boolean bit → AR (0/1); args `art←vbr` |
+| `ivp_movba1`   | 1b | `F0_S1_Ld` `0x004a0ce0` | 854 | `AR`→`BR` | AR bit0 → one boolean; args `vbt←ars` |
 
 ### 2.4 Predicated (mask-gated) vec move
 
-| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_mov2nx8t` | 64×8 | `F0_S3_ALU` `0x80400000` | 447 | `vec`→`vec` (mask `vbool`) | per-lane `vd_lane = mask_lane ? vs_lane : vd_lane` (merge) | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | rep. slot · sel imm | opc# | src→dst | semantics |
+|---|---|---|---|---|---|
+| `ivp_mov2nx8t` | 64×8 | `F0_S3_ALU` `0x80400000` | 447 | `vec`→`vec` (mask `vbool`) | per-lane `vd_lane = mask_lane ? vs_lane : vd_lane` (merge) |
 
 ### 2.5 Immediate-to-vec inject / pack-half selects
 
@@ -125,15 +128,15 @@ issues on the **Ld** slot class (a scalar→vec move is structurally a load). `m
 operand (no register source) — a scalar broadcast that is, like the `movva*` broadcasts, a Ld-class op.
 `movpa16`/`movqa16` are `vec`→`vec` **pack-half** selects (`p`=even/low half, `q`=odd/high half).
 
-| mnemonic | shape | rep. slot · sel imm | opc# | src→dst | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_movvint8`  | imm→8 | `F0_S1_Ld` `0x005c6080` | 1087 | imm→`vec` | imm broadcast to 8b lanes | `[HIGH/OBSERVED]` |
-| `ivp_movvint16` | imm→16 | `F0_S1_Ld` `0x005c6000` | 516 | imm→`vec` | imm broadcast to 16b lanes | `[HIGH/OBSERVED]` |
-| `ivp_movvinx16` | imm→16 | `F0_S1_Ld` `0x00622000` | 519 | imm→`vec` | indexed-imm inject (16b) | `[HIGH/OBSERVED]` |
-| `ivp_movpint16` | imm→16 | `F0_S1_Ld` `0x005c4000` | 489 | imm→`vec` (low half) | imm → even-lane (`p`) half | `[HIGH/OBSERVED]` opc; `[MED]` half |
-| `ivp_movqint16` | imm→16 | `F0_S1_Ld` `0x005c4001`◇ | 517 | imm→`vec` (high half) | imm → odd-lane (`q`) half | `[HIGH/OBSERVED]` opc; `[MED]` half |
-| `ivp_movpa16`   | 16 | `F0_S1_Ld` `0x00602004` | 490 | `vec`→`vec` | even-lane (`p`) half select | `[HIGH/OBSERVED]` opc; `[MED]` half |
-| `ivp_movqa16`   | 16 | `F0_S1_Ld` `0x00602005` | 518 | `vec`→`vec` | odd-lane (`q`) half select | `[HIGH/OBSERVED]` opc; `[MED]` half |
+| mnemonic | shape | rep. slot · sel imm | opc# | src→dst | semantics |
+|---|---|---|---|---|---|
+| `ivp_movvint8`  | imm→8 | `F0_S1_Ld` `0x005c6080` | 1087 | imm→`vec` | imm broadcast to 8b lanes |
+| `ivp_movvint16` | imm→16 | `F0_S1_Ld` `0x005c6000` | 516 | imm→`vec` | imm broadcast to 16b lanes |
+| `ivp_movvinx16` | imm→16 | `F0_S1_Ld` `0x00622000` | 519 | imm→`vec` | indexed-imm inject (16b) |
+| `ivp_movpint16` | imm→16 | `F0_S1_Ld` `0x005c4000` | 489 | imm→`vec` (low half) | imm → even-lane (`p`) half — half-select `[MED/INFERRED]` |
+| `ivp_movqint16` | imm→16 | `F0_S1_Ld` `0x005c4001`◇ | 517 | imm→`vec` (high half) | imm → odd-lane (`q`) half — half-select `[MED/INFERRED]` |
+| `ivp_movpa16`   | 16 | `F0_S1_Ld` `0x00602004` | 490 | `vec`→`vec` | even-lane (`p`) half select — half-select `[MED/INFERRED]` |
+| `ivp_movqa16`   | 16 | `F0_S1_Ld` `0x00602005` | 518 | `vec`→`vec` | odd-lane (`q`) half select — half-select `[MED/INFERRED]` |
 
 ### 2.6 Scalar-state bridges (FP state · control flags)
 
@@ -141,12 +144,12 @@ operand (no register source) — a scalar broadcast that is, like the `movva*` b
 `movvscf`/`movscfv` pack/unpack the **scalar control-flag** word (the `gvr`/VFPU CSR view) to/from
 `vec`. These are the widest-fanout transfers (the value leaves carry 8–12 sub-field width tokens).
 
-| mnemonic | rep. slot · sel imm | opc# | src→dst | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_movvfs`  | `F0_S1_Ld` `0x006020ac`  | 1381 | scalar-FP-state→`vec` | 8×64b FP state lanes → vec | `[HIGH/OBSERVED]` opc; `[MED/INFERRED]` field map |
-| `ivp_movfsv`  | `F0_S3_ALU` `0x6498de00` | 1380 | `vec`→scalar-FP-state | vec → 8×64b FP state lanes | `[HIGH/OBSERVED]` opc; `[MED/INFERRED]` field map |
-| `ivp_movvscf` | `F0_S1_Ld` `0x006020ad`  | 839 | scalar-control-flags→`vec` | unpack 12-field CSR → vec | `[HIGH/OBSERVED]` opc; `[MED/INFERRED]` field map |
-| `ivp_movscfv` | `F0_S2_Mul` `0x010c3081` | 838 | `vec`→scalar-control-flags | pack vec → 12-field CSR word | `[HIGH/OBSERVED]` opc; `[MED/INFERRED]` field map |
+| mnemonic | rep. slot · sel imm | opc# | src→dst | semantics |
+|---|---|---|---|---|
+| `ivp_movvfs`  | `F0_S1_Ld` `0x006020ac`  | 1381 | scalar-FP-state→`vec` | 8×64b FP state lanes → vec — field map `[MED/INFERRED]` |
+| `ivp_movfsv`  | `F0_S3_ALU` `0x6498de00` | 1380 | `vec`→scalar-FP-state | vec → 8×64b FP state lanes — field map `[MED/INFERRED]` |
+| `ivp_movvscf` | `F0_S1_Ld` `0x006020ad`  | 839 | scalar-control-flags→`vec` | unpack 12-field CSR → vec — field map `[MED/INFERRED]` |
+| `ivp_movscfv` | `F0_S2_Mul` `0x010c3081` | 838 | `vec`→scalar-control-flags | pack vec → 12-field CSR word — field map `[MED/INFERRED]` |
 
 `◇` = `movqint16` selector is the `+1` sibling of `movpint16` (`movpa16`/`movqa16` step
 `0x602004→0x602005`; the same `+1` even/odd half nibble); `[HIGH/OBSERVED]` on the `p`-form imm and the
@@ -158,7 +161,7 @@ step, `[MED/INFERRED]` on the exact `q` cell.
 > on Ld; §3.4). `pr`=`b32_pr`, `b`=boolean(BR/vbool), `w`=`wvec`, `fs`=FP-state, `scf`=control-flags,
 > `int`=immediate-integer. Do **not** read `movav` as "av = a-then-v written L-to-R = AR→vec"; the leaf
 > width proves the direction (`movav8`→`mov_8_32`: **8-bit in, 32-bit out** = vec-lane→AR). The roster's
-> `src→dst` column is the **leaf-width-proven** direction, not the letter order. `[HIGH/OBSERVED]`
+> `src→dst` column is the **leaf-width-proven** direction, not the letter order.
 
 ---
 
@@ -239,7 +242,7 @@ void movpra32(uint64_t *pr, int32_t ar){
 
 Executed live (§4): `movpra32(0x80000000) → 0xFFFFFFFF_80000000`, `movpra32(0x7fffffff) →
 0x00000000_7fffffff`. This is how a sign-determined predicate is materialised in `b32_pr` from a scalar
-condition. `[HIGH/OBSERVED by execution]`
+condition.
 
 ### 3.3 The boolean extract/insert — `movab1`/`movba1` (AR↔BR, args-confirmed)
 
@@ -258,7 +261,7 @@ uint32_t movab1(unsigned b){ return (uint32_t)(b & 0x1u); }
 ```
 
 `mov_1_32` executed live across `{0x0,0x1,0x2,0x3,0xff,0x100,0x101,0xffffffff}` returned exactly
-`bit0` each time (`0x2→0, 0x100→0, 0x101→1`). `[HIGH/OBSERVED by execution]`
+`bit0` each time (`0x2→0, 0x100→0, 0x101→1`).
 
 ### 3.4 The slot-class split — transfer kind selects the FLIX slot
 
@@ -278,7 +281,7 @@ slots (its `f0_s3_alu` placement selector is `0x6488d000`) and 5 narrow LdSt slo
 placements (§6). The same op carries a **different `word0` per slot** — `0x10dc4002` in `f0_s0_ldst`,
 `0x6488d000` in `f0_s3_alu` — the per-`(opcode×slot)` selector rule again (§2 GOTCHA); the roster quotes
 one representative. The Ld-class broadcasts have a narrower reach (8 placements each) because the
-scalar-inject datapath is legal in fewer slots. `[HIGH/OBSERVED]`
+scalar-inject datapath is legal in fewer slots.
 
 ---
 
@@ -287,7 +290,7 @@ scalar-inject datapath is legal in fewer slots. `[HIGH/OBSERVED]`
 The `module__xdref_mov*` value leaves in `libfiss-base.so` are the per-element transfer functions,
 **callable in-process via ctypes with no license** ([coverage-tally §5](../core/coverage-tally.md)). The
 ABI is the standard `void leaf(int ctx, <ins…>, T *out)`. Six leaves were disassembled **and executed
-live** this pass; the executed sweeps are bit-exact certificates of the move semantics.
+live**; the executed sweeps are bit-exact certificates of the move semantics.
 
 ### 4.1 The predicated merge — `mov_8_8_8_t` (mask-gated, executed live)
 
@@ -329,7 +332,7 @@ mov_512_512(movvv, full copy):               64-byte src == 64-byte dst, byte-ex
 
 Five leaves, all bit-exact against their disassembled models. The `mov_8_32`/`mov_32s_16` contrast is
 the **zero-vs-sign-extend** boundary already noted in §3.1; the `movpra32` high-word fill is the
-sign-predicate materialisation of §3.2. `[HIGH/OBSERVED by execution]`
+sign-predicate materialisation of §3.2.
 
 ### 4.3 The wide / state moves — disassembled (the scalar-state bridges)
 
@@ -349,7 +352,6 @@ assignment.
 > runs on x86*; the **device** `ivp_movvv` is one FLIX-issued register-to-register transfer (8-byte
 > bundle, the op in one slot). Do not infer a 4-µop device cost from the host leaf's four `movdqu` — the
 > leaf is the *value* oracle (what bytes land), the cas-core `…_issue` function is the *timing* oracle.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -388,10 +390,10 @@ Two structural facts the oracle pins:
   `movva* v3, a4` (vec dest, AR src), `movvpr v3, pr1` (vec dest, `pr` src), `movpra32 pr3, a1` (`pr`
   dest, AR src), `movww wv3, wv1` (`wv` both), `movgatherd gr3, v1` (`gr`/`gvr` dest). The register
   short-names (`a`/`v`/`pr`/`wv`/`gr`) round-trip exactly as [register-files](../core/register-files.md)
-  specifies. `[HIGH/OBSERVED]`
+  specifies.
 * **The slot-class split shows in the bundle shape.** ALU-class moves land in the trailing slot of a
   4-position bundle (`…452f`); Ld-class broadcasts land in a 2-position bundle (`…c52f`); `movscfv`
-  (Mul) is a 16-byte bundle. This matches §3.4. `[HIGH/OBSERVED]`
+  (Mul) is a 16-byte bundle. This matches §3.4.
 
 `◇` = `movgatherd` round-trips here only to **confirm it is real and `gr`-typed**; it is **owned by
 [B19](b19-scatter-gather.md)**, not counted in B09's 27/246. The eight not shown (`mov2nx8t`, `movab1`,
@@ -406,7 +408,7 @@ the property the oracle certifies. `[HIGH/OBSERVED]`
 
 ## 6. Batch coverage tally — 27 mnemonics / 246 placements
 
-Re-counted this pass with `nm libisa-core.so | rg -c 'Opcode_ivp_<mn>_Slot_…_encode'` per mnemonic
+Counted with `nm libisa-core.so | rg -c 'Opcode_ivp_<mn>_Slot_…_encode'` per mnemonic
 (never the decompile — [coverage-tally §0 GOTCHA](../core/coverage-tally.md)). Every one of the 27
 grounds to ≥ 5 placements; **none ungrounded**.
 
@@ -433,39 +435,34 @@ batch adds **0** to the scalar axis (every row is `package == xt_ivp32`, `ivp_`-
 > the **base-Xtensa / scalar-FP** conditional moves (FP64 register, `package == xt_ivpn_scalarfp`,
 > **no** `ivp_` prefix), owned by [B24](b24-composite.md) (scalar-FP). They look like our predicated
 > `mov2nx8t` but operate on scalar FP registers, not `vec`. A reader who greps `module__xdref_mov` will
-> see them adjacent; they belong to B24, cited here so the boundary is explicit. `[HIGH/OBSERVED]`
+> see them adjacent; they belong to B24, cited here so the boundary is explicit.
 
 ---
 
 ## 7. Adversarial self-verification — the five strongest claims
 
-Each re-challenged against the binary this pass; failures fixed.
-
-1. **"27 mnemonics / 246 placements; `movgatherd` is B19's, not B09's."** Re-run:
+1. **"27 mnemonics / 246 placements; `movgatherd` is B19's, not B09's."**
    `nm libisa-core.so | rg -o 'Opcode_(ivp_mov[a-z0-9_]*)_Slot' | sort -u` = **28** `mov*`; the
    classifier (`scatter|gather` before `mov`) removes `movgatherd` (confirmed: it is the only `mov*` in
    the scatter/gather glob, sitting beside `gatherd2nx8_h`/`gatherdnx16`), leaving **27**; the
    per-mnemonic placement sum = **246** (`movgatherd`'s 8 excluded). The §6 table sums `246`. ✓
-   `[HIGH/OBSERVED]`
 2. **"The predicated `mov2nx8t` is a *merge* (mask-0 lanes keep the old destination), not a zero-fill."**
-   Re-challenged by executing `mov_8_8_8_t` live: `movt(0xaa, 0x55, mask=0) = 0x55` (the **old**, not
+   Executing `mov_8_8_8_t` live: `movt(0xaa, 0x55, mask=0) = 0x55` (the **old**, not
    `0`), `movt(0xaa, 0x55, mask=1) = 0xaa`. The `cmove` against the *old destination* operand proves it
    is RMW merge. A zero-fill implementation would return `0x00` on mask=0 and would be wrong. ✓
-   `[HIGH/OBSERVED by execution]`
 3. **"`movav16` sign-extends, `movavu16` zero-extends — distinct opcodes."** Executed
    `mov_32s_16(0x8000) = 0xffff8000` (sign) vs the `movavu16` zero-extend leaf `mov_32u_16` masking to
-   `0x00008000`; the two are `opc# 522`/`523` with distinct `iclass` pointers (read from `opcodes[]`).
-   Initially I modeled one `movav16` with a sign flag — the binary shows two opcodes. Fixed. ✓
-   `[HIGH/OBSERVED by execution]`
+   `0x00008000`; the two are `opc# 522`/`523` with distinct `iclass` pointers (read from `opcodes[]`) —
+   two opcodes, not one `movav16` with a sign flag. ✓
 4. **"`movpra32` materialises a 64-bit predicate by sign-replicating the AR high word."** Executed
    `movpra32(0x80000000) → lo=0x80000000, hi=0xffffffff` and `movpra32(0x7fffffff) → hi=0x00000000`.
    The `sar $31` in the disassembled body is the sign-broadcast, confirmed bit-exact at the sign
-   boundary. ✓ `[HIGH/OBSERVED by execution]`
-5. **"The family splits across three slot classes by transfer kind (ALU/Ld/Mul)."** Re-challenged by
-   reading `opcodedefs[]` slot membership per op **and** the cas-core `…_inst_IVP_MOVVV_issue` set:
+   boundary. ✓
+5. **"The family splits across three slot classes by transfer kind (ALU/Ld/Mul)."** Reading
+   `opcodedefs[]` slot membership per op **and** the cas-core `…_inst_IVP_MOVVV_issue` set:
    `movvv` issues on `F0_S0_LdSt` + 14 wide ALU/Mul slots (23 total); `movva*`/`movvint*` only on Ld
    slots (8); `movww`/`movscfv` on Mul. The device oracle's bundle shapes (`…452f` ALU-trailing vs
-   `…c52f` Ld vs 16-byte `movscfv`) corroborate. ✓ `[HIGH/OBSERVED]`
+   `…c52f` Ld vs 16-byte `movscfv`) corroborate. ✓
 
 **Ungrounded / flagged items** (honest residue): (a) the **scalar-state field maps** of
 `movvfs`/`movfsv`/`movvscf`/`movscfv` are `[HIGH/OBSERVED]` as *shift-OR networks* in disasm and their
@@ -487,7 +484,7 @@ round-trip. (The earlier `[MED/INFERRED]` on the `movab1`/`movba1` files and the
 ## 8. Function & symbol map
 
 `libisa-core.so` unless noted. `.text`/`.rodata`: VMA == file. `.data.rel.ro`/`.data`: file =
-VMA − `0x200000` (re-confirmed `readelf -SW` this pass — **not** libtpu's `0x400000`).
+VMA − `0x200000` (`readelf -SW`-confirmed — **not** libtpu's `0x400000`).
 
 | Symbol / table | Addr | Role |
 |---|---|---|

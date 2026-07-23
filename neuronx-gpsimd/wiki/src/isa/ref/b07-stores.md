@@ -20,7 +20,8 @@ is read **directly out of the shipped binaries** — `libisa-core.so` encode thu
 inherits the certified denominator from [the coverage tally](../core/coverage-tally.md): the
 `1534 / 12569` shipped mnemonic/placement cover and the `864/864` value-leaf cover. Counts are grounded
 with `nm | rg -c` against the binary `.symtab`, never a decompile grep; the `extracted/` tree is
-gitignored (reach it with `fd --no-ignore` or an absolute path). Confidence tags follow
+gitignored (reach it with `fd --no-ignore` or an absolute path). The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag, following
 [the Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a byte / immediate /
 symbol / **executed** value read from the shipped binary; `INFERRED` = reasoned over OBSERVED; `CARRIED`
 = re-used at a cited page's confidence; crossed with `HIGH`/`MED`/`LOW`. All prose is binary /
@@ -30,7 +31,7 @@ static-analysis derived only.
 > 32) + `sb*` (`vbool` bit-mask store, 6) + `sa*`/`sav*`/`san*` + `salign`/`sapos` (valign-assisted
 > unaligned store, prime, and tail-flush, 14), each in four AGU addressing modes
 > (`_i`/`_ip`/`_x`/`_xp`), with a 20-strong `*t*` predicated subset. **92 mnemonics, 746 placements, 1
-> value leaf (`sav`).** `[HIGH/OBSERVED]`
+> value leaf (`sav`).**
 
 ---
 
@@ -66,7 +67,8 @@ Columns: `mnemonic` · `FLIX format·slot` (the `s0_ldst` slots hosting it) · `
 `F0_S0_ldst` encode-thunk `WORD0`, the
 [universal `C7 07 imm32 C3` ABI](../core/flix-encoding.md#61-the-universal-encode-thunk-abi); narrow
 N-formats carry a smaller selector) · `src · AR fields` (data file + AR base/stride) · `bytes` (16
-wide / 8 narrow) · semantics · `[conf]`. Templates are byte-exact from `objdump -d` this pass.
+wide / 8 narrow) · semantics. Templates are byte-exact from `objdump -d`. Every row of §2.1–§2.4 is
+`[HIGH/OBSERVED]`.
 
 ### 2.1 Aligned vector stores (`sv*` — the contiguous-store spine, 40)
 
@@ -75,26 +77,26 @@ is cosmetic for the store itself (the bits are written verbatim — a store is t
 movement); the `s`/`u` token records the *intended* element signedness for the disassembler and the
 matching load. All four AGU modes exist for each shape; the `t` forms are `vbool`-predicated.
 
-| mnemonic | fmt·slot | opcode-sel imm (F0·s0) | src · AR | bytes | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_sv2nx8_i` | F0/F1/F2/F3/F6/F7/N0/N1/N2 · s0_ldst | `0x10a20000` | `vec` · `a`base | 16/8 | store 64×`int8` lanes to `[base + imm]` | `[HIGH/OBSERVED]` |
-| `ivp_sv2nx8_ip` | (same 9 slots) | `0x10f44100` | `vec` · `a`base±imm | 16/8 | store, then **`base += imm`** (imm×64-scaled) | `[HIGH/OBSERVED]` |
-| `ivp_sv2nx8_x` | (same 9 slots) | `0x10f00000` | `vec` · `a`base,`a`stride | 16/8 | store to `[base + stride]` (reg stride) | `[HIGH/OBSERVED]` |
-| `ivp_sv2nx8_xp` | (same 9 slots) | `0x10f00100` | `vec` · `a`base+=stride | 16/8 | store, then **`base += stride`** (reg post-inc) | `[HIGH/OBSERVED]` |
-| `ivp_sv2nx8t_{i,ip,x,xp}` | F0/F1/F2/F3/F6/F7/N0/N1/N2 | `0x10200000` (`t_i`) | `vec`+`vbool` · `a` | 16/8 | **predicated** byte store — write only mask-on lanes | `[HIGH/OBSERVED]` |
-| `ivp_svnx8s_{i,ip,x,xp}` | (9 slots) | `0x10a60000` (`s_i`) | `vec` · `a` | 16/8 | store 64 **signed** `int8` lanes (`nx8`, half-vec view) | `[HIGH/OBSERVED]` |
-| `ivp_svnx8u_{i,ip,x,xp}` | (9 slots) | `0x10aa0000` (`u_i`) | `vec` · `a` | 16/8 | store 64 **unsigned** `int8` lanes | `[HIGH/OBSERVED]` |
-| `ivp_svnx8st_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated signed-byte store | `[HIGH/OBSERVED]` |
-| `ivp_svnx8ut_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated unsigned-byte store | `[HIGH/OBSERVED]` |
-| `ivp_svn_2x16s_{i,ip,x,xp}` | (9 slots) | `0x10ae0000` (`s_i`) | `vec` · `a` | 16/8 | store 32×**signed** `int16` lanes (`2x16` pair view) | `[HIGH/OBSERVED]` |
-| `ivp_svn_2x16u_{i,ip,x,xp}` | (9 slots) | `0x10b20000` (`u_i`) | `vec` · `a` | 16/8 | store 32×**unsigned** `int16` lanes | `[HIGH/OBSERVED]` |
-| `ivp_svn_2x16st_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated signed-halfword store | `[HIGH/OBSERVED]` |
-| `ivp_svn_2x16ut_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated unsigned-halfword store | `[HIGH/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm (F0·s0) | src · AR | bytes | semantics |
+|---|---|---|---|---|---|
+| `ivp_sv2nx8_i` | F0/F1/F2/F3/F6/F7/N0/N1/N2 · s0_ldst | `0x10a20000` | `vec` · `a`base | 16/8 | store 64×`int8` lanes to `[base + imm]` |
+| `ivp_sv2nx8_ip` | (same 9 slots) | `0x10f44100` | `vec` · `a`base±imm | 16/8 | store, then **`base += imm`** (imm×64-scaled) |
+| `ivp_sv2nx8_x` | (same 9 slots) | `0x10f00000` | `vec` · `a`base,`a`stride | 16/8 | store to `[base + stride]` (reg stride) |
+| `ivp_sv2nx8_xp` | (same 9 slots) | `0x10f00100` | `vec` · `a`base+=stride | 16/8 | store, then **`base += stride`** (reg post-inc) |
+| `ivp_sv2nx8t_{i,ip,x,xp}` | F0/F1/F2/F3/F6/F7/N0/N1/N2 | `0x10200000` (`t_i`) | `vec`+`vbool` · `a` | 16/8 | **predicated** byte store — write only mask-on lanes |
+| `ivp_svnx8s_{i,ip,x,xp}` | (9 slots) | `0x10a60000` (`s_i`) | `vec` · `a` | 16/8 | store 64 **signed** `int8` lanes (`nx8`, half-vec view) |
+| `ivp_svnx8u_{i,ip,x,xp}` | (9 slots) | `0x10aa0000` (`u_i`) | `vec` · `a` | 16/8 | store 64 **unsigned** `int8` lanes |
+| `ivp_svnx8st_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated signed-byte store |
+| `ivp_svnx8ut_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated unsigned-byte store |
+| `ivp_svn_2x16s_{i,ip,x,xp}` | (9 slots) | `0x10ae0000` (`s_i`) | `vec` · `a` | 16/8 | store 32×**signed** `int16` lanes (`2x16` pair view) |
+| `ivp_svn_2x16u_{i,ip,x,xp}` | (9 slots) | `0x10b20000` (`u_i`) | `vec` · `a` | 16/8 | store 32×**unsigned** `int16` lanes |
+| `ivp_svn_2x16st_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated signed-halfword store |
+| `ivp_svn_2x16ut_{i,ip,x,xp}` | (9 slots) | — | `vec`+`vbool` · `a` | 16/8 | predicated unsigned-halfword store |
 
 The selector deltas across `s`/`u`/`2nx8`/`nx16` are **distinct iclasses**, not a single dtype bit:
 `sv2nx8_i`=`0x10a20000`, `svnx8s_i`=`0x10a60000` (+0x40000), `svnx8u_i`=`0x10aa0000` (+0x40000 again),
 `svn_2x16s_i`=`0x10ae0000`, `svn_2x16u_i`=`0x10b20000`. The +0x40000 ladder runs through the data-shape
-field at bits[19:18] of word0 (see [§3.2](#32-the-data-shape-selector-ladder)). `[HIGH/OBSERVED]`
+field at bits[19:18] of word0 (see [§3.2](#32-the-data-shape-selector-ladder)).
 
 ### 2.2 Stream / deinterleave-on-store (`ss*`, 32)
 
@@ -105,21 +107,21 @@ the deinterleave granularity (N consecutive elements of M bits). The narrow shap
 `ss2nx8`) fit an 8-byte bundle; the coarse shapes (`ssn_4x64`, `ssn_8x128`, `ssn_16x256`) need a
 **16-byte wide format** (live decode: 4-slot bundle with 3 `nop` fills).
 
-| mnemonic | shape | bytes | opcode-sel imm (F0·s0) | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_ssnx16_{i,ip,x,xp}` | 16-bit deinterleave | 8 | `0x10e38000` (`_i`) | stream-store, 16-bit element granularity | `[HIGH/OBSERVED]` |
-| `ivp_ss2nx8_{i,ip,x,xp}` | 8-bit deinterleave | 8 | `0x10e30000` (`_i`) | stream-store, 8-bit element granularity | `[HIGH/OBSERVED]` |
-| `ivp_ssnx8s_{i,ip,x,xp}` | signed 8-bit | 8 | `0x10e40000` (`_i`) | stream-store, signed byte | `[HIGH/OBSERVED]` |
-| `ivp_ssn_2x16s_{i,ip,x,xp}` | signed 2×16 | 8 | — | stream-store, signed-halfword pair | `[HIGH/OBSERVED]` |
-| `ivp_ssn_2x32_{i,ip,x,xp}` | 2×32-bit | 8 | `0x109a0000` (`_i`) | stream-store, 32-bit word pair | `[HIGH/OBSERVED]` |
-| `ivp_ssn_4x64_{i,ip,x,xp}` | 4×64-bit | **16** | `0x109c0000` (`_i`) | stream-store, 64-bit group (wide format) | `[HIGH/OBSERVED]` |
-| `ivp_ssn_8x128_{i,ip,x,xp}` | 8×128-bit | **16** | `0x109e0000` (`_i`) | stream-store, 128-bit group (wide format) | `[HIGH/OBSERVED]` |
-| `ivp_ssn_16x256_{i,ip,x,xp}` | 16×256-bit | **16** | `0x10980000` (`_i`) | stream-store, 256-bit group (wide format) | `[HIGH/OBSERVED]` |
+| mnemonic | shape | bytes | opcode-sel imm (F0·s0) | semantics |
+|---|---|---|---|---|
+| `ivp_ssnx16_{i,ip,x,xp}` | 16-bit deinterleave | 8 | `0x10e38000` (`_i`) | stream-store, 16-bit element granularity |
+| `ivp_ss2nx8_{i,ip,x,xp}` | 8-bit deinterleave | 8 | `0x10e30000` (`_i`) | stream-store, 8-bit element granularity |
+| `ivp_ssnx8s_{i,ip,x,xp}` | signed 8-bit | 8 | `0x10e40000` (`_i`) | stream-store, signed byte |
+| `ivp_ssn_2x16s_{i,ip,x,xp}` | signed 2×16 | 8 | — | stream-store, signed-halfword pair |
+| `ivp_ssn_2x32_{i,ip,x,xp}` | 2×32-bit | 8 | `0x109a0000` (`_i`) | stream-store, 32-bit word pair |
+| `ivp_ssn_4x64_{i,ip,x,xp}` | 4×64-bit | **16** | `0x109c0000` (`_i`) | stream-store, 64-bit group (wide format) |
+| `ivp_ssn_8x128_{i,ip,x,xp}` | 8×128-bit | **16** | `0x109e0000` (`_i`) | stream-store, 128-bit group (wide format) |
+| `ivp_ssn_16x256_{i,ip,x,xp}` | 16×256-bit | **16** | `0x10980000` (`_i`) | stream-store, 256-bit group (wide format) |
 
 > **NOTE — `ss*` drops the `N1` placement; `sv*` keeps it.** The aligned `sv*` ops place in **9** slots
 > (F0/F1/F2/F3/F6/F7/N0/N1/N2); the `ss*` stream stores place in **8** (no `N1`). The narrow `N1` slot
 > cannot host the stream-store's extra stride-pattern field. A bundler that targets `N1` for a stream
-> store has no encoding. `[HIGH/OBSERVED]`
+> store has no encoding.
 
 ### 2.3 Predicate / bit-mask store (`sb*`, 6)
 
@@ -127,17 +129,17 @@ The `sb` verb stores a **`vbool`** mask register — not a `vec` data register �
 predicate-spill path. `sbn` packs the 64-bit `vbool` to a byte string; `sb2n` is the double-width
 (2N) form. Confirmed live: `IVP_SBN_I vb0, a3, 0` assembles, `v0`/`pr0`/`u0` are rejected as the source.
 
-| mnemonic | src | bytes | opcode-sel imm (F0·s0) | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_sbn_{i,ip}` | `vbool` | 16/8 | `0x10c600c0` (`_i`) | store an N-lane `vbool` mask to `[base(+imm)]` | `[HIGH/OBSERVED]` |
-| `ivp_sb2n_{i,ip}` | `vbool` | 16/8 | `0x10c60080` (`_i`) | store a 2N-lane `vbool` mask | `[HIGH/OBSERVED]` |
-| `ivp_sbn_2_{i,ip}` | `vbool` | 16/8 | — | store the 2-bit-grouped `vbool` view | `[HIGH/OBSERVED]` |
+| mnemonic | src | bytes | opcode-sel imm (F0·s0) | semantics |
+|---|---|---|---|---|
+| `ivp_sbn_{i,ip}` | `vbool` | 16/8 | `0x10c600c0` (`_i`) | store an N-lane `vbool` mask to `[base(+imm)]` |
+| `ivp_sb2n_{i,ip}` | `vbool` | 16/8 | `0x10c60080` (`_i`) | store a 2N-lane `vbool` mask |
+| `ivp_sbn_2_{i,ip}` | `vbool` | 16/8 | — | store the 2-bit-grouped `vbool` view |
 
 > **GOTCHA — `sb*` source is `vbool`, and `sb*` drops the `N0` placement, keeps `N1`.** Unlike `sv*`
 > (drops nothing) and `ss*` (drops `N1`), `sb*` places in 8 slots **without** `N0` but **with** `N1`
 > (`f0/f1/f2/f3/f6/f7/n1/n2`). The mask-store's operand layout (a `vb` source instead of a `v`) fits the
 > `N1` narrow format but not `N0`. Type the operand as `vbool`, not `vec`, or the disassembler rejects
-> the bundle. `[HIGH/OBSERVED]`
+> the bundle.
 
 ### 2.4 valign-assisted unaligned store (`sa*`/`sav*`/`san*` + `salign`/`sapos`, 14)
 
@@ -147,29 +149,29 @@ The alignment family is the heart of the unaligned store. `salign`/`sapos` **pri
 held in `u`, store the aligned portion, update `u` with the new carry); a final flush writes the
 trailing residual. `sa*`/`san*` are immediate-post-inc; `sav*` is variable-stride (`a`-reg stride).
 
-| mnemonic | operands (live) | opcode-sel imm (F0·s0) | role | conf |
-|---|---|---|---|---|
-| `ivp_salign_i` | `u, a, imm` | `0x11000200` | **prime** `valign` from base+imm (no store) | `[HIGH/OBSERVED]` |
-| `ivp_salign_ip` | `u, a, imm` | `0x11020600` | prime + base post-inc | `[HIGH/OBSERVED]` |
-| `ivp_sapos_fp` | `u, a` | `0x11060600` | set valign byte-**position** from base ("fp") | `[HIGH/OBSERVED]` |
-| `ivp_sapos_fpxp` | `u, a, a` | `0x11000600` | set position + reg post-inc | `[HIGH/OBSERVED]` |
-| `ivp_sa2nx8_ip` | `v, u, a` | `0x10fa00d0` | rotate-merge byte store, imm post-inc | `[HIGH/OBSERVED]` |
-| `ivp_sanx8s_ip` | `v, u, a` | `0x10fa00e0` | rotate-merge **signed**-byte store | `[HIGH/OBSERVED]` |
-| `ivp_sanx8u_ip` | `v, u, a` | `0x10fa00f0` | rotate-merge **unsigned**-byte store | `[HIGH/OBSERVED]` |
-| `ivp_san_2x16s_ip` | `v, u, a` | `0x10fa8080` | rotate-merge signed-halfword store | `[HIGH/OBSERVED]` |
-| `ivp_san_2x16u_ip` | `v, u, a` | `0x10fa8090` | rotate-merge unsigned-halfword store | `[HIGH/OBSERVED]` |
-| `ivp_sav2nx8_xp` | `v, u, a, a` | `0x10cc0000` | **variable-stride** rotate-merge byte store | `[HIGH/OBSERVED]` |
-| `ivp_savnx8s_xp` | `v, u, a, a` | `0x10cc8000` | variable-stride signed-byte store | `[HIGH/OBSERVED]` |
-| `ivp_savnx8u_xp` | `v, u, a, a` | `0x10cd0000` | variable-stride unsigned-byte store | `[HIGH/OBSERVED]` |
-| `ivp_savn_2x16s_xp` | `v, u, a, a` | `0x10cd8000` | variable-stride signed-halfword store | `[HIGH/OBSERVED]` |
-| `ivp_savn_2x16u_xp` | `v, u, a, a` | `0x10ce0000` | variable-stride unsigned-halfword store | `[HIGH/OBSERVED]` |
+| mnemonic | operands (live) | opcode-sel imm (F0·s0) | role |
+|---|---|---|---|
+| `ivp_salign_i` | `u, a, imm` | `0x11000200` | **prime** `valign` from base+imm (no store) |
+| `ivp_salign_ip` | `u, a, imm` | `0x11020600` | prime + base post-inc |
+| `ivp_sapos_fp` | `u, a` | `0x11060600` | set valign byte-**position** from base ("fp") |
+| `ivp_sapos_fpxp` | `u, a, a` | `0x11000600` | set position + reg post-inc |
+| `ivp_sa2nx8_ip` | `v, u, a` | `0x10fa00d0` | rotate-merge byte store, imm post-inc |
+| `ivp_sanx8s_ip` | `v, u, a` | `0x10fa00e0` | rotate-merge **signed**-byte store |
+| `ivp_sanx8u_ip` | `v, u, a` | `0x10fa00f0` | rotate-merge **unsigned**-byte store |
+| `ivp_san_2x16s_ip` | `v, u, a` | `0x10fa8080` | rotate-merge signed-halfword store |
+| `ivp_san_2x16u_ip` | `v, u, a` | `0x10fa8090` | rotate-merge unsigned-halfword store |
+| `ivp_sav2nx8_xp` | `v, u, a, a` | `0x10cc0000` | **variable-stride** rotate-merge byte store |
+| `ivp_savnx8s_xp` | `v, u, a, a` | `0x10cc8000` | variable-stride signed-byte store |
+| `ivp_savnx8u_xp` | `v, u, a, a` | `0x10cd0000` | variable-stride unsigned-byte store |
+| `ivp_savn_2x16s_xp` | `v, u, a, a` | `0x10cd8000` | variable-stride signed-halfword store |
+| `ivp_savn_2x16u_xp` | `v, u, a, a` | `0x10ce0000` | variable-stride unsigned-halfword store |
 
 > **QUIRK — `salign`/`sapos` add the `F4·s0_ld` placement; the bulk stores never do.** `salign_i`,
 > `salign_ip`, `sapos_fp`, `sapos_fpxp` each carry **10** placements — the 9 bulk-store slots **plus**
 > `f4_s0_ld` (the dual-`Ld` format's load slot). The prime ops have a *load-shaped* encoding (they read
 > an `AR` base to set up the carry register, no `vec` write to memory), so they slot into the load lane
 > as well. Templates differ per slot: `salign_i` is `0x11000200` in `f0_s0_ldst` but `0x10619400` in
-> `f4_s0_ld`. A reimplementer's assembler must carry both. `[HIGH/OBSERVED]`
+> `f4_s0_ld`. A reimplementer's assembler must carry both.
 
 ---
 
@@ -191,7 +193,7 @@ a MAC (`s2`), and 1–3 ALU ops (`s3+`) in one wide bundle — the structural ba
 copy/transform loop that reads, computes, and writes back every cycle. The F1 variant is named
 `f1_s0_ldstalu` (a fused ld/st+ALU slot). The placement total over the 92 B07 mnemonics is **746**
 (summed `nm | rg -c` per mnemonic) — B07's contribution to the certified `12569` placement cover
-([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary-this-pass)).
+([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary)).
 `[HIGH/OBSERVED]`
 
 ### 3.2 The data-shape selector ladder
@@ -212,7 +214,7 @@ These are **distinct iclasses** (the disassembler maps each `WORD0` back to its 
 [two-tier selector model](../core/flix-encoding.md#62-the-two-tier-selector-model) the MAC batch
 documents. A reimplementer's assembler carries the full `(mnemonic, slot) → template` table; it cannot
 synthesize `svnx8u` from `sv2nx8` by adding a constant across all formats (the per-format packing
-diverges in the narrow N-slots). `[HIGH/OBSERVED]`
+diverges in the narrow N-slots).
 
 ### 3.3 The four addressing modes and the post-increment bit
 
@@ -260,7 +262,7 @@ field is `[−8,+7]`). The encoded byte: `imm=0`→`…031f`-style byte0 bits[7:
 
 The operand fields are deposited by the `field_set`/`operand_encode` path, **not** by the opcode-sel
 thunk. Their windows are read from the `fld_*_Slot_f0_s0_ldst_get` thunk bodies (the `and`/`shr`/`shl`
-chains), re-disassembled this pass:
+chains):
 
 | field getter | body | bit-window | role in a store |
 |---|---|---|---|
@@ -286,7 +288,7 @@ IVP_SV2NX8_IP v0,  a3, 448   →  029c5e94 9c04037f      offset = 0x7  (+448 = +
 So in this narrow store format, word0 = `…9c04031f`: byte0[7:4]=`bimm4` AGU offset, byte1[3:0]=AR base
 reg, byte1[7:4]=`vt` source low nibble, byte3 bit0=`vt` high bit; the rest is the opcode selector. The
 field positions are **single-bit isolable and monotone** — the AGU offset toggles exactly byte0[7:4],
-the base reg exactly byte1[3:0], with no cross-talk. `[HIGH/OBSERVED by execution]`
+the base reg exactly byte1[3:0], with no cross-talk.
 
 ### 3.5 The `word1 == 0` invariant
 
@@ -308,7 +310,7 @@ Opcode_ivp_sv2nx8_i_Slot_f0_s0_ldst_encode:
 ```
 
 A reimplementer quotes only word0; if it shows a wide-slot template it states the `/0x00000000`
-explicitly. `[HIGH/OBSERVED]`
+explicitly.
 
 ---
 
@@ -359,14 +361,13 @@ void unaligned_vec_store(vec512 *src, int K, uint8_t *dst) {
 > phase only ever writes the *aligned head* of each row; the unaligned tail of the **final** vector lives
 > in `u.carry` and is committed only by the flush. A reimplementer that drops the flush silently
 > truncates the last partial row by up to 63 bytes — a classic unaligned-store bug. This mirrors the
-> load side's priming `lavn*` exactly, inverted. `[HIGH/OBSERVED]` on the op sequence;
-> `[HIGH/OBSERVED by execution]` on the merge (§5).
+> load side's priming `lavn*` exactly, inverted (the merge itself is executed in §5).
 
 > **NOTE — `salign`/`sapos` carry no `vec` operand and place into the load slot too.** The prime ops are
 > the only B07 mnemonics with a `f4_s0_ld` placement ([§2.4](#24-valign-assisted-unaligned-store-savsavsan--salignsapos-14)).
 > `sapos` ("store-align position", suffix `fp`) sets the byte-position state directly; `salign` seeds it
 > from a base+offset. Both write only the `valign` register — no memory traffic — so they are
-> *addressing-state* instructions, not stores in the data-movement sense. `[HIGH/OBSERVED]`
+> *addressing-state* instructions, not stores in the data-movement sense.
 
 ---
 
@@ -422,7 +423,7 @@ the monotone A/B split across the offset sweep is the certificate.
 > no per-element value function to validate and no `module__xdref_sv*`/`_ss*`/`_sb*` leaf exists
 > (`nm libfiss-base.so | rg 'module__xdref_(sv|ss|sb)' = 0`). The single value leaf in B07 is `sav`,
 > because the rotate-merge actually *computes* the stored bytes from two sources. This is why B07's
-> value-leaf contribution to the `864` denominator is **1**, not 92. `[HIGH/OBSERVED]`
+> value-leaf contribution to the `864` denominator is **1**, not 92.
 
 ---
 
@@ -476,7 +477,7 @@ void pred_store_2nx8t(vec512 data, vbool mask, uint32_t *base, uint32_t stride, 
 > **NOTE — the `t` selector is a distinct opcode, not a flag on the base store.** `sv2nx8_i` =
 > `0x10a20000`, `sv2nx8t_i` = `0x10200000` — a different selector word (different iclass), because the
 > predicated form must encode the extra `vbool` operand field. A reimplementer assembles `*t*` from its
-> own template, not by OR-ing a "predicated bit" onto the unmasked store. `[HIGH/OBSERVED]`
+> own template, not by OR-ing a "predicated bit" onto the unmasked store.
 
 ---
 
@@ -490,12 +491,12 @@ The three numbers, each with a binary witness:
 | B07 **placements** `p` | **746** | `Σ` over the 92 of `nm \| rg -c 'Opcode_<m>_Slot_*_encode'` |
 | B07 **value leaves** `v` | **1** | `nm libfiss-base.so \| rg -c module__xdref_sav` = 1 (bulk stores have none) |
 
-Verb breakdown (`nm` over `/tmp/b07_store_mnems.txt`, this pass): `sv*`=40 (aligned vec), `ss*`=32
+Verb breakdown (`nm` over the store-mnemonic roster): `sv*`=40 (aligned vec), `ss*`=32
 (stream/transpose), `sb*`=6 (`vbool` bit-store), `sa*`/`sav*`/`san*`+`salign`/`sapos`=14 (valign flush +
 alignment-state). `40 + 32 + 6 + 14 = 92`. ✓
 
 `m = 92` rolls into the **1065** `ivp_` vector axis; `p = 746` rolls into the **12569** shipped placement
-total ([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary-this-pass));
+total ([coverage-tally §1](../core/coverage-tally.md#1-the-five-headline-numbers--re-derived-from-the-binary));
 `v = 1` (the `sav` merge) into the **864** value-leaf denominator — the only B07 op with a non-identity
 value function. The valid pairing stays `1534 ↔ 12569`; B07 touches no fold-source package, so its `p`
 carries no `+73` authoring forms. `[HIGH/OBSERVED]`
@@ -526,49 +527,46 @@ ivp_ scatter/gather roster (scatter*|gather*)                        = 23   -> B
 > by `(base, stride, granularity)` and owned by B07. A **scatter** (`ivp_scatter*`, B19) takes a
 > per-lane **index vector** from `gvr`/`b32_pr` and writes to arbitrary addresses — a different operand
 > model entirely. Do not bin `ss*` into B19: the disambiguator is "regular stride field" (B07) vs
-> "index-vector operand" (B19). The `nm` overlap is **0**. `[HIGH/OBSERVED]`
+> "index-vector operand" (B19). The `nm` overlap is **0**.
 
 ---
 
 ## 10. Adversarial self-verification — 5 strongest claims, re-challenged
 
-Each claim re-derived against the binary this pass; nothing taken on a report's word.
-
-1. **"92 store mnemonics, 746 placements, 1 value leaf."** Re-derived: `nm | rg -o
+1. **"92 store mnemonics, 746 placements, 1 value leaf."** Derived: `nm | rg -o
    'Opcode_(ivp_(sv|ss|sb|sa)…)…' | sort -u | wc -l` = **92**; summing `rg -c` per mnemonic = **746**;
    `nm libfiss-base.so | rg -c module__xdref_sav` = **1**, and `rg -c 'module__xdref_(sv|ss|sb)'` = **0**
    (bulk stores are identity). *Challenge:* could a non-store `sa*`/`ss*` op (e.g. `ssn_…` vs `sub*` or
    `sel*`) have leaked in? The classifier matched only `sv|ss|sb|sa` *store* roots; `sub*`/`sel*`/`sll*`/
    `sqz*`/`sqrt*` start with `s` but are distinct verbs binned to B01/B21/B12/B24/B15 — verified by
    listing every `ivp_s*` mnemonic (190) and excluding the 98 non-store verbs. **Confirmed.**
-   `[HIGH/OBSERVED]`
 
 2. **"Post-increment is bit `0x100`; the immediate is ×64-scaled, field `[−8,+7]`."** *Challenge:* maybe
-   the post-inc is a different bit, or the scale is wrong. Re-read: `sv2nx8_x`=`0x10f00000`,
+   the post-inc is a different bit, or the scale is wrong. The templates: `sv2nx8_x`=`0x10f00000`,
    `sv2nx8_xp`=`0x10f00100`, delta exactly `0x100`. Live: `IVP_SV2NX8_IP v0,a3,N` accepts
    `N∈{−64,0,64,128,448}` and rejects `16`,`32`,`−448`,`±512` — proving the immediate is a signed-4-bit
    field scaled by 64 (`64×[−8,+7]=[−512,+448]`, with `−512` excluded), and the encoded byte0[7:4] runs
-   `0→1→2→…7,0xf` exactly as `imm/64` mod 16. **Confirmed.** `[HIGH/OBSERVED by execution]`
+   `0→1→2→…7,0xf` exactly as `imm/64` mod 16. **Confirmed.**
 
 3. **"The valign flush merge is a rotate-by-`off` with carry back-fill."** *Challenge:* maybe `sav`
    doesn't rotate, or the byte split is not proportional. Drove `module__xdref_sav` live with
    distinguishable `A`=`0xAA…`/`B`=`0xBB…` vectors over a byte-offset sweep: `out2` holds exactly `off/4`
    low words from `B` (carry) and `16−off/4` high words from `A` (data), monotone across
    `off∈{0,4,8,16,32,48,60}` (16A/0B → 8A/8B → 1A/15B). A non-rotating merge would not produce a
-   proportional split. **Confirmed by execution.** `[HIGH/OBSERVED by execution]`
+   proportional split. **Confirmed by execution.**
 
 4. **"`sb*` stores `vbool`, not `vec`; `salign`/`sapos` carry no `vec`."** *Challenge:* maybe `sbn`
    takes a `vec` and the file is mis-typed. Live: `IVP_SBN_I vb0, a3, 0` assembles; `IVP_SBN_I v0,…`,
    `pr0,…`, `u0,…` are all **rejected** ("bad register name" / "invalid symbolic operand") — the source
    is unambiguously `vbool`. And `IVP_SALIGN_I u0, a3, 0` / `IVP_SAPOS_FP u0, a3` assemble with a
-   `valign`+`AR` operand pair and **no** `vec` operand. **Confirmed.** `[HIGH/OBSERVED by execution]`
+   `valign`+`AR` operand pair and **no** `vec` operand. **Confirmed.**
 
 5. **"Stores are `s0`-exclusive; `sv*`=9 placements, `ss*`=8 (no N1), `sb*`=8 (no N0),
    `salign`/`sapos`=10 (+F4 load slot)."** *Challenge:* maybe a store places outside `s0`. `nm |
    rg -o 'Slot_[a-z0-9_]+'` over each family returns **only** `s0_ldst`/`s0_ldstalu`/`s0_ld`
    placements — no `s1`/`s2`/`s3`. The per-family slot sets are exactly as stated (sv: 9 incl N0+N1+N2;
    ss: 8 dropping N1; sb: 8 dropping N0; salign/sapos: 10 adding f4_s0_ld). The `s0`-exclusivity holds —
-   stores can only issue in the one ldst slot. **Confirmed.** `[HIGH/OBSERVED]`
+   stores can only issue in the one ldst slot. **Confirmed.**
 
 ---
 
@@ -578,7 +576,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
 |---|---|---|
 | 92 store mnemonics; 746 placements; 1 value leaf (`sav`) | `[HIGH/OBSERVED]` | `nm libisa-core.so` `Opcode_*` roster + classifier + per-mnemonic `rg -c`; `nm libfiss-base.so` |
 | Every store is an `s0` (ldst-slot) opcode; per-family slot sets | `[HIGH/OBSERVED]` | `Opcode_*_Slot_<f>_s0_*_encode` symtab |
-| Opcode-sel templates (byte-exact `F0_S0_ldst` `WORD0`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks this pass |
+| Opcode-sel templates (byte-exact `F0_S0_ldst` `WORD0`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks |
 | Post-inc bit `0x100`; immediate ×64-scaled, signed-4-bit field | `[HIGH/OBSERVED by execution]` | template deltas + `xtensa-elf-as` accept/reject sweep |
 | Operand bit-windows (vt / AR base / bimm4) isolable & monotone | `[HIGH/OBSERVED by execution]` | `fld_*_get` bodies + live operand-variation decode |
 | valign rotate-merge flush = rotate-by-`off` + carry back-fill | `[HIGH/OBSERVED by execution]` | `module__xdref_sav` driven live, monotone A/B byte split |
@@ -614,7 +612,7 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
 ---
 
 *Provenance: the encode templates, slot placements, addressing-mode bits and operand windows are
-`[HIGH/OBSERVED]` — re-disassembled in-checkout from `libisa-core.so` (`ncore2gp/config/`) and confirmed
+`[HIGH/OBSERVED]` — disassembled in-checkout from `libisa-core.so` (`ncore2gp/config/`) and confirmed
 live with the on-device `xtensa-elf-as`/`xtensa-elf-objdump` under `XTENSA_CORE=ncore2gp`; the valign
 flush-tail merge in [§5](#5-the-valign-flush-tail-merge--driven-live) is `[HIGH/OBSERVED by execution]`
 — the `libfiss-base.so` `module__xdref_sav` leaf was loaded via ctypes and run on the inputs shown; the

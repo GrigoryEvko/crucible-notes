@@ -8,14 +8,14 @@ add / sub / abs / neg, signed-and-unsigned min / max, the integer compares that 
 own **894 of the 12 569 shipped placements** ([the coverage tally's certified-perfect
 denominator](../core/coverage-tally.md)).
 
-Everything below is re-grounded against the shipped binaries this pass: the **encoding** from
+Everything below is grounded in the shipped binaries: the **encoding** from
 `libisa-core.so` (the `Opcode_<mnem>_Slot_<slot>_encode` thunks and the `Field_*_get` operand
 accessors), the **value semantics** by *executing* the matching `module__xdref_*` leaves in
 `libfiss-base.so` live in-process (license-free), and an independent **encode/decode oracle** from
-the device-native `xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). Confidence tags
-per [the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
-read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` =
-re-used at a sibling page's confidence.
+the device-native `xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). The page default is
+`[HIGH/OBSERVED]` (read-from-byte / proven-by-execution); claims that depart from that default carry
+an explicit tag per [the Confidence & Walls model](../../reference/confidence-model.md) —
+`[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
 
 > **Scope split — read this before pairing a mnemonic to a batch.** This batch is the **integer,
 > non-predicated, base** core on `vec`. Three boundaries are enforced so the 30 batches don't
@@ -43,7 +43,7 @@ re-used at a sibling page's confidence.
 | Base mnemonics this batch | **50** | §2; `nm libisa-core.so` distinct `Opcode_ivp_*` |
 | Placements this batch | **894** | `nm \| rg -c` on the explicit 50-op glob (§6) |
 | Functional unit | the `alu` slot class (+ `mul` for compares, +`ldst` for 1-source) | `slots[]` ([flix-encoding §5](../core/flix-encoding.md)) |
-| ALU result latency | source `use_stage = 10` → dest `def_stage = 11` (1-cycle ALU) | `opcodes[]` use/def stages `[HIGH/OBSERVED]` |
+| ALU result latency | source `use_stage = 10` → dest `def_stage = 11` (1-cycle ALU) | `opcodes[]` use/def stages |
 | Lane geometry | `2nx8`=64×8b · `nx16`=32×16b · `n_2x32`=16×32b (one 512-bit reg) | `xt_ivp32.h` typedefs; value-leaf width suffix |
 | Encode-thunk ABI | `C7 07 imm32 [C7 47 04 0] C3` — `imm32` = the `(opcode×slot)` selector | [flix-encoding §6.1](../core/flix-encoding.md) |
 | Value-leaf ABI (binary op) | `void leaf(uint64 ctx, uint32 a, uint32 b, uint32 *out)` | disassembled §4 |
@@ -72,57 +72,59 @@ bundle (the `1+1` co-issue ceiling, [coverage-tally §7](../core/coverage-tally.
 
 Columns: `mnemonic` · `lanes×width` · representative `FLIX slot` and its **opcode-selector imm**
 (the `Opcode_<mnem>_Slot_<slot>_encode` thunk's `movl $imm`, disassembled) · the **vec 5-bit
-operand field positions** in the slot-word · device byte-size · one-line lane semantics · `[conf]`.
-Every selector imm below is for the **`F0_S3_ALU` slot specifically** and was disassembled this
-pass — see the GOTCHA after the tables: *the selector is per-(opcode×slot); there is no global
-add-bit.* The vec operand fields (slot-word bits `[14:10]`/`[19:15]`/`[24:20]`) are **identical for
-every op in this batch** — they are a property of the *slot*, not the opcode (§3.2).
+operand field positions** in the slot-word · device byte-size · one-line lane semantics.
+Every selector imm below is for the **`F0_S3_ALU` slot specifically**, disassembled from those
+encode thunks — see the GOTCHA after the tables: *the selector is per-(opcode×slot); there is no
+global add-bit.* The vec operand fields (slot-word bits `[14:10]`/`[19:15]`/`[24:20]`) are
+**identical for every op in this batch** — they are a property of the *slot*, not the opcode (§3.2).
+All rows in §2.1–§2.5 are `[HIGH/OBSERVED]` except the `†`-marked cells of §2.4, whose selector
+*imm* alone is `[MED/INFERRED]` (footnote after §2.5).
 
 ### 2.1 Add / sub (wrapping and saturating)
 
-| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | bytes | semantics | conf |
-|---|---|---|---|---|---|---|
-| `ivp_add2nx8`   | 64×8  | `0x80ad0000` | 982 / 895 | 16/8 | `a = wrap8(b + c)` | `[HIGH/OBSERVED]` |
-| `ivp_addnx16`   | 32×16 | `0x80b50000` | 422 / 335 | 16/8 | `a = wrap16(b + c)` | `[HIGH/OBSERVED]` |
-| `ivp_addn_2x32` | 16×32 | `0x80bd0000` | 1025 / 938 | 16/8 | `a = wrap32(b + c)` | `[HIGH/OBSERVED]` |
-| `ivp_addsnx16`  | 32×16 | `0x80c50000` | 450 / 363 | 16/8 | `a = satS16(b + c)` (signed clamp) | `[HIGH/OBSERVED]` |
-| `ivp_sub2nx8`   | 64×8  | `0x86b10000` | 983 / 896 | 16/8 | `a = wrap8(b − c)` | `[HIGH/OBSERVED]` |
-| `ivp_subnx16`   | 32×16 | `0x86b90000` | 423 / 336 | 16/8 | `a = wrap16(b − c)` | `[HIGH/OBSERVED]` |
-| `ivp_subn_2x32` | 16×32 | `0x86a18000` | 1026 / 939 | 16/8 | `a = wrap32(b − c)` | `[HIGH/OBSERVED]` |
-| `ivp_subsnx16`  | 32×16 | `0x86a98000` | 451 / 364 | 16/8 | `a = satS16(b − c)` | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | bytes | semantics |
+|---|---|---|---|---|---|
+| `ivp_add2nx8`   | 64×8  | `0x80ad0000` | 982 / 895 | 16/8 | `a = wrap8(b + c)` |
+| `ivp_addnx16`   | 32×16 | `0x80b50000` | 422 / 335 | 16/8 | `a = wrap16(b + c)` |
+| `ivp_addn_2x32` | 16×32 | `0x80bd0000` | 1025 / 938 | 16/8 | `a = wrap32(b + c)` |
+| `ivp_addsnx16`  | 32×16 | `0x80c50000` | 450 / 363 | 16/8 | `a = satS16(b + c)` (signed clamp) |
+| `ivp_sub2nx8`   | 64×8  | `0x86b10000` | 983 / 896 | 16/8 | `a = wrap8(b − c)` |
+| `ivp_subnx16`   | 32×16 | `0x86b90000` | 423 / 336 | 16/8 | `a = wrap16(b − c)` |
+| `ivp_subn_2x32` | 16×32 | `0x86a18000` | 1026 / 939 | 16/8 | `a = wrap32(b − c)` |
+| `ivp_subsnx16`  | 32×16 | `0x86a98000` | 451 / 364 | 16/8 | `a = satS16(b − c)` |
 
 ### 2.2 Abs / neg (wrapping and saturating)
 
 These take **one** `vec` source and so are also legal in the LdSt slot class (§6); the table shows
 the `F0_S3_ALU` selector.
 
-| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_abs2nx8`   | 64×8  | `0x64c05c00` | 1017 / 930 | `a = wrap8(\|b\|)`  (wraps at `INT8_MIN`) | `[HIGH/OBSERVED]` |
-| `ivp_absnx16`   | 32×16 | `0x64c85c00` | 1367 / 1280 | `a = wrap16(\|b\|)` (wraps at `0x8000`) | `[HIGH/OBSERVED]` |
-| `ivp_absn_2x32` | 16×32 | `0x64d85c00` | 1018 / 931 | `a = wrap32(\|b\|)` | `[HIGH/OBSERVED]` |
-| `ivp_abssnx16`  | 32×16 | `0x64e85c00` | 1368 / 1281 | `a = satS16(\|b\|)` (`abs(0x8000)=0x7fff`) | `[HIGH/OBSERVED]` |
-| `ivp_neg2nx8`   | 64×8  | `0x6488d400` | 984 / 897 | `a = wrap8(−b)` | `[HIGH/OBSERVED]` |
-| `ivp_negnx16`   | 32×16 | `0x6488d800` | 424 / 337 | `a = wrap16(−b)` (`neg(0x8000)=0x8000`) | `[HIGH/OBSERVED]` |
-| `ivp_negn_2x32` | 16×32 | `0x6490d000` | 1027 / 940 | `a = wrap32(−b)` | `[HIGH/OBSERVED]` |
-| `ivp_negsnx16`  | 32×16 | `0x6490d800` | 452 / 365 | `a = satS16(−b)` | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | semantics |
+|---|---|---|---|---|
+| `ivp_abs2nx8`   | 64×8  | `0x64c05c00` | 1017 / 930 | `a = wrap8(\|b\|)`  (wraps at `INT8_MIN`) |
+| `ivp_absnx16`   | 32×16 | `0x64c85c00` | 1367 / 1280 | `a = wrap16(\|b\|)` (wraps at `0x8000`) |
+| `ivp_absn_2x32` | 16×32 | `0x64d85c00` | 1018 / 931 | `a = wrap32(\|b\|)` |
+| `ivp_abssnx16`  | 32×16 | `0x64e85c00` | 1368 / 1281 | `a = satS16(\|b\|)` (`abs(0x8000)=0x7fff`) |
+| `ivp_neg2nx8`   | 64×8  | `0x6488d400` | 984 / 897 | `a = wrap8(−b)` |
+| `ivp_negnx16`   | 32×16 | `0x6488d800` | 424 / 337 | `a = wrap16(−b)` (`neg(0x8000)=0x8000`) |
+| `ivp_negn_2x32` | 16×32 | `0x6490d000` | 1027 / 940 | `a = wrap32(−b)` |
+| `ivp_negsnx16`  | 32×16 | `0x6490d800` | 452 / 365 | `a = satS16(−b)` |
 
 ### 2.3 Min / max (signed and unsigned)
 
-| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_min2nx8`     | 64×8  | `0x80e58000` | 985 / 898 | `a = (sB ≤ sC) ? b : c` (signed) | `[HIGH/OBSERVED]` |
-| `ivp_minnx16`     | 32×16 | `0x80fd8000` | 425 / 338 | signed min, 16-bit | `[HIGH/OBSERVED]` |
-| `ivp_minn_2x32`   | 16×32 | `0x86a80000` | 1028 / 941 | signed min, 32-bit | `[HIGH/OBSERVED]` |
-| `ivp_minu2nx8`    | 64×8  | `0x86b80000` | 986 / 899 | unsigned min, 8-bit | `[HIGH/OBSERVED]` |
-| `ivp_minunx16`    | 32×16 | `0x86a08000` | 426 / 339 | unsigned min, 16-bit | `[HIGH/OBSERVED]` |
-| `ivp_minun_2x32`  | 16×32 | `0x86a88000` | 1029 / 942 | unsigned min, 32-bit | `[HIGH/OBSERVED]` |
-| `ivp_max2nx8`     | 64×8  | `0x80958000` | 987 / 900 | signed max, 8-bit | `[HIGH/OBSERVED]` |
-| `ivp_maxnx16`     | 32×16 | `0x80ad8000` | 427 / 340 | signed max, 16-bit | `[HIGH/OBSERVED]` |
-| `ivp_maxn_2x32`   | 16×32 | `0x80bd8000` | 1030 / 943 | signed max, 32-bit | `[HIGH/OBSERVED]` |
-| `ivp_maxu2nx8`    | 64×8  | `0x80cd8000` | 988 / 901 | unsigned max, 8-bit | `[HIGH/OBSERVED]` |
-| `ivp_maxunx16`    | 32×16 | `0x80d58000` | 428 / 341 | unsigned max, 16-bit | `[HIGH/OBSERVED]` |
-| `ivp_maxun_2x32`  | 16×32 | `0x80dd8000` | 1031 / 944 | unsigned max, 32-bit | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | semantics |
+|---|---|---|---|---|
+| `ivp_min2nx8`     | 64×8  | `0x80e58000` | 985 / 898 | `a = (sB ≤ sC) ? b : c` (signed) |
+| `ivp_minnx16`     | 32×16 | `0x80fd8000` | 425 / 338 | signed min, 16-bit |
+| `ivp_minn_2x32`   | 16×32 | `0x86a80000` | 1028 / 941 | signed min, 32-bit |
+| `ivp_minu2nx8`    | 64×8  | `0x86b80000` | 986 / 899 | unsigned min, 8-bit |
+| `ivp_minunx16`    | 32×16 | `0x86a08000` | 426 / 339 | unsigned min, 16-bit |
+| `ivp_minun_2x32`  | 16×32 | `0x86a88000` | 1029 / 942 | unsigned min, 32-bit |
+| `ivp_max2nx8`     | 64×8  | `0x80958000` | 987 / 900 | signed max, 8-bit |
+| `ivp_maxnx16`     | 32×16 | `0x80ad8000` | 427 / 340 | signed max, 16-bit |
+| `ivp_maxn_2x32`   | 16×32 | `0x80bd8000` | 1030 / 943 | signed max, 32-bit |
+| `ivp_maxu2nx8`    | 64×8  | `0x80cd8000` | 988 / 901 | unsigned max, 8-bit |
+| `ivp_maxunx16`    | 32×16 | `0x80d58000` | 428 / 341 | unsigned max, 16-bit |
+| `ivp_maxun_2x32`  | 16×32 | `0x80dd8000` | 1031 / 944 | unsigned max, 32-bit |
 
 ### 2.4 Integer compare → `vbool` predicate (signed and unsigned)
 
@@ -131,26 +133,26 @@ true, zero on false. They issue on the **Mul/compare slot class** as well as the
 21 placements each (§6). The selector below is `F0_S3_ALU`; all share base `0x80870000`, with the
 **relation and dtype encoded in the low bits — within this one slot only**.
 
-| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | predicate write | conf |
-|---|---|---|---|---|---|
-| `ivp_eq2nx8`    | 64×8  | `0x80870000` | 991 / 904 | `vb_lane = (b == c)` (sign-irrelevant) | `[HIGH/OBSERVED]` |
-| `ivp_eqnx16`    | 32×16 | `0x80870002` | 434 / 347 | `vb_lane = (b == c)` | `[HIGH/OBSERVED]` |
-| `ivp_eqn_2x32`  | 16×32 | `0x80870004` | 1037 / 950 | `vb_lane = (b == c)` | `[HIGH/OBSERVED]` |
-| `ivp_neq2nx8`   | 64×8  | `0x80870200` | 992 / 905 | `vb_lane = (b != c)` | `[HIGH/OBSERVED]` |
-| `ivp_neqnx16`   | 32×16 | `0x80870200`◇ | 435 / 348 | `vb_lane = (b != c)` | `[HIGH/OBSERVED]` |
-| `ivp_neqn_2x32` | 16×32 | `0x80870204`† | 1038 / 951 | `vb_lane = (b != c)` | `[HIGH/OBSERVED]` opc; `[MED]` imm |
-| `ivp_lt2nx8`    | 64×8  | `0x80870102` | 989 / 902 | `vb_lane = (sB < sC)` (signed) | `[HIGH/OBSERVED]` |
-| `ivp_ltnx16`    | 32×16 | `0x80870104` | 432 / 345 | signed `<` | `[HIGH/OBSERVED]` |
-| `ivp_ltn_2x32`  | 16×32 | `0x80870106`† | 1035 / 948 | signed `<` | `[HIGH/OBSERVED]` opc; `[MED]` imm |
-| `ivp_ltu2nx8`   | 64×8  | `0x80870108` | 993 / 906 | `vb_lane = (uB < uC)` (unsigned) | `[HIGH/OBSERVED]` |
-| `ivp_ltunx16`   | 32×16 | `0x8087010a` | 436 / 349 | unsigned `<` | `[HIGH/OBSERVED]` |
-| `ivp_ltun_2x32` | 16×32 | `0x8087010c`† | 1039 / 952 | unsigned `<` | `[HIGH/OBSERVED]` opc; `[MED]` imm |
-| `ivp_le2nx8`    | 64×8  | `0x80870006`† | 990 / 903 | `vb_lane = (sB ≤ sC)` | `[HIGH/OBSERVED]` opc; `[MED]` imm |
-| `ivp_lenx16`    | 32×16 | `0x80870008` | 433 / 346 | signed `≤` | `[HIGH/OBSERVED]` |
-| `ivp_len_2x32`  | 16×32 | `0x8087000a`† | 1036 / 949 | signed `≤` | `[HIGH/OBSERVED]` opc; `[MED]` imm |
-| `ivp_leu2nx8`   | 64×8  | `0x8087000c`† | 994 / 907 | `vb_lane = (uB ≤ uC)` | `[HIGH/OBSERVED]` opc; `[MED]` imm |
-| `ivp_leunx16`   | 32×16 | `0x8087000e` | 437 / 350 | unsigned `≤` | `[HIGH/OBSERVED]` |
-| `ivp_leun_2x32` | 16×32 | `0x80870…e`† | 1040 / 953 | unsigned `≤` | `[HIGH/OBSERVED]` opc; `[MED]` imm |
+| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | predicate write |
+|---|---|---|---|---|
+| `ivp_eq2nx8`    | 64×8  | `0x80870000` | 991 / 904 | `vb_lane = (b == c)` (sign-irrelevant) |
+| `ivp_eqnx16`    | 32×16 | `0x80870002` | 434 / 347 | `vb_lane = (b == c)` |
+| `ivp_eqn_2x32`  | 16×32 | `0x80870004` | 1037 / 950 | `vb_lane = (b == c)` |
+| `ivp_neq2nx8`   | 64×8  | `0x80870200` | 992 / 905 | `vb_lane = (b != c)` |
+| `ivp_neqnx16`   | 32×16 | `0x80870200`◇ | 435 / 348 | `vb_lane = (b != c)` |
+| `ivp_neqn_2x32` | 16×32 | `0x80870204`† | 1038 / 951 | `vb_lane = (b != c)` |
+| `ivp_lt2nx8`    | 64×8  | `0x80870102` | 989 / 902 | `vb_lane = (sB < sC)` (signed) |
+| `ivp_ltnx16`    | 32×16 | `0x80870104` | 432 / 345 | signed `<` |
+| `ivp_ltn_2x32`  | 16×32 | `0x80870106`† | 1035 / 948 | signed `<` |
+| `ivp_ltu2nx8`   | 64×8  | `0x80870108` | 993 / 906 | `vb_lane = (uB < uC)` (unsigned) |
+| `ivp_ltunx16`   | 32×16 | `0x8087010a` | 436 / 349 | unsigned `<` |
+| `ivp_ltun_2x32` | 16×32 | `0x8087010c`† | 1039 / 952 | unsigned `<` |
+| `ivp_le2nx8`    | 64×8  | `0x80870006`† | 990 / 903 | `vb_lane = (sB ≤ sC)` |
+| `ivp_lenx16`    | 32×16 | `0x80870008` | 433 / 346 | signed `≤` |
+| `ivp_len_2x32`  | 16×32 | `0x8087000a`† | 1036 / 949 | signed `≤` |
+| `ivp_leu2nx8`   | 64×8  | `0x8087000c`† | 994 / 907 | `vb_lane = (uB ≤ uC)` |
+| `ivp_leunx16`   | 32×16 | `0x8087000e` | 437 / 350 | unsigned `≤` |
+| `ivp_leun_2x32` | 16×32 | `0x80870…e`† | 1040 / 953 | unsigned `≤` |
 
 ### 2.5 Bitwise logic (element-agnostic, full 512-bit)
 
@@ -158,23 +160,23 @@ These are **width-agnostic full-register bitwise** ops; the `2nx8` suffix is con
 only (an `AND` over a 512-bit register is the same regardless of lane interpretation, §4.4). Note
 the **contiguous opcode block** (xor 418, and 419, or 420, not 421).
 
-| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_and2nx8` | 512-bit | `0x80cd0000` | 419 / 332 | `a = b & c` | `[HIGH/OBSERVED]` |
-| `ivp_or2nx8`  | 512-bit | `0x86a90000` | 420 / 333 | `a = b \| c` | `[HIGH/OBSERVED]` |
-| `ivp_xor2nx8` | 512-bit | `0x86b18000` | 418 / 331 | `a = b ^ c` | `[HIGH/OBSERVED]` |
-| `ivp_not2nx8` | 512-bit | `0x6490dc00` | 421 / 334 | `a = ~b` (1 source) | `[HIGH/OBSERVED]` |
+| mnemonic | lanes×w | F0_S3_ALU sel | opc#/iclass# | semantics |
+|---|---|---|---|---|
+| `ivp_and2nx8` | 512-bit | `0x80cd0000` | 419 / 332 | `a = b & c` |
+| `ivp_or2nx8`  | 512-bit | `0x86a90000` | 420 / 333 | `a = b \| c` |
+| `ivp_xor2nx8` | 512-bit | `0x86b18000` | 418 / 331 | `a = b ^ c` |
+| `ivp_not2nx8` | 512-bit | `0x6490dc00` | 421 / 334 | `a = ~b` (1 source) |
 
 `†` = the low-bit step is **extrapolated** from the disassembled `eq/lt/le` nibble structure
 (§3.3); the *base* `0x80870000` and the `opc#/iclass#` are `[HIGH/OBSERVED]`, the `†` imm cells
 `[MED/INFERRED]`. `◇` = `neqnx16` and `neq2nx8` both show base `0x80870200` for the `neq` relation
-across the disassembled cells (the dtype nibble distinguishes width elsewhere in the field);
-`[HIGH/OBSERVED]` on `neqnx16`, `neq2nx8`.
+across the disassembled cells (the dtype nibble distinguishes width elsewhere in the field), so
+both are `[HIGH/OBSERVED]`.
 
 > **GOTCHA — there is no global "add bit" or "subtract bit"; the selector is per-(opcode×slot).**
 > `ivp_addnx16` encodes to `0x80b50000` in `F0_S3_ALU`, but `0x00090000` in `F3_S3_ALU`,
 > `0x12938000` in `F1_S0_LdStALU`, `0x6c480000` in `N0_S3_ALU`, and `0x02a50000` in `F7_S2_Mul`
-> (all disassembled this pass). The clean nibble pattern in §2.4 (compares stepping by `0x100` /
+> (all disassembled). The clean nibble pattern in §2.4 (compares stepping by `0x100` /
 > `0x008` / a dtype low-nibble) holds **only within the `F0_S3_ALU` slot**. This is exactly the
 > [flix-encoding §6.2 "two-tier selector"](../core/flix-encoding.md) fact: the selector bits are
 > format-local opcode-packing, not a roster-wide bit. Independently, the `s`/`u`/width/`t`
@@ -182,7 +184,6 @@ across the disassembled cells (the dtype nibble distinguishes width elsewhere in
 > a `u` op `op_GRP_UNSIGN`-tagged), never a runtime toggle of one base op — note each row above
 > has a *different* `opc#`/`iclass#`. A reimplementation's encoder indexes the `(opcode, slot)`
 > pair into `opcodedefs[]`; it never computes a selector by OR-ing a global "operation" field.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -218,7 +219,7 @@ The signed/unsigned and saturating distinctions ride **separate opcodes**, not a
 
 Every integer ALU op in a given slot reads its three `vec` operands from the *same* slot-word bit
 positions — a property of the slot, decoded by the `Field_fld_<slot>_<hi>_<lo>_Slot_<slot>_get`
-accessors. For `F0_S3_ALU`, disassembled this pass:
+accessors. For `F0_S3_ALU`, disassembled:
 
 ```c
 // Field_fld_f0_s3_alu_14_10_get @ 0x314000 :  mov (%rdi),%eax; shl $0x11; shr $0x1b
@@ -233,7 +234,7 @@ scatter** (the `vt` semantic field reads two disjoint ranges — `Field_fld_ivp_
 disassembles to `shl $0x1c; shr $0x5; … and $0x18`, two ranges OR-ed). A reimplementation deposits
 the 5-bit index into the raw `[14:10]`/`[19:15]`/`[24:20]` windows and lets the `sem_*` layer name
 the role. The compare ops additionally carry an `ivp_sem_vec_alu_vbr` 4-bit field (the **`vbool`
-destination** index, `Field_fld_…_vbr`, bits `[18:15]`-class). `[HIGH/OBSERVED]`
+destination** index, `Field_fld_…_vbr`, bits `[18:15]`-class).
 
 ### 3.3 The compare selector nibble structure (F0_S3_ALU only)
 
@@ -248,7 +249,7 @@ selector = 0x80870000
                             // signed le 0x008 -> unsigned leu 0x00e (+0x006 on le)
 ```
 
-Worked, all `[HIGH/OBSERVED]` (disassembled): `eqnx16=0x80870002`, `lenx16=0x80870008`,
+Worked examples, all disassembled: `eqnx16=0x80870002`, `lenx16=0x80870008`,
 `leunx16=0x8087000e`, `ltnx16=0x80870104`, `ltunx16=0x8087010a`, `neqnx16=0x80870200`,
 `eq2nx8=0x80870000`, `eqn_2x32=0x80870004`. This nibble model is the §2.4 `†` source and is sound
 **within F0_S3_ALU**; do not export it across slots (§2 GOTCHA). `[HIGH/OBSERVED]` on the
@@ -261,7 +262,7 @@ disassembled cells; the model that interpolates the rest is `[MED/INFERRED]`.
 The `module__xdref_*` value leaves in `libfiss-base.so` are the per-element value functions and are
 **callable in-process via ctypes with no license** ([coverage-tally §5](../core/coverage-tally.md)).
 Each is the lane kernel: it computes **one lane** and writes the result to `*out`. Disassembly fixed
-the ABI; the runs below were executed live this pass.
+the ABI; the runs below were executed live.
 
 **Binary-op ABI** (`add`, `sub`, `min`, `max`, compare): `void leaf(uint64 ctx /*rdi, unused for
 these*/, uint32 a /*esi*/, uint32 b /*edx*/, uint32 *out /*rcx*/)`. **Unary** (`abs`, `neg`):
@@ -319,8 +320,6 @@ uint16_t minu_u16(uint16_t b, uint16_t c){ return (b <= c) ? b : c; }    // unsi
 //  bit-identical result, no sign-extend; reproduce the *semantics*, the trick is an impl detail.)
 ```
 
-`[HIGH/OBSERVED by execution]`
-
 ### 4.3 Integer compare → 2-bit-per-lane `vbool` predicate (live)
 
 The compare leaves are named `<rel>_<predw>_<inw>_<inw>` where `predw` is the predicate width in
@@ -358,7 +357,6 @@ in their bodies. The downstream consumption of this mask (predicated select / th
 [B11](b11-vbool-alu.md)'s subject. Signed `lt`/`le` flip the MSB
 (`{~a[15],a[14:0]} < {~b[15],b[14:0]}`) to map two's-complement order onto the native unsigned
 operator; **there is no signed `gt`/`ge` opcode — GT/GE = LT/LE with the operands swapped.**
-`[HIGH/OBSERVED]`
 
 ### 4.4 Bitwise logic — full 512-bit, lane-agnostic (live)
 
@@ -372,7 +370,7 @@ and = c003     or = fc3f     xor = 3c3c     not(a) = 0ff0
 ```
 
 `F0 & CC = C0`, `0F & 33 = 03`, etc. — byte-exact. `ivp_not2nx8` is the only single-source op in
-the logic group (and gains 4 LdSt placements like abs/neg, §6). `[HIGH/OBSERVED by execution]`
+the logic group (and gains 4 LdSt placements like abs/neg, §6).
 
 ### 4.5 Abs / neg — wrapping vs saturating (live)
 
@@ -386,7 +384,7 @@ the logic group (and gains 4 LdSt placements like abs/neg, §6). `[HIGH/OBSERVED
 
 `abs(0x8000)` wraps to `0x8000` (`|−32768|=32768` is unrepresentable → truncates to itself), while
 `abss(0x8000)=0x7fff` saturates. Same story for `neg`. The wrapping forms are pure two's-complement
-`-b` / `(b<0?-b:b)` with 16-bit truncation. `[HIGH/OBSERVED by execution]`
+`-b` / `(b<0?-b:b)` with 16-bit truncation.
 
 ---
 
@@ -441,7 +439,7 @@ round-trip — which is the property the oracle certifies. `[HIGH/OBSERVED]`
 
 ## 6. Batch coverage tally — 50 mnemonics / 894 placements
 
-Re-counted this pass with `nm libisa-core.so | rg -c 'Opcode_ivp_<glob>_Slot_…_encode'` (never the
+Counted with `nm libisa-core.so | rg -c 'Opcode_ivp_<glob>_Slot_…_encode'` (never the
 decompile — [coverage-tally §0 GOTCHA](../core/coverage-tally.md)). Every one of the 50 grounds to
 ≥ 1 placement; **none ungrounded**.
 
@@ -482,38 +480,34 @@ the `…b` predicate-file logic (B11) are counted in *their* batches, never here
 > `avg=(b+c)>>1`, `avgr=(b+c+1)>>1` rounding, `avgu` unsigned, all executed live), and
 > `ivp_minormax2nx8` (combined min&max select). They are cited so a reader who greps the
 > `ivp_add`/`ivp_min` neighbourhood knows where they went, not to claim them. →
-> [B03](b03-vec-alu-rest.md) / [B24](b24-composite.md). `[HIGH/OBSERVED]` on the adjacency.
+> [B03](b03-vec-alu-rest.md) / [B24](b24-composite.md).
 
 ---
 
 ## 7. Adversarial self-verification — the five strongest claims
 
-Each re-challenged against the binary this pass; failures fixed.
-
-1. **"50 base integer-ALU mnemonics own 894 placements, none ungrounded."** Re-run:
+1. **"50 base integer-ALU mnemonics own 894 placements, none ungrounded."**
    `nm libisa-core.so | rg -c 'Opcode_ivp_(add2nx8|…|not2nx8)_Slot_…_encode'` over the explicit
    50-op glob = **894**; per-op loop shows **0 with zero placements**. The per-family breakdown
-   (§6) sums `60+60+76+76+90+90+126+126+126+45+19 = 894`. ✓ `[HIGH/OBSERVED]`
-2. **"Saturating add clamps asymmetrically (+→0x7fff, −→0x8000)."** Re-challenged by executing
-   `adds_16_16_16(0x8000,0x8000)` live → **`0x8000`** (not `0x7fff`); `(0x7000,0x2000)` → `0x7fff`.
-   The asymmetry is real and would be a bug if both clamped to `0x7fff`. ✓ `[HIGH/OBSERVED by
-   execution]`
+   (§6) sums `60+60+76+76+90+90+126+126+126+45+19 = 894`. ✓
+2. **"Saturating add clamps asymmetrically (+→0x7fff, −→0x8000)."** Executing
+   `adds_16_16_16(0x8000,0x8000)` live gives **`0x8000`** (not `0x7fff`); `(0x7000,0x2000)` →
+   `0x7fff`. The asymmetry is real and would be a bug if both clamped to `0x7fff`. ✓
 3. **"Signed and unsigned compare diverge; `lt` is signed, `ltu` unsigned."** Executed
    `lt_2_16_16(0x8000,0x0001)=0x3` but `ltu_2_16_16(0x8000,0x0001)=0x0` — opposite results on the
-   same bits. Initially I assumed a single `lt` with a sign flag; the binary shows **two distinct
+   same bits. This is not one `lt` with a sign flag: the binary carries **two distinct
    opcodes** with two distinct value leaves *and two distinct `iclass#`* (`ltnx16`=345 vs
-   `ltunx16`=349). Fixed. ✓ `[HIGH/OBSERVED by execution]`
-4. **"The opcode-selector is per-(opcode×slot), not a global add/sub bit."** Re-challenged by
-   disassembling `ivp_addnx16` across 8 slots: `0x80b50000` (F0_S3) ≠ `0x00090000` (F3_S3) ≠
+   `ltunx16`=349). ✓
+4. **"The opcode-selector is per-(opcode×slot), not a global add/sub bit."** Disassembling
+   `ivp_addnx16` across 8 slots: `0x80b50000` (F0_S3) ≠ `0x00090000` (F3_S3) ≠
    `0x12938000` (F1_S0_LdStALU) ≠ `0x6c480000` (N0_S3) ≠ `0x02a50000` (F7_S2_Mul). The clean
    nibble pattern is **F0_S3_ALU-local only**. The §2 imm column is correctly scoped to one slot
    and flagged; and the `s`/`u`/`t`/width variants each carry their own `opc#`/`iclass#` (§2). ✓
-   `[HIGH/OBSERVED]`
-5. **"Compares write `vbool`, not `vec`, with `64/num_lanes` predicate bits per lane."** Re-checked
-   the leaf names (`eq_1_8_8`/`eq_2_16_16`/`eq_4_32_32`) and the device oracle (`ivp_eqnx16 vb0,…`
+5. **"Compares write `vbool`, not `vec`, with `64/num_lanes` predicate bits per lane."** The leaf
+   names (`eq_1_8_8`/`eq_2_16_16`/`eq_4_32_32`) and the device oracle agree (`ivp_eqnx16 vb0,…`
    assembles, `v0` as dest is the arithmetic form, `b0` is *rejected*). The `& 0x3` mask in
    `eq_2_16_16` and `& 0x1` in `eq_1_8_8` confirm 2-bit / 1-bit fields; `2×32 lanes = 4×16 lanes =
-   1×64 = 64-bit vbool`. ✓ `[HIGH/OBSERVED]`
+   1×64 = 64-bit vbool`. ✓
 
 **Ungrounded / flagged items** (honest residue): (a) the `†`-marked compare imms in §2.4 are
 **interpolated** from the disassembled `eq/lt/le` nibble model (`[MED/INFERRED]` imm; the `opc#`,
