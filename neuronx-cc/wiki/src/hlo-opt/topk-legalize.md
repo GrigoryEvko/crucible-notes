@@ -244,6 +244,6 @@ Two details are reconstructed rather than read. The `0`-to-`n−1` *values* the 
 
 - [The hlo-opt Pass Registry (the --passes Table)](pass-registry.md) — resolves `legalize-topk` to order 8, vtable `0x40e350`, Run `0x1f01260`
 - [CC-Op Decompose & Legalize Family](ccops-decompose-legalize.md) — sibling custom-call legalizers (ArgMax and the broader family)
-- [NKI Top-K Primitives (6.7.12)](../nki/topk-primitives.md) — `router_topk` / `topk_reduce` kernels and the `max8`/`find_index8`/`match_replace8` ISA surface
-- [GPSIMD Bitonic Top-K (Part 11)](../gpsimd/bitonic-topk.md) — the alternative GPSIMD-engine top-k path
-- [DVE Max8 & Reduce/Index Family (2.16)](../isa/dve-max8.md) — the DVE microcode primitives BIR Inst 88–91 select
+- [Scan / Reduce / Top-K Primitives](../nki/scan-reduce-topk.md) — `router_topk` / `topk_reduce` kernels and the `max8`/`find_index8`/`match_replace8` ISA surface
+- [The Bitonic SORT / TOPK Builtin Algorithm](../custom-ops/bitonic-sort-topk.md) — the alternative GPSIMD-engine top-k path
+- [DVE Search & Datamove Encoding](../isa/dve-search-encoding.md) — the DVE microcode primitives BIR Inst 88–91 select

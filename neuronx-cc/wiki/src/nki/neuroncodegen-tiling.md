@@ -148,7 +148,7 @@ PyObject *combine_trn2_double_row(PyObject *acc, PyObject *new_pair) {
 
 The lower side is `BirCodeGenLoop.cayman_matmul_double_row_ap` / `addDoubleRowAP` — both present in `BirCodeGenLoop.so` (`cayman_matmul_double_row_ap` 12 hits, `addDoubleRowAP` 15 hits). This is the body behind the macro-emit path `packed_cayman_pe_tp_kernel → CaymanPackedPETranspose`: that pair is the macro emit, and this module-level combine is the helper that merges the two packed rows into the combined PSUM tile before it lowers.
 
-> **Cross-ref.** The PE-side double-row mechanism — de-interleave + doubled `K`-extent — is documented in [PE engine](../arch/pe-engine.md); the Penguin tiling pipeline that produces these sub-tiles is [layout-tiling-pipeline](../penguin/layout-tiling-pipeline.md); the sparse tiling is [§6.8.8](../nki/sparse-tiling.md).
+> **Cross-ref.** The PE-side double-row mechanism — de-interleave + doubled `K`-extent — is documented in [PE engine](../arch/pe-engine.md); the Penguin tiling pipeline that produces these sub-tiles is [layout-tiling-pipeline](../penguin/layout-tiling-pipeline.md); the sparse path is [sparse-matmul-lowering](../nki/sparse-matmul-lowering.md).
 
 ---
 

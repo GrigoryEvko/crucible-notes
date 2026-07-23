@@ -378,4 +378,4 @@ Three descriptions rest on stock oneDNN/MLIR semantics plus recovered node/fold 
 
 - [INT8 Uniform-Quantize / Dequantize Legalization (golden-only)](int8-quantize-legalization.md) — Part 4.28; `uniform_quantize`/`dequantize` legalization and the device-vs-golden taxonomy this page's int8 flow feeds
 - [MX-FP8 Microscaling Legalization](mx-fp8-legalization.md) — Part 4.29; `QuantizeMX`/`ScaledMatmul`, the `E8M0` per-block scale, the only quant that reaches the device
-- [Numeric Semantics](../numerics/numerics.md) — Part 9; the requant/round/saturate numerics shared by the golden int8 GEMM and the MX path
+- [bir::CastToNewDType](../numerics/cast-to-new-dtype.md) — Part 9; the requant/round/saturate numerics shared by the golden int8 GEMM and the MX path

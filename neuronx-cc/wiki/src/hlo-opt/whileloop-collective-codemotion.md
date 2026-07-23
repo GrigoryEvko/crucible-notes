@@ -569,4 +569,4 @@ between call anchors inside the rewrite bodies, the `AccumulationContext` field 
 - [AllReduce→ReduceScatter & DynamicSlice Rewrites](allreduce-dynslice-rewrites.md) — sibling collective rewrites in the same pipeline stage
 - [While-Loop Unroll & All-Gather Trip-Count Rewrite](whileloop-unroll-tripcount.md) — Part 4.11, the alternative that exposes the same collectives by replicating the loop body instead of moving the op
 - [The hlo-opt Pass Registry](pass-registry.md) — where `#101`/`#103`/`#105`/`#106` are registered and ordered
-- [Distribution & Collectives](../distribution/replica-groups.md) — Part 13, the replica-group model that `HasMatchingReplicaGroups` compares against
+- [Mesh → Replica-Group Topology Math](../distribution/mesh-replica-group-math.md) — Part 13, the replica-group model that `HasMatchingReplicaGroups` compares against
