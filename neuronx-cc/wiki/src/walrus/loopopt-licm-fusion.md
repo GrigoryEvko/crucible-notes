@@ -149,9 +149,9 @@ The in-loop-def set is a hand-rolled LLVM-style `DenseSet`: the inner block `0xb
 
 ### The invariance test, stated precisely
 
-> **An instruction is loop-invariant iff, for every operand of kind `== 2` (a `SymbolicAccessPattern`), none of the storages in that AP's def-list is a member of the set of storages defined inside the loop body.** (`[S]`, built on the `[C]`-confirmed `kind==2` filter at `0xb90b9f`, the AP def-list walk at `0xb90bbb`, and the `DenseSet` membership at `0xb90c10..b90d40`.)
+> **An instruction is loop-invariant iff, for every operand of kind `== 2` (a `SymbolicAccessPattern`), none of the storages in that AP's def-list is a member of the set of storages defined inside the loop body.** The mechanism is read directly — the `kind==2` filter at `0xb90b9f`, the AP def-list walk at `0xb90bbb`, the `DenseSet` membership at `0xb90c10..b90d40` — while this particular phrasing of the resulting rule is a reading of those three pieces together.
 
-> **GOTCHA —** the side-effect / hazard gating is *implicit*, not an explicit predicate. Only operand-kind `== 2` (pure AP-typed) operands are tested; instructions whose operands carry other kinds, and all loop-structure opcodes, are excluded earlier by the opcode filter (`+0x58`). A reimplementation that tests *all* operands the same way will hoist instructions the binary leaves in place. The kind discriminator is the gate. `[I]`
+> **GOTCHA —** the side-effect / hazard gating is *implicit*, not an explicit predicate. Only operand-kind `== 2` (pure AP-typed) operands are tested; instructions whose operands carry other kinds, and all loop-structure opcodes, are excluded earlier by the opcode filter (`+0x58`). A reimplementation that tests *all* operands the same way will hoist instructions the binary leaves in place. That the kind discriminator is doing the hazard gating is [INFERRED] from the absence of any explicit hazard predicate.
 
 ### Function Map
 
@@ -221,7 +221,7 @@ function checkLoopFusionGreedy(BasicBlock &bb, int level):    // 0xba9210
         updateFPG(bb);                            // 0xbaa87c OR 0xbab569  full rebuild
 ```
 
-> **NOTE —** there are two `loop_fusion`+`updateFPG` call sites. The two paths are the interchange-then-fuse path (after `check_loop_interchange` may reorder the nest before fusing) and the direct-fuse path. `[I]`
+> **NOTE —** there are two `loop_fusion`+`updateFPG` call sites. Which is which — the interchange-then-fuse path, taken after `check_loop_interchange` may reorder the nest, versus the direct-fuse path — is [INFERRED] from their positions relative to the interchange check, not from a distinguishing marker in either body.
 
 ### Termination
 
@@ -251,9 +251,7 @@ function checkLoopFusionGreedy(BasicBlock &bb, int level):    // 0xba9210
 
 ### The FPG layout
 
-The Fusion Profit Graph is a `std::vector<std::pair<std::pair<InstLoop*,InstLoop*>,float>>`. Each entry is **24 bytes** (`2 × 8` pointers + `4` float + `4` pad). The stride is proven two ways: the `/24` reciprocal magic `0xaaaaaaaaaaaaaaab` in `findFusionPairGreedy`, and the `× 24` allocation in the constructor (`lea (rbx,rbx,2); shl 3`). The `float` payload sits at offset `+0x10` of each entry — that is the value `findFusionPairGreedy` reads as the heap key.
-
-> **CORRECTION —** "FPG" is **Fusion Profit Graph** (symbol `constructFusionProfitGraph`), not "Fusion-Pair Graph" as an earlier narration had it. The graph is keyed by the float profit weight, and the heap comparator is `LoopOptimization::CompFusionPriority`. Both are confirmed by the demangled `__adjust_heap<…, _Iter_comp_iter<CompFusionPriority>>` symbol whose element type is `pair<pair<InstLoop*,InstLoop*>,float>`.
+The Fusion Profit **Graph** — the name comes straight from the symbol `constructFusionProfitGraph`, and the structure is keyed by profit, not by pair identity — is a `std::vector<std::pair<std::pair<InstLoop*,InstLoop*>,float>>`. Each entry is **24 bytes** (`2 × 8` pointers + `4` float + `4` pad). The stride is proven two ways: the `/24` reciprocal magic `0xaaaaaaaaaaaaaaab` in `findFusionPairGreedy`, and the `× 24` allocation in the constructor (`lea (rbx,rbx,2); shl 3`). The `float` payload sits at offset `+0x10` of each entry — that is the value `findFusionPairGreedy` reads as the heap key, ordered by the comparator `LoopOptimization::CompFusionPriority`. The demangled `__adjust_heap<…, _Iter_comp_iter<CompFusionPriority>>` symbol, whose element type is `pair<pair<InstLoop*,InstLoop*>,float>`, pins both the element layout and the comparator in one token.
 
 ### Algorithm
 
@@ -299,7 +297,7 @@ function constructFusionProfitGraph(BasicBlock &bb, vector<InstLoop*> &loopVec):
 
 ### The metric, verified
 
-The profit is **CONFIRMED at the instruction level** in the window `0xba13a0..0xba1430`:
+The profit arithmetic reads directly off the instruction window `0xba13a0..0xba1430`:
 
 ```asm
 ba13bf:  cmpl   $0x1,0x110(%rax)                 ; MemoryLocation::type == 1 (placed tensor)
@@ -310,11 +308,11 @@ ba140b:  cvtsi2ss %rdx,%xmm0                      ; (float)bytes
 ba1410:  addss  %xmm0,%xmm0                       ; *= 2   <-- the factor 2
 ```
 
-> **The factor 2 is read-plus-write traffic.** A tensor that both loops touch is, before fusion, written to memory at the end of the producer loop and read back at the start of the consumer loop — two passes over `liveN × elemSize` bytes of SBUF/DRAM traffic. Fusing the loops lets that intermediate stay resident across the merged body, eliminating *both* the write and the matching read. The savings are therefore `2 × bytes` per shared tensor, summed over all shared placed tensors. This is why `profit = 2 · Σ (liveN · elemSize)` and not `1 ×`. The `addss %xmm0,%xmm0` (self-add = double) is the binary's encoding of that `× 2`. `[C]` for the arithmetic; `[S]` for the read+write rationale.
+> **The factor 2 is read-plus-write traffic.** A tensor that both loops touch is, before fusion, written to memory at the end of the producer loop and read back at the start of the consumer loop — two passes over `liveN × elemSize` bytes of SBUF/DRAM traffic. Fusing the loops lets that intermediate stay resident across the merged body, eliminating *both* the write and the matching read. The savings are therefore `2 × bytes` per shared tensor, summed over all shared placed tensors. This is why `profit = 2 · Σ (liveN · elemSize)` and not `1 ×`. The `addss %xmm0,%xmm0` (self-add = double) is the binary's encoding of that `× 2`. The arithmetic is read off the instructions; the read-plus-write *rationale* is an interpretation of it — the binary doubles the figure but does not label why.
 
-> **GOTCHA —** only `MemoryLocation::type == 1` (placed / internal tensors) contributes to the profit (`cmpl $0x1,0x110` @`0xba13bf`). Tensors of other types are skipped — fusing does not change their memory residency in a way the model rewards. A reimplementation that sums over *all* shared APs will over-estimate profit and fuse in the wrong order. `[C]`
+> **GOTCHA —** only `MemoryLocation::type == 1` (placed / internal tensors) contributes to the profit (`cmpl $0x1,0x110` @`0xba13bf`). Tensors of other types are skipped — fusing does not change their memory residency in a way the model rewards. A reimplementation that sums over *all* shared APs will over-estimate profit and fuse in the wrong order.
 
-> **NOTE —** there is no budget term in the profit float. `SBSize`/`PSUMSize` are *not* part of the weight; they bound fusion only later, through `sb_size_legalization` and the `this+0x104`/`+0x108` caps. The profit is purely a traffic-reuse estimate. `[I]`
+> **NOTE —** there is no budget term in the profit float. `SBSize`/`PSUMSize` are *not* part of the weight; they bound fusion only later, through `sb_size_legalization` and the `this+0x104`/`+0x108` caps. The profit is purely a traffic-reuse estimate — no budget term appears anywhere in the float computation.
 
 ---
 
@@ -351,9 +349,9 @@ function findFusionPairGreedy(BasicBlock &bb, vector<FPGEntry> &fpg,
     return false;                                 // heap drained -> termination signal
 ```
 
-The heap key read at `0xba1b0c` (`movss 0x10(%rdi),%xmm1`) and the sift-down via `__adjust_heap<…CompFusionPriority>` at `0xba1ec6` are the two CONFIRMED anchors that pin the data structure as a binary max-heap over the float profit. The `cmpl $0x69, 0x50` checks at `0xba1b76`/`0xba1bb6` are the CONFIRMED stale-pair guards.
+The heap key read at `0xba1b0c` (`movss 0x10(%rdi),%xmm1`) and the sift-down via `__adjust_heap<…CompFusionPriority>` at `0xba1ec6` are the two anchors that pin the data structure as a binary max-heap over the float profit. The `cmpl $0x69, 0x50` checks at `0xba1b76`/`0xba1bb6` are the stale-pair guards.
 
-> **GOTCHA —** stale pairs are the central subtlety of the greedy loop. When loop `L` is fused away, *every* FPG entry that referenced `L` is now invalid, but the heap still holds them until `updateFPG` rebuilds. `findFusionPairGreedy` therefore re-validates each popped pair (both endpoints still opcode `0x69`, both non-null, still adjacent) and discards stale entries, trying the next heap top. A reimplementation that trusts the popped pair without re-validating will dereference a freed `InstLoop`. The assert `"doesLoopExist(bb,l1) && doesLoopExist(bb,l2)"` (string `0x1ce73f0`) guards this in debug builds. `[C]`
+> **GOTCHA —** stale pairs are the central subtlety of the greedy loop. When loop `L` is fused away, *every* FPG entry that referenced `L` is now invalid, but the heap still holds them until `updateFPG` rebuilds. `findFusionPairGreedy` therefore re-validates each popped pair (both endpoints still opcode `0x69`, both non-null, still adjacent) and discards stale entries, trying the next heap top. A reimplementation that trusts the popped pair without re-validating will dereference a freed `InstLoop`. The assert `"doesLoopExist(bb,l1) && doesLoopExist(bb,l2)"` (string `0x1ce73f0`) guards this in debug builds.
 
 ---
 
@@ -382,7 +380,7 @@ function has_negative_distance(InstLoop *l1, InstLoop *l2) -> bool:   // 0xb8f10
     return false;
 ```
 
-> **Semantics:** fusing `l1`, `l2` is **illegal** if any tensor written in `l2` is read in `l1` at a non-positive iteration distance (`d <= 0`) — that would reorder a true dependence. The distance primitive `bir::getDefUseDistance` lives in `libBIR.so`; the same-parent-level requirement is asserted (`"loop distance is ill defined if not at the same level."` @`0x1ce72d8`). The full polyhedral distance model is documented separately — see Cross-References. `[S]` for the legality semantics, `[C]` for the `d <= 0` branch at `0xb8f388`.
+> **Semantics:** fusing `l1`, `l2` is **illegal** if any tensor written in `l2` is read in `l1` at a non-positive iteration distance (`d <= 0`) — that would reorder a true dependence. The distance primitive `bir::getDefUseDistance` lives in `libBIR.so`; the same-parent-level requirement is asserted (`"loop distance is ill defined if not at the same level."` @`0x1ce72d8`). The full polyhedral distance model is documented separately — see Cross-References. The `d <= 0` branch at `0xb8f388` is read directly; the dependence-reordering rationale for rejecting it is the standard reading of that test rather than something the binary states.
 
 ---
 
@@ -409,7 +407,7 @@ Net effect: `l2`'s body is moved under `l1`'s `LoopAxis`, `l2` is destroyed, and
 
 `updateFPG(bb)` @`0xba1f60` then re-invokes `constructFusionProfitGraph` to rebuild the FPG for the changed neighbourhood. It logs `"(LoopOpt::updateFPG) e -> : weight = "` / `" and loop , weight = , distance ="` (strings `0x1c76e2a`/`0x1c76e4f`).
 
-> **QUIRK —** the "re-score affected neighbours" step is implemented as a **full rebuild**, not an incremental heap patch. After each fuse, `updateFPG` discards the FPG and reconstructs it from scratch over the current loop set. This is `O(N²)` per fuse in the worst case (every loop pair within the window re-scored), but `distanceThreshold` (default 8) bounds the fan-out so `N` is the loop count at one level, not the whole function. A reimplementation may keep an incremental heap, but must then handle the stale-pair invalidation that the full rebuild sidesteps. `[C]`
+> **QUIRK —** the "re-score affected neighbours" step is implemented as a **full rebuild**, not an incremental heap patch. After each fuse, `updateFPG` discards the FPG and reconstructs it from scratch over the current loop set. This is `O(N²)` per fuse in the worst case (every loop pair within the window re-scored), but `distanceThreshold` (default 8) bounds the fan-out so `N` is the loop count at one level, not the whole function. A reimplementation may keep an incremental heap, but must then handle the stale-pair invalidation that the full rebuild sidesteps.
 
 ---
 
@@ -442,17 +440,25 @@ The greedy driver logs an exact reason on every rejected pair. The strings (verb
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-Five strongest claims re-checked against the binary:
+The central claims all reduce to instructions:
 
-1. **Profit = `2 · Σ liveN · elemSize`.** `[C]` — `getLiveN` call @`0xba13e4`, `imul (%rdx)` @`0xba13f2`, `addss %xmm0,%xmm0` @`0xba1410`. The factor 2 is the literal self-add. The read+write *rationale* is `[S]` (consistent with the `× 2` and with the placed-tensor `type==1` filter, but the binary does not annotate "read+write").
-2. **FPG is a max-heap keyed by float profit under `CompFusionPriority`.** `[C]` — the demangled `__adjust_heap<…pair<pair<InstLoop*,InstLoop*>,float>…, _Iter_comp_iter<CompFusionPriority>>` symbol (`nm -DC`, body @`0xbaf890`) and the front-float read `movss 0x10(%rdi)` @`0xba1b0c` jointly pin the structure and key.
-3. **LICM invariance = no AP operand (kind==2) defined in-loop.** `[C]` for the mechanism (`cmpl $0x2,0x18` @`0xb90b9f`, AP def-list `0xd8`/`0xe0` @`0xb90bbb`, `DenseSet` membership `0xb90c10..b90d40`); `[S]` for the precise "none defined inside loop ⇒ invariant" phrasing (the set is in-loop defs; membership flips invariance).
-4. **`distanceThreshold` default 8.** `[C]` — `movl $0x8,0x78(%rbp)` @`0x7cf85d` at the cl::opt registration site, and `jae` against `+0x78` @`0xba1302` in the constructor.
-5. **`has_negative_distance` rejects `d <= 0`.** `[C]` — `bir::getDefUseDistance` call @`0xb8f35a`, `test r14d; jle` @`0xb8f388`; semantics `[S]`.
+- **Profit = `2 · Σ liveN · elemSize`** — the `getLiveN` call @`0xba13e4`, `imul (%rdx)` @`0xba13f2`, and `addss %xmm0,%xmm0` @`0xba1410`. The factor 2 is a literal self-add.
+- **The FPG is a max-heap keyed by float profit under `CompFusionPriority`** — the demangled `__adjust_heap<…pair<pair<InstLoop*,InstLoop*>,float>…, _Iter_comp_iter<CompFusionPriority>>` symbol (`nm -DC`, body @`0xbaf890`) and the front-float read `movss 0x10(%rdi)` @`0xba1b0c` pin the structure and its key together.
+- **LICM invariance turns on AP operands of kind 2** — `cmpl $0x2,0x18` @`0xb90b9f`, the AP def-list at `0xd8`/`0xe0` @`0xb90bbb`, and the `DenseSet` membership across `0xb90c10..b90d40`.
+- **`distanceThreshold` defaults to 8** — `movl $0x8,0x78(%rbp)` @`0x7cf85d` at the `cl::opt` registration site, and the `jae` against `+0x78` @`0xba1302` in the constructor.
+- **`has_negative_distance` rejects `d <= 0`** — the `bir::getDefUseDistance` call @`0xb8f35a` and `test r14d; jle` @`0xb8f388`.
 
-**Honest re-verify ceiling.** The arithmetic of the profit metric, the heap mechanics, the LICM operand test, and the dependence branch are all CONFIRMED at the instruction level — these are bedrock. What remains `[S]`/`[I]`: (a) the read+write *interpretation* of the factor 2 (the binary does the doubling but does not label why); (b) the exact membership of the two `loop_fusion`/`updateFPG` call sites with the interchange path (`[I]`); (c) the implicit side-effect gating in LICM (`[I]` — inferred from the absence of an explicit hazard predicate). No address, default, or field meaning on this page is fabricated; every unverified inference carries its tag.
+## Limits of this reading
+
+The profit arithmetic, the heap mechanics, the LICM operand test and the dependence branch are all pinned at instruction level. Three things around them are not:
+
+- the read-plus-write *interpretation* of the factor 2 — the binary performs the doubling but never labels its reason;
+- which of the two `loop_fusion` / `updateFPG` call sites is the interchange path and which the direct path;
+- the implicit side-effect gating in LICM, inferred from the absence of any explicit hazard predicate.
+
+Every address, default and field meaning cited here comes from a disassembled body; the three items above are the only interpretive steps.
 
 ---
 

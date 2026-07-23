@@ -253,7 +253,7 @@ function convertDMA2Trigger(I):                         // 0x11941b0
 
 `createTriggers` (`0x1194c90`) first calls `collectInstrForTriggerConversion` (`0x613cd0`) to recursively gather every `InstDMA` still present in the BB and its nested blocks, then converts each one. The kind is re-asserted (`isCopyOrCastDMA / isTransposeDMA / isCCEDMA / isReplicateDMA / isDynamicOffsetDMA`) — a DMA must match exactly one descriptor family.
 
-> **NOTE —** `replaceInstWithInstArr` replaces the `InstDMA` *in place* on the **same engine BB**. The engine was fixed by the engine-assign pass (`InstDMA+0x90`); the trigger inherits it. This is the one engine-field read inside `convert` and is **INFERRED** to come from `+0x90` (the convert path inherits via `replaceInstWithInstArr` rather than re-reading the field).
+> **NOTE —** `replaceInstWithInstArr` replaces the `InstDMA` *in place* on the **same engine BB**. The engine was fixed by the engine-assign pass (`InstDMA+0x90`); the trigger inherits it. That the engine value originates at `+0x90` is [INFERRED] — the convert path inherits it through `replaceInstWithInstArr` rather than re-reading the field, so no direct load of `+0x90` appears here.
 
 The net result for a static `InstDMACopy` on engine `E`, queue `Q`:
 
@@ -365,7 +365,7 @@ function SplitDynamicDMAImpl_calcFreeSplits(numElems, granule, dgeType, I):  // 
 
 > **GOTCHA —** the depth selector is gated on `opcode == 32` (DMACopy) at `0x1093808` *before* the SWDGE/HWDGE branch. The `1020`/`65520` literals are both loaded unconditionally (`mov` into `eax`/`ecx`) and then the `DGEType` compares at `0x109381d`/`0x1093828` pick which one survives. A reimplementation that branches on DGEType *before* loading both constants will diverge on the non-DMACopy fallthrough.
 
-#### Stage 4 — Check (`CheckDynamicDMAImpl::legalizeAP` @ `0xcdc550`) — STRONG
+#### Stage 4 — Check (`CheckDynamicDMAImpl::legalizeAP` @ `0xcdc550`)
 
 ```c
 function CheckDynamicDMAImpl_legalizeAP(dst, src):      // 0xcdc550
@@ -375,7 +375,7 @@ function CheckDynamicDMAImpl_legalizeAP(dst, src):      // 0xcdc550
     assert no descriptor still carries a dynamic AP;
 ```
 
-After lowering, **no descriptor may still carry a dynamic AP** — every dynamic dim must have been peeled, unrolled, or register-rewired. The exact set of checks beyond the dynamic-AP invariant is **STRONG** (the rodata string and the stage's position pin the invariant; the full check list was not exhaustively traced).
+After lowering, **no descriptor may still carry a dynamic AP** — every dynamic dim must have been peeled, unrolled, or register-rewired. The rodata string and the stage's terminal position pin that invariant; the full set of checks this stage performs beyond it was not exhaustively traced.
 
 ### Function Map
 
@@ -392,7 +392,7 @@ After lowering, **no descriptor may still carry a dynamic AP** — every dynamic
 | `getDGEMaxDescNumBasedOnShape` | `0x1093950` | Depth for granule≠1 | CERTAIN |
 | `isDescNumOk` | `0x1093970` | Post-check descCount ≤ depth | CERTAIN |
 | `getLargestFactorWithThreshold` | `0x1092b10` | Largest factor ≤16 | CERTAIN |
-| `CheckDynamicDMAImpl::legalizeAP` | `0xcdc550` | Final dynamic-AP invariant | STRONG |
+| `CheckDynamicDMAImpl::legalizeAP` | `0xcdc550` | Final dynamic-AP invariant | HIGH |
 | `LowerDynamicDMAImpl::updateAP` | `0xcdebf0` | Write resolved pattern back | CERTAIN |
 | `LowerDynamicDMAImpl::cloneInstruction` | `0xcde4f0` | Clone DMA per chunk/index | CERTAIN |
 | `rewireDynamicAPRegisters` | `0xef91d0` | Rename per-clone offset register | CERTAIN |
@@ -448,15 +448,17 @@ The single dynamic-offset static DMA that survives into L17 is handled *inside* 
 
 ---
 
-## Confidence & Evidence Ledger
+## Evidence summary
 
-**CERTAIN** (disassembled body + named dynamic symbol + rodata + cross-ref): the headline constants `1020`/`65520`/`16` at `0x1093813`/`0x1093818`/`0x1092b56`; the four `IRVisitor<LowerDynamicDMAImpl>::visit` call sites at `0xcd97b3`/`f6`/`39`/`77` proving the Peel→Unroll→Split→Check ordering; `LowerDMA::run` `0x119adc0` and `LowerDynamicDMA::run` `0xcd9620` (both named in `nm -DC`); `convertDMA2Trigger` `0x11941b0`, `createDescForReadVarAddr` `0x1198860`, `splitIfNeeded` `0x11ab840`, `calcFreeSplits` `0xcddcd0`, `rewireDynamicAPRegisters` `0xef91d0`; all four SWDGE-forced rodata literals (verbatim).
+Read from disassembled bodies, named dynamic symbols and `.rodata`: the headline constants `1020` / `65520` / `16` at `0x1093813` / `0x1093818` / `0x1092b56`; the four `IRVisitor<LowerDynamicDMAImpl>::visit` call sites at `0xcd97b3` / `f6` / `39` / `77`, which are what fix the Peel→Unroll→Split→Check ordering; `LowerDMA::run` `0x119adc0` and `LowerDynamicDMA::run` `0xcd9620`, both named in `nm -DC`; `convertDMA2Trigger` `0x11941b0`, `createDescForReadVarAddr` `0x1198860`, `splitIfNeeded` `0x11ab840`, `calcFreeSplits` `0xcddcd0` and `rewireDynamicAPRegisters` `0xef91d0`; and all four SWDGE-forcing rodata literals, quoted verbatim.
 
-**STRONG**: the `CheckDynamicDMAImpl` invariant — pinned to the rodata `"DMA descriptor cannot have dynamic AP"` and the stage's terminal position, but the full check list beyond that invariant was not exhaustively traced.
+> **GOTCHA — a `.plt` thunk and the real body are two addresses for one symbol.** `libwalrus.so` retains its dynamic symbol table, so a symbol like `isDescNumOk` appears both as a `.plt` thunk in the `0x5e9020`–`0x62d650` band and as its real body — here `neuronxcc::backend::isDescNumOk` @ `0x1093970`, against a thunk at `0x6296d0`. Citing the thunk address looks plausible and disassembles to a jump; always follow it to the high-VA body.
 
-**INFERRED**: exact descriptor field byte offsets (taken from the [DMA Encoding](../isa/dma-encoding.md) wire-form work, not re-derived here); the precise `DMAQueue`→engine field read inside `convertDMA2Trigger` (the engine is `InstDMA+0x90`; convert inherits it via `replaceInstWithInstArr` rather than re-reading).
+## Limits of this reading
 
-> **CORRECTION (DMA-MAT-1) —** the post-check `isDescNumOk` resolves to the body at `0x1093970` (named `neuronxcc::backend::isDescNumOk` in `nm -DC`), not the `0x6296d0` `.plt` thunk an earlier trace cited. The thunk and the body are the two-VA-frame artifact of the retained dynamic symbol table; this page cites the real body.
+Two things on this page are reconstruction rather than direct reads, both flagged where they appear: the exact descriptor field byte offsets, which are carried over from the [DMA Encoding](../isa/dma-encoding.md) wire-form work rather than re-derived here, and the origin of the engine value inside `convertDMA2Trigger`.
+
+The `CheckDynamicDMAImpl` stage is pinned only to its central invariant — the rodata `"DMA descriptor cannot have dynamic AP"` plus its terminal position in the pipeline. Whatever else it validates was not traced.
 
 ---
 

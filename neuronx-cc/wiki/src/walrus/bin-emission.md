@@ -10,7 +10,7 @@ The shape is unusual and worth stating up front: there is **no central emit loop
 
 The same per-`visitInst` block carries a 4-way `CodeGenMode` switch. `RUN_ISA_CHECKS` (mode 1) is the production write path above — it builds the bundle, `fwrite`s it, and enqueues it for the deferred L2 wire-validation pass. `GENERATE_ISACODE` (mode 2) also builds and `fwrite`s the bundle but does *not* enqueue it (verifier-only path). `COLLECT_OPCODES` (mode 0) skips the bundle entirely and records the instruction's **L2 opcode integer** (the `NEURON_ISA_TPB_OPCODE` enum value) into a per-instruction `std::set<unsigned int>`; that set is what `LowerDVE` reads to size the DVE activation-function table to exactly the opcodes a program references. Any fourth value is a hard error naming all three modes.
 
-> **CORRECTION —** an earlier draft of this page labelled the write+census arm `GENERATE_ISACODE` (mode 1) and the validator-dry-run arm `RUN_ISA_CHECKS` (mode 2) — the mode↔name mapping was **inverted**. The codegen driver page ([8.35 — Codegen Driver and the CodeGenMode Mechanism](codegen-driver.md)) establishes the CONFIRMED ordinals from the branch order in `generateLoadWeights` (`0x1258548`: `cmp r14d,1` → mode 1 = `RUN_ISA_CHECKS`; `cmp r14d,2` → mode 2 = `GENERATE_ISACODE`; `test r14d` → mode 0 = `COLLECT_OPCODES`). The rodata error string lists the *names* human-readable as `GENERATE_ISACODE, RUN_ISA_CHECKS, COLLECT_OPCODES` (i.e. 2, 1, 0) — **not** in numeric order. The production codegen emit pass selects mode 1 (`RUN_ISA_CHECKS`); mode 2 (`GENERATE_ISACODE`) is reached only by the Verifier's own Generator. The mode labels below have been corrected to match 8.35.
+> **GOTCHA — the error string lists the modes in name order, not numeric order.** The rodata message enumerates them as `GENERATE_ISACODE, RUN_ISA_CHECKS, COLLECT_OPCODES`, which is 2, 1, 0 — reading it left-to-right as an ordinal list inverts `RUN_ISA_CHECKS` and `GENERATE_ISACODE`. The ordinals come instead from the branch order in `generateLoadWeights` (`0x1258548`), and the arm that writes bytes is mode **1**, `RUN_ISA_CHECKS`.
 
 For reimplementation, the contract is:
 
@@ -100,7 +100,7 @@ The bundle is built into a `SmallVector<std::array<uchar,64>>` at `this+0x78` (`
 | `2` | `GENERATE_ISACODE` | build bundle on stack, run `vtbl[0]` L2 validator (verifier-only; no fwrite in `visitInstHalt`) | none |
 | other | — | `reportError(...)` naming all three modes | — |
 
-The numeric ordinals `{0,1,2}` are **CONFIRMED** (per [8.35 — Codegen Driver and the CodeGenMode Mechanism](codegen-driver.md)) from the branch order in `generateLoadWeights` (`0x1258548`: `cmp r14d,1` jz → mode 1 = `RUN_ISA_CHECKS`; `cmp r14d,2` jz → mode 2 = `GENERATE_ISACODE`; `test r14d` jz → mode 0 = `COLLECT_OPCODES`), reproduced in this page's own `visitInstHalt` (`0x122d620`) if-ladder. They are **not** pinned to a `libBIR` enum table, and the `reportError` string's enumeration `GENERATE_ISACODE, RUN_ISA_CHECKS, COLLECT_OPCODES` is human-readable (2, 1, 0) — **not** the numeric order. The production codegen emit pass selects mode 1; mode 2 is reached only by the Verifier's own Generator (see 8.35). The mode also gates the [driver tail](#the-driver--program-order-walk): when `mode != 0` the driver runs `flushISAChecks` + `assertAsmMappingsCorrect` + `printInstrStats` after the walk.
+The numeric ordinals `{0,1,2}` come (per [8.35 — Codegen Driver and the CodeGenMode Mechanism](codegen-driver.md)) from the branch order in `generateLoadWeights` (`0x1258548`: `cmp r14d,1` jz → mode 1 = `RUN_ISA_CHECKS`; `cmp r14d,2` jz → mode 2 = `GENERATE_ISACODE`; `test r14d` jz → mode 0 = `COLLECT_OPCODES`), reproduced in this page's own `visitInstHalt` (`0x122d620`) if-ladder. They are **not** pinned to a `libBIR` enum table, and the `reportError` string's enumeration `GENERATE_ISACODE, RUN_ISA_CHECKS, COLLECT_OPCODES` is human-readable (2, 1, 0) — **not** the numeric order. The production codegen emit pass selects mode 1; mode 2 is reached only by the Verifier's own Generator (see 8.35). The mode also gates the [driver tail](#the-driver--program-order-walk): when `mode != 0` the driver runs `flushISAChecks` + `assertAsmMappingsCorrect` + `printInstrStats` after the walk.
 
 ---
 
@@ -250,7 +250,7 @@ L2  NEURON_ISA_TPB_OPCODE enum     (QuantizeMX = 227 = 0xE3)     ── what COL
 L3  16-bit wire header word         (0x10 << 8 | L2 = 0x10E3)    ── what setupHeader stamps at bundle[0:2]
 ```
 
-`L2 ≡ low byte of L3`, and `L2 ≠ L1` (separate enums; the encoder is the non-injective projection `L1 → {L2}`). The relation is **CONFIRMED** by transcription: in `visitInstQuantizeMx` @ `0x143dc60` the COLLECT arm stores `v46.m128i_i32[0] = 227` before `_M_insert_unique` (line 78) while the emit (mode-1 RUN_ISA) arm stamps `*(WORD*)bundle = 4323` = `0x10E3` (line 160) — `227 == 0xE3 == low byte of 0x10E3`. In `visitInstTensorTensor` @ `0x12356d0` the same value is carried twice: `v5 = isBitVec ? 81 : 65` (the COLLECT int, line 58) and `v8 = (-(isBitVec==0) & 0xF0) + 81` (the emit-arm byte, line 61), where `(u8)v8 == v5`.
+`L2 ≡ low byte of L3`, and `L2 ≠ L1` (separate enums; the encoder is the non-injective projection `L1 → {L2}`). Two transcriptions establish the relation. In `visitInstQuantizeMx` @ `0x143dc60` the COLLECT arm stores `v46.m128i_i32[0] = 227` before `_M_insert_unique` (line 78) while the emit (mode-1 RUN_ISA) arm stamps `*(WORD*)bundle = 4323` = `0x10E3` (line 160) — `227 == 0xE3 == low byte of 0x10E3`. In `visitInstTensorTensor` @ `0x12356d0` the same value is carried twice: `v5 = isBitVec ? 81 : 65` (the COLLECT int, line 58) and `v8 = (-(isBitVec==0) & 0xF0) + 81` (the emit-arm byte, line 61), where `(u8)v8 == v5`.
 
 ### Algorithm
 
@@ -344,17 +344,21 @@ The codegen driver is `IRVisitor<CoreV2Gen,void>::visit(bir::Module&)` @ `0x11d6
 | `CodeGenMode` | `+0x270` | `u32` | `{0,1,2}` mode selector |
 | `dumpBinPerInst` | `+0x2B9` | `u8` | captured cl::opt gate |
 
-## Adversarial Self-Verification
+## Evidence summary
 
-Five strongest claims, re-checked against the binary:
+- **The write primitive.** The literal `fwrite(buf, 1u, 0x40u, FILE*)` appears at `visitInstHalt` line 46, `visitInstTensorTensor` line 229 and `visitInstQuantizeMx` line 211, and the triplet findBin → fwrite → optional createInstBin+fwrite is byte-identical across them.
+- **The router's field reads.** Lines 138/139 of `findBin` read `*((u32*)a2+36)` and `+37` — engine at `Inst+0x90`, stream at `+0x94`. The non-TPB rejection string is line 158, the map's value type is named in the `at` assert at lines 426–432, and the `FILE*` return is line 433.
+- **The file opener.** `fopen "wb"` at line 172, the `bin != __null` assert at line 175 carrying `generator.cpp:58` and errcode `1007` (line 249), `addEngInstrFile` at line 442, and the `.json` append at line 448 feeding `addEngDMADescFile` at line 463.
+- **L2 as the low byte of L3.** QuantizeMx stores `227` as its collect integer (line 78) and stamps `4323` = `0x10E3` as its wire word (line 160); TensorTensor carries `65`/`81` through both arms.
+- **The DVE consumer shares the COLLECT map.** `sub_116F3A0` reads `a3+32` (lines 91–92) and its `at` assert names `DenseMap<const bir::Instruction*, std::set<unsigned int>>` (lines 127–133) — the identical type the COLLECT arm writes.
 
-1. **`fwrite(buf, 1u, 0x40u, FILE*)` is the write primitive** — CONFIRMED. The literal `0x40` appears in `visitInstHalt` line 46, `visitInstTensorTensor` line 229, `visitInstQuantizeMx` line 211, and the triplet (findBin → fwrite → optional createInstBin+fwrite) is byte-identical across them.
-2. **`findBin` reads engine from `Inst+0x90`, stream from `Inst+0x94`, rejects non-TPB engines, returns `_IO_FILE*`** — CONFIRMED. Lines 138/139 read `*((u32*)a2+36)`/`+37`; the rejection string is line 158; the value type is named in the `at` assert (lines 426–432); the FILE* return is line 433.
-3. **`createBin` does `fopen "wb"`, `bin != __null` / `generator.cpp:58` / errcode 1007, and registers `.bin` + `.json`** — CONFIRMED. `fopen` line 172, assert line 175 + errcode `1007` line 249, `addEngInstrFile` line 442, `.json` append line 448 + `addEngDMADescFile` line 463.
-4. **L2 = low byte of L3** — CONFIRMED for QuantizeMx (`227` collect int line 78, `4323` = `0x10E3` word line 160) and TensorTensor (`65/81` collect / `0xF0+81` byte).
-5. **The DVE consumer reads the same `Generator+0x20` map** — CONFIRMED. `sub_116F3A0` reads `a3+32` (lines 91–92) and its `at` assert names `DenseMap<const bir::Instruction*, std::set<unsigned int>>` (lines 127–133), the identical type the COLLECT arm writes.
+## Limits of this reading
 
-Re-verify ceiling — what is **not** pinned: the `CodeGenMode` ordinals `{0,1,2}` are **CONFIRMED** from the branch order (this page's `visitInstHalt` + 8.35's `generateLoadWeights` `0x1258548`), but are not pinned to a `libBIR` enum *table* (no named enum constant in rodata; the names come only from the error string). The `EngineInfo2string` output for multi-stream engines (`"<engine>"` vs `"<engine>.<id>"`) is INFERRED; `streamId` is non-zero only for split queues. The `vtbl+0x18` per-engine init hook in `createBin` (line 439) is identified by slot but its body is not transcribed. The exact NEFF archive member naming for each `<engine>.bin` is deferred to NEFF packaging (12.4, planned). The `86 fwrite / 61 file` count is the exact decompiled-corpus figure for this wheel; it counts the literal `1u, 0x40u` `fwrite` form and may miss any write hidden behind an un-inlined helper, of which none were found.
+The `CodeGenMode` ordinals `{0,1,2}` rest on branch order alone — this page's `visitInstHalt` plus `generateLoadWeights` @ `0x1258548`. No named enum constant for them exists in rodata; the *names* come only from the error string, so nothing pins the ordinals to a `libBIR` enum table.
+
+Three smaller gaps: the `EngineInfo2string` output for multi-stream engines (`"<engine>"` versus `"<engine>.<id>"`) is [INFERRED], since `streamId` is non-zero only for split queues; the `vtbl+0x18` per-engine init hook called from `createBin` (line 439) is identified by slot but its body was not transcribed; and the NEFF archive member naming for each `<engine>.bin` belongs to NEFF packaging, not here.
+
+The `86 fwrite / 61 file` figure is an exact count over this wheel's decompiled corpus of the literal `1u, 0x40u` form. A write hidden behind an un-inlined helper would escape it — none was found, but the count is only as complete as that pattern.
 
 ## Cross-References
 
