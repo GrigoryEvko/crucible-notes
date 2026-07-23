@@ -74,10 +74,10 @@ The intercepting `add_argument` peels the two custom kwargs (`kind`, `job`), del
 
 ```c
 function InterceptingArgumentParser.add_argument(self, *args, **kwargs):   // 0x11320
-    kind = kwargs.pop("kind", ArgKind.PUBLIC)   // interned 'kind' / 'argkind'; default kind PUBLIC  [STRONG]
-    job  = kwargs.pop("job",  None)             // interned 'job' — owning pipeline Job  [STRONG]
-    action = super().add_argument(*args, **kwargs)   // real argparse registration  [CONFIRMED delegate]
-    default = action.default                    // read back; 'get_default' present in pool  [CONFIRMED]
+    kind = kwargs.pop("kind", ArgKind.PUBLIC)   // interned 'kind' / 'argkind'; default kind PUBLIC
+    job  = kwargs.pop("job",  None)             // interned 'job' — owning pipeline Job
+    action = super().add_argument(*args, **kwargs)   // delegates to real argparse registration
+    default = action.default                    // read back; 'get_default' present in pool
     self._registry.storeArgument(               // mirror into the side registry
         self._context, action, kind, job, default)
     return action
@@ -85,9 +85,9 @@ function InterceptingArgumentParser.add_argument(self, *args, **kwargs):   // 0x
 
 ```c
 function _ArgumentRegistry.storeArgument(self, context, argument, kind, job, default):  // 0x103d0
-    // record fields are exactly the .rodata literal "argument,kind,job,default,"  [CONFIRMED]
+    // record fields are exactly the .rodata literal "argument,kind,job,default,"
     record = (argument, kind, job, default)
-    self.arguments_by_context.setdefault(context, []).append(record)  // 'setdefault' interned  [CONFIRMED]
+    self.arguments_by_context.setdefault(context, []).append(record)  // 'setdefault' interned
 ```
 
 ```c
@@ -128,7 +128,7 @@ The driver overrides three argparse internals and adds two help emitters:
 Hidden and internal flags are registered with `help=argparse.SUPPRESS` (the interned `SUPPRESS` is in the pool) so they never show in ordinary `--help`, yet remain recoverable via `print_help_hidden` (`0x1cc90`) and `print_help_hidden_list` (`0x17150`). Both walk the registry and emit rows in the format string:
 
 ```text
-%-15s %-8s --%s: %s          // group/dest | kind | flag | help   [CONFIRMED literal]
+%-15s %-8s --%s: %s          // group/dest | kind | flag | help
 ```
 
 This is how `ArgKind` pays off: a `HIDDEN`/`INTERNAL`-tagged flag is suppressed from public help but listed by the hidden emitters, which read `kind` straight out of the 4-field record.
@@ -168,17 +168,17 @@ The instance is held in the name-mangled private attribute `_CommandLineParser__
 
 ```c
 function CommandLineParser.getOrCreateInstance(cls):   // 0x114a0
-    if cls._CommandLineParser__instance is None:       // mangled __instance  [CONFIRMED]
+    if cls._CommandLineParser__instance is None:       // mangled __instance
         cls._CommandLineParser__instance = CommandLineParser()
         return cls._CommandLineParser__instance
-    // re-entry guard string present in .rodata:
-    raise / return  "CommandLineParser is already created!"   // [CONFIRMED literal; STRONG branch]
+    // re-entry guard string present in .rodata; whether it raises or returns is not pinned:
+    raise / return  "CommandLineParser is already created!"
 ```
 
 ```c
 function CommandLineParser.__init__(self):   // 0x11ab0
-    self.cl_parser = argparse.ArgumentParser(conflict_handler='resolve')  // 'resolve' interned  [CONFIRMED]
-    self.compatible_mode = ...   // bool; help literal "Compatible mode for the old scheduler"  [CONFIRMED]
+    self.cl_parser = argparse.ArgumentParser(conflict_handler='resolve')  // 'resolve' interned
+    self.compatible_mode = ...   // bool; help literal "Compatible mode for the old scheduler"
 ```
 
 > **NOTE — `conflict_handler='resolve'` lets the backend re-register flags.** Penguin passes register their own flags into the one shared parser. With `resolve`, a later duplicate `--flag` silently overrides the earlier one instead of raising `ArgumentError`. This is a deliberate consequence of the singleton design: many passes touch the same parser, and `resolve` keeps that from being a hard error.
@@ -220,12 +220,12 @@ The backend never sees `sys.argv` directly. It receives a flat string and splits
 
 ```c
 function CommandLineParser.parseOptions(self, options_str):   // 0xbf40
-    tokens = options_str.split()                  // plain str.split — NOT shlex  [CONFIRMED]
+    tokens = options_str.split()                  // plain str.split — NOT shlex
     return self.cl_parser.parse_args(tokens)
 
 function CommandLineParser.parseKnownOptions(self, options_str):   // 0xadd0
     tokens = options_str.split()
-    namespace, unknown = self.cl_parser.parse_known_args(tokens)   // tolerates unknown flags  [CONFIRMED]
+    namespace, unknown = self.cl_parser.parse_known_args(tokens)   // tolerates unknown flags
     return namespace, unknown
 ```
 
