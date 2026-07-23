@@ -6,7 +6,7 @@ This page documents the **L2 silicon-legality validator** in `libwalrus.so` — 
 
 The validator is **not one function**. It is **three per-arch families** (`core_v2`/`core_v3`/`core_v4`), and the divergence is deep: the three entry points have **three different signatures** (different arity, not just a different roster), each arch has its own engine-opcode gate (`instruction_engine_check` on V2, `neuron_isa_check_opcode_on_engine` bitmaps on V3/V4) with its own `NeuronAssertion` codes, and each arch hosts a different set of `is_valid_<fmt>` format gates (59 / 64 / 81 symbols). The headline mechanism this page pins is the **dual-FP8 weight-load restriction** (`s3_lw_dual_fp8_restrictions`) — a forbidden-quadrant check that exists **only at L2, only in core_v4**, with no L1 or L0 analog. It is the canonical proof that L1∧L2 are *conjunctive, not redundant*: an instruction can pass every L1 rule and still fail L2's silicon word.
 
-Every address, signature, and symbol count below was re-grounded against the readelf symbol table for the `cp310` `libwalrus.so` (`neuronx_cc 2.24.5133.0+58f8de22`); the bit-level gate bodies are from the decompiled function bodies. Confidence tags are per claim.
+Addresses, signatures, and symbol counts below come from the readelf symbol table for the `cp310` `libwalrus.so` (`neuronx_cc 2.24.5133.0+58f8de22`); the bit-level gate predicates come from the decompiled function bodies.
 
 > **Two-VA-frame note.** Throughout, addresses are the **true ELF VA frame** (e.g. `is_valid_s3_lw` @ `0x14ac170`). The per-symbol decompiled sidecars in this corpus carry a *second* internal frame (e.g. `0x5fbd40` for the same function, where Hex-Rays emits a `thunk` wrapper). Both frames denote the same function; a sidecar reading `0x5fbd40` is **not** a wrong address. Symbol-table VAs (cited here) are the authoritative ones.
 
@@ -23,13 +23,13 @@ There are three independent encodings of *"op X on engine E at arch A is legal"*
 | **L2** wire *(this page)* | `CoreV{2,3,4}GenImpl::runSingleISACheck` @ `0x1211cf0`/`0x134c060`/`0x1435010` → engine gate + `is_valid_neuron[_isa/_engine]_instruction` | **during codegen** (`RUN_ISA_CHECKS`), on the emitted 64-byte word, TBB-parallel via `flushISAChecks` | does the fully-encoded word satisfy the **silicon format**? dtype combos, AP quadrants, partition reach, FP8 dual-restriction, reserved bits, NaN/Inf, perf-mode | **wire** opcode byte (`INST_UNION[0]`), **wire** engine (`0..4` via `convert()`), core version `V2/V3/V4`, packed silicon fields | `NeuronAssertion` V4 `935/934/2083`, V3 `1084/1000`, V2 `1083/999/939` |
 | **L3** Python | `NeuronVerifier` `check_isa_constraints` (pybind, front-end) | front-end fast-fail | mirrors L2's rule *set* for Sunda/Cayman — a faster-fail spec mirror | Penguin IR op | returns `False` / raises |
 
-L2 is the **fine, post-encode wire gate**. It is the only layer that inspects the bit-packed bundle. [CERTAIN — L1/L2 symbols and addresses verified in the symbol table; L0 dormancy and L3 mirror per the verifier-strand cross-refs cited below.]
+L2 is the **fine, post-encode wire gate**. It is the only layer that inspects the bit-packed bundle.
 
-> **NOTE — the enum-space remap between layers.** L0/L1 key on **bir** `EngineType` (`Pool=1, Act=2, PE=3, DMA=4, DVE=5, SP=6`). L2 keys on **wire** `NEURON_ENGINE` (`PE=0, ACT=1, POOL=2, DVE=3, SP=4`). The bir→wire remap is `convert()` (an internal `sub_1433840`, not exported), applied at each `runSingleISACheck` call site: `1→2, 2→1, 3→0, 5→3, 6→4`. A legality answer literally passes through this remap between L1 and L2. [STRONG — remap table from the V4 `runSingleISACheck` body; the `sub_` is local, so no symbol-table cross-check, but the call site and remap are in the decompiled body.]
+> **NOTE — the enum-space remap between layers.** L0/L1 key on **bir** `EngineType` (`Pool=1, Act=2, PE=3, DMA=4, DVE=5, SP=6`). L2 keys on **wire** `NEURON_ENGINE` (`PE=0, ACT=1, POOL=2, DVE=3, SP=4`). The bir→wire remap is `convert()` (an internal `sub_1433840`, not exported), applied at each `runSingleISACheck` call site: `1→2, 2→1, 3→0, 5→3, 6→4`. A legality answer literally passes through this remap between L1 and L2.
 
 ---
 
-## H1 — the three entry points have three different signatures
+## Three entry points, three different signatures
 
 This is the core mechanism by which the 64-way cascade *"differs per generation."* It is **not** merely a different validator roster: the **entry arity itself diverges**. The bir→wire context each arch needs is threaded in at the signature level.
 
@@ -56,13 +56,13 @@ neuronxcc::core_v4::is_valid_neuron_engine_instruction(
     NEURON_ISA_TPB_NEURON_ENGINE);
 ```
 
-All three share the **same cascade shape**. The `INST_UNION` arrives as 4 × `__m128i` (64 bytes); byte 0 (`INST_UNION[0]`, signed in Hex-Rays — e.g. `-87 = 0xA9`, `-29 = 0xE3`) is the **wire opcode**. For each opcode the validator runs, in order: (1) `is_valid_enum(4, engine)` to re-validate the wire engine; (2) `has_valid_neuron_events(4, engine, …)` for event/semaphore descriptors; (3) per-packed-field `is_valid_enum(typeId, byte)`; (4) reserved-bit / quadrant zeroing; (5) `is_valid_dtype[_64]`; (6) the per-**format** validator. The divergence is in **entry arity** and **format roster**, not in this shape. [CERTAIN — three entry symbols, three demangled signatures, and three roster counts all read directly from the readelf symbol table.]
+All three share the **same cascade shape**. The `INST_UNION` arrives as 4 × `__m128i` (64 bytes); byte 0 (`INST_UNION[0]`, signed in Hex-Rays — e.g. `-87 = 0xA9`, `-29 = 0xE3`) is the **wire opcode**. For each opcode the validator runs, in order: (1) `is_valid_enum(4, engine)` to re-validate the wire engine; (2) `has_valid_neuron_events(4, engine, …)` for event/semaphore descriptors; (3) per-packed-field `is_valid_enum(typeId, byte)`; (4) reserved-bit / quadrant zeroing; (5) `is_valid_dtype[_64]`; (6) the per-**format** validator. The divergence is in **entry arity** and **format roster**, not in this shape.
 
-> **VERIFIED — the roster counts are exact.** Counting unique `is_valid_*` `FUNC` symbols (including `is_valid_enum`/`is_valid_dtype*`, excluding the parallel `dbg_is_valid_*` debug-emitter family) in each arch namespace yields **`core_v2: 59`, `core_v3: 64`, `core_v4: 81`** — matching the roster claim to the symbol. The roster *grows by selective add*: v2→v3 adds the gen3 silicon (`dtype_64`, `s4d3_mm`, `conv_lut_load`, `dma_transpose`, `jpeg_decode`, `tensor_dequantize`, …) and drops v2-legacy formats (`custom_op_header`, `pseudo_mem_2d`, `s4d4_tsm`, …); v3→v4 adds the MX/FP4/sparsity family (`s3d3_mm`, `smx1d3_mm`, `smx1_lw`, `s3dmx1_quant`, `dtype_inc_fp4`, `matmul_seeding`, `pe_manage_seed`, `sparsity_compress`, `stream_shuffle/transpose`, `activate2`, `rand2`, …). MX, FP4, sparsity, seeding, and the dual-FP8 gate are **core_v4-only silicon**. [CERTAIN — symbol-table count; the per-arch ADD/DROP sets are a comm-diff of the three namespaces' rosters.]
+The roster counts are exact. Counting unique `is_valid_*` `FUNC` symbols (including `is_valid_enum`/`is_valid_dtype*`, excluding the parallel `dbg_is_valid_*` debug-emitter family) in each arch namespace yields **`core_v2: 59`, `core_v3: 64`, `core_v4: 81`**. The roster *grows by selective add*: v2→v3 adds the gen3 silicon (`dtype_64`, `s4d3_mm`, `conv_lut_load`, `dma_transpose`, `jpeg_decode`, `tensor_dequantize`, …) and drops v2-legacy formats (`custom_op_header`, `pseudo_mem_2d`, `s4d4_tsm`, …); v3→v4 adds the MX/FP4/sparsity family (`s3d3_mm`, `smx1d3_mm`, `smx1_lw`, `s3dmx1_quant`, `dtype_inc_fp4`, `matmul_seeding`, `pe_manage_seed`, `sparsity_compress`, `stream_shuffle/transpose`, `activate2`, `rand2`, …). MX, FP4, sparsity, seeding, and the dual-FP8 gate are **core_v4-only silicon**.
 
 ---
 
-## H2 — the engine-opcode gate diverges per arch (the bitmap LUT)
+## The engine-opcode gate diverges per arch (the bitmap LUT)
 
 Before the format gate runs, `runSingleISACheck` asks a coarser question: *is this opcode legal on this engine, at this version?* The function that answers **also differs per arch**, with three different functions and three different assertion codes.
 
@@ -116,7 +116,7 @@ if not is_valid_neuron_instruction(bundle):
 | core_v3 | `neuron_isa_check_opcode_on_engine` | `0x1421840` | **1084** | **1000** |
 | core_v4 | `neuron_isa_check_opcode_on_engine` | `0x1504700` | **935** | **934** (SP 2nd path **2083**) |
 
-core_v2 has **no** `opcode_on_engine` — its engine check is the structurally simpler `instruction_engine_check`. core_v3 and core_v4 share the `_bittest64` per-engine-bitmap form. [CERTAIN — `runSingleISACheck` addresses and the two engine-gate addresses verified in the symbol table; the assertion codes and the `convert()` remap are from the decompiled `runSingleISACheck` bodies (the V4 codes `935/934/2083` cross-confirmed by the verifier strand, the V2/V3 codes `1083/999/939` & `1084/1000` newly pinned here).]
+core_v2 has **no** `opcode_on_engine` — its engine check is the structurally simpler `instruction_engine_check`. core_v3 and core_v4 share the `_bittest64` per-engine-bitmap form. The `runSingleISACheck` and engine-gate addresses come from the symbol table; the assertion codes and the `convert()` remap are read out of the decompiled `runSingleISACheck` bodies.
 
 ### The bitmap LUT — `neuron_isa_check_opcode_on_engine` @ `0x1504700` (V4)
 
@@ -132,15 +132,15 @@ The gate's job is the wire analog of L1's `checkValidEngines`, keyed on wire op/
 //   returns 1 iff opcode legal on that engine at that version
 ```
 
-Each engine's legal-opcode set is a single 64-bit immediate; the opcode is rebased (`a1 - 88` etc.) so it indexes bit `0..63` of the mask. [STRONG — the function and its VA are symbol-table-confirmed; the bitmap immediate `0x1000000000FE7F41`, the rebase offsets, and the DVE-66 sub-decode are from the decompiled `0x1504700` body. The corpus sidecar at this symbol is a `thunk` frame; the body constants are read at the true VA. The *full* per-engine legal-opcode expansion of every mask is not enumerated here — INFERRED only as "one mask per engine, `_bittest64`-indexed".]
+Each engine's legal-opcode set is a single 64-bit immediate; the opcode is rebased (`a1 - 88` etc.) so it indexes bit `0..63` of the mask. The bitmap immediate `0x1000000000FE7F41`, the rebase offsets, and the DVE-66 sub-decode are read from the `0x1504700` body. The *full* per-engine legal-opcode expansion of every mask is not enumerated here; the "one mask per engine, `_bittest64`-indexed" shape is [INFERRED] from the masks that were read.
 
 ---
 
-## H3 — the dual-FP8 L2-only check (the L1≠L2 divergence headline)
+## The dual-FP8 L2-only check — where L1 and L2 diverge
 
 The single most important fact about L2 is that it is **not redundant with L1**. The proof is `s3_lw_dual_fp8_restrictions` @ `0x14ac040` — a check that rejects forbidden FP8×FP8 dual-weight-load quadrant/alignment combinations. It exists **only in `core_v4`**, **only at L2**. There is no L1 FP8-combo rule and no L0 analog: an instruction can satisfy L1's engine vector and arch-min yet fail this gate.
 
-> **VERIFIED — dual-FP8 is core_v4-only and L2-only.** The symbol `s3_lw_dual_fp8_restrictions` appears **exactly once** in the symbol table — at `0x14ac040`, in the `core_v4` namespace. There is no `core_v2`/`core_v3` instance and no L1 (`birverifier`) instance. [CERTAIN — single symbol-table hit, `core_v4` namespace.]
+The symbol `s3_lw_dual_fp8_restrictions` appears **exactly once** in the symbol table — at `0x14ac040`, in the `core_v4` namespace. There is no `core_v2`/`core_v3` instance and no L1 (`birverifier`) instance.
 
 It is reached from the core_v4 load-weights format gate `is_valid_s3_lw` @ `0x14ac170` (the two functions are 0x130 bytes apart; the gate's VA `0x14ac170` and the restriction's VA `0x14ac040` are both symbol-table-confirmed). The load-weights gate first bounds the weight-tile column count by dtype width, then delegates the dual-mode legality to the restriction function:
 
@@ -187,11 +187,11 @@ function s3_lw_dual_fp8_restrictions(u):
     return 0                                  // any other selector → illegal
 ```
 
-The legality decision turns on the **packed bytes** (`HIBYTE(a11)`, `BYTE5(a12)`, `BYTE3(a9)` quadrant nibbles, the `a10` partition-flag word) — fields that exist only in the encoded wire bundle. L1, walking the abstract IR, never has them. This is why **L1∧L2 are conjunctive**: L1 catches op-on-engine and arch-min; L2 catches the FP8×FP8 quadrant combination that is invisible above the wire. [CERTAIN that the gate exists, is core_v4-only, and is reached from `is_valid_s3_lw`; the bit-level predicate (HIBYTE selectors, `0x60/0x70/0xA0` quadrant masks, the `0x2000000000000` partition word) is STRONG — from the decompiled body read; the corpus exposes a `thunk` sidecar at the `is_valid_s3_lw` symbol, so the field offsets are read at the true VA.]
+The legality decision turns on the **packed bytes** (`HIBYTE(a11)`, `BYTE5(a12)`, `BYTE3(a9)` quadrant nibbles, the `a10` partition-flag word) — fields that exist only in the encoded wire bundle. L1, walking the abstract IR, never has them. This is why **L1∧L2 are conjunctive**: L1 catches op-on-engine and arch-min; L2 catches the FP8×FP8 quadrant combination that is invisible above the wire. The bit-level predicate above (HIBYTE selectors, the `0x60`/`0x70`/`0xA0` quadrant masks, the `0x2000000000000` partition word) is read from the decompiled body at the true VA.
 
 ---
 
-## H4 — the `is_valid_<fmt>` predicate family (what the gates validate)
+## The `is_valid_<fmt>` predicate family — what the gates validate
 
 Past the engine gate, the entry validator falls through to a per-opcode `is_valid_<fmt>` branch. There are 59/64/81 such symbols per arch; collectively they validate **five classes of wire-byte fact**. The table below pins six representative gates spanning the matmul / batchnorm / load-weights / activation / tensor-tensor / MX-quant classes; all VAs are symbol-table-confirmed.
 
@@ -199,7 +199,7 @@ Past the engine gate, the entry validator falls through to a per-opcode `is_vali
 |---|---|---|---|
 | `core_v4::is_valid_s3d3_mm` | `0x14b6770` | subtype `==2` | gen-4 matmul: PE quadrant reach, 16-wide contraction, stationary FP-tag `10`, fixed scale word `0x20A`, `(in,out)` dtype-and-stride silicon word |
 | `core_v4::is_valid_s4d2_bn` | `0x14d4e50` | `97/0x82/96/108/110` | 5-variant batchnorm: dtype-restricted to `{6,7,10}`, partition-product capped (`≤256` / `≤0x4000`), PSUM-quadrant aware (`0x40`/`0xA0`), exact aggregation stride per stage, NaN/Inf float-field reject |
-| `core_v4::is_valid_s3_lw` | `0x14ac170` | `==1` | load-weights: dtype-by-size column bound, LdW sub-mode enums, → **dual-FP8 gate** (H3) |
+| `core_v4::is_valid_s3_lw` | `0x14ac170` | `==1` | load-weights: dtype-by-size column bound, LdW sub-mode enums, → **dual-FP8 gate** (previous section) |
 | `core_v2::is_valid_activate` | `0x12d8e10` | `0x21` | activation (shared body): in-elem `==` out-elem, `is_valid_enum(14, ActivationFunctionType)`, bias/scale-tensor quadrant, `s3d3_ac_imm/scale_checks` |
 | `core_v4::is_valid_s3s3d3_tt` | `0x14cbd30` | `0x51`, `{114,-103}` | tensor-tensor ALU: `is_valid_dtype_64` (the 64-bit dtype-COMBO table), `is_valid_enum(18/32)`, AluOp-class predicate, in/out element-product match |
 | `core_v4::is_valid_s3dmx1_quant` | `0x14c78f0` | `0xE3` | MX-quantize: PSUM/SBUF quadrants, `mxmem1d_valid` E8M0 block-scale 1-D pattern, `is_valid_dtype_inc_fp4` |
@@ -212,9 +212,11 @@ The five classes, distilled from the six bodies:
 4. **AP-quadrant nibbles** — PSUM/SBUF selectors `byte & 0x60 == 0x20`, `& 0x70 == 0x40`, `& 0xF0 == 0xA0` (forbidden/required quadrant combos) + `addr_aligned_dtype`.
 5. **AP geometry** — `start_addr_active_channels` / `tensor{2,3,4}d_valid` / `mxmem1d_valid` + partition-product bounds (`≤256` / `≤0x4000` with quadrant exceptions) and NaN/Inf float-field rejects `(x & 0x7F800000) == 0x7F800000`, reserved-float `== 0.0`.
 
-Passing the gate ⇒ the 64-byte word is silicon-legal for that format. [CERTAIN that the six gate symbols exist at the cited VAs; the five-class decomposition and the per-gate bit predicates are STRONG — from the decompiled bodies the backing strand read; not every one of the 59/64/81 gates was opened (the six are representative of the MM/BN/LW/ACT/TT/MX classes). The remaining gates — `smx1d3_mm`, `sparsity_compress`, `stream_transpose`, `conv_lut_load`, `tensor_dequantize`, … — are INFERRED to follow the same five-class shape.]
+Passing the gate ⇒ the 64-byte word is silicon-legal for that format. The five-class decomposition and the per-gate bit predicates come from the six bodies above; the remaining gates — `smx1d3_mm`, `sparsity_compress`, `stream_transpose`, `conv_lut_load`, `tensor_dequantize`, … — were not opened, and their conformance to the same five-class shape is [INFERRED].
 
-> **VERIFIED — the QuantizeMx 0xE3 emit↔validate tie.** `is_valid_s3dmx1_quant` (@ `0x14c78f0`, symbol-table-confirmed) gates on opcode byte `-29 = 0xE3 = 227` — **exactly** the wire byte the codegen emitter stamps for `QuantizeMx` (`visitInstQuantizeMx` stamps byte `0xE3` / 16-bit word `0x10E3`; see [PE Matmul Encoding — Dense / Sparse / MX & Quantize](../isa/pe-matmul-encoding.md)). The L3 emit byte and the L2 validator branch are the **same byte** — emit and validate agree on the wire by construction. [CERTAIN that the symbol and the matmul/MX encoding page exist; the `v14 == -29` branch is from the body read, STRONG.]
+### The QuantizeMx `0xE3` emit↔validate tie
+
+`is_valid_s3dmx1_quant` (@ `0x14c78f0`) gates on opcode byte `-29 = 0xE3 = 227` — **exactly** the wire byte the codegen emitter stamps for `QuantizeMx` (`visitInstQuantizeMx` stamps byte `0xE3` / 16-bit word `0x10E3`; see [PE Matmul Encoding — Dense / Sparse / MX & Quantize](../isa/pe-matmul-encoding.md)). The emit byte and the L2 validator branch are the **same byte** — emit and validate agree on the wire by construction.
 
 ### The `is_valid_enum` typeId → domain map
 
@@ -227,7 +229,7 @@ Several gates call `is_valid_enum(typeId, byte)` to validate a packed enum field
 | 18 | dtype | 45 | AccumCmd |
 | 32 | perf / round mode | 37 | LdWeight sub-mode |
 
-(See [ISA Numeric Enum-Ordinal Tables](../isa/isa-enum-ordinals.md) for the ordinal values these `typeId`s range over.) [STRONG — the typeId→domain assignments are identified by call context in the gate bodies, not by dumping each `is_valid_enum` backing array; a full per-typeId domain-array dump is a follow-up. typeId `34` is referenced by the activation gate but its domain is INFERRED.]
+(See [ISA Numeric Enum-Ordinal Tables](../isa/isa-enum-ordinals.md) for the ordinal values these `typeId`s range over.) These typeId→domain assignments are identified by call context in the gate bodies, not by dumping each `is_valid_enum` backing array. typeId `34` is referenced by the activation gate but its domain is [UNRESOLVED].
 
 ---
 
@@ -235,15 +237,15 @@ Several gates call `is_valid_enum(typeId, byte)` to validate a packed enum field
 
 L2 does not run inline during the encoder walk. The driver mechanism — the `CodeGenMode` tristate, the per-instruction enqueue, and the TBB-parallel `flushISAChecks` replay — is documented in full on [Codegen Driver and the CodeGenMode Mechanism](codegen-driver.md). The facts that matter for *this* page:
 
-- **The production mode is `RUN_ISA_CHECKS = 1`.** The live `Codegen::codegen` emit pass constructs its `CoreVxGen` with `CodeGenMode = 1` (it drives only modes `0` and `1`; `GENERATE_ISACODE = 2` is used **only** by the verifier's separate `Generator`, never the production codegen pass). Mode 1 both `fwrite`s the bundle to the engine stream **and** enqueues it for L2 validation. [CERTAIN — per the codegen-driver page's `CORRECTION (CGD-01)`: the production driver emits only `mov r8d,1` and `xor r8d,r8d`, never `mov r8d,2`.]
+- **The production mode is `RUN_ISA_CHECKS = 1`.** The live `Codegen::codegen` emit pass constructs its `CoreVxGen` with `CodeGenMode = 1` — it drives only modes `0` and `1`, emitting `mov r8d,1` and `xor r8d,r8d` and never `mov r8d,2`. `GENERATE_ISACODE = 2` is used **only** by the verifier's separate `Generator`, never by the production codegen pass. Mode 1 both `fwrite`s the bundle to the engine stream **and** enqueues it for L2 validation.
 
-- **Enqueue** — `Generator::enqueueISAChecks` @ `0x11f1fe0` snapshots each instruction's encoded 64-byte bundle(s) + `Instruction*` into a **152-byte `ISAMapping`** record, pushed onto the vector at `this+264`. At `> 0x173180` pending bytes (= **10,000 records** × 152) it auto-calls `flushISAChecks` to bound peak memory; otherwise it defers. [CERTAIN — VA symbol-table-confirmed; the `0x173180/152 = 10000` arithmetic is exact.]
+- **Enqueue** — `Generator::enqueueISAChecks` @ `0x11f1fe0` snapshots each instruction's encoded 64-byte bundle(s) + `Instruction*` into a **152-byte `ISAMapping`** record, pushed onto the vector at `this+264`. At `> 0x173180` pending bytes it auto-calls `flushISAChecks` to bound peak memory; otherwise it defers. The threshold is exactly **10,000 records**: `0x173180 / 152 = 10000`.
 
-- **Flush** — `Generator::flushISAChecks` @ `0x11efb00` runs the whole batch via `tbb` `start_for` over `blocked_range<size_t>(0, n)` across `2 × max_concurrency` threads. The per-range task body invokes, per item, **vtable slot 0** of the Generator — which is the per-arch `runSingleISACheck` (`CoreV2Gen` vtable slot 0 = `0x1211cf0`; V3/V4 override with `0x134c060`/`0x1435010`). Any thread's `NeuronAssertion` is captured into a single `std::exception_ptr` and **rethrown after the parallel join** — so the engine `.bin` streams are produced, but the codegen *pass* throws if any instruction is wire-illegal. [CERTAIN — VA symbol-table-confirmed; the slot-0 virtual dispatch and rethrow semantics per the codegen-driver page.]
+- **Flush** — `Generator::flushISAChecks` @ `0x11efb00` runs the whole batch via `tbb` `start_for` over `blocked_range<size_t>(0, n)` across `2 × max_concurrency` threads. The per-range task body invokes, per item, **vtable slot 0** of the Generator — which is the per-arch `runSingleISACheck` (`CoreV2Gen` vtable slot 0 = `0x1211cf0`; V3/V4 override with `0x134c060`/`0x1435010`). Any thread's `NeuronAssertion` is captured into a single `std::exception_ptr` and **rethrown after the parallel join** — so the engine `.bin` streams are produced, but the codegen *pass* throws if any instruction is wire-illegal.
 
-- **Driver** — `bir::IRVisitor<CoreV4Gen>::visit(bir::Module&)` @ `0x11d7350` walks Functions→BasicBlocks→Instructions (each `visitInst` encodes + enqueues), then drains the residual batch with `flushISAChecks` at module end. [CERTAIN — VA symbol-table-confirmed.]
+- **Driver** — `bir::IRVisitor<CoreV4Gen>::visit(bir::Module&)` @ `0x11d7350` walks Functions→BasicBlocks→Instructions (each `visitInst` encodes + enqueues), then drains the residual batch with `flushISAChecks` at module end.
 
-The legality-layer **dispatcher** (the L0/L1/L2 selection logic) is its own in-flight sibling page; this page covers only L2's body.
+The legality-layer **dispatcher** (the L0/L1/L2 selection logic) lives upstream of this validator and is documented separately; this page covers only L2's body.
 
 > **NET.** `RUN_ISA_CHECKS` = *"encode every instruction's 64-byte word exactly as for emission, but instead of only `fwrite`ing it, also queue it and validate the whole module's wire words in a TBB-parallel batch, rethrowing the first silicon-illegality as a `NeuronAssertion`."* It is the codegen-time silicon dress rehearsal, byte-identical to what is emitted.
 
@@ -253,27 +255,30 @@ The legality-layer **dispatcher** (the L0/L1/L2 selection logic) is its own in-f
 
 The L1∧L2 conjunction is real, not belt-and-braces. The concrete divergence points:
 
-- **L1 vs L2 — passing L1 ⇏ passing L2.** The canonical example is **dual-FP8** (H3): L1 has no FP8-combo rule; `s3_lw_dual_fp8_restrictions` (core_v4 only) rejects forbidden FP8×FP8 quadrant/alignment combos that L1 cannot see. An instruction can satisfy L1's engine vector + arch-min and still fail L2's silicon word.
+- **L1 vs L2 — passing L1 ⇏ passing L2.** The canonical example is **dual-FP8**: L1 has no FP8-combo rule; `s3_lw_dual_fp8_restrictions` (core_v4 only) rejects forbidden FP8×FP8 quadrant/alignment combos that L1 cannot see. An instruction can satisfy L1's engine vector + arch-min and still fail L2's silicon word.
 
-- **L2-only facts (no L1/L0 analog).** All the §H4 field-level gates: dtype-COMBO tables (`is_valid_dtype_64`), AP-quadrant nibbles (`0x20`/`0x40`/`0xA0`), partition-product caps (`≤256`/`≤0x4000`), MX scale patterns (`mxmem1d_valid`), FP4 dtype (`dtype_inc_fp4`), NaN/Inf float-field rejects, reserved-bit zeroing, and the per-engine opcode bitmaps. These are **structurally invisible** to L1 (which never sees the packed word) and to L0 (which only knows op×engine×arch).
+- **L2-only facts (no L1/L0 analog).** All the field-level format gates: dtype-COMBO tables (`is_valid_dtype_64`), AP-quadrant nibbles (`0x20`/`0x40`/`0xA0`), partition-product caps (`≤256`/`≤0x4000`), MX scale patterns (`mxmem1d_valid`), FP4 dtype (`dtype_inc_fp4`), NaN/Inf float-field rejects, reserved-bit zeroing, and the per-engine opcode bitmaps. These are **structurally invisible** to L1 (which never sees the packed word) and to L0 (which only knows op×engine×arch).
 
-- **Arch-space divergence.** L0/L1 key on bir `ArchLevel(10..50)`; L2 keys on core version `V2/V3/V4` — the three validator families with **different entry arity** (H1) and **different assertion codes** (H2). An op may have **no L2 validator at some arch** — e.g. MX-quant (`s3dmx1_quant`) exists only in core_v4's roster, so on V2/V3 its opcode matches no `is_valid_<fmt>` branch and the cascade falls through to the default-reject tail. The `ArchLevel→coreVersion` projection lives upstream of `runSingleISACheck` (in the `CoreV?Gen` selection); a drift there could let L1 pass an arch whose L2 version-validator rejects. [HIGH — the divergence is structural (per the roster diff and the arity/code divergence); it is not demonstrated here on a single concrete op, and the upstream projection is not traced on this page.]
+- **Arch-space divergence.** L0/L1 key on bir `ArchLevel(10..50)`; L2 keys on core version `V2/V3/V4` — the three validator families with different entry arity and different assertion codes. An op may have **no L2 validator at some arch** — e.g. MX-quant (`s3dmx1_quant`) exists only in core_v4's roster, so on V2/V3 its opcode matches no `is_valid_<fmt>` branch and the cascade falls through to the default-reject tail. The `ArchLevel→coreVersion` projection lives upstream of `runSingleISACheck` (in the `CoreV?Gen` selection); a drift there could let L1 pass an arch whose L2 version-validator rejects. That projection is not traced on this page, so the drift is a structural possibility rather than an observed failure.
 
-**Invariant:** the single defended runtime legality contract in this wheel is **L1 (birverifier, pre-codegen, bir-keyed) ∧ L2 (`runSingleISACheck`, in-codegen, wire-keyed)**. L0 is dormant data; L3 is a front-end fast-fail. [CERTAIN — per the verifier-strand and the full L2 per-arch/per-format read.]
+**Invariant:** the single defended runtime legality contract in this wheel is **L1 (birverifier, pre-codegen, bir-keyed) ∧ L2 (`runSingleISACheck`, in-codegen, wire-keyed)**. L0 is dormant data; L3 is a front-end fast-fail.
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims on this page, re-checked against the binary symbol table (not the backing report):
+| Claim | Evidence | Confidence |
+|---|---|---|
+| Three divergent entry signatures | `is_valid_neuron_instruction` @ `0x1332540` (no ctx), `is_valid_neuron_isa_instruction` @ `0x141ed10` (`+CORE_VERSION`), `is_valid_neuron_engine_instruction` @ `0x1502120` (`+CORE_VERSION +NEURON_ENGINE`) — demangled signatures and VAs from the readelf symbol table | CERTAIN |
+| Roster counts 59 / 64 / 81 | unique `is_valid_*` `FUNC` symbols per arch namespace, excluding the `dbg_` family | CERTAIN |
+| Dual-FP8 is core_v4-only and L2-only | `s3_lw_dual_fp8_restrictions` appears once in the symbol table — `0x14ac040`, `core_v4`; no V2/V3/birverifier instance | CERTAIN |
+| Per-arch `runSingleISACheck` + per-arch engine gate | `runSingleISACheck` V2/V3/V4 @ `0x1211cf0`/`0x134c060`/`0x1435010`; `instruction_engine_check` @ `0x13346e0` (v2); `neuron_isa_check_opcode_on_engine` @ `0x1421840` (v3) / `0x1504700` (v4) | CERTAIN |
+| Assertion codes `935/934/2083`, `1084/1000`, `1083/999/939` | read out of the `runSingleISACheck` bodies, not the symbol table | HIGH |
+| QuantizeMx `0xE3` emit↔validate tie | `is_valid_s3dmx1_quant` @ `0x14c78f0`; the `v14 == -29 = 0xE3` branch is body-read; the matching emit byte is on the PE/MX encoding page | HIGH |
 
-1. **Three divergent entry signatures (H1).** ✅ `is_valid_neuron_instruction` @ `0x1332540` (no ctx), `is_valid_neuron_isa_instruction` @ `0x141ed10` (`+CORE_VERSION`), `is_valid_neuron_engine_instruction` @ `0x1502120` (`+CORE_VERSION +NEURON_ENGINE`) — all three demangled signatures and VAs read directly from the readelf symbol table. **CERTAIN.**
-2. **Roster counts 59/64/81 (H1/H3).** ✅ Counting unique `is_valid_*` `FUNC` symbols per arch namespace (excl. `dbg_`) gives exactly `59 / 64 / 81`. **CERTAIN.**
-3. **Dual-FP8 is core_v4-only, L2-only (H3).** ✅ `s3_lw_dual_fp8_restrictions` appears once in the symbol table — `0x14ac040`, `core_v4` namespace; no V2/V3/birverifier instance. **CERTAIN.**
-4. **Per-arch `runSingleISACheck` + per-arch engine gate (H2).** ✅ `runSingleISACheck` V2/V3/V4 @ `0x1211cf0`/`0x134c060`/`0x1435010`; `instruction_engine_check` @ `0x13346e0` (core_v2); `neuron_isa_check_opcode_on_engine` @ `0x1421840` (v3) / `0x1504700` (v4) — all symbol-table-confirmed. The assertion codes (`935/934/2083`, etc.) are body-read, **STRONG.**
-5. **QuantizeMx `0xE3` emit↔validate tie (H4).** ✅ `is_valid_s3dmx1_quant` @ `0x14c78f0` symbol-table-confirmed; the `v14 == -29 = 0xE3` branch is body-read, **STRONG** — the matching emit byte is on the PE/MX encoding page.
+### Limits of this reading
 
-**Honest re-verify ceiling.** I independently re-grounded every *symbol, VA, signature, and count* against the readelf symbol table. The *bit-level gate predicates* (the `0x60/0x70/0xA0` quadrant masks, the dtype bands, the `0x1000000000FE7F41` ACT bitmap, the dual-FP8 selector logic) are from the decompiled function bodies the backing strand read; the corpus exposes only `thunk` sidecars at several of these symbols (the two-VA-frame artifact), so the field offsets are at the true VA and were **not** independently re-derived byte-by-byte here. The `convert()` remap (`sub_1433840`) is an internal `sub_`, not exported — not symbol-table-cross-checkable. The full per-typeId `is_valid_enum` domain dump (G4 of the backing strand) and the full per-engine opcode-bitmap expansion remain follow-ups.
+Every symbol, VA, signature, and count above is grounded in the readelf symbol table. The bit-level gate predicates — the `0x60`/`0x70`/`0xA0` quadrant masks, the dtype bands, the `0x1000000000FE7F41` ACT bitmap, the dual-FP8 selector logic — come from decompiled function bodies rather than the symbol table, and were not re-derived byte-by-byte. The corpus exposes only `thunk` sidecars at several of these symbols (the two-VA-frame artifact), so those field offsets are read at the true VA. The `convert()` remap (`sub_1433840`) is an internal `sub_`, not exported, so it has no symbol-table cross-check. Two enumerations remain open: the full per-typeId `is_valid_enum` domain arrays, and the full per-engine opcode-bitmap expansion.
 
 ---
 

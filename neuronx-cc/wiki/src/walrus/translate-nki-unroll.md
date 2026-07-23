@@ -8,7 +8,7 @@ These are the first two stations of the libwalrus backend pipeline that turn an 
 
 The familiar reference frame is an LLVM loop unroller, but the divergence is total. There is no `LoopInfo` and no SSA: a `bir::InstLoop` (opcode `'i'` = 105) carries a `LoopAxis` (lb/ub/stride) and the unroller substitutes a concrete integer for that axis into a per-iteration `DenseMap<AffineIdx*,long>`, then re-evaluates the pelican `QuasiAffineExpr` algebra against the map to fold indices, orders, predicates, and dependency-carry conditions. Unlike LLVM, the unroller does not just duplicate instructions — it *duplicates tensors*, because each cloned iteration needs its own physical SBUF/PSUM address. Two passes do the same thing two ways: `Unroll` builds an `[iteration][block]` grid of new `MemoryLocationSet`s; `FullUnroll` splits each set's storage in place into `_sub<b>` memlocs. `HeuristicUnroll` does no cloning at all — it is purely the *eligibility decision* (innermost, fully-static, under a budget) that marks which loops the other two flatten.
 
-Two facts dominate this page and both are byte-confirmed. First, the **25,000,000-instruction ceiling**: after `FullUnroll` finishes, a guard fails the whole compile if the post-unroll instruction count exceeds 24,999,999, with the diagnostic "*Compiler generated too many instructions, this may due to a failure in parallelism extraction by the tensorizer*". Second, `HeuristicUnroll`'s **threshold is not a trip-count number** — it fully unrolls a loop iff the loop is innermost and free of symbolic access patterns, capped only by the `MAXHU` environment variable; there is no "unroll loops with fewer than N iterations" heuristic in this build.
+Two facts dominate this page. First, the **25,000,000-instruction ceiling**: after `FullUnroll` finishes, a guard fails the whole compile if the post-unroll instruction count exceeds 24,999,999, with the diagnostic "*Compiler generated too many instructions, this may due to a failure in parallelism extraction by the tensorizer*". Second, `HeuristicUnroll`'s **threshold is not a trip-count number** — it fully unrolls a loop iff the loop is innermost and free of symbolic access patterns, capped only by the `MAXHU` environment variable; there is no "unroll loops with fewer than N iterations" heuristic in this build.
 
 For reimplementation, the contract is:
 
@@ -37,7 +37,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`TranslateNKIASTToBIR` is the second pass in the walrus pre-codegen pipeline (registered under `"translate_nki_ast_to_bir"` @ `0x1c7db18`, xxd-confirmed). Upstream, an NKI kernel arrives as a single placeholder instruction — `InstNKIKLIRKernel`, instruction-type 56 — that carries nothing but a file path (a serialized KLR binary or a BIR-JSON file), a format string, and the kernel's input/output argument lists. This pass is what turns that placeholder into a real, walkable BIR function body. The companion page [Codegen Helpers & the NKI-Kernel Provision Mechanisms](../bir/codegen-helpers-kernel-provision.md) covers Mechanism A — `lowerKernelInst`'s KLR-codegen entry that mutates an existing module; this section is the pass-level view of how `run` drives that mechanism across the whole module.
+`TranslateNKIASTToBIR` is the second pass in the walrus pre-codegen pipeline (registered under `"translate_nki_ast_to_bir"` @ `0x1c7db18`). Upstream, an NKI kernel arrives as a single placeholder instruction — `InstNKIKLIRKernel`, instruction-type 56 — that carries nothing but a file path (a serialized KLR binary or a BIR-JSON file), a format string, and the kernel's input/output argument lists. This pass is what turns that placeholder into a real, walkable BIR function body. The companion page [Codegen Helpers & the NKI-Kernel Provision Mechanisms](../bir/codegen-helpers-kernel-provision.md) covers Mechanism A — `lowerKernelInst`'s KLR-codegen entry that mutates an existing module; this section is the pass-level view of how `run` drives that mechanism across the whole module.
 
 > **NOTE —** native BIR (libBIR) hard-asserts "Not Implemented" if it ever sees an `InstNKIKLIRKernel(56)` at opcode-level handling. That is consistent, not contradictory: the type-56 node never survives this pass. It is expanded here, in libwalrus, *before* any libBIR opcode handling runs.
 
@@ -293,8 +293,8 @@ Each block of a block-tensor becomes its own `MemoryLocationSet`+`MemoryLocation
 | `Unroll::genPhyAP` | `0xb4f330` | Repoint AP via `this+312` `[iter][block]` grid | CERTAIN |
 | `Unroll::tensorSplit` | `0xb39e00` | Per-block new `MemoryLocationSet` (`_set`) | CERTAIN |
 | `Unroll::eval_order` | `0xb364d0` | Fold "order" `QuasiAffineExpr` vector per iter | CERTAIN |
-| `Unroll::check_in_place` | `0xb361f0` | SMT re-allocation legality after unroll | STRONG |
-| `Unroll::unroll_arg` | `0xb3def0` | `ImmediateValue::eval` / `unroll_AP` dispatch | INFERRED (decompile failed) |
+| `Unroll::check_in_place` | `0xb361f0` | SMT re-allocation legality after unroll | HIGH |
+| `Unroll::unroll_arg` | `0xb3def0` | `ImmediateValue::eval` / `unroll_AP` dispatch | MEDIUM (decompile failed) |
 
 > **NOTE —** `Unroll`'s budget guard (`instCountFitsLimit`, `unroll.cpp:1151`) reads its maximum from a module config field (`M.config[112]`), so it is a configurable per-compile limit — distinct from `FullUnroll`'s hard-coded `25000000`. Both can abort the compile, but only one is a literal in the binary.
 
@@ -443,25 +443,27 @@ The bin registers three backend passes via static-init lambdas, each constructin
 | `full_unroll_some` | `sub_4867E0` | 1 | Unroll the functions marked for unroll, then DCE |
 | `full_unroll_all` | `sub_4869D0` | 2 | Unroll everything, then `erase_all_dependencies` |
 
-With no `-unrollLevel`, the default is **0** — the bin run bare does only memloc generation. The Python `WalrusDriver` passes `-unrollLevel` explicitly per compile phase. The 25M ceiling (`total_count < 25000000`, `instruction_limit_check`, `full_unroll.h:0x5C`) is present and byte-identical in this binary, confirming the same literal seen in `libwalrus.so`.
-
-> **CORRECTION (D-K12) —** an earlier note described the `full_unroll` bin as "a thin CLI shim dynamically linking libwalrus." That is wrong: `readelf -d` shows no `libwalrus.so` `NEEDED` entry, and the FullUnroll bodies, the three registrars, and the 25M check are all directly present in this ELF. It is a self-contained executable that links only `libBIR` + `liblogging`. The algorithmic description still applies because the source is shared.
+With no `-unrollLevel`, the default is **0** — the bin run bare does only memloc generation. The Python `WalrusDriver` passes `-unrollLevel` explicitly per compile phase. The 25M ceiling (`total_count < 25000000`, `instruction_limit_check`, `full_unroll.h:0x5C`) is present and byte-identical in this binary — the same literal as in `libwalrus.so`.
 
 ---
 
-## Confidence Summary
+## Evidence Summary
 
 | Claim | Evidence | Confidence |
 |---|---|---|
-| Translate walk finds IT-56 nodes | `cmp [rbx+50h], 38h` @ `0xf0e145` in `run` disasm; logs present | CONFIRMED |
-| Three distinct unroll passes | `Unroll::run`/`FullUnroll::run`/`HeuristicUnroll::run` @ `0xb42f30`/`0xb78460`/`0xb7d200`; distinct logs | CONFIRMED |
-| 25M instruction ceiling | `total_count < 25000000` string in both libwalrus.so and full_unroll bin; `0x17D783F` compare | CONFIRMED |
-| `full_unroll` standalone | three registrar strings, level assert, 25M all present in the bin's own `.text` | CONFIRMED |
-| `Unroll::LowerDynamicExprs` = sole `ModuloExpr` producer | xref table per [pelican::ModuloExpr](../bir/pelican-moduleexpr.md) | CONFIRMED |
-| HeuristicUnroll = innermost + static + `MAXHU` | `"Heuristic unroll is off."`, `MAXHU` env, single-body-block assert | CONFIRMED |
+| Translate walk finds IT-56 nodes | `cmp [rbx+50h], 38h` @ `0xf0e145` in `run` disasm; logs present | CERTAIN |
+| Three distinct unroll passes | `Unroll::run`/`FullUnroll::run`/`HeuristicUnroll::run` @ `0xb42f30`/`0xb78460`/`0xb7d200`; distinct logs | CERTAIN |
+| 25M instruction ceiling | `total_count < 25000000` string in both libwalrus.so and full_unroll bin; `0x17D783F` compare | CERTAIN |
+| `full_unroll` standalone | three registrar strings, level assert, 25M all present in the bin's own `.text` | CERTAIN |
+| `Unroll::LowerDynamicExprs` = sole `ModuloExpr` producer | xref table per [pelican::ModuloExpr](../bir/pelican-moduleexpr.md) | CERTAIN |
+| HeuristicUnroll = innermost + static + `MAXHU` | `"Heuristic unroll is off."`, `MAXHU` env, single-body-block assert | CERTAIN |
 | `lowerKLIRToNKI` call-site wiring | disasm-only (no Hex-Rays), inferred from callee set + path-B mirror | HIGH |
-| `unroll_arg` dispatch detail | decompilation failed; reconstructed from callee tables | INFERRED |
-| Module config byte semantics (`config[106/107/109/112]`) | named by effect only | SPECULATIVE |
+| `unroll_arg` dispatch detail | decompilation failed; reconstructed from callee tables | MEDIUM |
+| Module config byte semantics (`config[106/107/109/112]`) | named by effect only | LOW |
+
+### Limits of this reading
+
+`lowerKLIRToNKI` (@ `0xf09c40`) is reached only through its PLT stub, so its body is read from disassembly rather than decompilation; `unroll_arg` (@ `0xb3def0`) did not decompile at all and its argument dispatch is reconstructed from its callee table. The module-config byte indices (`config[106]`, `config[107]`, `config[109]`, `config[112]`) are named here by observed effect — the field names themselves are not recoverable from the binary.
 
 ---
 

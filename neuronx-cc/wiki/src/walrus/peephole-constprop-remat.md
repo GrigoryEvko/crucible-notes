@@ -6,7 +6,7 @@
 
 After the Penguin/NKI front-end lowers a graph into BIR and `bir_linker` merges modules, the walrus backend runs roughly a hundred numbered passes (see [The Walrus Pass Pipeline & the Optlevel Planes](pass-pipeline-optlevels.md)). This page documents the **mid-pipeline cleanup and optimization cluster** that sits around the SRAM/PSUM allocation boundary: a three-point *peephole* engine, the *constant-propagate* partial evaluator, the matmul-transpose *rematerializer*, the *redundancy* (dead-store) eliminator, the backend *tensor-copy elimination* pass, and SBUF *weight pinning* inside the coloring allocator. These are the passes that shrink the IR the scheduler and allocators must process, fold compile-time-known tensors, relieve SBUF pressure, and kill writes that are overwritten before they are read.
 
-The cluster is deliberately *not* one monolithic "algebraic rewrite suite," and the single most important correction this page makes is structural: the classic identities a reader expects from a peephole pass (add-0, mul-1, select-of-constant-mask, zero propagation, iota evaluation) do **not** live in the peephole passes at all. They live in `ConstantPropagate`, whose visitor **derives from the BIR functional simulator `birsim::InstVisitor`** and folds constants by *literally executing the module into a simulated memory* — see [BIR Simulator: Dispatch & Whole-Machine State](../bir/sim-dispatch-state.md). The "lattice" is the simulator's value store; "folding" is recognising that a simulated op produced a known tensor. That is the headline quirk of the entire cluster.
+The cluster is deliberately *not* one monolithic "algebraic rewrite suite," and its most important structural property is this: the classic identities a reader expects from a peephole pass (add-0, mul-1, select-of-constant-mask, zero propagation, iota evaluation) do **not** live in the peephole passes at all. They live in `ConstantPropagate`, whose visitor **derives from the BIR functional simulator `birsim::InstVisitor`** and folds constants by *literally executing the module into a simulated memory* — see [BIR Simulator: Dispatch & Whole-Machine State](../bir/sim-dispatch-state.md). The "lattice" is the simulator's value store; "folding" is recognising that a simulated op produced a known tensor. That is the headline quirk of the entire cluster.
 
 The matcher infrastructure shared by the peephole passes is a fixed `bir::IRVisitor<Derived>` CRTP switch on the `InstructionType` field (`Instruction+0x58`), single-shot per pass, with no module-level fixpoint; dead remnants (memsets, reduces, copies) are left for the separate `dead_code_elim` passes to reap. The allocation boundary organises the whole cluster: passes that change an op's engine, dataflow shape, or buffer set run *before* scheduling/allocation; passes that need physical access patterns, final dtypes, or assigned engines run *after* it.
 
@@ -36,9 +36,9 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-Three passes share the `*_opts` naming convention but are *three different, narrowly-scoped* passes, not one suite (CONFIRMED). `pre_opts` (order 20) is a modular-compilation boundary cleanup; `early_peephole_opts` (order 31, pre-allocation) is an engine-fusion group; `peephole_opts` (orders 58–59, post-allocation) is an engine-routing group. Each runs a fixed `IRVisitor` switch over a small handful of `InstructionType` cases. None of them perform DCE — they leave dead memsets/copies for the downstream `dead_code_elim_o0/o1` passes (CONFIRMED: objdump of both peephole `run` bodies shows zero calls into DCE/CP/RR/TCE).
+Three passes share the `*_opts` naming convention but are *three different, narrowly-scoped* passes, not one suite. `pre_opts` (order 20) is a modular-compilation boundary cleanup; `early_peephole_opts` (order 31, pre-allocation) is an engine-fusion group; `peephole_opts` (orders 58–59, post-allocation) is an engine-routing group. Each runs a fixed `IRVisitor` switch over a small handful of `InstructionType` cases. None of them perform DCE — they leave dead memsets/copies for the downstream `dead_code_elim_o0/o1` passes — objdump of both peephole `run` bodies shows zero calls into DCE, ConstantPropagate, RemoveRedundancies, or TensorCopyElim.
 
-> **QUIRK —** the classic algebraic identities live in `ConstantPropagate`, not here. The S2-era guesses "proxyreg" and "taginv" do not appear as strings or symbols anywhere in `libwalrus.so`; the nearest real construct is `SeqInstOpt` (a separate sequencer pass that folds redundant `InstRegisterMove` ops, `visit` @0x155e980), unrelated to this trio.
+> **QUIRK —** the classic algebraic identities live in `ConstantPropagate`, not here. Neither `proxyreg` nor `taginv` appears as a string or symbol anywhere in `libwalrus.so`; the nearest real construct is `SeqInstOpt` (a separate sequencer pass that folds redundant `InstRegisterMove` ops, `visit` @0x155e980), unrelated to this trio.
 
 ### Entry Point
 
@@ -129,7 +129,7 @@ function MoveToAct_visit(inst):                       // 0xc4e680, dispatch on I
 
 ### Rule Catalog
 
-| Rule | Match (InstructionType + operand condition) | Rewrite | Phase | Body | Conf |
+| Rule | Match (InstructionType + operand condition) | Rewrite | Phase | Body | Confidence |
 |---|---|---|---|---|---|
 | `RemoveBoundaryCcBuffer` | boundary cc `MemoryLocation`, only reader AND writer is a DMA-copy | delete buffer + boundary DMA copies, rewire directly | pre_opts (20, modular-only) | 0x1609cc0 | CERTAIN |
 | `SplitSelect` | Select(51), scalar/imm value operand, type-compatible | → GenericCopy(else) + CopyPredicated(true) | early (31) | 0xbf1b30 | CERTAIN |
@@ -343,9 +343,11 @@ Other remat surfaces exist for completeness: `DMAOptimization::dmacopy_remat_opt
 
 ### Purpose
 
-Pass #75 (`RemoveRedundancies`, registered at optlevels {1,2,3,6}) is named like a CSE-lite "redundant-load / memset remover," but the binary contradicts that. Its per-`Function` body calls **exactly two** routines, unconditionally: `remove_clobbered_writes` then `remove_useless_insts(…, true)`. Its actual semantic is **dead-store (clobbered-write) elimination at access-pattern granularity** plus a light intra-function DCE sweep.
+Pass #75 (`RemoveRedundancies`, registered at optlevels {1,2,3,6}) is named like a CSE-lite "redundant-load / memset remover," but its per-`Function` body calls **exactly two** routines, unconditionally: `remove_clobbered_writes` then `remove_useless_insts(…, true)`. Its actual semantic is **dead-store (clobbered-write) elimination at access-pattern granularity** plus a light intra-function DCE sweep.
 
-> **CORRECTION (H22) —** the load and memset removers that #75 is commonly described with live in the *same translation unit* but are wired into *different* passes. `remove_redundant_loads` (0x159fcb0) runs from `NonSSALeg::run` #17 (pre-alloc) and `pre_schedule`; `remove_redundant_memsets` (0x15a0e90) runs only from `pre_schedule`. Neither is reached from #75. A reimplementer who puts load/memset elision in pass #75 is mis-placing it by ~58 pipeline positions.
+The load and memset removers the name suggests do exist, in the *same* translation unit, but they are wired into *different* passes. `remove_redundant_loads` (0x159fcb0) runs from `NonSSALeg::run` #17 (pre-allocation) and from `pre_schedule`; `remove_redundant_memsets` (0x15a0e90) runs only from `pre_schedule`. Neither is reachable from #75.
+
+> **GOTCHA —** the pass name promises load and memset elision; the body delivers dead-store elimination. Load/memset elision belongs at #17 and in `pre_schedule` — roughly 58 pipeline positions earlier than where the name would put it.
 
 ### Entry Point
 
@@ -517,22 +519,24 @@ The single organising principle: a pass that *changes* an op's engine, dataflow 
 
 ---
 
-## Confidence Ledger
+## Evidence Summary
 
 | Claim | Confidence | Anchor |
 |---|---|---|
 | The three `*_opts` passes are distinct (not one suite); algebraic identities are NOT in them | CERTAIN | objdump of all three `run` bodies; zero DCE/CP calls |
-| `ConstantPropagateVisitor` derives from `birsim::InstVisitor`; folds by simulation | CERTAIN (structure) / STRONG ("is the sim") | ctor 0xbe0130 takes `birsim::Memory*`; `enterInstruction` calls `birsim::InstVisitor::enterInstruction` then 110-case switch |
-| Sim loop gated by `enable-sim-based-constant-propagate`; pre-passes each DCE | CONFIRMED | run() decomp; string @0x1cece60; `dword_3DFFCC8[12]` branch |
+| `ConstantPropagateVisitor` derives from `birsim::InstVisitor`; folds by simulation | CERTAIN (structure) / HIGH ("is the sim") | ctor 0xbe0130 takes `birsim::Memory*`; `enterInstruction` calls `birsim::InstVisitor::enterInstruction` then 110-case switch |
+| Sim loop gated by `enable-sim-based-constant-propagate`; pre-passes each DCE | CERTAIN | run() decomp; string @0x1cece60; `dword_3DFFCC8[12]` branch |
 | `RematOpt` default-OFF; template `[GenericCopy,Matmult,Load]`; cost = Σ vtable+0x68 vs 2·getLatency | CERTAIN | run gate `unk_3E01A58`; "MM transpose remat optimization disabled"; COMISS/JA @0x107588d |
 | `remove_redundancies` #75 calls ONLY clobbered-writes + useless-insts | CERTAIN | 0x15a48b0 body; callgraph for the load/memset removers (NonSSALeg/pre_schedule) |
-| Clobber proof L1–L7 (supersetAP ⊇, same_partitions, no read, ¬PSUM, ¬partial, ¬dont_touch) | CERTAIN | 0x159cd00 body; PSUM=0x20 guard matches D-D05 |
+| Clobber proof L1–L7 (supersetAP ⊇, same_partitions, no read, ¬PSUM, ¬partial, ¬dont_touch) | CERTAIN | 0x159cd00 body; the `0x20` PSUM guard matches the memory-type taxonomy |
 | `tensor_copy_elim` runs twice; regime switched by `all_aps_are_physical` / `allocated`+168 | CERTAIN | same `run` body; pipeline orders #34/#77 |
 | SB pinning predicate DRAM8→SB16 single-in/out; policy-flag gate (no cost model) | CERTAIN | `is_rematable_load` 0x9e8180; no comiss on pin decision; Gates A/B flag tests |
-| `constant_propagate_for_dataType_change` exists but is off the `run()` path | INFERRED | xrefs show def + internal refs only |
-| `getLatency` / vtable+0x68 numeric per-opcode cost values | SPECULATIVE | tables live in TrainiumHwm/InstProfiler, out of scope here |
+| `constant_propagate_for_dataType_change` exists but is off the `run()` path | MEDIUM | xrefs show def + internal refs only |
+| `getLatency` / vtable+0x68 numeric per-opcode cost values | LOW | tables live in TrainiumHwm/InstProfiler, out of scope here |
 
-**Re-verification ceiling.** Everything addressed above is anchored to a named symbol, an offset, a `.rodata` string, or a disassembly branch in the cp310 `libwalrus.so` sidecar set. The weakest links are: the exact `cl::opt` symbol names behind the two ConstantPropagate enable bytes (tied to strings by the `run()` branch structure, not separately walked); the precise `PassOptions → +0x4B8` derivation and the `arch==Sunda` compare for pinning Gate B; and the per-opcode numeric cost/latency tables RematOpt consumes, which live in a different binary region and were not transcribed. The structural claims — birsim-backed folding, default-off remat, #75 being a dead-store eliminator, the twice-run copy elim, and the rematable-load pin predicate — are each grounded in a read function body or a callgraph edge.
+### Limits of this reading
+
+Every address above is anchored to a named symbol, an offset, a `.rodata` string, or a disassembly branch in the cp310 `libwalrus.so` sidecar set. Three things are weaker than the rest. The exact `cl::opt` symbol names behind the two ConstantPropagate enable bytes are tied to their strings by the `run()` branch structure rather than walked separately. The derivation of pinning Gate B — how `PassOptions` reaches the allocator's `+0x4B8` flag, and where the `arch == Sunda` compare sits — is not fully traced. And the per-opcode numeric cost and latency tables that RematOpt consumes live in a different binary region and are not transcribed here. The structural claims — birsim-backed folding, default-off remat, #75 as a dead-store eliminator, the twice-run copy elim, and the rematable-load pin predicate — each rest on a read function body or a callgraph edge.
 
 ---
 
@@ -541,7 +545,7 @@ The single organising principle: a pass that *changes* an op's engine, dataflow 
 | Pass | Order | Relationship |
 |---|---|---|
 | `dead_code_elim_o0/o1` | 11/50/66/97 | reaps the dead memsets/reduces/copies this cluster leaves behind |
-| `SeqInstOpt` | own | sequencer-engine `InstRegisterMove` folding (the real construct behind the "proxyreg" guess) |
+| `SeqInstOpt` | own | sequencer-engine `InstRegisterMove` folding — the only register-level peephole in the library |
 | `tensorcopy_accel` | 58 | width-widening sibling of `tensor_copy_elim`; bit-casts necessary copies, removes none |
 | `NonSSALeg` | 17/65 | runs `remove_redundant_loads`; re-legalizes `tensorcopy_accel`'s `-accel` clones |
 | `pre_schedule` | ~32 | runs `remove_redundant_loads` and `remove_redundant_memsets` (the #75 "siblings") |
