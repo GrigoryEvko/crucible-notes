@@ -26,7 +26,10 @@ For reimplementation, the contract is:
 | **F32 PrimitiveType code** | `0x0B` (BF16 = `0x10`, F16 = `0x0A`, F64 = `0x0C`, TUPLE = `0x0D`) |
 | **IR level** | HLO (post-ingestion, pre-Penguin), module-wide single sweep each |
 
-> **CORRECTION (B25-1) —** "downcast" in `NeuronIntMatmulDowncast` is a *direction-of-routing* term, not a precision term. The pass up-casts integer operands to **F32** (`ChangeElementType(…, 0x0B)`), computes the dot in F32, and converts back to the original integer type. There is no narrowing of an integer to a smaller integer anywhere in the pass.
+> **GOTCHA — "downcast" in `NeuronIntMatmulDowncast` is about routing, not precision.**
+> The pass up-casts integer operands to **F32** (`ChangeElementType(…, 0x0B)`), computes
+> the dot in F32, and converts the result back to the original integer type. Nothing is
+> ever narrowed to a smaller integer.
 
 ---
 
@@ -113,7 +116,7 @@ void add_auto_cast_none(HloInstruction *op):                // sub_1FAA1A0
     md = OpMetadata(orig_dot->metadata())                   // 0x1faa1be / 0x1faa1db
     md.append(" Downcast for int support ")                 // aDowncastForIntSupport @0x224b86
     op->metadata().CopyFrom(md)                             // 0x1faa28c
-    op->frontend_attributes()["auto_cast"] = "none"         // kAuto_cast @0x22c785 ; value "none" (STRONG)
+    op->frontend_attributes()["auto_cast"] = "none"         // kAuto_cast @0x22c785 ; value "none"
 ```
 
 > **QUIRK —** the `auto_cast=none` attribute is a *policy* lock, not a numeric guard. The downstream Tensorizer auto-cast machinery (see the CC-op legalize family, [§4.x](ccops-decompose-legalize.md)) keys off this frontend attribute; `none` pins these F32 ops so they are not re-promoted or re-demoted, which would otherwise undo the int→F32 routing the pass just performed.
@@ -208,7 +211,7 @@ UpcastAllToFP32::Run        0x1f74640 (1986 B, 112 bb)
         recurse on TUPLE element shapes
 ```
 
-### `Run` — shape replacement vs constant rebuild (STRONG)
+### `Run` — shape replacement vs constant rebuild
 
 `Run` sweeps the module; for each candidate it computes `newShape = UpcastShapeToFP32(shape)` and skips when `Shape::Equal(shape, newShape)` (already F32). For a **constant**, the literal is rebuilt: `literal()` → `LiteralBase::ConvertToShape(newShape)` → `CreateConstant` → `ReplaceAllUsesWith` → `RemoveInstruction`. For a **non-constant instruction**, the result shape is replaced in place (HloModuleConfig copied). The tuple-recurse reserve path is anchored by the `vector::reserve` string (rodata @ 0x24b6e2).
 
@@ -244,9 +247,9 @@ Shape UpcastShapeToFP32(const Shape &shape):                // sub_1F74020
 
 ### Data Tables — `CSWTCH_446`, the FP8/FP4 selector @ VA 0x410830 (CERTAIN bytes)
 
-Raw read from `_rodata.bin` (VA 0x410830 → dump offset 0x203ef0): `01 01 00 00 01 01 01 00 00 01 01 00 00 00 01 00`. Indexed by `et − 0x13`. A `1` byte means "convert this code to F32". The numeric code→F32 decision is CERTAIN; the FP8/FP4 *labels* are INFERRED from this XLA vintage's dtype ordering (the binary carries the name strings — f8E5M2, f8E4M3FN, f8E4M3B11FNUZ, f8E5M2FNUZ, f8E4M3FNUZ, f8E3M4, f8E8M0FNU, f4E2M1FN — but the per-index code↔name binding was not byte-pinned).
+Raw read from `_rodata.bin` (VA 0x410830 → dump offset 0x203ef0): `01 01 00 00 01 01 01 00 00 01 01 00 00 00 01 00`. Indexed by `et − 0x13`. A `1` byte means "convert this code to F32". The numeric code→F32 decision is read straight out of the table. The FP8/FP4 *labels* in the next column are not: they are assigned from this XLA vintage's dtype ordering. The binary does carry the name strings — f8E5M2, f8E4M3FN, f8E4M3B11FNUZ, f8E5M2FNUZ, f8E4M3FNUZ, f8E3M4, f8E8M0FNU, f4E2M1FN — but the per-index code↔name binding was never byte-pinned.
 
-| idx | et | byte | → F32? | dtype (INFERRED label) |
+| idx | et | byte | → F32? | dtype (reconstructed label) |
 |---:|---:|:---:|:---:|---|
 | 0 | 0x13 | 01 | yes | F8E5M2 |
 | 1 | 0x14 | 01 | yes | F8E4M3FN |
@@ -270,7 +273,11 @@ Raw read from `_rodata.bin` (VA 0x410830 → dump offset 0x203ef0): `01 01 00 00
 
 **Upcast to F32:** F16 (0xA), F64 (0xC), BF16 (0x10), and the FP8/FP4 floats {0x13, 0x14, 0x17, 0x18, 0x19, 0x1C, 0x1D, 0x20, 0x21}. **Left unchanged:** F32 (0xB) itself, all true integers (PRED..U64, S4=0x15, U4=0x16), tokens, and the non-float codes 0x1A/0x1B/0x1E/0x1F. **TUPLE (0xD):** recursed element-wise.
 
-> **CORRECTION (B25-2) —** `UpcastAllToFP32` is an **all-float → F32** pass, not an "integer → fp upcast" pass. Despite the generic name, true integers — including S4 (0x15) and U4 (0x16) — are explicitly left unchanged (CSWTCH byte 0). Only floating-point element types are lifted. A reimplementer who reads the name as "lift everything, including ints, into floats" will produce a pass that diverges on every integer tensor in the module.
+> **GOTCHA — `UpcastAllToFP32` lifts *floats* to F32, not everything.** The generic name
+> invites reading it as "lift all element types, integers included." It does not: true
+> integers, S4 (0x15) and U4 (0x16) among them, are explicitly left unchanged (CSWTCH byte
+> 0), and only floating-point element types are touched. A pass built on the broader
+> reading diverges on every integer tensor in the module.
 
 ---
 
@@ -285,7 +292,7 @@ Raw read from `_rodata.bin` (VA 0x410830 → dump offset 0x203ef0): `01 01 00 00
 | BatchNormTrainingUpcast | BNT operands (input/scale/offset) | BF16 (0x10) | F32 (0x0B) | opcode `kBatchNormTraining` (0x12) ∧ BF16 operand | CERTAIN |
 | BatchNormTrainingUpcast | each of 3 tuple results | F32 | BF16 (0x10) | re-narrow via GTE + Convert + Tuple | CERTAIN |
 | UpcastAllToFP32 | every value/constant shape | F16/F64/BF16 | F32 (0x0B) | element type is one of these | CERTAIN |
-| UpcastAllToFP32 | every value/constant shape | FP8/FP4 {0x13,0x14,0x17,0x18,0x19,0x1C,0x1D,0x20,0x21} | F32 (0x0B) | CSWTCH_446 / 0x20-0x21 special case | CERTAIN (codes) / INFERRED (labels) |
+| UpcastAllToFP32 | every value/constant shape | FP8/FP4 {0x13,0x14,0x17,0x18,0x19,0x1C,0x1D,0x20,0x21} | F32 (0x0B) | CSWTCH_446 / 0x20-0x21 special case | CERTAIN (codes) / MEDIUM (labels) |
 | UpcastAllToFP32 | F32, integers, tokens | (self) | (unchanged) | — | CERTAIN |
 | UpcastAllToFP32 | TUPLE (0xD) | per-element | recurse | — | CERTAIN |
 

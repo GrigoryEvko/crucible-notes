@@ -139,7 +139,7 @@ Read from the bare-class-name base references and import literals in each module
 | `Cayman(Sunda)` | `Cayman.so` bare `Sunda` count 1, `Tonga` count 0 | CERTAIN |
 | `CoreV4(Cayman)` | `CoreV4.so` bare `Cayman` count 1, `Sunda` count 0 | CERTAIN |
 
-CoreV4 inherits `Sunda` *transitively* via `Cayman` — a strict linear chain, not a diamond. (This refines an earlier reading that had `Cayman` and `CoreV4` both inheriting `Sunda` directly.)
+CoreV4 inherits `Sunda` *transitively* via `Cayman` — a strict linear chain, not a diamond. The zero counts in the table are what rule the diamond out: `CoreV4.so` never names `Sunda`, and `Cayman.so` never names `Tonga`.
 
 ### `register_target` — the version-keyed registration decorator
 
