@@ -114,7 +114,8 @@ A lookup miss throws `runtime_error "…op0/op1 <name> … is not supported yet.
 The TensorScalar family funnels into one templated loop core (per `nm`: `applyVecOperation<float>@0x225d20`, `<int>@0x225790`, `<unsigned long>@0x225ac0`). It applies **two** functors in series — `out = op1(op0(in, s0), s1)` — with a per-stage operand-order swap and a broadcast cursor for the scalars:
 
 ```c
-// applyVecOperation<T> @0x225d20<float> / 0x225790<int> / 0x225ac0<ulong> for (p in 0..npart)                          // outer = partitions (128 SBUF lanes)
+// applyVecOperation<T> @0x225d20<float> / 0x225790<int> / 0x225ac0<ulong>
+for (p in 0..npart)                          // outer = partitions (128 SBUF lanes)
   for (i in 0..free_per_part) {              // inner = free elements
     x = in[p][i];
     tmp      = (s0_ptr) ? (swap0 ? op0(*s0_ptr, x)   : op0(x, *s0_ptr))   : x;
@@ -224,7 +225,8 @@ for (i in scan_dim) {
 `TensorCopy(23)`, `GenericCopy(1)`, `AbstractCopy(3)`, `Load(19)`, `Save(22)` are **all one-line thunks** to `doCopy@0x1d2660` (each sidecar body is `return doCopy(this, inst);`). `doCopy` is the universal AP→AP copy:
 
 ```c
-// doCopy @0x1d2660 srcAP = getInOutPhysicalAP(I,0,0);   dstAP = getInOutPhysicalAP(I,0,1);   oob = 0;
+// doCopy @0x1d2660
+srcAP = getInOutPhysicalAP(I,0,0);   dstAP = getInOutPhysicalAP(I,0,1);   oob = 0;
 if (I.opcode==32 /*DMACopy*/ && isScalarDynamicOffsetDMA(I)
     && (!srcAP.isAccessInBound(0) || !dstAP.isAccessInBound(0))) {
     if (DMAInst.getOobIsErr())  NeuronAssertion("!DMAInst->getOobIsErr()");  // FATAL
@@ -262,7 +264,8 @@ The simulator does **not** branch on the `DGEType` enum (`InstDMA+0xF8`); `rg` f
 `visitInstStreamShuffle@0x1e1480 → doStreamShuffle@0x1e1090` permutes **whole partition rows** by a 32-entry byte mask, within 32-partition blocks:
 
 ```c
-// doStreamShuffle @0x1e1090 mask = StreamShuffle::getMaskEvalIfNeeded();   assert mask.size()==32;
+// doStreamShuffle @0x1e1090
+mask = StreamShuffle::getMaskEvalIfNeeded();   assert mask.size()==32;
 assert dstAP.dtype == srcAP.dtype;             // "StreamShuffle does not support cast"
 partBytes = elemBytes * NumElementsPerPartition;
 for (blockStart = 0; blockStart < numOutPartitions; blockStart += 32)
@@ -277,7 +280,8 @@ for (blockStart = 0; blockStart < numOutPartitions; blockStart += 32)
 `visitInstStreamTranspose@0x1e1490` (a **defining** body, not a thunk) is a 32×32 blocked partition⇄element transpose — the SBUF in-place tile transpose. Within each aligned 32×32 tile it swaps the low-5 bits of `p` (partition) with the low-5 bits of `e` (element), and the tile-block coordinates likewise:
 
 ```c
-// visitInstStreamTranspose @0x1e1490 assert dstAP.dtype == srcAP.dtype;             // "StreamTranspose does not support cast"
+// visitInstStreamTranspose @0x1e1490
+assert dstAP.dtype == srcAP.dtype;             // "StreamTranspose does not support cast"
 for (p in 0..inPart-1)
   for (e in 0..inElem-1) {
     eBlk = e & ~31; eLow = e & 31;             // 32-tile split of element index
@@ -294,7 +298,8 @@ for (p in 0..inPart-1)
 `visitInstIota@0x1efbd0 → doIota@0x1edda0` fills each output element with an **affine function of its `[W,Z,Y,X]` coordinates** (`doIota` dispatches on `inst+0x58`: `61`=Iota, `62`=AffineSelect):
 
 ```c
-// doIota @0x1edda0 base = getBaseEvalIfNeeded();                   // affine constant term
+// doIota @0x1edda0
+base = getBaseEvalIfNeeded();                   // affine constant term
 for (w in 0..num_W) for (y in 0..num_Y) for (z in 0..num_Z) for (x in 0..num_X)
     out[flat] = (int32)( base + step_W*w + step_Y*y + step_Z*z + step_X*x );
 ```
@@ -355,7 +360,8 @@ The `IndirectDim` enum (W0/Z1/Y2/X3 — see [axis enums](codegen-enum-crosswalk.
 All six kernels' offset lists converge on `Memory::doCopyIndirect@0x17a930` (source string `"Memory.cpp:doCopyIndirect"`). It is a **serial, in-order** loop. The `−1` sentinel is the *only* OOB action — skip; not clamp, not wrap-to-modulo, not error:
 
 ```c
-// Memory::doCopyIndirect @0x17a930 for (i in 0..count) {
+// Memory::doCopyIndirect @0x17a930
+for (i in 0..count) {
     v20 = idx[i];
     if (v20 == -1)  continue;                          // OOB / UNUSED → SKIP (only OOB action)
     if (apply_wrap)                                    // IndirectDim axis-rebase (NOT a bounds clamp)

@@ -15,7 +15,7 @@ This page is the byte-for-byte field map of every instruction the **DMA subsyste
 
 Cutting across all of them is **`assign64bitAddr`** (`@0x1260290`): the 8-byte `NEURON_ISA_TPB_PSEUDO_ADDR8` writer whose mode byte selects **16-bit physical** (static), **32-bit immediate** (DGE) or **40-bit offset-register** (DGE) addressing, and **`assembleDynamicInfo`** (`@0xf20230`): the codegen-time packager that turns a runtime offset into a symbolic `bir::DynamicAPINFO` (ties to [5.25 register-ALU materialization](../penguin/)).
 
-The bar for this page: a reader can **byte-encode any DMA instruction and its descriptor by hand, including dynamic addressing** — for each control byte its offset, width, semantic, value source, the assert/`*_STRUCT` string that *names* it, and the disassembly store-site that pins it. Every field row carries a confidence tag (CONFIRMED = exact store disassembled; STRONG = LUT/predicate/sibling cross-checked; INFERRED = zero-init or relative-offset implied, no direct store; SPECULATIVE). No field name is fabricated — every named wire field is either a `setupSyncWait/Update<…_STRUCT>` template string or an `instr.<field>` assert literal recovered from `.rodata`.
+The bar for this page: a reader can **byte-encode any DMA instruction and its descriptor by hand, including dynamic addressing** — for each control byte its offset, width, semantic, value source, the assert/`*_STRUCT` string that *names* it, and the disassembly store-site that pins it. Every field row carries a confidence tag: **CERTAIN** = the exact store is disassembled; **HIGH** = LUT-, predicate- or sibling-cross-checked; **MEDIUM** = implied by zero-init or a relative offset, with no direct store. No field name is fabricated — every named wire field is either a `setupSyncWait/Update<…_STRUCT>` template string or an `instr.<field>` assert literal recovered from `.rodata`.
 
 ## At a glance
 
@@ -57,7 +57,7 @@ Mode-byte modifiers (OR'd in): `| 0x04` = 2-physical-register DGE; `| 0x40` = mo
 1172123:  mov   BYTE [rsi+1], 0x10   ; inst_word_len = 16 dwords = 64 bytes
 ```
 
-So the 16-bit word at `bundle[0:2]` is little-endian `(0x10<<8) | opcode`: `0x10D4` (DIRECT2D), `0x10C1` (Trigger), `0x10CF`/`0x10C2` (queue ops). CONFIRMED — `setupHeader` disassembled; the `inst_word_len` constant store is hard-pinned across the entire TPB ISA ([2.1](instruction-bundle.md)).
+So the 16-bit word at `bundle[0:2]` is little-endian `(0x10<<8) | opcode`: `0x10D4` (DIRECT2D), `0x10C1` (Trigger), `0x10CF`/`0x10C2` (queue ops). `setupHeader` is disassembled and the `inst_word_len` constant store is hard-pinned across the entire TPB ISA ([2.1](instruction-bundle.md)).
 
 > **NOTE — there is no DMA opcode that *means* "dynamic".** Static-vs-DGE is resolved at **two** independent levels: the **address mode byte** inside `ADDR8` (16 physical = static; 32/40 = DGE) and the **descriptor opcode** (`0xD4` 2-D record vs `0xDA` bound/idx record). A DMA can be `0xD4` with a `0x20`-mode immediate ADDR8 (immediate-addressed but still a plain 2-D copy), so neither level alone classifies the instruction — see [The static-vs-DGE distinction](#the-static-vs-dge-distinction).
 
@@ -73,7 +73,7 @@ Every encoder runs the same cycle; the `CodeGenMode` at `this+0x270` (read as `*
 4. **Body.** the per-opcode field fills mapped below.
 5. **Emit.** `findBin(I)` → `fwrite(buf, 1, 0x40, bin)`; then census `++map<u32,u32>(this+480)[opcode]` and engine census via `I+0x90`.
 
-`CodeGenMode` arms: **1 = GENERATE_ISACODE** (fill + `fwrite`); **2 = RUN_ISA_CHECKS** (build the *byte-identical* bundle on a stack frame, feed the ISA checker via `vcall *vtbl[0]`, no `fwrite`); **0 = COLLECT_OPCODES** (insert the opcode into a `DenseMap<Instr*,set<u32>>(this+4)` census, emit nothing); else `reportError "Wrong CodeGenMode…"`. The field maps below are shared between modes 1 and 2; only the destination differs (the offsets are identical — INFERRED for mode 2, from identical field-writer calls / named strings / relative casts).
+`CodeGenMode` arms: **1 = GENERATE_ISACODE** (fill + `fwrite`); **2 = RUN_ISA_CHECKS** (build the *byte-identical* bundle on a stack frame, feed the ISA checker via `vcall *vtbl[0]`, no `fwrite`); **0 = COLLECT_OPCODES** (insert the opcode into a `DenseMap<Instr*,set<u32>>(this+4)` census, emit nothing); else `reportError "Wrong CodeGenMode…"`. The field maps below are shared between modes 1 and 2; only the destination differs (the offsets are identical — [INFERRED] for mode 2, from identical field-writer calls, named strings and relative casts).
 
 ---
 
@@ -95,38 +95,38 @@ Taken when **not** vector-indirect and **not** reduce-DGE (the L1515 gate: `!HIB
 
 | Off | W | Field | `instr.<name>` / source | Store / cast | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xD4` | `setupHeader` (src byte) | `byte0` (`movb $0xd4 @1277a62`) | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | `setupHeader` const | hdr | CONFIRMED |
-| `+0x02` | 2 | format/reserved = 0 | `setupHeader` | hdr | CONFIRMED |
-| `+0x04` | 1 | SyncWait mode | `setupSyncWait<…DIRECT2D_STRUCT>` (`sub_122F700`) | sync | CONFIRMED |
-| `+0x05` | 1 | `events.wait_idx` | `SyncRef::getId` | sync | CONFIRMED |
-| `+0x06` | 1 | SyncUpdate mode | `setupSyncUpdate<…DIRECT2D_STRUCT>` | sync | CONFIRMED |
-| `+0x07` | 1 | `events.update_idx` | `SyncRef::getId` | sync | CONFIRMED |
-| `+0x08` | 4 | sync wait/update value | `Wait/Update::getValue` | `+8` dword | CONFIRMED |
-| `+0x0C` | 1 | **QoS bits[0:2] + flags** | `encodeISAOrRuntimeDMAQoS` / raw `@+0xF0` | `(qos&7)\|(d[12]&0xF8)` | CONFIRMED |
-| `+0x0D` | 1 | `instr.semaphore` | `SyncRef::getId` (`sub_12173A0`) | `byte +13` | CONFIRMED |
-| `+0x0E` | 1 | `instr.sem_increment` | `Update::getValue` | `byte +14` | CONFIRMED |
-| `+0x0F` | 1 | **sync_command_byte** | `3` / `2·BYTE1(syncCmd)` / `1` (transpose) | `mov %al,0xf(%r14) @1277c2f` | CONFIRMED |
-| `+0x10` | 8 | **SRC `ADDR8`** | `assign64bitAddr(srcAP, …, 1)` | [ADDR8 helper](#assign64bitaddr--the-8-byte-addr8-address-base) | CONFIRMED |
-| `+0x18` | 4 | `instr.src_step_elem[0]` | `getAPStepOnHW(src, dim-2)` | bundle `+0x18` | CONFIRMED |
-| `+0x1C` | 4 | `instr.src_step_elem[1]` | `getAPStepOnHW(src, dim-3)` | bundle `+0x1C` | CONFIRMED |
-| `+0x20` | 2 | `instr.src_num_elem[0]` | src `APPair[dim-2].num` | bundle `+0x20` | CONFIRMED |
-| `+0x22` | 2 | `instr.src_num_elem[1]` | src `APPair[dim-3].num` | bundle `+0x22` | CONFIRMED |
-| `+0x24` | 2 | `instr.src_elem_size` | `dtype_bytes(src)×APPair[last].num` (`0x10000→0`) | bundle `+0x24` | CONFIRMED |
-| `+0x26` | 1 | **src offset-reg id + flags** | `getRegId&0x3F \| 0x80`; bit6 = mode | bundle `+0x26` | CONFIRMED |
-| `+0x27` | 1 | **dst offset-reg id + flags** | `getRegId&0x3F \| 0x80`; bit6 mode | bundle `+0x27` | CONFIRMED |
-| `+0x28` | 8 | **DST `ADDR8`** | `assign64bitAddr(dstAP, MoveShape, 1)` | bundle `+0x28` | CONFIRMED |
-| `+0x30` | 4 | `instr.dst_step_elem[0]` | `getAPStepOnHW(dst, dim-2)` | bundle `+0x30` | CONFIRMED |
-| `+0x34` | 4 | `instr.dst_step_elem[1]` | `getAPStepOnHW(dst, dim-3)` | bundle `+0x34` | CONFIRMED |
-| `+0x38` | 2 | `instr.dst_num_elem[0]` | dst `APPair[dim-2].num` | bundle `+0x38` | CONFIRMED |
-| `+0x3A` | 2 | `instr.dst_num_elem[1]` | dst `APPair[dim-3].num` | bundle `+0x3A` | CONFIRMED |
-| `+0x3C` | 2 | `instr.dst_elem_size` | `dtype_bytes(dst)×APPair[last].num` (`0x10000→0`) | bundle `+0x3C` | CONFIRMED |
-| `+0x3E` | 1 | **SRC dtype** (ISA wire-tag) | `sub_120E650(src.Dtype@+48)` (`byte_1DF5760`) | bundle `+0x3E` | CONFIRMED |
-| `+0x3F` | 1 | **DST dtype** (ISA wire-tag) | `sub_120E650(dst.Dtype@+12)` | bundle `+0x3F` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xD4` | `setupHeader` (src byte) | `byte0` (`movb $0xd4 @1277a62`) | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | `setupHeader` const | hdr | CERTAIN |
+| `+0x02` | 2 | format/reserved = 0 | `setupHeader` | hdr | CERTAIN |
+| `+0x04` | 1 | SyncWait mode | `setupSyncWait<…DIRECT2D_STRUCT>` (`sub_122F700`) | sync | CERTAIN |
+| `+0x05` | 1 | `events.wait_idx` | `SyncRef::getId` | sync | CERTAIN |
+| `+0x06` | 1 | SyncUpdate mode | `setupSyncUpdate<…DIRECT2D_STRUCT>` | sync | CERTAIN |
+| `+0x07` | 1 | `events.update_idx` | `SyncRef::getId` | sync | CERTAIN |
+| `+0x08` | 4 | sync wait/update value | `Wait/Update::getValue` | `+8` dword | CERTAIN |
+| `+0x0C` | 1 | **QoS bits[0:2] + flags** | `encodeISAOrRuntimeDMAQoS` / raw `@+0xF0` | `(qos&7)\|(d[12]&0xF8)` | CERTAIN |
+| `+0x0D` | 1 | `instr.semaphore` | `SyncRef::getId` (`sub_12173A0`) | `byte +13` | CERTAIN |
+| `+0x0E` | 1 | `instr.sem_increment` | `Update::getValue` | `byte +14` | CERTAIN |
+| `+0x0F` | 1 | **sync_command_byte** | `3` / `2·BYTE1(syncCmd)` / `1` (transpose) | `mov %al,0xf(%r14) @1277c2f` | CERTAIN |
+| `+0x10` | 8 | **SRC `ADDR8`** | `assign64bitAddr(srcAP, …, 1)` | [ADDR8 helper](#assign64bitaddr--the-8-byte-addr8-address-base) | CERTAIN |
+| `+0x18` | 4 | `instr.src_step_elem[0]` | `getAPStepOnHW(src, dim-2)` | bundle `+0x18` | CERTAIN |
+| `+0x1C` | 4 | `instr.src_step_elem[1]` | `getAPStepOnHW(src, dim-3)` | bundle `+0x1C` | CERTAIN |
+| `+0x20` | 2 | `instr.src_num_elem[0]` | src `APPair[dim-2].num` | bundle `+0x20` | CERTAIN |
+| `+0x22` | 2 | `instr.src_num_elem[1]` | src `APPair[dim-3].num` | bundle `+0x22` | CERTAIN |
+| `+0x24` | 2 | `instr.src_elem_size` | `dtype_bytes(src)×APPair[last].num` (`0x10000→0`) | bundle `+0x24` | CERTAIN |
+| `+0x26` | 1 | **src offset-reg id + flags** | `getRegId&0x3F \| 0x80`; bit6 = mode | bundle `+0x26` | CERTAIN |
+| `+0x27` | 1 | **dst offset-reg id + flags** | `getRegId&0x3F \| 0x80`; bit6 mode | bundle `+0x27` | CERTAIN |
+| `+0x28` | 8 | **DST `ADDR8`** | `assign64bitAddr(dstAP, MoveShape, 1)` | bundle `+0x28` | CERTAIN |
+| `+0x30` | 4 | `instr.dst_step_elem[0]` | `getAPStepOnHW(dst, dim-2)` | bundle `+0x30` | CERTAIN |
+| `+0x34` | 4 | `instr.dst_step_elem[1]` | `getAPStepOnHW(dst, dim-3)` | bundle `+0x34` | CERTAIN |
+| `+0x38` | 2 | `instr.dst_num_elem[0]` | dst `APPair[dim-2].num` | bundle `+0x38` | CERTAIN |
+| `+0x3A` | 2 | `instr.dst_num_elem[1]` | dst `APPair[dim-3].num` | bundle `+0x3A` | CERTAIN |
+| `+0x3C` | 2 | `instr.dst_elem_size` | `dtype_bytes(dst)×APPair[last].num` (`0x10000→0`) | bundle `+0x3C` | CERTAIN |
+| `+0x3E` | 1 | **SRC dtype** (ISA wire-tag) | `sub_120E650(src.Dtype@+48)` (`byte_1DF5760`) | bundle `+0x3E` | CERTAIN |
+| `+0x3F` | 1 | **DST dtype** (ISA wire-tag) | `sub_120E650(dst.Dtype@+12)` | bundle `+0x3F` | CERTAIN |
 
-> **The element-span rule.** `*_elem_size = dtype_bytes × num_elements_of_last_dim`. If that product equals `0x10000` (64Ki), it is stored as `0`: the ISA encodes a full 64K-element span as zero. `getAPStepOnHW` (`DescGenHelper @0x11e8ff0`) = `APPair.step × dtype_bytes`, both keyed off the dtype-size LUT `qword_1DF59E0` (`.rodata`; byte `{1,1,2,1,1,1,1,1,4,4,2,2,…}` — disassembled at `1277c66: lea 0x1df59e0(%rip)`). CONFIRMED.
+> **The element-span rule.** `*_elem_size = dtype_bytes × num_elements_of_last_dim`. If that product equals `0x10000` (64Ki), it is stored as `0`: the ISA encodes a full 64K-element span as zero. `getAPStepOnHW` (`DescGenHelper @0x11e8ff0`) = `APPair.step × dtype_bytes`, both keyed off the dtype-size LUT `qword_1DF59E0` (`.rodata`; byte `{1,1,2,1,1,1,1,1,4,4,2,2,…}` — disassembled at `1277c66: lea 0x1df59e0(%rip)`).
 
-> **QoS is three bits.** `+0x0C[0:2]` carries the DMA QoS class. `supportsDMAQoSOnISA(arch)` gates it: `arch<=49` → `encodeISAOrRuntimeDMAQoS(qosClass,I)` (ISA class-1 encoding); `core_v5>=50` → raw `*(u32)(*(I+30q)+0xF0)`. The store is `descriptor[12] = (qos&7) | (descriptor[12]&0xF8)` — disassembled at `1277ad0: and $0x7,%edx` / `1277ad3: and $0xfffffff8,%eax`. Inferentia (arch 10) and Sunda (arch 20) emit no QoS. CONFIRMED.
+> **QoS is three bits.** `+0x0C[0:2]` carries the DMA QoS class. `supportsDMAQoSOnISA(arch)` gates it: `arch<=49` → `encodeISAOrRuntimeDMAQoS(qosClass,I)` (ISA class-1 encoding); `core_v5>=50` → raw `*(u32)(*(I+30q)+0xF0)`. The store is `descriptor[12] = (qos&7) | (descriptor[12]&0xF8)` — disassembled at `1277ad0: and $0x7,%edx` / `1277ad3: and $0xfffffff8,%eax`. Inferentia (arch 10) and Sunda (arch 20) emit no QoS.
 
 ### Dynamic / DGE / indirect arm — descriptor op `0xDA` = 218
 
@@ -136,8 +136,8 @@ Re-tagged (`1277586: movl $0xda,…`) when the copy is vector-indirect or HW-DGE
 
 | Off | W | Field | Source | Tag |
 |---|---|---|---|---|
-| `+0x04` | 4 | `instr.src_idx_start_addr.addr_immediate` | assignAddr(src idx) | STRONG |
-| `+0x08` | 4 | `instr.dst_idx_start_addr.addr_immediate` | assignAddr(dst idx) | STRONG |
+| `+0x04` | 4 | `instr.src_idx_start_addr.addr_immediate` | assignAddr(src idx) | HIGH |
+| `+0x08` | 4 | `instr.dst_idx_start_addr.addr_immediate` | assignAddr(dst idx) | HIGH |
 
 Asserts: *"Vector-dynamic-offsets AP must exist"*, *"…location must be SB"*, *"Must have Indirect direction!"*.
 
@@ -145,16 +145,18 @@ Asserts: *"Vector-dynamic-offsets AP must exist"*, *"…location must be SB"*, *
 
 | Off | W | Field | Source | Tag |
 |---|---|---|---|---|
-| `+0x0C` | 4 | `instr.src_bound_size_bytes` | `**(memloc+264)×**(memloc+256)` | STRONG |
-| `+0x38` | 4 | `instr.src_bound_size_bytes_upper` | (high half) | STRONG |
-| `+0x10` | 4 | `instr.dst_bound_size_bytes` | dst-side product | STRONG |
-| `+0x3C` | 4 | `instr.dst_bound_size_bytes_upper` | (high half) | STRONG |
+| `+0x0C` | 4 | `instr.src_bound_size_bytes` | `**(memloc+264)×**(memloc+256)` | HIGH |
+| `+0x38` | 4 | `instr.src_bound_size_bytes_upper` | (high half) | HIGH |
+| `+0x10` | 4 | `instr.dst_bound_size_bytes` | dst-side product | HIGH |
+| `+0x3C` | 4 | `instr.dst_bound_size_bytes_upper` | (high half) | HIGH |
 
-> **CORRECTION — DGE-arm offsets are resolved hex, not decompiler locals.** Earlier these four `src/dst_bound_size_bytes(_upper)` rows and the two `src/dst_idx_start_addr` rows carried raw Hex-Rays expressions (`(_DWORD)v104+N`) in the offset column. `v104` is the `_DWORD*` re-typing of the same 64-byte bundle base, so `+N` resolves to byte `+0x4·N`: idx-start `+1/+2` → `+0x04/+0x08`; bound-size low `+3/+4` → `+0x0C/+0x10`; bound-size upper `+14/+15` → `+0x38/+0x3C`. The low/upper split lands the two 64-bit bounds as contiguous low halves (`+0x0C`/`+0x10`) and contiguous upper halves (`+0x38`/`+0x3C`) in the bundle tail. Tagged STRONG: the offsets are derived from the consistent `_DWORD*` scaling and the self-consistent lo/hi pairing, not from a re-disassembled store (the `generateDynamicDMA` body is not in the disassembled set this pass).
+> **GOTCHA — the DGE-arm offsets are `_DWORD*` indices in the decompile, not byte offsets.** Hex-Rays renders these six stores against `v104`, which is the `_DWORD*` re-typing of the same 64-byte bundle base, so an index `+N` is byte `+0x4·N`. Resolved: idx-start `+1`/`+2` → `+0x04`/`+0x08`; bound-size low `+3`/`+4` → `+0x0C`/`+0x10`; bound-size upper `+14`/`+15` → `+0x38`/`+0x3C`. Taking those indices as byte offsets collapses all six into the header.
 
-**(C) CCE / reduce compute-op byte** — `desc+3 = AluOpType2DGEComputeOp(I, I+0x178 reduce)` (`@0x120b9e0`): `0` (none) or `1` (add). Gated by `isDstReduceDGE(I,dstPAP)` (libBIR `0x312240`) when `IT==32 && arch<=49`. HARD-PINNED None/Add — `arch>=50` FATALs *"CoreV5 cannot support DGE with compute op yet"*. CONFIRMED.
+The low/upper split lands the two 64-bit bounds as contiguous low halves (`+0x0C`/`+0x10`) and contiguous upper halves (`+0x38`/`+0x3C`) in the bundle tail. These rows are HIGH: the offsets follow from the consistent `_DWORD*` scaling plus the self-consistent lo/hi pairing, not from a re-disassembled store — the `generateDynamicDMA` body is not in the disassembled set here.
 
-> **Descriptor-mode folding.** The four BIR descriptor sub-opcodes — COPY(69), REPLICATE(72), TRANSPOSE(71), CCE/reduce(70) — are **not** separately encoded at codegen; they fold into the single DIRECT2D/`0xDA` record via the `sync_command` byte (`+0x0F`: COPY=3, TRANSPOSE=1) and the compute-op byte. TRANSPOSE (IT 32 && `I+336==1`) additionally calls `generateMoveShape` (op `0xB2`) twice for the shape-register descriptor; asserts *"Transpose with DynamicAP only on Pool"*, *"DGE transpose must have 4D AP"*. CONFIRMED.
+**(C) CCE / reduce compute-op byte** — `desc+3 = AluOpType2DGEComputeOp(I, I+0x178 reduce)` (`@0x120b9e0`): `0` (none) or `1` (add). Gated by `isDstReduceDGE(I,dstPAP)` (libBIR `0x312240`) when `IT==32 && arch<=49`. HARD-PINNED None/Add — `arch>=50` FATALs *"CoreV5 cannot support DGE with compute op yet"*.
+
+> **Descriptor-mode folding.** The four BIR descriptor sub-opcodes — COPY(69), REPLICATE(72), TRANSPOSE(71), CCE/reduce(70) — are **not** separately encoded at codegen; they fold into the single DIRECT2D/`0xDA` record via the `sync_command` byte (`+0x0F`: COPY=3, TRANSPOSE=1) and the compute-op byte. TRANSPOSE (IT 32 && `I+336==1`) additionally calls `generateMoveShape` (op `0xB2`) twice for the shape-register descriptor; asserts *"Transpose with DynamicAP only on Pool"*, *"DGE transpose must have 4D AP"*.
 
 Pre-asserts (`NeuronAssertion`): *"must have assigned DMA queue already"*, *"must be dynamic DMA"*, *"DGE's number of args/outputs is wrong"*, *"DGE in/out dimensions must match"*, *"DGE fastest moving dim must be continuous"*, *"DMA instruction must read and write same number of elements"*.
 
@@ -168,16 +170,16 @@ The fire-only trigger. Wire struct `NEURON_ISA_TPB_PSEUDO_DMA_TRIGGER_STRUCT`. C
 
 | Off | W | Field | Source | Store / cast | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xC1` | `setupHeader` | `byte0` (`@122997d`) | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | `setupHeader` | hdr | CONFIRMED |
-| `+0x02` | 2 | format/reserved = 0 | `setupHeader` | hdr | CONFIRMED |
-| `+0x04` | 1 | SyncWait mode | `setupSyncWait<…TRIGGER_STRUCT>` (`sub_1229370`) | sync | CONFIRMED |
-| `+0x05` | 1 | `events.wait_idx` | `SyncRef::getId` | sync | CONFIRMED |
-| `+0x06` | 1 | SyncUpdate mode | `setupSyncUpdate<…TRIGGER_STRUCT>` (`sub_12290B0`) | sync | CONFIRMED |
-| `+0x07` | 1 | `events.update_idx` | `SyncRef::getId` | sync | CONFIRMED |
-| `+0x08` | 4 | sync wait/update value | `Wait/Update::getValue` | `+8` dword | CONFIRMED |
-| `+0x0C` | 31 | **DMA QUEUE NAME** (asciiz) | `strncpy(bundle+0x0C, queueBB.name, 0x1F)` | bundle `+0x0C` | CONFIRMED |
-| `+0x30` | 4 | **DMA BLOCK ID** | `InstDMABlock::getBlockId(getDmaBlock(0))` | bundle `+0x30` (`@1229975`) | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xC1` | `setupHeader` | `byte0` (`@122997d`) | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | `setupHeader` | hdr | CERTAIN |
+| `+0x02` | 2 | format/reserved = 0 | `setupHeader` | hdr | CERTAIN |
+| `+0x04` | 1 | SyncWait mode | `setupSyncWait<…TRIGGER_STRUCT>` (`sub_1229370`) | sync | CERTAIN |
+| `+0x05` | 1 | `events.wait_idx` | `SyncRef::getId` | sync | CERTAIN |
+| `+0x06` | 1 | SyncUpdate mode | `setupSyncUpdate<…TRIGGER_STRUCT>` (`sub_12290B0`) | sync | CERTAIN |
+| `+0x07` | 1 | `events.update_idx` | `SyncRef::getId` | sync | CERTAIN |
+| `+0x08` | 4 | sync wait/update value | `Wait/Update::getValue` | `+8` dword | CERTAIN |
+| `+0x0C` | 31 | **DMA QUEUE NAME** (asciiz) | `strncpy(bundle+0x0C, queueBB.name, 0x1F)` | bundle `+0x0C` | CERTAIN |
+| `+0x30` | 4 | **DMA BLOCK ID** | `InstDMABlock::getBlockId(getDmaBlock(0))` | bundle `+0x30` (`@1229975`) | CERTAIN |
 
 Asserts: *"queName.length() < maxSize"* (maxSize=32, the 31-byte slot + NUL), *"DmaTrigger Instr: bad queue name"*, *"id < DmaBlocks.size()"*.
 
@@ -202,14 +204,14 @@ The flag is **set**. Allocates a branch-target id and asserts *"Indirect DMA bou
 
 | Off | W | Field | Source | Tag |
 |---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xD6` | `setupHeader` | CONFIRMED |
-| `+0x18` | 4 | bound-result reg | `vcall(*(this+76)+32)(ptr)` | STRONG |
-| `+0x20` | 8 | bound size bytes | `**(v6.AP+56 +264) × **(+256)` | CONFIRMED |
-| `+0x28` | 1 | const tag = `17` (`0x11`) | constant | CONFIRMED |
-| `+0x29` | 1 | src dtype `\| 0x30` | `sub_120E650(v4.Dtype@+48)&0xF \| 0x30` | CONFIRMED |
-| `+0x2A` | 2 | const = `1` | constant | CONFIRMED |
-| `+0x2E` | 1 | idx-AP meta | `*(v4.AP+80 +8)` | STRONG |
-| `+0x30` | 4 | branch-label id | branch target id `v73` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xD6` | `setupHeader` | CERTAIN |
+| `+0x18` | 4 | bound-result reg | `vcall(*(this+76)+32)(ptr)` | HIGH |
+| `+0x20` | 8 | bound size bytes | `**(v6.AP+56 +264) × **(+256)` | CERTAIN |
+| `+0x28` | 1 | const tag = `17` (`0x11`) | constant | CERTAIN |
+| `+0x29` | 1 | src dtype `\| 0x30` | `sub_120E650(v4.Dtype@+48)&0xF \| 0x30` | CERTAIN |
+| `+0x2A` | 2 | const = `1` | constant | CERTAIN |
+| `+0x2E` | 1 | idx-AP meta | `*(v4.AP+80 +8)` | HIGH |
+| `+0x30` | 4 | branch-label id | branch target id `v73` | CERTAIN |
 
 Plus two `assignAccess<TENSOR2D>` AP slots in the descriptor body. The Pool-engine bound-loop label is emitted after `fwrite`.
 
@@ -219,23 +221,23 @@ The dominant path; flag **clear**. Opcode byte `0xC4` pinned at `12694b8: movl $
 
 | Off | W | Field (named) | Source | Tag |
 |---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xC4` | `setupHeader` | CONFIRMED |
-| `+0x04..+0x0B` | — | sync header (mode/idx/value) | `sub_12301E0` | STRONG |
-| `+0x0C` | 4 | `instr.indirect_start_offset` | assignAddr(idx AP `v4`, `sub_1250E50`) | CONFIRMED |
-| `+0x10` | 4 | const = `1` (addr-mode/valid) | constant | CONFIRMED |
-| `+0x14` | 4 | engine-config dword | `*(*(this+14)+40)+4` (arch tile stride) | STRONG |
-| `+0x18` | 4 | `instr.indirect_num_elems[0]` | `idxAP[0].num` | CONFIRMED |
-| `+0x1C` | 4 | `instr.indirect_num_elems[1]` | `idxAP[1].num` | CONFIRMED |
-| `+0x20` | 4 | `instr.direct_start_offset` | assignAddr(data AP `v7`) | CONFIRMED |
-| `+0x24` | 4 | `instr.direct_step_elems[0]` | `dtype_bytes(v7)×stride` (`sub_124A9D0`) | CONFIRMED |
-| `+0x28` | 4 | engine-config dword | `*(*(this+14)+40)+4` | STRONG |
-| `+0x2C` | 4 | `instr.direct_num_elems[0]` | `dataAP[0].num` | CONFIRMED |
-| `+0x30` | 4 | `instr.direct_num_elems[1]` | `dataAP[1].num` | CONFIRMED |
-| `+0x34` | 4 | `instr.direct_elem_size` | `dtype_bytes(v7)×getNumEltsPerPart` | CONFIRMED |
-| `+0x38` | 2 | reserved = 0 | constant | CONFIRMED |
-| `+0x3A` | 2 | `instr.semaphore_wait_value` | `sub_12055F0(I)` low word | CONFIRMED |
-| `+0x3C` | 1 | **direction = `isLoad ^ 1`** | `0`=load, `1`=save | CONFIRMED |
-| `+0x3E` | 2 | `instr.semaphore_wait_value_hi` | `sub_12055F0(I)` high word | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xC4` | `setupHeader` | CERTAIN |
+| `+0x04..+0x0B` | — | sync header (mode/idx/value) | `sub_12301E0` | HIGH |
+| `+0x0C` | 4 | `instr.indirect_start_offset` | assignAddr(idx AP `v4`, `sub_1250E50`) | CERTAIN |
+| `+0x10` | 4 | const = `1` (addr-mode/valid) | constant | CERTAIN |
+| `+0x14` | 4 | engine-config dword | `*(*(this+14)+40)+4` (arch tile stride) | HIGH |
+| `+0x18` | 4 | `instr.indirect_num_elems[0]` | `idxAP[0].num` | CERTAIN |
+| `+0x1C` | 4 | `instr.indirect_num_elems[1]` | `idxAP[1].num` | CERTAIN |
+| `+0x20` | 4 | `instr.direct_start_offset` | assignAddr(data AP `v7`) | CERTAIN |
+| `+0x24` | 4 | `instr.direct_step_elems[0]` | `dtype_bytes(v7)×stride` (`sub_124A9D0`) | CERTAIN |
+| `+0x28` | 4 | engine-config dword | `*(*(this+14)+40)+4` | HIGH |
+| `+0x2C` | 4 | `instr.direct_num_elems[0]` | `dataAP[0].num` | CERTAIN |
+| `+0x30` | 4 | `instr.direct_num_elems[1]` | `dataAP[1].num` | CERTAIN |
+| `+0x34` | 4 | `instr.direct_elem_size` | `dtype_bytes(v7)×getNumEltsPerPart` | CERTAIN |
+| `+0x38` | 2 | reserved = 0 | constant | CERTAIN |
+| `+0x3A` | 2 | `instr.semaphore_wait_value` | `sub_12055F0(I)` low word | CERTAIN |
+| `+0x3C` | 1 | **direction = `isLoad ^ 1`** | `0`=load, `1`=save | CERTAIN |
+| `+0x3E` | 2 | `instr.semaphore_wait_value_hi` | `sub_12055F0(I)` high word | CERTAIN |
 
 > **Direction is the inverse of the `isLoad` bool.** `+0x3C = isLoad ^ 1`: a LOAD (gather, `edx=1`) writes `0`; a SAVE (scatter, `edx=0`) writes `1`. The `semaphore_wait_value(+hi)` is the 32-/64-bit completion the trigger semaphore must reach; if the hi word is non-zero the module gets a *"64-bit sem wait value"* feature attr. `indirect_*` = the index AP (one address per partition, 2-D parts×1); `direct_*` = the data AP (2-D parts×elems).
 
@@ -247,15 +249,15 @@ The embedding-update scatter: per index, accumulate the update vector into the e
 
 | Off | W | Field (named) | Source | Tag |
 |---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xCA` | `setupHeader` | CONFIRMED |
-| `+0x04..+0x0B` | — | sync header | `sub_122FE40` | STRONG |
-| `+0x0C` | 1 | index dtype (wire-tag) | `sub_120E650(arg1.Dtype@+48)` (`byte_1DF5760`) | CONFIRMED |
-| `+0x2C` | 4 | `instr.embedding_table_base_addr` | assignAddr(arg2 scratch) | CONFIRMED |
-| `+0x30` | 2 | `instr.embed_entry_num_elements` | arg1 last-APPair step×num | CONFIRMED |
-| `+0x32` | 2 | embed entry byte-size (low) | `dtype_bytes(arg1)×*(I+0x150)` | CONFIRMED |
-| `+0x34` | 2 | `instr.sequence_length` | `*(I+0x128)` (u16) | CONFIRMED |
-| `+0x38` | 4 | `…table_num_entries.addr_immediate` | `NumEltsPerPart×dtype×row` (bound-check only) | CONFIRMED |
-| `+0x3C` | 2 | embed entry byte-size (high) | `HIWORD(v52)` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xCA` | `setupHeader` | CERTAIN |
+| `+0x04..+0x0B` | — | sync header | `sub_122FE40` | HIGH |
+| `+0x0C` | 1 | index dtype (wire-tag) | `sub_120E650(arg1.Dtype@+48)` (`byte_1DF5760`) | CERTAIN |
+| `+0x2C` | 4 | `instr.embedding_table_base_addr` | assignAddr(arg2 scratch) | CERTAIN |
+| `+0x30` | 2 | `instr.embed_entry_num_elements` | arg1 last-APPair step×num | CERTAIN |
+| `+0x32` | 2 | embed entry byte-size (low) | `dtype_bytes(arg1)×*(I+0x150)` | CERTAIN |
+| `+0x34` | 2 | `instr.sequence_length` | `*(I+0x128)` (u16) | CERTAIN |
+| `+0x38` | 4 | `…table_num_entries.addr_immediate` | `NumEltsPerPart×dtype×row` (bound-check only) | CERTAIN |
+| `+0x3C` | 2 | embed entry byte-size (high) | `HIWORD(v52)` | CERTAIN |
 
 Plus `assignAccess<TENSOR1D>` (index) / `<TENSOR2D>` (data) / `<TENSOR1D>` (table) AP slots. Assert: *"IndirectSaveAccumulate scratch space address must be 64-byte aligned"*. If the entry byte-size `v52 > 0xFFFF` → module attr *"embedding entry too large for 16-bit field"*. `embed_entry_num_elements` = row width; `sequence_length` = number of indices.
 
@@ -273,11 +275,11 @@ Wire struct `NEURON_ISA_TPB_PSEUDO_DMA_SWAP_QUEUE_SET_STRUCT`. Sets a module fea
 
 | Off | W | Field | Source | Store | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xCF` | `setupHeader` | `@12644b9` | CONFIRMED |
-| `+0x04..+0x0B` | — | sync header | `setupSyncWait/Update<…SWAP_QUEUE_SET_STRUCT>` | sync | CONFIRMED |
-| `+0x0C` | 31 | DMA QUEUE NAME (asciiz) | `strncpy(bundle+12, queue->name@+0x58, 0x1F)` | — | CONFIRMED |
-| `+0x3B` | 1 | **queue-instance flag** | `*(I+0x100)` | `mov %al,0x3b(%r14) @1264535` | CONFIRMED |
-| `+0x3C` | 4 | **sub-id / instance = `1`** (swap marker) | constant 1 | `movl $0x1,0x3c(%r14) @126452d` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xCF` | `setupHeader` | `@12644b9` | CERTAIN |
+| `+0x04..+0x0B` | — | sync header | `setupSyncWait/Update<…SWAP_QUEUE_SET_STRUCT>` | sync | CERTAIN |
+| `+0x0C` | 31 | DMA QUEUE NAME (asciiz) | `strncpy(bundle+12, queue->name@+0x58, 0x1F)` | — | CERTAIN |
+| `+0x3B` | 1 | **queue-instance flag** | `*(I+0x100)` | `mov %al,0x3b(%r14) @1264535` | CERTAIN |
+| `+0x3C` | 4 | **sub-id / instance = `1`** (swap marker) | constant 1 | `movl $0x1,0x3c(%r14) @126452d` | CERTAIN |
 
 ### ResetQueueInstance (op `0xC2` = 194) `@0x1264830`
 
@@ -287,9 +289,9 @@ Wire struct `NEURON_ISA_TPB_PSEUDO_DMA_REARM_STRUCT`. The bare "re-arm this queu
 
 | Off | W | Field | Source | Tag |
 |---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xC2` | `setupHeader` (`@1264db5`) | CONFIRMED |
-| `+0x04..+0x0B` | — | sync header | `setupSyncWait/Update<…REARM_STRUCT>` | CONFIRMED |
-| `+0x0C` | 31 | DMA QUEUE NAME (asciiz) | `strncpy(bundle+12, queue->name@+0x58, 0x1F)` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xC2` | `setupHeader` (`@1264db5`) | CERTAIN |
+| `+0x04..+0x0B` | — | sync header | `setupSyncWait/Update<…REARM_STRUCT>` | CERTAIN |
+| `+0x0C` | 31 | DMA QUEUE NAME (asciiz) | `strncpy(bundle+12, queue->name@+0x58, 0x1F)` | CERTAIN |
 
 ---
 
@@ -297,9 +299,9 @@ Wire struct `NEURON_ISA_TPB_PSEUDO_DMA_REARM_STRUCT`. The bare "re-arm this queu
 
 **`visitInstIndirectCopy` (op `0xE7` = 231) `@0x1275c40`** — the TRN1 prototype indirect. Args: `arg0`=data AP, `arg1`=index AP, `out0`=dst AP. Assert: *"INDIRECT_COPY is a prototype instruction of Tensor Indirect on TRN1, it must not have TensorIndirect AP. On TRN3+, use COPY with TensorIndirect AP instead."*
 
-> **The full `0xE7` field map lives on the DVE datamove page.** Although `IndirectCopy` is reached via this DMA chapter, its byte-for-byte wire bundle (`+0x0C` `index_addr.addr_immediate`, `+0x0F` bit-5 indirect marker, `+0x10` `data_addr.addr_immediate`, `+0x14` num_elem, `+0x20`/`+0x21` in/out dtype, `+0x22` active_channels, `+0x23` `src_num_elem_per_idx`, `+0x26` `src_buffer_size`, `+0x2C` dst `TENSOR4D` AP) is fully transcribed and CONFIRMED — with every store-site disassembled — in [2.17 DVE datamove encoding](dve-datamove-encoding.md) (§ IndirectCopy). It is not duplicated here; that page is the field-map authority for `0xE7`. (Wire struct `S4D4_IC`; the embedded `{index_addr, data_addr, num_elem}` descriptor with its bit-29/`0x20` marker is the same indirect-descriptor contract as [2.7](indirect-descriptors.md).)
+> **The full `0xE7` field map lives on the DVE datamove page.** Although `IndirectCopy` is reached via this DMA chapter, its byte-for-byte wire bundle (`+0x0C` `index_addr.addr_immediate`, `+0x0F` bit-5 indirect marker, `+0x10` `data_addr.addr_immediate`, `+0x14` num_elem, `+0x20`/`+0x21` in/out dtype, `+0x22` active_channels, `+0x23` `src_num_elem_per_idx`, `+0x26` `src_buffer_size`, `+0x2C` dst `TENSOR4D` AP) is fully transcribed — with every store-site disassembled — in [2.17 DVE datamove encoding](dve-datamove-encoding.md) (§ IndirectCopy). It is not duplicated here; that page is the field-map authority for `0xE7`. (Wire struct `S4D4_IC`; the embedded `{index_addr, data_addr, num_elem}` descriptor with its bit-29/`0x20` marker is the same indirect-descriptor contract as [2.7](indirect-descriptors.md).)
 
-**`generateMoveShape` (op `0xB2` = 178) `@0x1213d00`** — the transpose shape-register descriptor, emitted twice by the DIRECT2D transpose sub-form. It encodes the 4-D shape the DGE engine uses to permute the access; the descriptor body mirrors the DIRECT2D step/num pairs against the shape register. STRONG.
+**`generateMoveShape` (op `0xB2` = 178) `@0x1213d00`** — the transpose shape-register descriptor, emitted twice by the DIRECT2D transpose sub-form. It encodes the 4-D shape the DGE engine uses to permute the access; the descriptor body mirrors the DIRECT2D step/num pairs against the shape register (HIGH).
 
 ---
 
@@ -311,11 +313,11 @@ Wire struct `NEURON_ISA_TPB_PSEUDO_DMA_REARM_STRUCT`. The bare "re-arm this queu
 
 | Off | W | Field | Source | Tag |
 |---|---|---|---|---|
-| `+0` | 4 | address immediate / RegId / var-id | `v26` (imm) / `RegId` (offreg) / var-id | CONFIRMED |
-| `+4` | 2 | **DGE table-entry id** (DGE arm) | `*(memloc+142)` | CONFIRMED |
-| `+4` | 2 | *(phys arm)* physical var-id low 16 | `v16` (= `*(memloc+141)`, 0 if space==16) | CONFIRMED |
-| `+6` | 1 | *(phys arm)* physical var-id high byte | `BYTE2(v16)` | CONFIRMED |
-| `+7` | 1 | **ADDRESS-MODE byte** | `16/32/40` + bit2/bit6 | CONFIRMED |
+| `+0` | 4 | address immediate / RegId / var-id | `v26` (imm) / `RegId` (offreg) / var-id | CERTAIN |
+| `+4` | 2 | **DGE table-entry id** (DGE arm) | `*(memloc+142)` | CERTAIN |
+| `+4` | 2 | *(phys arm)* physical var-id low 16 | `v16` (= `*(memloc+141)`, 0 if space==16) | CERTAIN |
+| `+6` | 1 | *(phys arm)* physical var-id high byte | `BYTE2(v16)` | CERTAIN |
+| `+7` | 1 | **ADDRESS-MODE byte** | `16/32/40` + bit2/bit6 | CERTAIN |
 
 ### The mode byte `a2[7]` — the static-vs-DGE selector
 
@@ -344,7 +346,7 @@ if (a4 /*move/transpose flag*/)
     a2[7] |= 0x40;                     /* bit6 = move/transpose */ /* orb $0x40,0x7(%r13) @1260766 */
 ```
 
-> **What the mode byte tells you at a glance.** `0x10` = static physical address (DRAM/SB var-id, no DGE table entry). `0x20` = DGE immediate. `0x28` = DGE offset-register. `+0x04` = the register is a 2-physical-register pair (only set under mode `0x28`). `+0x40` = the access is a move/transpose. So a DGE register-addressed transpose with a 2-reg pair encodes mode byte `0x28 | 0x04 | 0x40 = 0x6C`. CONFIRMED — every store-site disassembled above.
+> **What the mode byte tells you at a glance.** `0x10` = static physical address (DRAM/SB var-id, no DGE table entry). `0x20` = DGE immediate. `0x28` = DGE offset-register. `+0x04` = the register is a 2-physical-register pair (only set under mode `0x28`). `+0x40` = the access is a move/transpose. So a DGE register-addressed transpose with a 2-reg pair encodes mode byte `0x28 | 0x04 | 0x40 = 0x6C`. Every store-site above is disassembled.
 
 Errors that name these arms: *"DGE table entry ID too large"* (the `+4` field overflows), *"DGE's RegisterAP must be offset register"*, *"Register has not been allocated yet!"*, *"physical Var Id is not assigned yet"*, *"physical tensor cannot be Function argument / NEFF IO"*.
 
@@ -406,11 +408,11 @@ where `expr_axis` is an `IndirectArgExpr` (gather index, kind 3) or a `BirIntRun
 
 | Off | Wire key | Source | Tag |
 |---|---|---|---|
-| `+0x00` | `actual_ap` | `setActualPattern(arg+8)` (static AP) | CONFIRMED |
-| `+0x50` | `aff_expr` + `coef` + `offset_expr` | `vector<pair<QuasiAffineExpr,long>>` | CONFIRMED |
-| `+0x68` | `c` | `setStaticOffsetPortion(bap+0x10)` | CONFIRMED |
-| `+0x70` | `indirect_dim_max_index` | gatherable-row count (vector path) | CONFIRMED |
-| `+0x74` | `indirect_dim` = 0 | always 0 (W/partition axis) | CONFIRMED |
+| `+0x00` | `actual_ap` | `setActualPattern(arg+8)` (static AP) | CERTAIN |
+| `+0x50` | `aff_expr` + `coef` + `offset_expr` | `vector<pair<QuasiAffineExpr,long>>` | CERTAIN |
+| `+0x68` | `c` | `setStaticOffsetPortion(bap+0x10)` | CERTAIN |
+| `+0x70` | `indirect_dim_max_index` | gatherable-row count (vector path) | CERTAIN |
+| `+0x74` | `indirect_dim` = 0 | always 0 (W/partition axis) | CERTAIN |
 
 ### The sibling — `extractDynamicApToStandAlone` (`@0xf1e2c0`)
 

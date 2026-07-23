@@ -35,7 +35,8 @@ The **central runtime datum** these kernels maintain is a `DenseMap<pelican::Aff
 `Loop` carries a **static** axis: integer `lb`/`ub`/`stride`. The axis pointer is `*((_QWORD*)inst + 42)` (`InstLoop+0x150`); its fields are `ub` at axis `+0x28` (`v4[5]`), `stride` at `+0x30` (`v4[6]` = `v52`), `lb` at `+0x20` (`*((int*)v4+8)`, sign-extended). The decompiled core, with the boilerplate DenseMap-grow path elided:
 
 ```c
-// birsim::InstVisitor::visitLoop  @0x211010enterInstLoop();
+// birsim::InstVisitor::visitLoop  @0x211010
+enterInstLoop();
 if (*((uint8_t*)this + 208))                  // "in-control-flow" mode flag (+0xD0)
     return visitBBHolderInControlFlow(this, inst);   // CFG-driver mode (§2.5)
 
@@ -67,7 +68,8 @@ So the trip count is `ceil((ub - lb) / stride)`, realized by the `i < ub`, `i +=
 `DoWhile` is a C-style `do { body } while (reg != 0)`: the body executes at least once, then a runtime register is read and the loop repeats while it is non-zero. Between the body and the predicate it **clears the "written-this-iteration" MemoryLocation set** so each trip's dataflow provenance checks start clean.
 
 ```c
-// birsim::InstVisitor::visitDoWhile  @0x2120c0enterInstDoWhile();
+// birsim::InstVisitor::visitDoWhile  @0x2120c0
+enterInstDoWhile();
 do {
     for (BB = inst.blocks_head; BB != sentinel; BB = BB->next)
         visit(this, (BasicBlock*)(BB - 9));           // body, >= 1 pass
@@ -85,7 +87,8 @@ The provenance DenseMap is `DenseMap<bir::MemoryLocation*, DenseSetEmpty>` — t
 The condition is a `bir::BirIntRuntimeValue` expression at `inst[41]` (`InstDoWhile+0x148`); after a `cast<BirIntRuntimeValue>` (the `isa<>`/`cast<>` guard asserts target `bir::BirIntRuntimeValue`), the predicate reduces to a single scalar register read:
 
 ```c
-// birsim::InstVisitor::evaluateDoWhileCondition  @0x1a99b0cond = inst[41];                                       // InstDoWhile+0x148 (a BirIntRuntimeValue expr)
+// birsim::InstVisitor::evaluateDoWhileCondition  @0x1a99b0
+cond = inst[41];                                       // InstDoWhile+0x148 (a BirIntRuntimeValue expr)
 //   cast<bir::BirIntRuntimeValue>(cond)  — asserts kind in [6, 6+7]
 reg  = *(bir::Register**)(cond + 64);                  // the runtime predicate register (+0x40)
 return RegState::read((RegState*)(this + 336), reg, 0) != 0;   // TRUE iff reg value != 0
@@ -98,7 +101,8 @@ So the loop exit is decided purely by whether a scalar register (the loop-carrie
 `DynamicForLoop` is the runtime-bound counterpart of `Loop`: its axis (`InstDynamicForLoop+0x148`) holds `lb`/`ub`/`stride` as `QuasiAffineExpr` objects, not integers. `lb` and `stride` are evaluated against the affine env (so an *outer* loop's induction value can feed an *inner* loop's bounds — nested dynamic loops); the **upper bound** is constrained to a single-term runtime-register expression and computed by `evaluateUpperBoundExpr`.
 
 ```c
-// birsim::InstVisitor::visitDynamicForLoop  @0x211690enterInstDynamicForLoop();
+// birsim::InstVisitor::visitDynamicForLoop  @0x211690
+enterInstDynamicForLoop();
 axis   = *((void**)inst + 41);                         // InstDynamicForLoop+0x148
 i      = QuasiAffineExpr::eval(axis->lb_expr   /*+0x68*/, env);   // runtime start
 ub     = evaluateUpperBoundExpr(this, inst);           // runtime bound (register read)  §1.3.1
@@ -117,7 +121,8 @@ The discriminator versus the static `Loop` is exactly the axis field type (`Quas
 The upper bound is an `AffineExpr` (`Expr` kind `== 17`) constrained to **one term with a runtime value**. If it has more than one term or no runtime value, the simulator throws `NeuronAssertion` ErrorCode 1910 with `"Only scalar values supported in Dynamic For Loop upper bound expressions currently"` (assert text `"ubExpr->getNumTerms() == 1 && ubExpr->hasRuntimeValue()"`, source `inst_visitor.cpp:697`/`:1910`). The bound is then `constant + coefficient × register`:
 
 ```c
-// birsim::InstVisitor::evaluateUpperBoundExpr  @0x1b52c0ubExpr = *(void**)(*(void**)(inst + 328) + 136);       // axis(+0x148)->ub_expr  (+0x88)
+// birsim::InstVisitor::evaluateUpperBoundExpr  @0x1b52c0
+ubExpr = *(void**)(*(void**)(inst + 328) + 136);       // axis(+0x148)->ub_expr  (+0x88)
 //   cast<pelican::AffineExpr>(ubExpr)  — asserts Expr kind == 17
 //   assert ubExpr->getNumTerms() == 1 && ubExpr->hasRuntimeValue()   (else throw 1910)
 term  = ubExpr.terms[0];                                // a single BirIntRuntimeValue term
@@ -180,7 +185,8 @@ The predicate is applied at the `lhs` Dtype width through a per-dtype comparator
 `Call` is `bir::ControlFlowIRVisitor<birsim::InstVisitor>::visitInstCall`. It pushes the callsite and caller-`Function` onto two `std::deque` call-stacks held inline in the visitor, sets the callsite memloc-binding context, then **recurses** `visit()` over the entire callee region (its basic blocks run through the same dispatcher / CFG driver), and pops on return:
 
 ```c
-// ControlFlowIRVisitor<birsim::InstVisitor>::visitInstCall  @0x26bc90callee = *((void**)inst + 30);                         // InstCall+0xF0 = callee region (BasicBlockHolder*)
+// ControlFlowIRVisitor<birsim::InstVisitor>::visitInstCall  @0x26bc90
+callee = *((void**)inst + 30);                         // InstCall+0xF0 = callee region (BasicBlockHolder*)
 if (!callee) return;                                   // null call = no-op
 assert(CurrentCallsites.size() == 0);                  // IRVisitor.h:227 — one frame at a time
 assert(CurrentCallers.size()   == 0);                  // IRVisitor.h:230
@@ -198,7 +204,8 @@ The asserts guarantee a single call frame at a time (no re-entrant callsite). Th
 When the "in-control-flow" flag (`InstVisitor+0xD0`) is set — by `visitLoop` (§1.1) and by `Call` — block visitation follows the next-BB slot rather than static list order. It builds (and caches per `bir::Function` in a `DenseMap<const bir::Function*, unique_ptr<const CFG>>`) a `neuronxcc::backend::CFG`, starts at the entry block, and after each block reads the slot:
 
 ```c
-// visitBBHolderInControlFlow  @0x20f820BB = entry;
+// visitBBHolderInControlFlow  @0x20f820
+BB = entry;
 while (BB) {
     visit(this, BB);                                   // BB body -> a terminator sets +0xE10
     next = this[450] /*+0xE10*/;                       // pending-successor slot
@@ -252,7 +259,8 @@ mode 0 (evt-set) / else: assert("Unhandled semaphore update command");   // evt-
 An event is a strict one-shot edge with protocol asserts on both ends:
 
 ```c
-// EventsEvents::needWait(Wait&) @0x19d850:  assert(mode == 0); return bit[id] == 0;   // wait while NOT set
+// Events
+Events::needWait(Wait&) @0x19d850:  assert(mode == 0); return bit[id] == 0;   // wait while NOT set
 Events::actOn(Wait&)    @0x1a1650:  clear(id);    // CONSUME: the waiter clears the now-set event
 Events::actOn(Update&)  @0x19fd00:  assert(mode == 0); set(id);   // PRODUCE: set the event
 Events::set(id)         @0x19fc60:  if (bit[id]) throw runtime_error;  // FATAL double-fire
@@ -301,7 +309,8 @@ The schedule model is **poll, not spin**: the multi-engine ready-selector (`getN
 `Return` pops both deque frames, clears the function's entire local sync state, and nulls the next-BB slot so the callee region walk terminates:
 
 ```c
-// birsim::InstVisitor::visitInstReturn  @0x1aa560pop callsites_deque (this[7..10]);    // frees a 0x200 node on block boundary, advances cursors
+// birsim::InstVisitor::visitInstReturn  @0x1aa560
+pop callsites_deque (this[7..10]);    // frees a 0x200 node on block boundary, advances cursors
 pop callers_deque   (this[17..20]);   // ditto
 SyncState::clearAllSemaphores((SyncState*)(this + 416 /*52 qwords = +0x1A0*/));   // wipe sem bank
 this[450] /*+0xE10*/ = 0;             // next-BB slot -> 0 (return = no successor in callee CFG)
@@ -324,7 +333,8 @@ The architectural result: most sync *opcodes* carry their entire meaning in the 
 Bulk write-zero of a named semaphore group, all local. It ignores the `mode` field (`InstGroupResetSemaphores+0xF0`, an `EventSemaphoreClearMode` that is a codegen/HW concern) and unconditionally writes 0 to each id:
 
 ```c
-// visitInstGroupResetSemaphores  @0x1aa140  -> clearGroupSemaphores @0x19e750for (id in InstGroupResetSemaphores.sema_group /*+0xF8 = inst+248*/)
+// visitInstGroupResetSemaphores  @0x1aa140  -> clearGroupSemaphores @0x19e750
+for (id in InstGroupResetSemaphores.sema_group /*+0xF8 = inst+248*/)
     Semaphores::actOn(Update{ type=1 /*semaphore*/, id, mode=5 /*sem-wr-imm*/, value=0, no_core });  // = set(id, 0)
 ```
 
@@ -373,7 +383,8 @@ The dispatch routes the kernel/custom-op family to three distinct execution mode
 Both kernels are thin marshallers around the shared delegate `simulateKernel`. `visitInstCustomOp` builds the dst-shape list from `inst[54..55]` (`CustomOp.dstsShape @+0x1B0`) and src-shape list from `inst[51..52]` (`srcsShape @+0x198`), passes the kernel name at `inst+30` (byte `+0xF0` = `CustomOp.opFunctionName`), then calls the delegate:
 
 ```c
-// visitInstCustomOp  @0x1abbd0dsts = build_shape_list(inst[54], inst[55]);           // per-elem ctor sub_1A2CA0
+// visitInstCustomOp  @0x1abbd0
+dsts = build_shape_list(inst[54], inst[55]);           // per-elem ctor sub_1A2CA0
 srcs = build_shape_list(inst[51], inst[52]);
 simulateKernel(this, inst, inst + 30 /*kernel name string @+0xF0*/, srcs, dsts);
 // then free both temp shape vectors — ALL simulation is inside simulateKernel.
@@ -382,7 +393,8 @@ simulateKernel(this, inst, inst + 30 /*kernel name string @+0xF0*/, srcs, dsts);
 `visitInstBIRKernel @0x1abf50` is structurally identical with the BIRKernel operand offsets (`dsts_shape @+0x128 = inst[37..38]`, `srcs_shape @+0x110 = inst[34..35]`, `kernel_name @+0xF0`). The delegate runs the external CPU reference implementation:
 
 ```c
-// birsim::InstVisitor::simulateKernel  @0x26ecd0runId = dword_2297380++;                                // global monotonic counter for unique filenames
+// birsim::InstVisitor::simulateKernel  @0x26ecd0
+runId = dword_2297380++;                                // global monotonic counter for unique filenames
 print("Running kernel_sim for <kernelName>");
 for (idx in [0, numInputs)) {                          // INPUT MARSHALLING
     pap = getInOutPhysicalAP(this, inst, idx, /*isOut=*/0);
@@ -412,7 +424,8 @@ The simulator itself does **not** model the kernel math — it serializes the I/
 `NKIKernel` is far from a stub: it **expands** the kernel's embedded BIR `Function` in place by synthesizing a `Call` to it and a matching `Return`, dispatching both through the visitor's own machinery (§2.4):
 
 ```c
-// birsim::InstVisitor::visitInstNKIKernel  @0x212930if (!*(void**)(inst + 240 /*+0xF0 = NKIKernel.func*/))
+// birsim::InstVisitor::visitInstNKIKernel  @0x212930
+if (!*(void**)(inst + 240 /*+0xF0 = NKIKernel.func*/))
     throw NeuronAssertion("I.getFunc() != nullptr");   // inst_visitor.cpp:7721, ErrorCode 250
 callInst = buildInstCall(this, inst);                  // synthesize bir::InstCall to the embedded Function (§6.2.1)
 if (this[37]) (*vtable+16)(this[37], callInst);        // progress/printer callback hook
@@ -437,7 +450,8 @@ So the NKI kernel's BIR sub-function is executed by the simulator's region-recur
 The base handler `visitInstruction @0x1aa750` ([dispatch base class](sim-dispatch-state.md#12-the-four-routing-classes-sums-to-110)) records the opcode name into the visitor's diagnostic buffer (`InstVisitor+0xA8`) and skips — **no** numeric effect, **no** FATAL:
 
 ```c
-// base visitInstruction  @0x1aa750s = bir::InstructionType2string(I.IT);
+// base visitInstruction  @0x1aa750
+s = bir::InstructionType2string(I.IT);
 if (s.size() == SENTINEL) throw length_error;
 s.append(";");                                         // asc_58FBA8 = ";"
 diagBuf(this + 0xA8).append(s);                        // "<OpcodeName>;" into the diag string

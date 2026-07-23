@@ -20,7 +20,7 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Counting-sema bank** | 256 signed-32 counters / NeuronCore; 8-bit index; `NumSemaphores` = `NEURON_ISA_TPB_NUM_SEMAPHORES` = **256** (CONFIRMED off the four `<Arch>Core` ctors, identical gen1–gen4) |
+| **Counting-sema bank** | 256 signed-32 counters / NeuronCore; 8-bit index; `NumSemaphores` = `NEURON_ISA_TPB_NUM_SEMAPHORES` = **256** (off the four `<Arch>Core` ctors, identical gen1–gen4) |
 | **Event bank** | 256 one-bit one-shot flags / NeuronCore (distinct from the counter bank) |
 | **Sync record** | fixed **64 bytes** (`0x40`); opcode word `@+0` = `0x10<op>` little-endian (`0x10` = `inst_word_len` = 16 dwords) |
 | **Sync opcodes (word)** | EventSemaphore `0x10A0` · Halt `0x10A1` · Drain `0x10A2` · MOV32 `0x10A7` · GroupReset `0x10B0` · Ordering `0x10B1` · Poll `0x10B3` · AllEngineBarrier `0x10D5` · CoreBarrier `0x10D8` (gen3+) |
@@ -49,19 +49,19 @@ struct Core {
 };
 ```
 
-The value is **256**, written identically by all four per-architecture `<Arch>Core` constructors (CONFIRMED — the constructor immediate is byte-identical across gen1–gen4; the `Core::Core` scalar copy lands it at `Core+0x68` ← `CoreParamSet+0x68`). There is no flat `.rodata` constant table and no runtime device probe: the count is a statically-constructed C++ field, the same number every architecture this wheel knows about carries.
+The value is **256**, written identically by all four per-architecture `<Arch>Core` constructors (the constructor immediate is byte-identical across gen1–gen4; the `Core::Core` scalar copy lands it at `Core+0x68` ← `CoreParamSet+0x68`). There is no flat `.rodata` constant table and no runtime device probe: the count is a statically-constructed C++ field, the same number every architecture this wheel knows about carries.
 
-The simulator realizes the bank as a **dense `uint32[256]` value array** — `operator new(0x400)` = 1024 bytes = 256 × 4 — plus a sparse red-black tree of touched ids for state dumps (CONFIRMED — `libBIRSimulator.so` allocation site). Each counter is a **signed-32** value; `inc`/`dec` wrap modularly; the wait comparison is a signed threshold compare.
+The simulator realizes the bank as a **dense `uint32[256]` value array** — `operator new(0x400)` = 1024 bytes = 256 × 4 — plus a sparse red-black tree of touched ids for state dumps (the `libBIRSimulator.so` allocation site). Each counter is a **signed-32** value; `inc`/`dec` wrap modularly; the wait comparison is a signed threshold compare.
 
 The index is **8-bit**: every write site that stamps a semaphore id into a record is a single `movb` (`id ∈ [0, 256)`), and the compile-time id writer `sub_12173A0` masks the id to `&0xff` and *errors* if any bit above bit 7 is set (it compares `(id & 0xff) != 0` against `id != 0` and, when they differ, builds a stringstream diagnostic). So both the runtime byte store and the compile-time range check confine the index to exactly the 256-entry bank.
 
-> **NOTE — re-deriving the count three ways.** The headline "256" is not a single grepped literal; it is triangulated. (1) The header field name `NEURON_ISA_TPB_NUM_SEMAPHORES` is the ISA constant; (2) the sim allocates `operator new(0x400)` = 256 × 4 bytes for the value array; (3) the index is one byte with an explicit `< 256` guard. All three agree. The per-arch bound the allocator asserts against is `HwmCore->NumSemaphores` (`AllocSemaphores::allocateSemaphore` @ `0x1121480`: `currSemaphore < currSemaIDFromUpperBound < HwmCore->NumSemaphores`). [CONFIRMED]
+> **NOTE — re-deriving the count three ways.** The headline "256" is not a single grepped literal; it is triangulated. (1) The header field name `NEURON_ISA_TPB_NUM_SEMAPHORES` is the ISA constant; (2) the sim allocates `operator new(0x400)` = 256 × 4 bytes for the value array; (3) the index is one byte with an explicit `< 256` guard. All three agree. The per-arch bound the allocator asserts against is `HwmCore->NumSemaphores` (`AllocSemaphores::allocateSemaphore` @ `0x1121480`: `currSemaphore < currSemaIDFromUpperBound < HwmCore->NumSemaphores`).
 
 ### The event bank (do not confuse with semaphores)
 
 Parallel to the counters is a **256-bit one-shot event bank** — the sim models it as a `vector<bool>` of 256 bits. An event is a strict edge: a producer **sets** it (the sim *throws* on a double-set), a consumer **waits-then-clears** it (the sim is FATAL on clear-before-set). This is the rendezvous primitive for one-to-one handoffs; the counting semaphore is the *flow-control* primitive for many-to-one accumulation. The event bank is driven by the `0x10A4` op family (`ev_set`/`ev_clr`/`ev_wait`/`ev_wait_and_set`) and by the embedded-events predicate's `WaitMode 0` (`evt-set-then-clear`, wire `0x07`) / `UpdateMode 0` (`evt-set`, wire `0x11`). The `0x11` update byte is the one subtype value that never appears in a counting-semaphore record — it routes to the event bank instead.
 
-> **GOTCHA — the runtime reserves part of each bank.** The `CoreParamSet` carries `RtReservedSemNum` and `RtReservedEventsNum` (CONFIRMED — header fields). The runtime claims a slice of the 256 semaphores and 256 events for its own bookkeeping (the barrier semaphore among them); the compiler's allocator must stay below `NumSemaphores`, but the *usable* range for compiler-allocated ids is `NumSemaphores − RtReservedSemNum`. A reimplementer that hands out all 256 ids will collide with the runtime's reserved set.
+> **GOTCHA — the runtime reserves part of each bank.** The `CoreParamSet` carries `RtReservedSemNum` and `RtReservedEventsNum` (header fields). The runtime claims a slice of the 256 semaphores and 256 events for its own bookkeeping (the barrier semaphore among them); the compiler's allocator must stay below `NumSemaphores`, but the *usable* range for compiler-allocated ids is `NumSemaphores − RtReservedSemNum`. A reimplementer that hands out all 256 ids will collide with the runtime's reserved set.
 
 ---
 
@@ -72,7 +72,7 @@ Every SP-engine sync instruction is a fixed **64-byte (`0x40`) word**. The first
 ### The header stamp
 
 ```c
-// setupHeader @ 0x1172120 (libwalrus) — the 6-instruction body, byte-exact [CONFIRMED]
+// setupHeader @ 0x1172120 (libwalrus) — the 6-instruction body, byte-exact
 void setupHeader(u8 *bundle /*rsi*/, const u8 *opcode /*rdx*/) {
     u8 op       = opcode[0];      // movzbl (%rdx),%eax
     bundle[1]   = 0x10;           // inst_word_len = 16 dwords = 64 bytes
@@ -90,24 +90,24 @@ The canonical sync record is the `EventSemaphore` (op `0xA0`). It can fuse **up 
 
 | Off | W | Field | Source | Conf |
 |---|---|---|---|---|
-| `+0x00` | 2 | **opcode word** = `0x10A0` | `setupHeader`: `[0]=0xA0`, `[1]=0x10` | CONFIRMED |
-| `+0x02` | 2 | reserved (`0x0000`) | header zero | CONFIRMED |
-| `+0x04` | 1 | **wait0 mode** (wire byte) | `Wait[0].getMode → sub_120be70` LUT | CONFIRMED |
-| `+0x05` | 1 | wait0 sema-idx (u8 `<256`) | `getId(Wait0) → sub_12173A0` | CONFIRMED |
-| `+0x08` | 4 | wait0 value / reg-id | `mode==2 → getReg`; else `getValue` | CONFIRMED |
-| `+0x20` | 1 | **wait1 / CMP-OP** (wire) | `Wait[1].getMode → sub_120be70` | CONFIRMED |
-| `+0x21` | 1 | wait1 sema-idx (u8) | `getId(Wait1) → sub_12173A0` | CONFIRMED |
-| `+0x24` | 4 | wait1 value / reg-id | `mode==2 → getReg`; else `getValue` | CONFIRMED |
-| `+0x22` | 1 | **update / SUBTYPE** (wire) | `Update.getMode → sub_120c430` | CONFIRMED |
-| `+0x23` | 1 | update sema-idx (u8) | `getId(Update) → sub_12173A0` | CONFIRMED |
-| `+0x28` | 4 | update value | `Update.getValue` (skipped for modes 3/4) | CONFIRMED |
+| `+0x00` | 2 | **opcode word** = `0x10A0` | `setupHeader`: `[0]=0xA0`, `[1]=0x10` | CERTAIN |
+| `+0x02` | 2 | reserved (`0x0000`) | header zero | CERTAIN |
+| `+0x04` | 1 | **wait0 mode** (wire byte) | `Wait[0].getMode → sub_120be70` LUT | CERTAIN |
+| `+0x05` | 1 | wait0 sema-idx (u8 `<256`) | `getId(Wait0) → sub_12173A0` | CERTAIN |
+| `+0x08` | 4 | wait0 value / reg-id | `mode==2 → getReg`; else `getValue` | CERTAIN |
+| `+0x20` | 1 | **wait1 / CMP-OP** (wire) | `Wait[1].getMode → sub_120be70` | CERTAIN |
+| `+0x21` | 1 | wait1 sema-idx (u8) | `getId(Wait1) → sub_12173A0` | CERTAIN |
+| `+0x24` | 4 | wait1 value / reg-id | `mode==2 → getReg`; else `getValue` | CERTAIN |
+| `+0x22` | 1 | **update / SUBTYPE** (wire) | `Update.getMode → sub_120c430` | CERTAIN |
+| `+0x23` | 1 | update sema-idx (u8) | `getId(Update) → sub_12173A0` | CERTAIN |
+| `+0x28` | 4 | update value | `Update.getValue` (skipped for modes 3/4) | CERTAIN |
 
 Bytes `+0x09..+0x1F`, `+0x25..+0x27`, `+0x29..+0x3F` are left zero in a semaphore record.
 
 The compile-time encoder names these three index fields directly in `.rodata` (read at the `lea` targets of the `sub_12173A0` calls): `+0x05` ← `"instr.events.wait_idx"`, `+0x21` ← `"instr.events_extended.wait_idx"`, `+0x23` ← `"instr.events_extended.update_idx"`. So the first wait is the `events` predicate (lane-0); the optional second wait and the single update are `events_extended` (lane-2). The `+0x04/+0x05/+0x08` triple **is** the embedded-events predicate (covered below): the comparator byte at `+0x04`, the physical bank index at `+0x05`, and the threshold/register at `+0x08`.
 
 ```asm
-; add_semaphore_wait_eq_and_inc @ 0x2739d0 (libnrt, runtime) — the richest record [CONFIRMED byte-exact]
+; add_semaphore_wait_eq_and_inc @ 0x2739d0 (libnrt, runtime) — the richest record — byte-exact
 mov  $0x10a0,%eax        ; opcode word
 mov  %dl,0x23(%rsp)      ; act (update) sema-idx @+0x23
 mov  %dl,0x21(%rsp)      ; wait sema-idx @+0x21
@@ -120,7 +120,11 @@ call add_ins             ; memmove 0x40 to the stream
 ;   AND UPDATES (subtype@+0x22, idx@+0x23, val@+0x28): the atomic rendezvous.
 ```
 
-> **CORRECTION — runtime and compile-time place the fused wait/update in the SAME lanes.** An earlier reading had the runtime `EventSemaphore`'s wait/update block at `+0x04` (like the inline predicate). The disassembly resolves it: the runtime `add_evsem` (`0x2737d0`) builds its record at `frame+0x10` and the per-id `add_semaphore_*` builders patch the **same** 64-byte record's lane-2 — `cmp-op@+0x20`, `wait-idx@+0x21`, `subtype@+0x22`, `act-idx@+0x23`, `wait-val@+0x24`, `act-val@+0x28`. This is byte-identical to the compile-time `events_extended` lane. Lane-0 (`+0x04`) carries the inline-events predicate (runtime) / wait0 (compile). The two encoders agree on the cmp/subtype bytes. [CONFIRMED — `add_evsem` frame math + per-builder `movb` offsets]
+Runtime and compile-time place the fused wait/update in the **same** lanes. The runtime `add_evsem` (`0x2737d0`) builds its record at `frame+0x10`, and the per-id `add_semaphore_*` builders patch that *same* 64-byte record's lane-2: `cmp-op@+0x20`, `wait-idx@+0x21`, `subtype@+0x22`, `act-idx@+0x23`, `wait-val@+0x24`, `act-val@+0x28`. That is byte-identical to the compile-time `events_extended` lane. Lane-0 (`+0x04`) carries something different on each side — the inline-events predicate at runtime, wait0 at compile time — but the two encoders agree on the cmp and subtype bytes.
+
+> **GOTCHA — the runtime wait/update block is not at `+0x04`.** Lane-0 looks like the natural home for it, since that is where the inline predicate lives, but the fused rendezvous record sits in lane-2 at `+0x20`. Reading `+0x04` as the wait/update block decodes the predicate instead.
+
+*Anchors: `add_evsem` frame math plus the per-builder `movb` offsets.*
 
 ### The comparator byte (`+0x20`/`+0x04` wait mode)
 
@@ -136,7 +140,9 @@ The wait-condition comparator. Runtime values from the `add_semaphore_*` builder
 
 The high bit (`0x85 = 0x05 | 0x80`) is the "**threshold is a register**" flag: the value at `+0x24`/`+0x08` is a RegId, and the sim reads the live register for the threshold (used for loop-iteration-scaled thresholds). `needWait == true` means the counter has *not yet* reached the threshold ⇒ the engine stalls. A wait is a **pure predicate** — it never mutates the bank; only the update side does.
 
-> **CORRECTION — the bare "wait" is a wait-and-decrement.** The default `add_semaphore_wait` builder writes comparator `0x04` at `+0x20` *and* subtype `0x14` (sem-dec) at `+0x22`. So the "plain wait" runtime builder is actually a wait-then-decrement: it consumes one unit from the counter on pass. A reimplementer that treats `add_semaphore_wait` as a non-mutating poll under-decrements the counter. The compile-time `EventSemaphore` encoder, by contrast, only accepts `WaitMode 1` (`sem-ge-imm`, `0x05`) or `WaitMode 2` (`sem-ge-reg`, `0x85`) per wait — its assert string is verbatim `"only two wait modes supported now: SEM_GE_IMM and SEM_GE_REG"`. EQ (`0x01`) is reachable only via the runtime barrier/clear builders. [CONFIRMED]
+> **GOTCHA — the bare "wait" is a wait-*and-decrement*.** The default `add_semaphore_wait` builder writes comparator `0x04` at `+0x20` **and** subtype `0x14` (sem-dec) at `+0x22`, so the "plain wait" runtime builder consumes one unit from the counter when it passes. Treating `add_semaphore_wait` as a non-mutating poll under-decrements the counter.
+
+The compile-time `EventSemaphore` encoder is stricter: it accepts only `WaitMode 1` (`sem-ge-imm`, `0x05`) or `WaitMode 2` (`sem-ge-reg`, `0x85`) per wait, and says so verbatim — `"only two wait modes supported now: SEM_GE_IMM and SEM_GE_REG"`. EQ (`0x01`) is reachable only through the runtime barrier and clear builders.
 
 ### The subtype byte (`+0x22`/`+0x06` update mode)
 
@@ -155,7 +161,7 @@ The full `bir::Update::toUpdateMode` enum order (the string-compare order in `li
 
 For `sem-inc`/`sem-dec` (`0x13`/`0x14`) the act value at `+0x28`/`+0x08` is **not written** — it is hard-coded to 1 (runtime `movl $0x1`; compile-time skips the store via two `cmp $3`/`cmp $4` branches; the sim asserts the implicit value is exactly 1). For `sem-add-imm`/`sem-sub-imm`/`sem-wr-imm` (`0x15`/`0x17`/`0x19`) the value is the caller's operand.
 
-> **NOTE — the producer/consumer vocabulary.** In a many-to-one accumulation, every *producer* posts `sem-inc(+1)` (wire `0x13`) on completion, and the single *consumer* waits `sem-ge-imm(value = N)` (wire `0x05`) where N is the number of producers it depends on. One accumulated-threshold wait covers many producers — this is the synchronizer's "batching" decision: a datapath op's completion increments its engine's shared completion semaphore, and one `sem-ge N` wait gates on the whole batch. [CONFIRMED — `SetupSemaphoreUpdate` @ `0x113e900`, `SetupSemaphoreWait` @ `0x113a0b0`]
+> **NOTE — the producer/consumer vocabulary.** In a many-to-one accumulation, every *producer* posts `sem-inc(+1)` (wire `0x13`) on completion, and the single *consumer* waits `sem-ge-imm(value = N)` (wire `0x05`) where N is the number of producers it depends on. One accumulated-threshold wait covers many producers — this is the synchronizer's "batching" decision: a datapath op's completion increments its engine's shared completion semaphore, and one `sem-ge N` wait gates on the whole batch. *Anchors: `SetupSemaphoreUpdate` @ `0x113e900`, `SetupSemaphoreWait` @ `0x113a0b0`.*
 
 ### The other sync-word records
 
@@ -175,12 +181,16 @@ Beyond `EventSemaphore`, the SP sync sub-family is a flat `0x10xx` opcode space.
 The **drain count** is the most subtle field. `visitInstDrain` reads `Inst+0xF0` (= 240) into `+0x28` of the bundle, but first guards on `Inst+0x110` (= 272) being zero — that tag is the variant discriminator, and a non-zero tag throws `bad_variant_access`. In other words the drain count **must be a compile-time constant** (the `QuasiAffineExpr`'s constant arm), and `lower_control` mints fence drains with count = 1 (full drain), tag cleared:
 
 ```asm
-; visitInstDrain @ 0x122d8d0 — the count + guard [CONFIRMED]
+; visitInstDrain @ 0x122d8d0 — the count + guard
 movzbl 0x110(%r13),%eax ; test %al,%al ; jne <throw>   ; +272 variant-tag guard (must be 0)
 movzbl 0x0f0(%r13),%eax ; ... ; mov %al,0x28(%r12)     ; +240 → bundle +0x28 (the drain count)
 ```
 
-> **CORRECTION — the runtime GroupReset emits ONLY the range form.** The compile-time `GroupResetSemaphores` writes `ClearMode@+0x0C` and *either* a contiguous range (`range_first@+0x0D`, `range_last@+0x0E`, ClearMode `0x01`) *or* a 256-bit bitmask (`@+0x20`, ClearMode `0x02`). The runtime `add_sema_clear` writes **only** the range form, and stages the range in lane-0 (`range_first@+0x04`, `range_last@+0x08`) before a `movdqa` repacks it down. Any blanket claim that the reset range lives at `+0x0D/+0x0E` is a **compile-time-only** fact. The ClearMode byte position (`+0x0C`) and the `SemaphoreZero` value (`0x01`) agree on both sides. [CONFIRMED — `add_sema_clear` frame math vs `visitInstGroupResetSemaphores` disasm]
+The compile-time `GroupResetSemaphores` writes `ClearMode@+0x0C` and then *either* a contiguous range (`range_first@+0x0D`, `range_last@+0x0E`, ClearMode `0x01`) *or* a 256-bit bitmask (`@+0x20`, ClearMode `0x02`). The runtime `add_sema_clear` emits **only** the range form, and stages that range in lane-0 (`range_first@+0x04`, `range_last@+0x08`) before a `movdqa` repacks it down. The ClearMode byte position (`+0x0C`) and the `SemaphoreZero` value (`0x01`) agree on both sides.
+
+> **GOTCHA — "the reset range lives at `+0x0D`/`+0x0E`" is a compile-time-only fact.** The runtime builder stages it in lane-0 first, so a decoder written against the compile-time layout will read the wrong bytes out of a runtime-built record.
+
+*Anchors: `add_sema_clear` frame math against the `visitInstGroupResetSemaphores` disasm.*
 
 ---
 
@@ -191,7 +201,7 @@ The marquee mechanism: **every SP-engine sync/control record can carry an inline
 ### The runtime mechanism
 
 ```asm
-; insert_events @ 0x271910 (libnrt) — the one-liner [CONFIRMED]
+; insert_events @ 0x271910 (libnrt) — the one-liner
 mov %rdx, 0x4(%rdi,%rsi,1)   ; rdi = record base, rsi = run offset, rdx = the 8-byte events payload
                              ; → writes the events qword at record+0x04
 ```
@@ -217,7 +227,7 @@ This is the precise answer to "how do most dependencies avoid a separate sync op
 The **data-path compute encoders make zero `getSyncInfo` calls** — verified at `visitInstMatmul` (`0x1248650`), `visitInstPool` (`0x1239e50`), `visitInstMemset` (`0x125b320`): count = 0 each; `visitInstActivation` (`0x12596f0`) makes no sync calls at all. The conclusion is structural: in the TPB ISA, a *compute* op's dependencies are **not** satisfied by an inline predicate stamped into the compute bundle. They are realized by a **standalone `EventSemaphore`** op that `lower_sync` inserts adjacent to the compute op. The inline predicate is what *control/sequencer* ops carry — the synchronizer attaches a `Wait`/`Update` to whatever convenient control op already sits on the engine, and the L3 encoder stamps it inline.
 
 ```c
-// setupSyncWait<ISA_STRUCT> — the WAIT half of the shared template [CONFIRMED, byte-walked]
+// setupSyncWait<ISA_STRUCT> — the WAIT half of the shared template
 void setupSyncWait(u8 *bundle, const Wait &w) {
     bundle[0x04] = wire_of_waitmode(w.getMode());   // sub_120be70 LUT {07,05,85}
     bundle[0x05] = (u8) w.getRef().getId();         // sub_12173A0, id < 256
@@ -226,7 +236,7 @@ void setupSyncWait(u8 *bundle, const Wait &w) {
     else /*sem-ge-imm*/
         *(u32*)(bundle + 0x08) = w.getValue();      // threshold is an immediate
 }
-// setupSyncUpdate<ISA_STRUCT> — the UPDATE half [CONFIRMED]
+// setupSyncUpdate<ISA_STRUCT> — the UPDATE half
 void setupSyncUpdate(u8 *bundle, const Update &u) {
     bundle[0x06] = wire_of_updmode(u.getMode());    // sub_120c430 LUT {11,15,17,13,14,19}
     bundle[0x07] = (u8) u.getRef().getId();         // sub_12173A0
@@ -235,7 +245,7 @@ void setupSyncUpdate(u8 *bundle, const Update &u) {
 }
 ```
 
-> **NOTE — `EventSemaphore` is the inline exception.** The shared template writes the update mode/idx at `+0x06`/`+0x07`. `EventSemaphore` does *not* use the template — it has its own two-wait/one-update walk that places `wait0` at `+0x04`, `wait1` at `+0x20`, and the update at `+0x22`/`+0x23`/`+0x28`. This is why the `EventSemaphore` field map differs from every other sync op: it is the only record that can fuse two waits and is the record `lower_sync` materializes when a dependency needs a standalone carrier. [CONFIRMED]
+> **NOTE — `EventSemaphore` is the inline exception.** The shared template writes the update mode/idx at `+0x06`/`+0x07`. `EventSemaphore` does *not* use the template — it has its own two-wait/one-update walk that places `wait0` at `+0x04`, `wait1` at `+0x20`, and the update at `+0x22`/`+0x23`/`+0x28`. This is why the `EventSemaphore` field map differs from every other sync op: it is the only record that can fuse two waits and is the record `lower_sync` materializes when a dependency needs a standalone carrier.
 
 ---
 
@@ -248,12 +258,14 @@ A barrier is **never a single instruction**. The compiler mints one logical `All
 The fan-out width N is the number of datapath engines, derived from the mask in `bir::isDataPathEngine` (`libBIR` @ `0x47fa00`):
 
 ```c
-bool isDataPathEngine(EngineType e) { return (1 << e) & 0x6E; }   // test al, 0x6e [CONFIRMED]
+bool isDataPathEngine(EngineType e) { return (1 << e) & 0x6E; }   // test al, 0x6e
 ```
 
 Re-deriving the mask: `0x6E` = `0b0110_1110` = bits **{1, 2, 3, 5, 6}** — exactly **five** engines. The full `EngineType` ordinal map is byte-pinned in `bir::EngineType2string` (`libBIR @ 0x47fa80`): **Pool = 1**, **Activation = 2**, **PE = 3**, **DMA = 4**, **DVE = 5**, **SP = 6** (`getDefaultEngine` → 3 for all matmul ops; `EngineType2string → "DVE"`, external name "Vector"). So the five datapath engines `{1,2,3,5,6}` are **Pool, Activation, PE, DVE, SP**. Excluded from the mask: engine **0** (Unassigned), engine **4** (**DMA** — it owns rotated per-queue semaphores, not the datapath barrier), and engine **7** (**ALL** — the pseudo-engine, which is precisely why a barrier on `ALL` cannot be encoded directly). The full map is owned by [the arch object model](arch-object-model.md#the-enginetype-ordinal-map).
 
-> **CORRECTION — the Pool/Act split is now byte-pinned (upgrades a prior INFERRED).** An earlier reading left "which of ordinals {1, 2} is Pool and which is Activation" un-pinned (INFERRED). The `EngineType2string` switch body (`libBIR @ 0x47fa80`, inline-literal decode) settles it byte-exact: **case 1 = "Pool", case 2 = "Activation"**, cross-confirmed by the `getEngineCount` jump table (`@0x47d820`) and the `getValidEngines` legality maps. A separate earlier informal list assigned PE=1/Pool=3/DVE=6, which conflicts with the byte-pinned PE=3/DVE=5 and is **wrong**. The full datapath mask `{1,2,3,5,6}` and every ordinal in it are now CONFIRMED: Pool=1, Activation=2, PE=3, DVE=5, SP=6 (and the non-datapath DMA=4). [CONFIRMED — `EngineType2string @0x47fa80` + `getEngineCount @0x47d820`]
+> **GOTCHA — do not guess the engine ordinals; PE is 3, not 1.** An ordering like PE=1 / Pool=3 / DVE=6 is a natural guess and it is wrong. The `EngineType2string` switch body (`libBIR @ 0x47fa80`, inline-literal decode) pins **case 1 = "Pool"**, **case 2 = "Activation"**, and the rest follows: PE=3, DMA=4, DVE=5, SP=6. The `getEngineCount` jump table (`@0x47d820`) and the `getValidEngines` legality maps agree.
+
+*Anchors: `EngineType2string` @ `0x47fa80`; `getEngineCount` @ `0x47d820`.*
 
 ### Why expansion is mandatory
 
@@ -262,7 +274,7 @@ The SP encoder `visitInstAllEngineBarrier` @ `0x122aa10` asserts `isDataPathEngi
 ### The fan-out cloner
 
 ```c
-// ExpandAllEngineBase::expandInstruction @ 0xcee080 — the per-engine fan-out [CONFIRMED, full disasm]
+// ExpandAllEngineBase::expandInstruction @ 0xcee080 — the per-engine fan-out
 void expandInstruction(Instruction *I) {            // I = rdx
     if (I->engine /*+0x90*/ != 7 /*ALL*/) return;   // cmp [rdx+0x90],0x7 ; jne <passthrough>
     auto engines = function.datapathEngines();       // vector<EngineInfo{type,sub}>, from listEnginesUsed
@@ -312,14 +324,14 @@ This is a **flat all-to-one fan-in + one-to-all fan-out** on a single counting s
 
 The **runtime** form is unambiguous: `tdrv_sync_get_sync_barrier` allocates a **single** barrier semaphore id, and all N `wait_eq_and_inc` records reference it (each engine increments the same id, each waits for it to reach N). The **compile-time** synchronizer's general model is one completion semaphore *per engine*; the all-engine barrier is realized either as an all-to-all mesh or (matching the runtime, and consistent with the `GroupResetSemaphores` reset-all flag re-arming the whole bank) a single dedicated barrier counter all engines increment and wait on.
 
-> **GOTCHA — the exact compile-time id-sharing policy is INFERRED.** It is STRONG that each per-engine barrier instance posts/waits on a *shared* barrier semaphore (the GroupReset reset-all and the runtime single-id form both point that way), but whether the compile-time expansion uses exactly **one** id or one-per-engine for the arrival posts is not separately field-pinned — it lives in the `SetupSemaphoreUpdate`/`SetupSemaphoreWait` id resolution for the expanded barrier ops. The runtime's single-id form is the authoritative on-silicon end state. [INFERRED — flagged]
+> **NOTE — the exact compile-time id-sharing policy is not pinned.** That each per-engine barrier instance posts and waits on a *shared* barrier semaphore is HIGH — the GroupReset reset-all and the runtime single-id form both point that way. But whether the compile-time expansion uses exactly **one** id, or one per engine for the arrival posts, is [INFERRED]: it lives in the `SetupSemaphoreUpdate` / `SetupSemaphoreWait` id resolution for the expanded barrier ops, which is not separately field-pinned here. The runtime's single-id form is the authoritative on-silicon end state.
 
 ### The runtime composite (libnrt)
 
 The runtime realizes the same shape as a function-level composite with no opcode of its own:
 
 ```asm
-; add_sync_barrier @ 0x27af20 (libnrt) — restated from disassembly of that binary [CONFIRMED there]
+; add_sync_barrier @ 0x27af20 (libnrt) — restated from disassembly of that binary
 call tdrv_sync_get_sync_barrier   ; allocate / reserve a single barrier semaphore id  → r15
 call al_hal_tpb_get_tpb_eng_count ; N = number of engines
 call add_drain                    ; DRAIN (queue flush) — leads the barrier
@@ -350,7 +362,7 @@ A cross-engine semaphore rendezvous guarantees only **program-order arrival**, n
 
 Two `AllEngineBarrier`s **bracket** the semaphore reset so no engine ever observes a half-reset counter bank across the edge; the `Drain` forces in-flight DMA to retire; the optional `CoreBarrier` makes the inter-core rendezvous explicit (gen3+, multi-core only — see [LNC memory model](lnc-memory-model.md)). Every real instruction in the block is chained as a dependency of the fence head, so the fence is a true barrier (happens-after all engine work). After per-engine expansion, *each* of `{Barrier1, Reset, Barrier0, Drain}` becomes N per-engine bundles; `GroupResetSemaphores` deep-copies its `sema_group` vector per engine so each engine resets its own range.
 
-> **GOTCHA — `CoreBarrier` is a different axis; do not conflate it with `AllEngineBarrier`.** `AllEngineBarrier(IT15, 0xD5)` is **intra-core, cross-engine** — the per-engine sema fan-in/fan-out on this page. `CoreBarrier(IT87, 0xD8, gen3+)` is **cross-core** — a hardware barrier register plus a module-wide index plus a `coreIdList`, present only when `lnc_size > 1`. The all-engine barrier synchronizes the five engines *within* a NeuronCore; the core barrier synchronizes the fused cores of an LNC. They are orthogonal. [CONFIRMED]
+> **GOTCHA — `CoreBarrier` is a different axis; do not conflate it with `AllEngineBarrier`.** `AllEngineBarrier(IT15, 0xD5)` is **intra-core, cross-engine** — the per-engine sema fan-in/fan-out on this page. `CoreBarrier(IT87, 0xD8, gen3+)` is **cross-core** — a hardware barrier register plus a module-wide index plus a `coreIdList`, present only when `lnc_size > 1`. The all-engine barrier synchronizes the five engines *within* a NeuronCore; the core barrier synchronizes the fused cores of an LNC. They are orthogonal.
 
 ---
 
@@ -387,7 +399,7 @@ The wire-mode mapping is the through-line: synchronizer `sem-inc` / `sem-ge-imm`
 
 ## Confidence summary
 
-**CONFIRMED** (byte-exact, multi-binary):
+**CERTAIN** (byte-exact, multi-binary):
 
 - The unified 64-byte `EventSemaphore` field map (opcode word `@+0x00`; wait0 `@+0x04/+0x05/+0x08`; wait1/cmp `@+0x20/+0x21/+0x24`; update/subtype `@+0x22/+0x23/+0x28`), with all three idx-field `.rodata` strings.
 - `add_ins` `memmove` = exactly `0x40` bytes; `setupHeader` stamps `[1]=0x10` → the 64-byte word; CoreV3 header byte-identical.
@@ -398,11 +410,11 @@ The wire-mode mapping is the through-line: synchronizer `sem-inc` / `sem-ge-imm`
 - The barrier fan-out cloner `expandInstruction` @ `0xcee080`; `isDataPathEngine` assert forces expansion; per-engine `sem-inc`/`sem-ge-imm value=N` wait/update; the drain-leads ordering; the verify-abstract-then-expand pipeline order.
 - The embedded-events predicate (`insert_events` one-liner + the per-builder optional-`r8` idiom + the `setupSyncWait`/`setupSyncUpdate` template) and the `getSyncInfo` census (5 sync ops + 11 control ops carry it; compute ops carry zero).
 
-**INFERRED / STRONG** (flagged inline):
+**HIGH / MEDIUM** (flagged inline):
 
-- Whether the compile-time barrier uses exactly **one** shared barrier-counter id (matching the runtime) or one-per-engine for the arrival posts — STRONG that it is shared; the exact id-equality policy is not separately field-pinned. The runtime single-id form is authoritative for the end state.
-- The internal packing of the 8-byte events qword above `+0x05` (whether `+0x06/+0x07` hold a second idx or padding) — the `insert_events` store is one qword; the mode/idx/val sub-structure is STRONG, not byte-walked.
-- The runtime `add_sync_barrier` decode is **restated** from disassembly of `libnrt.so`, which is absent from this compiler wheel; the compile↔runtime identity on the shared bytes is STRONG.
+- Whether the compile-time barrier uses exactly **one** shared barrier-counter id (matching the runtime) or one-per-engine for the arrival posts — HIGH that it is shared; the exact id-equality policy is not separately field-pinned. The runtime single-id form is authoritative for the end state.
+- The internal packing of the 8-byte events qword above `+0x05` (whether `+0x06/+0x07` hold a second idx or padding) — the `insert_events` store is one qword; the mode/idx/val sub-structure is HIGH, not byte-walked.
+- The runtime `add_sync_barrier` decode is **restated** from disassembly of `libnrt.so`, which is absent from this compiler wheel; the compile↔runtime identity on the shared bytes is HIGH.
 
 ---
 

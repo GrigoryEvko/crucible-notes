@@ -6,7 +6,7 @@
 
 `nki.isa` (the user-facing alias `nisa`) is a single Cython module, `neuron_isa`, that exposes the Neuron ISA as Python callables. Each `nisa.*` intrinsic is a thin Python `def` whose compiled `__pyx_pw_*` wrapper does three things in order: parse the keyword-only argument table, run a handful of local `_check_*` validators plus `sema.assert_*` helpers, then delegate IR-node construction to a builder method on `self.nki_ctx`. The intrinsic itself owns **legality**, not lowering — the penguin IR `Operator` node is built downstream in the IRBuilder (`nki.compiler.backends.neuron.nki_ctx`). This page is the data-movement and reduction half of that surface; the compute half (`tensor_scalar`, `tensor_tensor`, `activation`, `nc_matmul`, the scan/cumulative ops) is documented in [6.4.1 isa-compute-intrinsics](isa-compute-intrinsics.md).
 
-The reader who has internalised LLVM intrinsics should think of these as *legality-checked builder calls*: the analogue of `IRBuilder::CreateCall` plus a verifier, except the verifier runs at trace time in Python and the "intrinsic" is a hardware-engine micro-op (Vector / GpSimd / DMA). The interesting content is not the lowering — it is the per-op legality: which `reduce_cmd` accumulator commands are legal for which select op, which dtypes a bitvec reduce accepts, the full Hardware-DGE legality table for `dma_transpose`, and a cluster of arch-gated rules (`get_nc_version()`) that silently differ across Trn1 / Trn2 / Trn3. Three subtle off-by-ones in those legality sets are surfaced as CORRECTION/GOTCHA callouts.
+The reader who has internalised LLVM intrinsics should think of these as *legality-checked builder calls*: the analogue of `IRBuilder::CreateCall` plus a verifier, except the verifier runs at trace time in Python and the "intrinsic" is a hardware-engine micro-op (Vector / GpSimd / DMA). The interesting content is not the lowering — it is the per-op legality: which `reduce_cmd` accumulator commands are legal for which select op, which dtypes a bitvec reduce accepts, the full Hardware-DGE legality table for `dma_transpose`, and a cluster of arch-gated rules (`get_nc_version()`) that silently differ across Trn1 / Trn2 / Trn3. Three of those legality sets have an off-by-one that is easy to get wrong from the surrounding text; each is called out as a GOTCHA where it bites.
 
 For reimplementation, the contract is:
 
@@ -19,7 +19,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Module** | `neuronxcc.nki.isa.neuron_isa` (Cython `.cpython-31x-x86_64-linux-gnu.so`) |
 | **Source file** | `neuronxcc/nki/isa/neuron_isa.py` (line numbers from `_TraceSetupAndCall` args) |
-| **Signatures** | CONFIRMED — `neuronxcc-stubs/nki/isa/__init__.pyi` |
+| **Signatures** | `neuronxcc-stubs/nki/isa/__init__.pyi` |
 | **Builder receiver** | `self.nki_ctx` (IRBuilder), `self.sema` (error/assert helper) |
 | **IR target** | `neuronxcc.starfish.penguin.ir.Operator` nodes (built in `nki_ctx`) |
 | **Arch gate** | `get_nc_version()` → `nc_version` IntEnum: `gen2=2` (Trn1/Inf2), `gen3=3` (Trn2), `gen4=4` (Trn3) |
@@ -53,7 +53,7 @@ function nisa_op(args..., *, mask=None, dtype=None):   // __pyx_pw_* wrapper
 
 ### Shared Helpers
 
-`mask` is a **compile-time predicate**, threaded into the IR node as the instruction predicate (`nki_mask`); it is not a runtime branch. `dtype` is the output cast; default is the input dtype. The validators draw from a fixed pool of `sema` helpers — names below are CONFIRMED rodata identifiers:
+`mask` is a **compile-time predicate**, threaded into the IR node as the instruction predicate (`nki_mask`); it is not a runtime branch. `dtype` is the output cast; default is the input dtype. The validators draw from a fixed pool of `sema` helpers — the names below are rodata identifiers:
 
 | Family | Helpers (identifiers in `.so` rodata) |
 |---|---|
@@ -61,7 +61,7 @@ function nisa_op(args..., *, mask=None, dtype=None):   // __pyx_pw_* wrapper
 | Shape/dtype util | `extract_buffer_shape`, `normalize_dim`, `promote_type`, `is_int_type`, `is_number`, `dtype2str`, `sizeinbytes` |
 | Errors (`err_*` — each formats + raises a NKI compile error) | `err_instruction_supported_dtypes`, `err_instruction_unsupported_dtypes`, `err_instruction_unsupported_op`, `err_instruction_engine_unsupported_op_comb`, `err_reduce_unsupported_negate`, `err_reduce_bitvec_op_invalid_dtype`, `err_par_reduce_unsupported_op`, `err_par_reduce_bitvec_op_invalid_dtype`, `err_min_arch_support_for_hwdge` |
 
-> **NOTE —** the numeric thresholds in the docstrings (`local_gather` ≤ 4096 indices, `bn_stats` ≤ 512 free elems, `max8` 8..16384 elems) are CONFIRMED from docstrings but the *runtime check* lives in `nki_ctx`, not in this module's `_check_*`. Treat them as IRBuilder-enforced (INFERRED location), legal-value CONFIRMED.
+> **NOTE —** the numeric thresholds in the docstrings (`local_gather` ≤ 4096 indices, `bn_stats` ≤ 512 free elems, `max8` 8..16384 elems) come from the docstrings, but the *runtime check* lives in `nki_ctx`, not in this module's `_check_*`. The values are read directly; [INFERRED] only their enforcement site, which is the IRBuilder.
 
 ---
 
@@ -71,11 +71,11 @@ function nisa_op(args..., *, mask=None, dtype=None):   // __pyx_pw_* wrapper
 
 ```text
 tensor_reduce(op, data, axis, *, mask=None, dtype=None, negate=False, keepdims=False)
-  signature: CONFIRMED stub L1614 | source: neuron_isa.py:487 | engine: Vector
-  builds: nki_ctx.tensorreduce(...)   (node name "tensorreduce" CONFIRMED n_s ref @ body 0x4c440)
+  signature: stub L1614 | source: neuron_isa.py:487 | engine: Vector
+  builds: nki_ctx.tensorreduce(...)   (node name "tensorreduce", n_s ref @ body 0x4c440)
 ```
 
-Free-dimension reduction; the partition axis is preserved. The reduction *axis set* is normalised and validated by `_check_and_translate_free_axis` (`neuron_isa.py:2826`), which delegates to `_check_free_axis` (`:2810`). The axis rule (CONFIRMED docstring + the `Reduction on partition axes is not supported` rodata string):
+Free-dimension reduction; the partition axis is preserved. The reduction *axis set* is normalised and validated by `_check_and_translate_free_axis` (`neuron_isa.py:2826`), which delegates to `_check_free_axis` (`:2810`). The axis rule, from the docstring plus the `Reduction on partition axes is not supported` rodata string:
 
 > **GOTCHA —** axes must be **free** dims (axis 0 = partition is illegal), **consecutive**, and start at the most-minor free axis 1. Legal: `[1]`, `[1,2]`, `[1,2,3]`, `[1,2,3,4]` (≤ 4 axes). Illegal: `[1,3,4]` (gap), `[2,3]` (does not start at 1), `[0,...]` (partition). Empty axis → `"Empty axis not supported"`.
 
@@ -91,12 +91,12 @@ function tensor_reduce(op, data, axis, ...):           // neuron_isa.py:487
                                 keepdims=keepdims, mask=mask, dtype=dtype)
 ```
 
-**Two op classes** (CONFIRMED docstring + `bitvec_opcodes` set):
+**Two op classes** (docstring + the `bitvec_opcodes` set):
 
 - **bitvec ops** (`bitwise_and/or/xor`, `logical_and/or/xor`): NO casting; elements treated as bit patterns; input/output must be integer.
 - **arithmetic ops** (`add`/`subtract`/`multiply`/`max`/`min`/…): engine casts to fp32, reduces in fp32, casts result to `dtype`. `negate` multiplies the fp32 result by `-1.0` at no extra cost — and is legal **only** here.
 
-`_check_tensor_reduce_bitvec_types` (`neuron_isa.py:3130`, body `0x30490`) — CONFIRMED control flow:
+`_check_tensor_reduce_bitvec_types` (`neuron_isa.py:3130`, body `0x30490`):
 
 ```c
 function _check_tensor_reduce_bitvec_types(op, dtype):  // :3130
@@ -108,7 +108,7 @@ function _check_tensor_reduce_bitvec_types(op, dtype):  // :3130
 
 ```text
 tensor_partition_reduce(op, data, *, mask=None, dtype=None)
-  signature: CONFIRMED stub L1595 | source: neuron_isa.py:583 | engine: GpSimd
+  signature: stub L1595 | source: neuron_isa.py:583 | engine: GpSimd
   builds: nki_ctx.tensor_partition_reduce(...)
 ```
 
@@ -123,7 +123,7 @@ function tensor_partition_reduce(op, data, ...):       // neuron_isa.py:583
     return nki_ctx.tensor_partition_reduce(op, data, mask=mask, dtype=dtype)
 ```
 
-> **GOTCHA — partition-reduce bitvec is uint-only.** `tensor_reduce` allows `int32` for bitvec ops; `tensor_partition_reduce` does **not** — its bitvec dtype set is `{uint8, uint16, uint32}` with no `int32`. A reimplementation that reuses one dtype set for both reduce flavours is wrong. (STRONG — body checks only the three uint widths.)
+> **GOTCHA — partition-reduce bitvec is uint-only.** `tensor_reduce` allows `int32` for bitvec ops; `tensor_partition_reduce` does **not** — its bitvec dtype set is `{uint8, uint16, uint32}` with no `int32`. A reimplementation that reuses one dtype set for both reduce flavours is wrong. (HIGH — the body checks only the three uint widths.)
 
 ---
 
@@ -133,11 +133,11 @@ function tensor_partition_reduce(op, data, ...):       // neuron_isa.py:583
 
 ```text
 bn_stats(data, *, mask=None, dtype=None)
-  signature: CONFIRMED stub L356 | source: neuron_isa.py:2501 | engine: Vector
-  builds: sema.bn_stats_inst(data, mask, dtype)   (node "bn_stats_inst" CONFIRMED n_s @ body 0x376e0)
+  signature: stub L356 | source: neuron_isa.py:2501 | engine: Vector
+  builds: sema.bn_stats_inst(data, mask, dtype)   (node "bn_stats_inst", n_s @ body 0x376e0)
 ```
 
-Per-partition mean/variance accumulator, computed in fp32. The output is **6 elements per partition** — two `(count, mean, variance*count)` triples, one for the *even* input elements and one for the *odd* (CONFIRMED docstring L361–368):
+Per-partition mean/variance accumulator, computed in fp32. The output is **6 elements per partition** — two `(count, mean, variance*count)` triples, one for the *even* input elements and one for the *odd* (docstring L361–368):
 
 ```text
 out[par] = [ count_even, mean_even, var_even*count_even,
@@ -150,11 +150,11 @@ out[par] = [ count_even, mean_even, var_even*count_even,
 
 ```text
 bn_aggr(data, *, mask=None, dtype=None)
-  signature: CONFIRMED stub L320 | source: neuron_isa.py:2558 | engine: Vector
-  builds: sema.bn_aggr_inst(data, mask, dtype)   (node "bn_aggr_inst" CONFIRMED n_s @ body 0x36be0)
+  signature: stub L320 | source: neuron_isa.py:2558 | engine: Vector
+  builds: sema.bn_aggr_inst(data, mask, dtype)   (node "bn_aggr_inst", n_s @ body 0x36be0)
 ```
 
-Aggregates one or more `bn_stats` outputs into **2 elements per partition** — `(mean, variance)`. Because each `bn_stats` triple is `(count, mean, variance*count)`, the input's free dimension must be a **multiple of 3** (CONFIRMED docstring). fp32 compute, cast out to `dtype` (default = input dtype).
+Aggregates one or more `bn_stats` outputs into **2 elements per partition** — `(mean, variance)`. Because each `bn_stats` triple is `(count, mean, variance*count)`, the input's free dimension must be a **multiple of 3** (docstring). fp32 compute, cast out to `dtype` (default = input dtype).
 
 ---
 
@@ -166,7 +166,7 @@ These three are the Vector engine's "search" micro-ops, sharing the per-partitio
 
 ```text
 max8(*, src, mask=None, dtype=None)
-  signature: CONFIRMED stub L704 | source: neuron_isa.py:2124 | engine: Vector
+  signature: stub L704 | source: neuron_isa.py:2124 | engine: Vector
   builds: nki_ctx.max8(src, mask=mask, dtype=dtype)   (thin wrapper, body 0x73330)
 ```
 
@@ -176,7 +176,7 @@ Reads `src`, converts to fp32 internally, outputs the **8 largest values in DESC
 
 ```text
 nc_find_index8(*, data, vals, mask=None, dtype=None)
-  signature: CONFIRMED stub L776 | source: neuron_isa.py:2162 | engine: Vector
+  signature: stub L776 | source: neuron_isa.py:2162 | engine: Vector
   builds: nki_ctx.nc_find_index8(...)   (thin wrapper)
 ```
 
@@ -186,7 +186,7 @@ For each partition, finds the index (from 0) of the **first occurrence** of each
 
 ```text
 nc_match_replace8(*, data, vals, imm, dst_idx=None, mask=None, dtype=None)
-  signature: CONFIRMED stub L816 | source: neuron_isa.py:2207 | engine: Vector
+  signature: stub L816 | source: neuron_isa.py:2207 | engine: Vector
   builds: nki_ctx.nc_match_replace8(...)   (body 0x6e7a0)
 ```
 
@@ -206,13 +206,13 @@ Replaces the first occurrence of each `vals` element in `data` with the immediat
 range_select(*, on_true_tile, comp_op0, comp_op1, bound0, bound1,
              reduce_cmd=reduce_cmd.idle, reduce_res=None, reduce_op=np.max,
              range_start=0, on_false_value=fp32.min, mask=None, dtype=None)
-  signature: CONFIRMED stub L1133 | source: neuron_isa.py:1456 | engine: Vector (FORCED)
-  availability: NeuronCore-v3+ ONLY (CONFIRMED docstring L1140)
+  signature: stub L1133 | source: neuron_isa.py:1456 | engine: Vector (FORCED)
+  availability: NeuronCore-v3+ ONLY (docstring L1140)
   builds: range_select node + range_select_info descriptor
-          (import neuronxcc.include.isa.range_select_info — CONFIRMED)
+          (import neuronxcc.include.isa.range_select_info)
 ```
 
-A **double-bound range test** on the free-dimension coordinate: for each element, compare `range_start + free_index` against `bound0` and `bound1` (in fp32), and where both comparisons hold, copy `on_true_tile`, else write `on_false_value`. The body forces `nisa_engine.vector` (CONFIRMED n_s `{nisa_engine, vector}`).
+A **double-bound range test** on the free-dimension coordinate: for each element, compare `range_start + free_index` against `bound0` and `bound1` (in fp32), and where both comparisons hold, copy `on_true_tile`, else write `on_false_value`. The body forces `nisa_engine.vector` (n_s `{nisa_engine, vector}`).
 
 ```c
 function range_select(*, on_true_tile, comp_op0, comp_op1, bound0, bound1, ...):  // :1456
@@ -228,7 +228,7 @@ function range_select(*, on_true_tile, comp_op0, comp_op1, bound0, bound1, ...):
         engine=vector, mask=mask, dtype=dtype)
 ```
 
-The numpy equivalent (CONFIRMED docstring L1192):
+The numpy equivalent (docstring L1192):
 
 ```python
 indices = range_start + np.arange(on_true_tile[0].size)        # computed in fp32
@@ -237,7 +237,7 @@ out     = np.where(mask, on_true_tile, on_false_value)
 reduce_tile = reduce_op(out, axis=1, keepdims=True)            # if reduce_cmd != idle
 ```
 
-Legal `comp_op0/1` (CONFIRMED): `{np.equal, np.less, np.less_equal, np.greater, np.greater_equal}`. `reduce_op`: only `np.max`.
+Legal `comp_op0/1`: `{np.equal, np.less, np.less_equal, np.greater, np.greater_equal}`. `reduce_op`: only `np.max`.
 
 > **GOTCHA — `on_false_value` MUST be the FP32_MIN bit pattern (`fp32.min`).** This is a hardware constraint, hence the default. The docstring spells out the numerical-stability reason: in the attention pattern `range_select → reduce_res → activation`, a full row of fill produces `FP32_MIN - FP32_MIN = 0` (stable) only if `reduce_res` is FP32. If `dtype` is FP16/BF16/FP8 the fill downcasts to `-INF`, and you must keep `reduce_res` FP32 so `activation` (which upcasts to fp32) sees `-INF - FP32_MIN = -INF`, stable. `range_start + free_index` must stay within `2^24` (fp32 exact-integer range).
 
@@ -247,7 +247,7 @@ Legal `comp_op0/1` (CONFIRMED): `{np.equal, np.less, np.less_equal, np.greater, 
 select_reduce(*, dst, predicate, on_true, on_false, reduce_res=None,
               reduce_cmd=reduce_cmd.idle, reduce_op=np.max, reverse_pred=False,
               mask=None, dtype=None)
-  signature: CONFIRMED stub L1298 | source: neuron_isa.py:1591 | engine: Vector
+  signature: stub L1298 | source: neuron_isa.py:1591 | engine: Vector
   builds: nki_ctx.<select_reduce builder>(...)   (largest body 0x78670, ~254KB decompiled)
 ```
 
@@ -289,7 +289,7 @@ function select_reduce(*, dst, predicate, on_true, on_false, ...):   // :1591
         reduce_cmd, reduce_op, reverse_pred, mask=mask, dtype=dtype)
 ```
 
-Every `raise` string above is a CONFIRMED literal in body `0x78670` (`pyx_kp_u_on_false_must_be_float32_when_p`, `pyx_kp_u_on_false_s_free_dimension_should`, `pyx_kp_u_dst_dtype_must_match_instructio`). MEMORY (CONFIRMED docstring): `on_true` and `predicate` may both be SBUF; at most one of them in PSUM; `dst` in SBUF or PSUM.
+Every `raise` string above is a literal in body `0x78670` (`pyx_kp_u_on_false_must_be_float32_when_p`, `pyx_kp_u_on_false_s_free_dimension_should`, `pyx_kp_u_dst_dtype_must_match_instructio`). MEMORY (docstring): `on_true` and `predicate` may both be SBUF; at most one of them in PSUM; `dst` in SBUF or PSUM.
 
 ---
 
@@ -297,7 +297,7 @@ Every `raise` string above is a CONFIRMED literal in body `0x78670` (`pyx_kp_u_o
 
 ### Purpose
 
-`reduce_cmd` selects what the op does with the Vector engine's accumulator registers. Its five values (CONFIRMED stub L85, `reduce_cmd(IntEnum)`) are the same enum across the whole DVE select family, but **each op accepts a different subset**. The gate is a single membership test against a per-op `supported` set.
+`reduce_cmd` selects what the op does with the Vector engine's accumulator registers. Its five values (stub L85, `reduce_cmd(IntEnum)`) are the same enum across the whole DVE select family, but **each op accepts a different subset**. The gate is a single membership test against a per-op `supported` set.
 
 ```text
 reduce_cmd: idle=0, reset=1, reduce=2, reset_reduce=3, load_reduce=4
@@ -316,7 +316,7 @@ function _check_supported_reduce_cmd(inst_name, reduce_cmd, supported):  // :300
         sema.err_instruction_unsupported_op(name=inst_name)
 ```
 
-Each caller just builds its `supported` tuple and forwards to the core. The three per-op wrappers (each CONFIRMED from its body's n_s set):
+Each caller just builds its `supported` tuple and forwards to the core. The three per-op wrappers (each read from its body's n_s set):
 
 | Validator | Source | Legal `reduce_cmd` set | Excludes |
 |---|---|---|---|
@@ -326,9 +326,9 @@ Each caller just builds its `supported` tuple and forwards to the core. The thre
 
 > **GOTCHA — `select_reduce` is strictly narrower than `range_select`.** `range_select` allows a bare `reset` (set accumulators without immediately reducing); `select_reduce` does **not** — its set is `{idle, reduce, reset_reduce}` only. The reason mirrors the hardware: `select_reduce` always wants a *defined* reset-or-continue (`reset_reduce` fuses both), never a bare `reset` that leaves the accumulator in an indeterminate "reset but not yet reduced" state. A reimplementation that shares one `reduce_cmd` whitelist across both ops will incorrectly accept `range_select(reduce_cmd=reset)` for `select_reduce`.
 
-> **CORRECTION (REDUCE-1) —** `load_reduce` (=4) is never legal for any of these three DVE select validators. It is reserved for the `tensor_scalar_cumulative` path (where `reset_reduce` is the default), which is sibling [6.4.1](isa-compute-intrinsics.md) territory. Any draft that lists `load_reduce` as a legal `range_select`/`select_reduce` command is wrong — the binary's `supported` tuples contain only the four/three values above.
+> **GOTCHA — `load_reduce` (=4) is legal for none of these three DVE select validators.** It belongs to the `tensor_scalar_cumulative` path, where `reset_reduce` is the default — sibling [6.4.1](isa-compute-intrinsics.md) territory. The `supported` tuples in the binary contain only the four (or three) values in the table above, so a whitelist that admits `load_reduce` for `range_select` or `select_reduce` accepts something the binary rejects.
 
-> **CORRECTION (REDUCE-2) —** the validator name `_check_activiation_supported_reduce_cmd` is misspelled in the source ("activiation"). This is a genuine identifier in the binary's `_TraceSetupAndCall` table at `neuron_isa.py:2990`, not a transcription error. A reimplementer grepping for `_check_activation_supported_reduce_cmd` will miss it.
+> **GOTCHA — the validator name is misspelled in the source.** It is `_check_activiation_supported_reduce_cmd` — "activiation" — and that is the genuine identifier in the `_TraceSetupAndCall` table at `neuron_isa.py:2990`, not a transcription slip on this page. Grepping for `_check_activation_supported_reduce_cmd` finds nothing.
 
 ---
 
@@ -338,23 +338,23 @@ Each caller just builds its `supported` tuple and forwards to the core. The thre
 
 ```text
 affine_select(pred, on_true_tile, on_false_value, *, mask=None, dtype=None)
-  signature: CONFIRMED stub L268 | source: neuron_isa.py:1389 | engine: GpSimd
+  signature: stub L268 | source: neuron_isa.py:1389 | engine: GpSimd
   builds: nki_ctx.affine_select(pred, on_true_tile, on_false_value, mask, dtype)  (thin, body 0x49510)
 ```
 
 `out[x] = (pred[x] > 0) ? on_true_tile[x] : on_false_value`. The body is a pure forward — n_s set is exactly `{pred, on_true_tile, on_false_value, mask, dtype, nki_ctx, affine_select}`, no local `_check_*`. The predicate is lowered in `neuronxcc.nki.compiler.backends.neuron.predicates`.
 
-> **GOTCHA — `pred` is a single AFFINE expression, evaluated per-element on the GpSimd engine, not a materialized boolean tile.** It is built from `nl.arange()` / index algebra; it must be compile-time resolvable (no runtime vars) and **cannot** be a boolean combination (`&`/`|`) of masks. For richer predicates the docs route users to `nl.where`. DTYPE: `on_true_tile`/output may be any float or 8/16-bit int, but `on_false_value` MUST be float32 regardless of the tile dtypes (CONFIRMED docstring + the `on_false` fp32 error string).
+> **GOTCHA — `pred` is a single AFFINE expression, evaluated per-element on the GpSimd engine, not a materialized boolean tile.** It is built from `nl.arange()` / index algebra; it must be compile-time resolvable (no runtime vars) and **cannot** be a boolean combination (`&`/`|`) of masks. For richer predicates the docs route users to `nl.where`. DTYPE: `on_true_tile`/output may be any float or 8/16-bit int, but `on_false_value` MUST be float32 regardless of the tile dtypes (docstring + the `on_false` fp32 error string).
 
 ### tensor_copy_predicated
 
 ```text
 tensor_copy_predicated(*, src, dst, predicate, reverse_pred=False, mask=None, dtype=None)
-  signature: CONFIRMED stub L1542 | source: neuron_isa.py:1909 | engine: Vector
+  signature: stub L1542 | source: neuron_isa.py:1909 | engine: Vector
   builds: nki_ctx.tensor_copy_predicated(...)  (body 0x7e1f0)
 ```
 
-Conditional copy: where `predicate` is True copy `src → dst` (or a scalar `src`); where False, `dst` is unchanged. Five inline error strings (all CONFIRMED literals in body `0x7e1f0`):
+Conditional copy: where `predicate` is True copy `src → dst` (or a scalar `src`); where False, `dst` is unchanged. Five inline error strings (all literals in body `0x7e1f0`):
 
 ```c
 function tensor_copy_predicated(*, src, dst, predicate, reverse_pred=False, ...):  // :1909
@@ -372,7 +372,7 @@ function tensor_copy_predicated(*, src, dst, predicate, reverse_pred=False, ...)
     return nki_ctx.tensor_copy_predicated(src, dst, predicate, reverse_pred, mask, dtype)
 ```
 
-MEMORY: `src` and `predicate` both SBUF is fine; at most one in PSUM (CONFIRMED docstring). `reverse_pred` being scalar-only is the trap — it is *not* a general "invert the predicate" knob.
+MEMORY: `src` and `predicate` both SBUF is fine; at most one in PSUM (docstring). `reverse_pred` being scalar-only is the trap — it is *not* a general "invert the predicate" knob.
 
 ---
 
@@ -382,7 +382,7 @@ MEMORY: `src` and `predicate` both SBUF is fine; at most one in PSUM (CONFIRMED 
 
 ```text
 memset(shape, value, dtype, *, mask=None, engine=engine.unknown)
-  signature: CONFIRMED stub L740 | source: neuron_isa.py:1817 | engine: Vector or GpSimd
+  signature: stub L740 | source: neuron_isa.py:1817 | engine: Vector or GpSimd
   builds: nki_ctx.memset(shape, value, dtype, mask, engine)  (thin, body 0x4b520)
 ```
 
@@ -392,8 +392,8 @@ Fills a tile with a **compile-time constant** `value`. Ignores `nl.par_dim()`; `
 
 ```text
 iota(expr, dtype, *, mask=None)
-  signature: CONFIRMED stub L602 | source: neuron_isa.py:1281 | engine: GpSimd
-  builds: index_value_inst   (CONFIRMED n_s @ body 0x39dd0)
+  signature: stub L602 | source: neuron_isa.py:1281 | engine: GpSimd
+  builds: index_value_inst   (n_s @ body 0x39dd0)
 ```
 
 Materializes a constant index pattern in SBUF from an affine `nl.arange()`-based `AccessPattern` `expr`, computed in int32, then cast to `dtype` for free (GpSimd cast). No local `_check_*` — `expr` legality is enforced by the `AccessPattern` machinery in `nki_ctx`. n_s set: `{expr, dtype, index_value_inst, mask, nki_ctx}`.
@@ -402,17 +402,17 @@ Materializes a constant index pattern in SBUF from an affine `nl.arange()`-based
 
 ```text
 dropout(data, prob, *, mask=None, dtype=None)
-  signature: CONFIRMED stub L548 | source: neuron_isa.py:1312 | engine: Vector
+  signature: stub L548 | source: neuron_isa.py:1312 | engine: Vector
   builds: nki_ctx.dropout(data, prob, mask, dtype)  (thin)
 ```
 
-Per-element Bernoulli zeroing with drop-probability `prob`. `prob` may be a scalar const OR a tile of shape `(data.shape[0], 1)` (per-partition prob). Dtype rules (CONFIRMED docstring, enforced in ctx): if `data` is **integer**, `prob` must be float32 **and** the output dtype must equal `data` dtype; if `data` is **float**, `prob` may be any float type and the output may be any valid type.
+Per-element Bernoulli zeroing with drop-probability `prob`. `prob` may be a scalar const OR a tile of shape `(data.shape[0], 1)` (per-partition prob). Dtype rules (docstring, enforced in ctx): if `data` is **integer**, `prob` must be float32 **and** the output dtype must equal `data` dtype; if `data` is **float**, `prob` may be any float type and the output may be any valid type.
 
 ### sequence_bounds
 
 ```text
 sequence_bounds(*, segment_ids, dtype=None)   [NOTE: no mask param]
-  signature: CONFIRMED stub L1384 | source: neuron_isa.py:1775 | engine: GpSimd
+  signature: stub L1384 | source: neuron_isa.py:1775 | engine: GpSimd
   builds: nki_ctx.sequence_bounds(segment_ids, dtype)  (thin, body 0x29010)
 ```
 
@@ -440,7 +440,7 @@ function _check_tensor_copy_dynamic_supported_engine(engine, inst_name):  // :31
         nki_assert(False, "<inst> is not supported on trn1 Scalar Engine.")
 ```
 
-> **GOTCHA — Scalar-engine dynamic copy is ILLEGAL on Trn1 (gen2).** The check is exact: `get_nc_version() == gen2` *and* `engine == scalar`. It is legal on gen3+ (Trn2/Trn3); Vector and GpSimd are legal everywhere. The error string `pyx_kp_u_is_not_supported_on_trn1_Scalar` is a CONFIRMED literal. Note this is an *equality* on `gen2`, not a `< gen3` range — but they coincide because gen2 is the minimum.
+> **GOTCHA — Scalar-engine dynamic copy is ILLEGAL on Trn1 (gen2).** The check is exact: `get_nc_version() == gen2` *and* `engine == scalar`. It is legal on gen3+ (Trn2/Trn3); Vector and GpSimd are legal everywhere. The error string `pyx_kp_u_is_not_supported_on_trn1_Scalar` is a literal in the binary. Note this is an *equality* on `gen2`, not a `< gen3` range — but they coincide because gen2 is the minimum.
 
 ---
 
@@ -452,7 +452,7 @@ Both DMA ops gate Hardware DGE on `get_nc_version() >= gen3` through the *same* 
 
 ```text
 dma_copy(*, dst, src, mask=None, dst_rmw_op=None, oob_mode=oob_mode.error, dge_mode=dge_mode.unknown)
-  signature: CONFIRMED stub L414 | source: neuron_isa.py:2428 | engine: DMA
+  signature: stub L414 | source: neuron_isa.py:2428 | engine: DMA
   builds: nki_ctx DMA-copy node  (body 0x3c080)
 ```
 
@@ -473,13 +473,13 @@ function dma_copy(*, dst, src, dst_rmw_op=None, oob_mode=error, dge_mode=unknown
 
 ```text
 dma_transpose(src, *, axes=None, dge_mode=dge_mode.unknown, mask=None, dtype=None, oob_mode=oob_mode.error)
-  signature: CONFIRMED stub L477 | source: neuron_isa.py:2003 | engine: DMA
-  builds: (indirect path) IndirectMemrefTileND tile  (CONFIRMED n_s)
+  signature: stub L477 | source: neuron_isa.py:2003 | engine: DMA
+  builds: (indirect path) IndirectMemrefTileND tile  (n_s)
 ```
 
-Transpose via the DMA engine. Permutations (CONFIRMED docstring): 2-D → `[1,0]`; 3-D → `[2,1,0]`; 4-D → `[3,1,2,0]`. Legal `axes`: `(1,0)`, `(2,1,0)`, `(3,1,2,0)`. The HWDGE gate is the same `>= gen3` rule as `dma_copy`.
+Transpose via the DMA engine. Permutations (docstring): 2-D → `[1,0]`; 3-D → `[2,1,0]`; 4-D → `[3,1,2,0]`. Legal `axes`: `(1,0)`, `(2,1,0)`, `(3,1,2,0)`. The HWDGE gate is the same `>= gen3` rule as `dma_copy`.
 
-The legality splits into a **non-indirect** path (DGE ∈ `{unknown, hwdge}`) and an **indirect/gather** path (DGE ∈ `{unknown, swdge}`). Every row below is a CONFIRMED literal error string in body `0x3e8e0` (cross-checked against the docstring constraints at stub L487–504):
+The legality splits into a **non-indirect** path (DGE ∈ `{unknown, hwdge}`) and an **indirect/gather** path (DGE ∈ `{unknown, swdge}`). Every row below is a literal error string in body `0x3e8e0` (cross-checked against the docstring constraints at stub L487–504):
 
 | Path | dge_mode | Rule | Error string / check |
 |---|---|---|---|
@@ -494,7 +494,7 @@ The legality splits into a **non-indirect** path (DGE ∈ `{unknown, hwdge}`) an
 | Indirect + SWDGE | `swdge` | `indices.dtype == np.uint32` | `"Indices tensor for DMA gather transpose must have uint32 dtype"` |
 | Indirect + SWDGE | `swdge` | `indices.shape[0] % 16 == 0` | `"Size of indices tensor for DMA gather transpose must be multiple of 16"` |
 
-> **CORRECTION (DMA-1) —** the HWDGE column constraint is **`src.shape[-1] % 128 == 0`** (a multiple of 128), per the docstring rule at stub L492, *not* `src.shape[-1] <= 128`. The error string says "must have <=128 columns" but the actual predicate that fires it is the modulo check — a draft that implements a literal `<= 128` upper bound will accept e.g. a 64-column tile that the binary rejects and reject a 256-column tile that the binary accepts. Implement the modulo, present the `<=128` text only as the diagnostic.
+> **GOTCHA — the HWDGE column rule is a modulo, not an upper bound.** The predicate is `src.shape[-1] % 128 == 0` (per the docstring rule at stub L492), even though the error string it fires reads *"must have <=128 columns"*. Implementing the literal `<= 128` bound gets it wrong in both directions: it accepts a 64-column tile the binary rejects, and rejects a 256-column tile the binary accepts. Implement the modulo; treat the `<=128` wording as diagnostic text only.
 
 > **GOTCHA — the `dge_mode` whitelists are disjoint by path.** `hwdge` is legal *only* for non-indirect transpose; `swdge` is legal *only* for indirect/gather transpose. `unknown` is legal for both (compiler decides). Passing `swdge` to a plain transpose or `hwdge` to a gather transpose are the two single-string rejections at the top of each path's table.
 
@@ -506,11 +506,11 @@ The legality splits into a **non-indirect** path (DGE ∈ `{unknown, hwdge}`) an
 
 ```text
 local_gather(src_buffer, index, num_elem_per_idx=1, num_valid_indices=None, *, mask=None)
-  signature: CONFIRMED stub L631 | source: neuron_isa.py:2596 | engine: GpSimd
+  signature: stub L631 | source: neuron_isa.py:2596 | engine: GpSimd
   builds: nki_ctx.local_gather(...)  (body 0x64f80, uses check_local_gather_shape)
 ```
 
-The 8 GpSimd cores each gather independently from their 16 connected SBUF partitions. Constraints (CONFIRMED docstring):
+The 8 GpSimd cores each gather independently from their 16 connected SBUF partitions. Constraints (docstring):
 
 - `src_buffer.shape[0] == index.shape[0]` **and** divisible by 16.
 - `num_elem_per_idx ∈ {1, 2, 4, 8, 16, 32}` (contiguous elements gathered per index, for throughput).
@@ -525,7 +525,7 @@ The 8 GpSimd cores each gather independently from their 16 connected SBUF partit
 ```text
 builtin_custom_op(function_name, lib_file_name, ulib_to_ucode_version,
                   ulib_to_isa_version, srcs, dsts, **kwargs)
-  signature: CONFIRMED stub L411 | source: neuron_isa.py:2798
+  signature: stub L411 | source: neuron_isa.py:2798
   builds: nki_ctx.builtin_custom_op(...)  (thin, body 0x3d2a0)
 ```
 
@@ -535,18 +535,18 @@ Registers a call to a precompiled custom-op library (the `libbuiltincustomop_cpu
 
 ## IR Node / Builder Inventory
 
-The intrinsic layer never constructs a penguin `Operator` directly; it calls a builder on `nki_ctx` (or a `sema.*_inst` constructor). The node-kind names below are CONFIRMED `__pyx_n_s_*` identifiers; the rest forward to the same-named `nki_ctx.<op>` method, where the `Operator` is built (see the IRBuilder, sibling D-P22).
+The intrinsic layer never constructs a penguin `Operator` directly; it calls a builder on `nki_ctx` (or a `sema.*_inst` constructor). The node-kind names below are `__pyx_n_s_*` identifiers; the rest forward to the same-named `nki_ctx.<op>` method, where the `Operator` is built (see the IRBuilder, sibling D-P22).
 
 | Intrinsic | IR node / builder | Confidence |
 |---|---|---|
-| `tensor_reduce` | `nki_ctx.tensorreduce` (penguin reduce node) | CONFIRMED |
-| `tensor_partition_reduce` | `nki_ctx.tensor_partition_reduce` | STRONG |
-| `iota` | `index_value_inst` | CONFIRMED |
-| `bn_stats` | `sema.bn_stats_inst` | CONFIRMED |
-| `bn_aggr` | `sema.bn_aggr_inst` | CONFIRMED |
-| `range_select` | `range_select` node + `range_select_info` descriptor | CONFIRMED |
-| `dma_transpose` (indirect) | `IndirectMemrefTileND` tile | CONFIRMED |
-| `affine_select` / `dropout` / `memset` / `tensor_copy{,_dynamic_*,_predicated}` / `max8` / `nc_find_index8` / `nc_match_replace8` / `select_reduce` / `local_gather` / `sequence_bounds` / `dma_copy` / `builtin_custom_op` | same-named `nki_ctx.<op>(...)` | STRONG |
+| `tensor_reduce` | `nki_ctx.tensorreduce` (penguin reduce node) | CERTAIN |
+| `tensor_partition_reduce` | `nki_ctx.tensor_partition_reduce` | HIGH |
+| `iota` | `index_value_inst` | CERTAIN |
+| `bn_stats` | `sema.bn_stats_inst` | CERTAIN |
+| `bn_aggr` | `sema.bn_aggr_inst` | CERTAIN |
+| `range_select` | `range_select` node + `range_select_info` descriptor | CERTAIN |
+| `dma_transpose` (indirect) | `IndirectMemrefTileND` tile | CERTAIN |
+| `affine_select` / `dropout` / `memset` / `tensor_copy{,_dynamic_*,_predicated}` / `max8` / `nc_find_index8` / `nc_match_replace8` / `select_reduce` / `local_gather` / `sequence_bounds` / `dma_copy` / `builtin_custom_op` | same-named `nki_ctx.<op>(...)` | HIGH |
 
 ---
 
@@ -554,17 +554,17 @@ The intrinsic layer never constructs a penguin `Operator` directly; it calls a b
 
 | Claim class | Confidence | Evidence |
 |---|---|---|
-| All 22 call signatures / defaults / kw-only boundaries | CONFIRMED | stub `__init__.pyi` (verified L268–1614) |
-| All enum values (`engine`/`dge_mode`/`oob_mode`/`reduce_cmd`/`nc_version`) | CONFIRMED | stub L5–100 |
-| Per-op source line numbers | CONFIRMED | `_TraceSetupAndCall` args |
-| `dma_transpose` legality table (10 strings/rules) | CONFIRMED | literal error strings body `0x3e8e0` + docstring L487–504 |
-| `reduce_cmd` legal sets per op | CONFIRMED | each validator body's n_s set |
-| bitvec dtype sets (`tensor_reduce` {int32,uint8/16/32} vs `partition_reduce` {uint8/16/32}) | CONFIRMED / STRONG | `:3130` body; partition-reduce body checks |
-| `select_reduce` / `tensor_copy_predicated` error strings | CONFIRMED | `pyx_kp_u_*` literals |
-| IR node names | CONFIRMED | `__pyx_n_s_*` identifiers |
-| Per-op validator call **order** | STRONG | decompile call-graph + n_s ordering |
-| AccessPattern / predicate construction inside `nki_ctx` | INFERRED | lives in IRBuilder/predicates modules (D-P22), not in this `.so` |
-| Numeric thresholds (4096, 512, 16384) — *enforcement site* | INFERRED | values CONFIRMED docstring; runtime check in `nki_ctx` |
+| All 22 call signatures / defaults / kw-only boundaries | CERTAIN | stub `__init__.pyi` (verified L268–1614) |
+| All enum values (`engine`/`dge_mode`/`oob_mode`/`reduce_cmd`/`nc_version`) | CERTAIN | stub L5–100 |
+| Per-op source line numbers | CERTAIN | `_TraceSetupAndCall` args |
+| `dma_transpose` legality table (10 strings/rules) | CERTAIN | literal error strings body `0x3e8e0` + docstring L487–504 |
+| `reduce_cmd` legal sets per op | CERTAIN | each validator body's n_s set |
+| bitvec dtype sets (`tensor_reduce` {int32,uint8/16/32} vs `partition_reduce` {uint8/16/32}) | CERTAIN / HIGH | `:3130` body; partition-reduce body checks |
+| `select_reduce` / `tensor_copy_predicated` error strings | CERTAIN | `pyx_kp_u_*` literals |
+| IR node names | CERTAIN | `__pyx_n_s_*` identifiers |
+| Per-op validator call **order** | HIGH | decompile call-graph + n_s ordering |
+| AccessPattern / predicate construction inside `nki_ctx` | MEDIUM | lives in the IRBuilder/predicates modules, not in this `.so` |
+| Numeric thresholds (4096, 512, 16384) — *enforcement site* | MEDIUM | values from the docstring; runtime check in `nki_ctx` |
 
 ---
 
