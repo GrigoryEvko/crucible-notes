@@ -204,7 +204,7 @@ The eight emitted symbols resolve **byte-exact** against `wrapper_api.o` in
 > `_create_wrapper` (lines 208-214) shows `int relu_wrapper() { … return 0; }`. The **actual
 > emitter** (line 149) produces **`void <fn>_wrapper()`** ending in the `if (switched_stack)
 > asm("j switchBack")` tail, **not** an `int`-returning `return 0`. The docstring is a stale
-> sketch; trust the emitter. SX-ABI-08 §3b flags the `void` return type but does not call out
+> sketch; trust the emitter. ABI-08 §3b flags the `void` return type but does not call out
 > the docstring example specifically — recorded here. `[HIGH/OBSERVED: emitter line 149 vs docstring lines 208-214.]`
 
 ### 3c. The `switchBack` / launcher emission
@@ -486,7 +486,7 @@ entry points (see [Custom-Op Marshalling](customop-marshalling.md)), **not** at 
 - **`[INFERRED]`** — the host build supplies `fn_names`/`schema`/`multicore` and reads the versions dict; `multicore=True` is toggled by the host for pool-cluster SPMD ops.
 - **`[GAPS]`** — the built `_cpuI.so` are produced on the customer machine (not in the package); this page decodes the **emitter** + recipes and verifies every emitted symbol resolves against the shipped runtime lib. The customer kernel source is likewise out of scope — the wrapper↔kernel ABI is read from the generated forward-decl, not a real kernel.
 
-> **CORRECTIONs to SX-ABI-08:** none of substance. One refinement: SX-ABI-08 §3b notes the `void`
+> **CORRECTIONs to ABI-08:** none of substance. One refinement: ABI-08 §3b notes the `void`
 > `_wrapper` return type but does not explicitly flag that the **docstring example** in
 > `_create_wrapper` (lines 208-214) is stale (`int relu_wrapper(){ … return 0; }` vs the real
 > `void <fn>_wrapper()` with the `switchBack` tail) — recorded as the §3b **CORRECTION** above.

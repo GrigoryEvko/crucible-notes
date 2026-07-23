@@ -532,9 +532,9 @@ at runtime `impl_->target_` is literally the address of the `NeuronTensorImpl` o
 | `SymInt` symbolic-node packing semantics | MED | const values OBSERVED; interpretation standard-PyTorch |
 | `coherency_enforcer_` *purpose* prose | LOW × SOURCE | header text; layout OBSERVED |
 
-### Corrections to the SX-ABI-02 backing analysis
+### Corrections to the ABI-02 backing analysis
 
-Re-verification against DWARF + **native** `xtensa-elf-objdump` (the backing analysis lacked
+Verification against DWARF + **native** `xtensa-elf-objdump` (the backing analysis lacked
 a working Xtensa disassembler) **upholds every byte-exact claim** — `NeuronTensorImpl 0xD8`,
 `NeuronStorageImpl 0x30`, `neuron_storage_impl_@0xD0`, `data_ptr_@0x10`, `size_bytes_@0x28`,
 `coherency_enforcer_@0x04`, the disabled-storage poison, the vtable override sets, the
@@ -552,7 +552,7 @@ aggregate ABI is instead proven (§4) at the inlined producer callsite
 pointer to it handed to `make<NeuronStorageImpl>`, dereferenced field-by-field inside) and by
 `c10::Q7Deleter::delete_nothing(c10::Q7PtrType)` taking `Q7PtrType` **by value as a
 parameter** — not by any standalone `operator+` / `allocate` text symbol (`neuron_translate`
-returns `void*`). The allocator singleton is also re-confirmed: `GetNeuronAllocator`
+returns `void*`). The allocator singleton is also confirmed: `GetNeuronAllocator`
 (`NeuronAllocator.o` `.text` @0x230, size 0x0B) materialises `&_neuron_alloc`
 (`.bss+0x608`, a **1-byte** static), proving `NeuronAllocator` is a stateless 1-byte façade,
 not a `c10::Allocator`.

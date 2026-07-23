@@ -22,9 +22,8 @@ Everything below is anchored to shipped artifacts read **verbatim**:
 
 Claims are tagged `[HIGH/OBSERVED]` (verbatim script/LSP/ELF bytes), `[MED/INFERRED]`
 (reasoning over those bytes), or `[CARRIED]` (from a cross-referenced lane). Source
-report: **SX-ABI-14**. Line cites are `build_custom_op.py:N` or `xt-pkg-loadlib.cpl:N`
-unless another file is named. The `|` glyph in shell snippets is written `\|` only where
-mdBook tables would otherwise eat it. Package version: customop-lib **0.21.2.0**
+report: **ABI-14**. Line cites are `build_custom_op.py:N` or `xt-pkg-loadlib.cpl:N`
+unless another file is named. Package version: customop-lib **0.21.2.0**
 (`build_custom_op.py:10`, `__version__ = '0.21.2.0'`).
 
 ---
@@ -449,7 +448,7 @@ as a single `libdata` section. It is **not** a normal shared object — it is a 
 a host-linkable container carrying the device blob plus a named entry symbol. The
 prelinker later pulls `libdata` out by `lib_func`, parses it, relocates it to the per-core
 window, and emits the UCPL header. `[HIGH/OBSERVED packager; CARRIED prelinker handoff
-from SX-RT-19]`
+from RT-19]`
 
 > **NOTE.** Because no `-p`/`--shared-pagesize` is passed by `STRIP_OPT`, the script takes
 > the **overlay** branch, not the PIE-pagesize branch (`:130-132`, `:154-161`,
@@ -489,8 +488,8 @@ extracts `libdata` by the `lib_func` symbol, validates it, parses its segments, 
 each segment, runs the `R_XTENSA` relocations to bind the image to the chosen per-core
 SRAM window (the `0x84000000 + i·0x200000` base from §6), and emits the **UCPL header**
 that makes the image device-stageable. That prelinker stage is documented at
-*Prelinker + UCPL* (Part 8 — `runtime/prelinker-ucpl.md`, not yet authored). `[CARRIED
-from SX-RT-19]`
+[The Host Prelinker — UCPL / Segment Loader / R_XTENSA / Staging](../runtime/prelinker-ucpl.md).
+`[CARRIED from RT-19]`
 
 ```
 USER .cpp ──► [xt-clang++ -c] ──► .o ─┐
@@ -544,4 +543,4 @@ from the verbatim pipeline above]`
 - [The Multicore API (8-core SPMD)](multicore-spmd.md) — the 8-core model behind the 8× link.
 - [FlexLM Licensing Gate](flexlm-licensing.md) — the compiler-front-end license checkout.
 - [Stack-Switch Dispatch](stack-switch.md) — `switch_stack_or_call_wrapper` / `STACK_SIZE` / `switchBack`.
-- *Prelinker + UCPL* (`runtime/prelinker-ucpl.md`, Part 8 — not yet authored): the device-side loader that consumes `.packed.so`.
+- [Prelinker + UCPL](../runtime/prelinker-ucpl.md) — the device-side loader that consumes `.packed.so`.

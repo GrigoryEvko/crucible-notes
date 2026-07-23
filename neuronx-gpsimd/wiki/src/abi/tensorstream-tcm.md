@@ -93,10 +93,10 @@ both are `T` (DEFINED) symbols at `0x00`/`0x28` in `TensorTcmAccessor.o`
 > `data_transfer.cpp:160  dram_addr >= 0x80000 && dram_addr < 0x90000`. The dataram /
 > TCM staging window is therefore the **64 KiB region `[0x80000, 0x90000)`** in the
 > core's local address space. A `tcm_malloc` result outside this range would trap the
-> SDMA path. (Not in SX-ABI-05 — recovered here from the assertion literal.)
+> SDMA path. (Not in ABI-05 — recovered here from the assertion literal.)
 
 > **GOTCHA — the buffer is a *single* 4 KiB bounce buffer, not a true double-buffer.**
-> Despite the "double-buffer" framing in the task brief and SX-ABI-05's loose
+> Despite the "double-buffer" framing in the task brief and ABI-05's loose
 > "double-of-nothing" phrasing, the header defines exactly **one** owned buffer
 > (`buffer_ptr_`) that is **refilled in place** (`buffer_idx_ = 0` after each
 > `neuron_memcpy`) — there is no ping-pong second buffer and no overlap of DMA with
@@ -512,9 +512,9 @@ Rules of thumb:
 
 ---
 
-## 9. Corrections to SX-ABI-05
+## 9. Corrections to ABI-05
 
-- **CORRECTION (terminology) — single bounce buffer, not a double-buffer.** SX-ABI-05's
+- **CORRECTION (terminology) — single bounce buffer, not a double-buffer.** ABI-05's
   title and §1 describe a *"4 KiB double-of-nothing single buffer"*, and the task brief
   labels it a "double-buffer". The header (`TensorStreamAccessor.h:142,150`) defines
   exactly **one** owned 4 KiB dataram buffer, refilled in place (`buffer_idx_=0`); there
@@ -522,13 +522,13 @@ Rules of thumb:
   bounce/staging buffer**. The 4 KiB figure itself (`BUFFER_SIZE_BYTES (4*1024)`,
   h:18) is confirmed. **[OBSERVED — header]**
 
-- **ADDITION (not in SX-ABI-05) — the dataram address window `[0x80000, 0x90000)`.**
+- **ADDITION (not in ABI-05) — the dataram address window `[0x80000, 0x90000)`.**
   Recovered from the `dram_addr_to_soc_addr` range assertion literal in
-  `data_transfer.o` `.data` (`data_transfer.cpp:160`). SX-ABI-05 grounds the dataram
+  `data_transfer.o` `.data` (`data_transfer.cpp:160`). ABI-05 grounds the dataram
   region only to `data_scratch_map`; this pins the 64 KiB local window the SDMA path
   requires TCM buffers to live in. **[OBSERVED — `readelf -p .data`]**
 
-Otherwise this page corroborates SX-ABI-05 exactly: `TensorTcmAccessor` = 16 B with a
+Otherwise this page corroborates ABI-05 exactly: `TensorTcmAccessor` = 16 B with a
 single `const Q7PtrType@0x00` and a no-storage `read_only` template flag and **no
 enforcer**; `tcm_malloc`/`tcm_free` wrap `neuron_dataram_(de)allocate`; both
 `neuron_memcpy` overloads DEFINED; method table defaults to `DMA`; stream layouts

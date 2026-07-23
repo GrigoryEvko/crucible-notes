@@ -28,8 +28,8 @@ ldscripts and the specs file are plain text and are citeable directly:
 
 Claims are tagged `[HIGH/OBSERVED]` (verbatim ldscript/specs/ELF bytes + byte-exact
 diff/hash), `[MED/INFERRED]` (reasoning over those bytes), or `[CARRIED]` (grounded in
-a cross-referenced lane). Source reports: **SX-ABI-15** + **SX-ADDR-19**. The `|` glyph
-inside tables is written `\|`. Package version: customop-lib **0.21.2.0**.
+a cross-referenced lane). Source report: **ABI-15**. Package version: customop-lib
+**0.21.2.0**.
 
 ---
 
@@ -111,7 +111,7 @@ mode. Decoded by reading + diffing cpu0: `[HIGH/OBSERVED]`
 | `.xr` | `ld -r` / `-i` | the **relocatable** (partial-link) script: **no `MEMORY`, no origins, no `_memmap_*`** — just `SECTIONS` concatenating `.text`/`.bss`/`.debug.*` at addr 0. Carries **zero** per-core/window information. |
 | `.xu` | `ld -Ur` | **identical to `.xr` except line-2 comment** (`"Linker Script for ld -Ur"`). |
 
-**Verification (byte-exact this task):** `[HIGH/OBSERVED]`
+**Verification (byte-exact):** `[HIGH/OBSERVED]`
 
 - `diff .x .xn` and `diff .x .xbn` (cpu0) = **line 2 only** (the mode comment).
 - The `.xn` / `.xbn` carry the **same** per-core `sram0_0_seg` org as `.x`.
@@ -178,7 +178,7 @@ PROVIDE(_memmap_vecbase_reset = 0x0);
 ## 4. The per-core SRAM window bank map — the `0x84000000` / `0x200000` decode
 
 The "SRAM window map" is a **single-bank-per-core** map: one 2 MiB bank per Q7 core.
-Re-grepped + diffed + body-hashed byte-exact (all 9 LSPs): `[HIGH/OBSERVED]`
+Grepped + diffed + body-hashed byte-exact (all 9 LSPs): `[HIGH/OBSERVED]`
 
 | LSP | `sram0_0_seg` org | len | bank range `[start,end)` |
 |---|---|---|---|
@@ -204,8 +204,8 @@ The 8 banks **tile** `[0x84000000, 0x85000000)` = 16 MiB with **no gap, no overl
 
 ### What the `0x84000000` base encodes
 
-The task framing of a "`0x84000000` per-window stride" conflates **base** with
-**stride**. Byte-exact: `[HIGH/OBSERVED]`
+A "`0x84000000` per-window stride" framing conflates **base** with **stride**.
+Byte-exact: `[HIGH/OBSERVED]`
 
 ```
 0x84000000  = NX-local BASE of the hbm_scratch pinned 64-MiB translation window
@@ -240,7 +240,7 @@ and `ldapp/memmap.xmm` names them literally:
 `[0x80000000, 0xA0000000)`.
 
 **(c) the cacheattr marks that region — and only it — writeback.** `[HIGH/OBSERVED —
-decoded this task]` The Xtensa cacheattr word is **8 nibbles, one per 512-MiB region**
+decoded from the ldscript]` The Xtensa cacheattr word is **8 nibbles, one per 512-MiB region**
 of the 4 GiB space (region `r = [r·0x20000000, (r+1)·0x20000000)`). The custom-op `.x`
 ships (lines 37–53):
 
@@ -390,7 +390,7 @@ here by the .bss output section, located by the allocator/parallel lanes]`
 
 ### cpu0 → cpu1 (the entire material per-core delta)
 
-`diff cpu0/.x cpu1/.x` = **exactly six lines**: `[HIGH/OBSERVED — captured this task]`
+`diff cpu0/.x cpu1/.x` = **exactly six lines**: `[HIGH/OBSERVED]`
 
 | line | symbol | cpu0 → cpu1 |
 |---|---|---|
@@ -408,7 +408,7 @@ Nothing else changes — same `ENTRY`, `PHDRS`, IRAM seg, `SECTIONS`, cacheattr,
 hashing the remainder yields the **same** sha256 (`ff467ef81f619dc2…`) for **all
 eight** cores. The 2 MiB-stride `sram` origin (+ its four mirror `_memmap` symbols + the
 path comment) is **provably the only** material per-core difference. One object set, 8
-link variants, base-shifted bank. `[HIGH/OBSERVED — body-hash this task]`
+link variants, base-shifted bank. `[HIGH/OBSERVED — body-hash]`
 
 ### cpu0 → cpu_single
 
@@ -591,7 +591,7 @@ shows only `lsp_fll_load_cpu*`). The 2-region map is the shared layout for all d
 gens that take the prelink/staging path. The per-gen memory deltas that *do* exist (the
 `POOL_NX_DRAM` size, the HBM-stack arena cap) are **runtime/firmware-image** facts, not
 customop-LSP facts — the LSP itself is gen-invariant. The on-device staging is handled
-by the prelinker (Part 8 — *runtime/prelinker-ucpl.md*, not yet authored).
+by [the prelinker](../runtime/prelinker-ucpl.md).
 `[HIGH/OBSERVED single LSP family + decl path; MED that it is byte-identical across the
 gens it serves — there is only one to read]`
 
@@ -617,9 +617,8 @@ per-cluster difference is the **SoC-physical** base, not the NX bank.
 > window. `[HIGH/OBSERVED the two strides; CARRIED the SoC bases]`
 
 For the full SoC-side address map and the per-core window decode see
-*control/address/lsp-sram-window-map.md* (Part 13 — not yet authored), and for the
-on-device fixed-location load see *runtime/prelinker-ucpl.md* (Part 8 — not yet
-authored).
+[The LSP SRAM Window Map](../control/address/lsp-sram-window-map.md), and for the
+on-device fixed-location load see [The Host Prelinker](../runtime/prelinker-ucpl.md).
 
 ---
 

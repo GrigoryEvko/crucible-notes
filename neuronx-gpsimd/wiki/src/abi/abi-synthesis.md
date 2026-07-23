@@ -21,10 +21,10 @@
 > walkthrough see the orientation page
 > [A Custom Op, End to End](../orientation/customop-end-to-end.md).
 >
-> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read this task
-> from `ar`/`nm`/`readelf`/DWARF/native Xtensa disassembly), `INFERRED` (an ABI
+> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read from
+> `ar`/`nm`/`readelf`/DWARF/native Xtensa disassembly), `INFERRED` (an ABI
 > rule applied to an observed fact), `CARRIED` (consolidated from the cited deep
-> page and re-confirmed here only where this synthesis spot-checks it).
+> page and spot-checked here).
 
 > **NOTE — provenance & artifacts.** All claims are derived **solely from static
 > analysis** of the shipped `aws-neuronx-gpsimd-customop-lib_0.21.2.0` package and
@@ -47,7 +47,7 @@
 > (`SUNDA_UCODE_LIB_VERSION_STR`, also `build_custom_op.py`'s
 > `versions['ulib_to_ucode_version']`). These are two different version axes (the
 > package vs the ucode-lib ABI), not a typo — cite both, invent neither.
-> `[HIGH × OBSERVED]` (both re-read this task).
+> `[HIGH × OBSERVED]`
 
 ---
 
@@ -249,8 +249,8 @@ _init_translate_ctx();                   // the 5-entry window TLB       [neuron
 - **The SDMA ring** — `init_dma_queue()` arms the descriptor ring backing the DMA
   memcpy backend. ([Data-Transfer](data-transfer-backends.md))
 
-`[HIGH × OBSERVED]` (struct sizes/offsets re-confirmed via DWARF;
-`init_neuron_*_allocator` / `_init_translate_ctx` imports re-confirmed in
+`[HIGH × OBSERVED]` (struct sizes/offsets from DWARF;
+`init_neuron_*_allocator` / `_init_translate_ctx` imports present in
 `stack_switch.o`).
 
 > **GOTCHA — `_lock=NULL` is the *design*, not an oversight.** The heaps run without
@@ -308,8 +308,7 @@ global `ArgParser` singleton (`.bss 0x608`, 512 B). The `ArgExtractor` (504 B) h
 ### 3.4 The on-wire tensor descriptor
 
 Every tensor argument **and** the output arrive as a 48-byte
-`NEURON_ISA_TPB_CUSTOM_OP_ARG_TENSOR` (DWARF `byte_size = 48`, re-confirmed this
-task):
+`NEURON_ISA_TPB_CUSTOM_OP_ARG_TENSOR` (DWARF `byte_size = 48`):
 
 | off | field | meaning |
 |---|---|---|
@@ -386,8 +385,7 @@ enforcer — the [Coherency §5](coherency-enforcer.md) asymmetry). **DATARAM ==
 `neuron_memcpy` (overloads `_Z13neuron_memcpyPvyj` @`0x65c` HBM→local /
 `_Z13neuron_memcpyyPvj` @`0x694` local→HBM) dispatches through a **3-entry method
 table** @`.data 0x200` `{C_MEMCPY=0, VEC_MEMCPY=1, DMA=2}` by the runtime-settable
-`active_neuron_memcpy_method` (`.data 0x20c` = **`02` = DMA default**, re-verified this
-task). The DMA path builds a CME BD ring, fences with two `memw`, writes the **M2S**
+`active_neuron_memcpy_method` (`.data 0x20c` = **`02` = DMA default**). The DMA path builds a CME BD ring, fences with two `memw`, writes the **M2S**
 inc reg (read/refill, HBM→dataram) or **S2M** inc reg (write/flush, dataram→HBM), and
 busy-polls the completion BD. The local dataram buffer is relocated into a per-core
 64 KiB SoC aperture (`window_index = 2·cpu_id + 9`) so the SDMA engine can address it.
@@ -410,8 +408,7 @@ single-thread advisory bookkeeping (no atomics) that gates *whether* an accessor
 open, never the data path. ([Coherency](coherency-enforcer.md))
 
 The model is **SPMD**: each core self-IDs by `get_cpu_id()` = a cached **raw
-`rsr.prid`** (dedicated SR **235 = 0xEB**, **NOT** MISC, no mask/shift — re-confirmed
-this task) in `[0,8)`, and `get_cpu_count()` = constant **8**. Memory is per-core
+`rsr.prid`** (dedicated SR **235 = 0xEB**, **NOT** MISC, no mask/shift) in `[0,8)`, and `get_cpu_count()` = constant **8**. Memory is per-core
 private (private 256 KiB dataram, private 64 KiB SoC aperture `2·prid+9`, private
 2 MiB `hbm_scratch` sub-window). There is **zero** atomics/barriers/semaphores in the
 whole archive; any cross-core rendezvous would come from outside this library.
@@ -448,13 +445,12 @@ directions then a memory-write fence, draining in-flight DMA/SBUF writes before 
 returns. ([Marshalling §5.2](customop-marshalling.md)) `[HIGH × OBSERVED]`
 
 > **CORRECTION — `customop_cleanup` does NOT call `respond()`.** An earlier framing
-> (carried into SX-ABI-18 §5.2) described cleanup as "respond + fsync". The decoded
+> (carried into ABI-18 §5.2 and §0) described cleanup as "respond + fsync". The decoded
 > body is **`fsync(2); fsync(1); memw`** — a *drain + fence*, with no `respond`. The
 > `respond(TPB_WRITE_RESPONSE)` calls belong to the **setup-side** handshake
 > (`rd_args_from_insns` acknowledging each pulled arg payload), **not** to cleanup.
-> Use [Marshalling §5.2](customop-marshalling.md) as the settled fact. **Reconcile
-> note for Part-7:** SX-ABI-18 §5.2 and §0 ("cleanup responds+fsyncs") should be
-> corrected to `fsync(2);fsync(1);memw`. `[HIGH × OBSERVED]`
+> Use [Marshalling §5.2](customop-marshalling.md) as the settled fact.
+> `[HIGH × OBSERVED]`
 
 ### 5.3 Stack restore
 
@@ -480,15 +476,13 @@ translation is ISA-code → `c10::ScalarType` at the `at::Tensor` boundary, real
 (not a jump table). There is no reverse `torch_to_isa_dtype` — the ABI is one-directional.
 
 > **CORRECTION — there are EXACTLY 8 marshallable dtypes, not 9; FP32R aborts.** The
-> backing SX-ABI-18 report (§VII.7.2) lists **9** marshallable dtypes and maps
-> **FP32R (0xB) → Float**. The committed [Rosetta](scalartype-dtype-rosetta.md)
-> page — and a direct decode this task of the ordinal tree in
+> backing ABI-18 report (§VII.7.2/§7.3) lists **9** marshallable dtypes and maps
+> **FP32R (0xB) → Float**, ALLOW_FP32R-gated. The committed
+> [Rosetta](scalartype-dtype-rosetta.md) page — and a direct decode of the ordinal tree in
 > `_ZNK7UTensorcvN2at6TensorEEv` — shows the accept set is the **eight** compare
 > immediates `{2, 3, 4, 6, 7, 8, 10, 12}`; **FP32R (0xB) is NOT in it** and falls
 > through to the abort arm (`_Assert`, `utypes.hpp:37`). Use **8**, and FP32R →
-> **abort**. **Reconcile note for Part-7:** SX-ABI-18 §VII.7.2/§7.3 ("9 marshallable",
-> "FP32R → Float, ALLOW_FP32R-gated") must be corrected to 8 / FP32R-aborts.
-> `[HIGH × OBSERVED]` (the eight immediates re-read this task).
+> **abort**. `[HIGH × OBSERVED]`
 
 The eight marshallable codes (ISA → `ScalarType`, with element size):
 
@@ -528,7 +522,7 @@ physical space is reached through HW window registers. The single-core NX map
 | `0x84000000 (+i·2 MiB)` | `hbm_scratch` 64 MB pinned; **custom-op `.so` lives in the per-core 2 MiB slice** | PINNED |
 
 > **CORRECTION — the firmware `.data` band is `0x02000000`, not `0x00080000`.** The
-> backing brief (and SX-ABI-18 §VI) conflated two regions. The carved EXTISA firmware
+> backing brief (and ABI-18 §VI) conflated two regions. The carved EXTISA firmware
 > ELF's data band — where `kernel_info_table @0x02000380` lives — is **`0x02000000`**
 > ([Q7 ELF VADDR §4a](q7-elf-vaddr.md)). `0x00080000` is the **dataram DMA-staging
 > window** `[0x80000, 0x90000)`, a *different* region. Both are real; they are
@@ -622,12 +616,12 @@ void <fn>_wrapper() {
 
 ---
 
-## 9. Adversarial self-verify — top-5 claims spot-checked this task
+## 9. Adversarial self-verify — top-5 claims spot-checked
 
-These were re-grounded **directly against the shipped objects** (bounded commands per
-the anti-hang rules), not trusted from the deep pages. All confirmed.
+These are grounded **directly against the shipped objects**, not carried from the deep
+pages. All confirmed.
 
-| # | Claim | Check (this task) | Result |
+| # | Claim | Check | Result |
 |---|---|---|---|
 | 1 | Link line: `libneuroncustomop.a libc10.a -lloader -mlsp=lsp_fll_load_cpuI -lxmem -lhal -lc++-e -lm -lgcc libcweak.a`; `NUM_CPUS=8`; core `ncore2gp`; ver `0.21.2.0`/ucode `1.21.1.0` | `rg` over `build_custom_op.py` (lines 10,12,25,45,47,50) | **CONFIRMED** |
 | 2 | The 8 `customop_*` symbols at `setup@0x224, next_tensor@0x35c, next_scalar@0x390, next_int@0x3c4, next_longlong@0x3fc, next_float@0x43c, return_tensor@0x47c, cleanup@0x5d4` | `nm wrapper_api.o` | **CONFIRMED** (byte-exact) |
@@ -637,9 +631,9 @@ the anti-hang rules), not trusted from the deep pages. All confirmed.
 
 Two further checks corroborate the §6 dtype correction: the ordinal-tree compare
 immediates in `_ZNK7UTensorcvN2at6TensorEEv` are exactly **`{2,3,4,6,7,8,10,12}`**
-(eight), with `0xB` (FP32R) absent → falls to the `_Assert` abort at `+0x2f0`
-(re-read this task) — confirming **8 marshallable, FP32R aborts**, against the raw
-report's "9 / FP32R→Float".
+(eight), with `0xB` (FP32R) absent → falls to the `_Assert` abort at `+0x2f0` —
+confirming **8 marshallable, FP32R aborts**, against the raw report's
+"9 / FP32R→Float".
 
 ---
 
@@ -668,10 +662,10 @@ The sub-reports corrected each other; the settled facts a reimplementer uses:
 - **C7 — the `wrapper_fn → switchBack` wiring is codegen-emitted**
   (`if(switched_stack) asm("j switchBack")`). ([Codegen §3c](build-custom-op-codegen.md))
 
-Plus the two corrections this page raises against the **raw SX-ABI-18** backing report
-(flagged inline above, repeated here for the Part-7 reconcile): **(a)** "9 marshallable
-dtypes / FP32R→Float" → **8 / FP32R aborts** (§6); **(b)** "`customop_cleanup`
-responds+fsyncs" → **`fsync(2);fsync(1);memw`, no `respond`** (§5.2).
+Plus the two corrections this page raises against the **raw ABI-18** backing report
+(flagged inline above): **(a)** "9 marshallable dtypes / FP32R→Float" → **8 / FP32R
+aborts** (§6); **(b)** "`customop_cleanup` responds+fsyncs" →
+**`fsync(2);fsync(1);memw`, no `respond`** (§5.2).
 
 ---
 
@@ -679,7 +673,7 @@ responds+fsyncs" → **`fsync(2);fsync(1);memw`, no `respond`** (§5.2).
 
 - **G1 — the inlined `isa_to_torch_dtype` arm map.** Now fully resolved by the
   committed [Rosetta](scalartype-dtype-rosetta.md) (decoded from the Xtensa machine
-  code, re-confirmed here). The earlier SX-ABI-06 inference is superseded; no gap
+  code, confirmed here). The earlier ABI-06 inference is superseded; no gap
   remains for the marshallable set. `[HIGH × OBSERVED]`
 - **G2 — the per-kernel SPMD channel-slicing formula** lives in the customer/firmware
   kernel images, not in `libneuroncustomop.a` — the lib supplies only
