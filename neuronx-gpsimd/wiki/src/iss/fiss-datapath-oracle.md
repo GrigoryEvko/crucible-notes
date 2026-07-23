@@ -17,11 +17,11 @@ live. It is also the origin of the `xdsem` / `xdref` model named on those pages.
 > bodies that implement exactly one width-typed op. The vector execute realises an N-wide op as a
 > **scalar per-lane loop** of the matching `xdref` leaf. This page documents the roster, how each
 > leaf computes its lane value, the execute path that drives them, and drives a representative
-> sample **live via `ctypes`** to certify the oracle end-to-end. `[HIGH/OBSERVED]`
+> sample **live via `ctypes`** to certify the oracle end-to-end.
 
-Confidence tags follow [the Confidence & Walls model](../reference/confidence-model.md):
-`[HIGH/OBSERVED]` = read-from-byte / proven by disassembly or a live `ctypes` call,
-`[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
+The page default is `[HIGH/OBSERVED]` (read-from-byte, proven by disassembly, or proven by a live
+`ctypes` call); claims that depart from it carry an explicit tag, per
+[the Confidence & Walls model](../reference/confidence-model.md).
 All offsets are into the shipped `extracted/.../ncore2gp/config/libfiss-base.so` (**12 330 016 B**;
 ELF64 LSB x86-64, SYSV, **not stripped**). Every count below is grounded by
 `nm -D <abs-path> | rg -c`, never the decompile.
@@ -31,7 +31,6 @@ ELF64 LSB x86-64, SYSV, **not stripped**). Every count below is grounded by
 > VMA. The writable sections are **not**: `.data.rel.ro` (VMA `0xc17e80` → file `0xa17e80`) and
 > `.data` (VMA `0xc8eb68` → file `0xa8eb68`) both carry a **`0x200000` delta** (`readelf -SW`). No
 > value-leaf body touches `.data`; this caveat matters only if you `xxd` a writable struct.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -41,15 +40,15 @@ ELF64 LSB x86-64, SYSV, **not stripped**). Every count below is grounded by
 and computes all element math in-process. The dynamic symbol table, grounded directly on the
 binary:
 
-| Sweep (`nm -D <abs> \| rg -c …`) | Count | Meaning | Conf |
-|---|---:|---|---|
-| total `nm -D` lines (`.dynsym` − null) | **20 384** | the full dynamic symbol table | `[HIGH/OBSERVED]` |
-| defined exports (types `T/W/R/D/B`) | **20 379** | functions + a handful of objects | `[HIGH/OBSERVED]` |
-| undefined imports (`UND`) | **5** | libc/runtime only (see below) | `[HIGH/OBSERVED]` |
-| `slotfill__*` (decode → operand-slot fill) | **12 569** | the bitfield-extract decoders | `[HIGH/OBSERVED]` |
-| `opcode__*` (execute bodies) | **1 708** | the per-mnemonic vector/scalar execute | `[HIGH/OBSERVED]` |
-| **`module__xdref_*` (the value leaves)** | **864** | **the per-lane datapath primitives** | `[HIGH/OBSERVED]` |
-| `nx_*_interface` host callbacks | **0** | none — value math is **in-process** | `[HIGH/OBSERVED]` |
+| Sweep (`nm -D <abs> \| rg -c …`) | Count | Meaning |
+|---|---:|---|
+| total `nm -D` lines (`.dynsym` − null) | **20 384** | the full dynamic symbol table |
+| defined exports (types `T/W/R/D/B`) | **20 379** | functions + a handful of objects |
+| undefined imports (`UND`) | **5** | libc/runtime only (see below) |
+| `slotfill__*` (decode → operand-slot fill) | **12 569** | the bitfield-extract decoders |
+| `opcode__*` (execute bodies) | **1 708** | the per-mnemonic vector/scalar execute |
+| **`module__xdref_*` (the value leaves)** | **864** | **the per-lane datapath primitives** |
+| `nx_*_interface` host callbacks | **0** | none — value math is **in-process** |
 
 Every one of the 864 `module__` exports **is** a `module__xdref_*` leaf (`nm -D | rg ' module__' |
 rg -vc 'module__xdref_'` = **0**). The `864 / 12 569 / 20 379` reconciliation as a nested superset
@@ -60,7 +59,7 @@ chain is laid out on the [fiss surface page](./fiss-surface-exceptions.md); this
 > five distinct names, all libc/runtime: `__cxa_finalize@GLIBC_2.2.5`, `_Jv_RegisterClasses`,
 > `_ITM_deregisterTMCloneTable`, `_ITM_registerTMCloneTable`, `__gmon_start__`. There are **zero**
 > `nx_*_interface` callbacks (`libcas-core.so` had 119). The value math is therefore **computed in
-> this DLL**, not delegated onward — which is exactly what makes it the oracle. `[HIGH/OBSERVED]`
+> this DLL**, not delegated onward — which is exactly what makes it the oracle.
 
 ### 1.1 The `module__xdref_*` naming grammar
 
@@ -88,7 +87,7 @@ module__xdref_<op>[<post>]_<outW>_<inAW>[_<inBW>][_<extraW>…][<suffix>]
 > **180** leaves bearing an IEEE float-width token (`Nf` or `Ntf`) and **684** integer/structural.
 > An earlier hand-count put this at 184 / 680; the on-binary truth is **180 / 684** (the two `tf`
 > outliers — `divn_32tf_…` and `divn_64tf_…` — are the only names that need the `tf` alternation to
-> be caught). Cite **180 float / 684 integer-structural**. `[HIGH/OBSERVED]`
+> be caught). Cite **180 float / 684 integer-structural**.
 
 ### 1.2 The lane-primitive ABI
 
@@ -97,12 +96,12 @@ shifted by one** from a naive `(A, B, *out)` reading: the leaf reserves the firs
 (`%rdi`) for a context/self pointer (unused by the simple ALU leaves), and the operands begin at
 the *second* slot.
 
-| Form | `%rdi` | `%rsi` | `%rdx` | `%rcx` | `%r8` | Conf |
-|---|---|---|---|---|---|---|
-| 3-operand binary (`add_16_16_16`) | ctx | A | B | result\* | — | `[HIGH/OBSERVED]` |
-| unary (`abs_16_16`, `sext_32_16`) | ctx | A | result\* | — | — | `[HIGH/OBSERVED]` |
-| 4-operand accumulate (`mula_*`) | ctx | acc/A | B | C | result\* | `[HIGH/OBSERVED]` |
-| dual-out convert (`cvtf32_1_32f_16f`) | ctx | A | flag-out\* | result\* | — | `[HIGH/OBSERVED]` |
+| Form | `%rdi` | `%rsi` | `%rdx` | `%rcx` | `%r8` |
+|---|---|---|---|---|---|
+| 3-operand binary (`add_16_16_16`) | ctx | A | B | result\* | — |
+| unary (`abs_16_16`, `sext_32_16`) | ctx | A | result\* | — | — |
+| 4-operand accumulate (`mula_*`) | ctx | acc/A | B | C | result\* |
+| dual-out convert (`cvtf32_1_32f_16f`) | ctx | A | flag-out\* | result\* | — |
 
 > **GOTCHA — a C caller must pass the leading `%rdi` context argument.** The body of
 > `module__xdref_add_16_16_16` reads operand A from `%esi`, B from `%edx`, and stores through
@@ -110,7 +109,7 @@ the *second* slot.
 > `%rdi`, B in `%rsi`, result-ptr in `%rdx` — and the leaf's `mov %edx,(%rcx)` dereferences whatever
 > garbage is in `%rcx`, **segfaulting at `add_16_16_16+0x8`** (observed). The correct prototype is
 > `(c_void_p ctx, c_int A, c_int B, c_void_p result)` with `ctx = None`. This off-by-one is the one
-> non-obvious step to driving the oracle; §6 uses it throughout. `[HIGH/OBSERVED]`
+> non-obvious step to driving the oracle; §6 uses it throughout.
 
 ---
 
@@ -170,7 +169,7 @@ void xdref_add_16_16_16(void *ctx, int32_t a, int32_t b, uint32_t *result) {
 
 This **directly confirms** the cas-arith reading of `IVP_ADDNX16` as signed-i16 add, wrapping mod
 2^16 — see [cas Vector-Arithmetic Semantics](./cas-arith-sem.md). The 8-bit sibling masks `0xff`;
-the 32-bit sibling omits the mask. `[HIGH/OBSERVED]`
+the 32-bit sibling omits the mask.
 
 ### 3.2 Saturating arithmetic — `module__xdref_adds_16_16_16` @ `0x85aa10`
 
@@ -225,7 +224,6 @@ void xdref_adds_16_16_16(void *ctx, int32_t a, int32_t b, uint32_t *result) {
 The same 17-bit overflow-detect/clamp skeleton drives `subs_16_16_16` (`sub` for `add`),
 `negs_16_16`, `abss_16_16` (calls `negs` for negatives), and `absssub_16_16_16`. This **upgrades**
 the cas-arith saturation claims from MED to HIGH with byte-exact `0x7fff`/`0x8000` constants.
-`[HIGH/OBSERVED]`
 
 ### 3.3 Signed min — `module__xdref_min_16_16_16` @ `0x8584b0`
 
@@ -274,7 +272,7 @@ void xdref_min_16_16_16(void *ctx, int32_t a, int32_t b, uint32_t *result) {
 ```
 
 This confirms the cas reading that `MINNX16` (signed) and `MINUNX16` (unsigned) are *distinct
-implementations*, not a toggled mode bit. `[HIGH/OBSERVED]`
+implementations*, not a toggled mode bit.
 
 ### 3.4 Soft-float convert — `module__xdref_cvtf32_1_32f_16f` @ `0x5b77f0`
 
@@ -311,7 +309,6 @@ status-word output and a parameter-driven rounding context in `%r8`/`%r9`. See
 > result through a *reloaded* pointer; a naive `(ctx, a, b, *out, round, *status)` prototype
 > segfaults. Drive the *converts* (which have the stable dual-out `(ctx, a, *flag, *result)` frame —
 > §6) to certify the soft-float path; trace the add frame from the spill slots before driving it.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -340,7 +337,7 @@ $ objdump -d --start-address=0x256d50 --stop-address=0x2576b0 libfiss-base.so \
 **Exactly 32 calls** to `module__xdref_add_16_16_16` and **32** to `module__xdref_bitkillt_16_2` —
 one per NX16 lane. The lanes are unrolled, not looped, and even though the leaves are in the same
 DLL, the calls route through `@plt` (the leaves are dynamic exports). This is the concrete
-realisation of "a vector op is N applications of a scalar value leaf." `[HIGH/OBSERVED]`
+realisation of "a vector op is N applications of a scalar value leaf."
 
 ### 4.2 Scalar base-ISA execute computes natively
 
@@ -359,7 +356,7 @@ slots `0x4c`/`0x50`/`0x54` of the per-op context (`%rdi`) and writes slot `0x28`
 The trailing `xor %eax,%eax ; ret` is the "no exception" return. The full base ALU set
 (`sub`/`and`/`or`/`xor`/`addi`/`neg`/`abs`/`addx2`/`slli`/`srai`/`extui`/`clamps`/`min`/`max`/`minu`)
 follows this shape, computing in-line with no host handoff. The scalar `min`/`max` reuse the same
-sign-bias trick as the vector `xdref_min`/`max` (§3.3). `[HIGH/OBSERVED]`
+sign-bias trick as the vector `xdref_min`/`max` (§3.3).
 
 ---
 
@@ -377,15 +374,16 @@ The keystone resolves an asymmetry between the two ISS DLLs:
   imports are libc, the 0 `nx_*_interface` callbacks prove the math lands here.
 
 So the 864-leaf roster is the **common origin** of every cas value page and the **source of truth
-the VAL lane drives live**. The downstream validation lane (Part 15, not yet authored) treats these
+the VAL lane drives live**. The downstream validation lane
+([the 4-Oracle Bit-Exact Differential Method](../validation/four-oracle-method.md)) treats these
 leaves as the differential-test arbiter: it generates random operand vectors, drives the candidate
 reimplementation and the matching `module__xdref_*` leaf via `ctypes`, and asserts bit-equality. The
-already-committed cas value pages have each driven a specific leaf live to ground their
+cas value pages have each driven a specific leaf live to ground their
 semantics — `mula_24_24_8_8` / `mula_48_48_16_16` (MAC), `bitkillf_32_4` (predicate),
 `cvtf32` / `packl_16_48` (convert/pack), `radd_nx16_32_512` / `rbmin_16` (reduce) — and §6 below is
 their common certification harness. The [oracle synthesis capstone](./iss-oracle-synthesis.md) and
 the [formal ISA model](../isa/semantics/formal-isa-model.md) both consume this page as the
-element-semantics anchor. `[HIGH/OBSERVED]`
+element-semantics anchor.
 
 ---
 
@@ -464,13 +462,13 @@ are the independently-computed oracle truth, and all matched:
 The soft-float convert closes the loop: `1.0`, `-2.5`, `65504.0`, `+Inf` all widen exactly, `qNaN`
 maps to the canonical `0x7fc00000`, and `-0.0` preserves its sign bit — a full IEEE-754
 binary16→binary32 widen with zero hardware FP, computed in-process. These calls are the live proof
-that `libfiss-base.so` **is** the executable value oracle. `[HIGH/OBSERVED]`
+that `libfiss-base.so` **is** the executable value oracle.
 
 > **QUIRK — the leaves are pure and re-entrant.** Every body read here has no global state, no
 > `.data` access, and an unused `%rdi` context slot; the result is a deterministic function of the
 > operand bits alone. That is precisely what makes the 864 leaves usable as a differential-test
 > arbiter: the same operand vector drives the same lane value on every call, every run, every
-> machine. `[HIGH/OBSERVED]`
+> machine.
 
 ---
 
@@ -501,13 +499,13 @@ that `libfiss-base.so` **is** the executable value oracle. `[HIGH/OBSERVED]`
 **`[LOW]`**:
 
 - The `recip0`/`rsqrt0`/`sqrt0`/`div0`/`nexp0` Newton-seed exact polynomial coefficients (named as
-  SEED primitives; bodies not disassembled in this pass).
+  SEED primitives; bodies not disassembled).
 - The reduction-tree exact lane-pairing order in `radd`/`rmin`/`rmax` bodies (confirmed to load all
   32 lanes; pairing order not enumerated).
 
 > **CORRECTION (restated).** The float census is **180 / 684**, not the 184 / 680 of an earlier
 > hand-count — grounded on the binary by `nm -D … | rg -c '[0-9]+t?f(_\|$)'`. Cite 180 float-token
-> leaves. `[HIGH/OBSERVED]`
+> leaves.
 
 ---
 
