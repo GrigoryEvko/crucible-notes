@@ -8,7 +8,7 @@ Every loadable activation set in `neuronx_cc` ships as **three** files: two bina
 
 The schema is small and regular: a fixed **9 top-level keys**, and a `profile_meta_data[]` array of **exactly 30 fields** per function. Both counts are invariant across all 35 shipped sets (21 `pwp_bin_trainium` + 14 `pwp_bin_with_ln`). The two index maps that every prior reverse-engineering pass deferred — `func_exp_to_bkt_start_idx` and `func_exp_to_ctl_start_idx` — are decoded here: they are **per-octave** region-base tables whose list length encodes the function's symmetry class (2 = asymmetric, 1 = symmetric/pos-only, 0 = the runtime-alpha `parametric_relu`).
 
-The consumer story carries one sharp **correction**. The task that motivated this page named a lookup "FindActInfo." There is no C++ function symbol of that name; the per-set `profile_json`'s keys (`profile_meta_data`, `func_exp_to_*`, …) appear in **zero** decompiled native bodies. What *does* exist is (a) a Cython module `FindActInfo.cpython-3XX.so` that merely **locates the roster file** `act_info.json` on disk, and (b) `NeffFileWriter::updateFromActJsonFile` in `libwalrus`, which matches the module's used set **by name** against the roster and embeds that set's **binary** blobs into the NEFF. Neither reads the per-set `profile_json`. The manifest is a build-time / simulator artifact — its denormalized control fields are baked into the blobs offline, and the runtime addresses functions by `func_id` against the resident tables, not by re-parsing JSON. See [§5](#5-the-consumer-findactinfo-the-roster-locator-and-updatefromactjsonfile) and the [GOTCHA](#findactinfo-gotcha) there.
+The consumer story is narrower than the manifest's richness suggests. There is no C++ function symbol named `FindActInfo`, and the per-set `profile_json`'s keys (`profile_meta_data`, `func_exp_to_*`, …) appear in **zero** decompiled native bodies. What *does* exist is (a) a Cython module `FindActInfo.cpython-3XX.so` that merely **locates the roster file** `act_info.json` on disk, and (b) `NeffFileWriter::updateFromActJsonFile` in `libwalrus`, which matches the module's used set **by name** against the roster and embeds that set's **binary** blobs into the NEFF. Neither reads the per-set `profile_json`. The manifest is a build-time / simulator artifact — its denormalized control fields are baked into the blobs offline, and the runtime addresses functions by `func_id` against the resident tables, not by re-parsing JSON. See [§5](#5-the-consumer-findactinfo-the-roster-locator-and-updatefromactjsonfile) and the [GOTCHA](#findactinfo-gotcha) there.
 
 ### What a reimplementer must reproduce
 
@@ -34,9 +34,7 @@ The consumer story carries one sharp **correction**. The task that motivated thi
 | **Compile-time roster reader** | `neuronxcc::backend::LowerPWPImpl::fillAllActInfos` @ `0x115af90` (`libwalrus`) |
 | **Roster file locator** | Cython `FindActInfo.cpython-3XX.so` → `findActInfoFile` / `findDVEInfoFile` |
 | **NEFF-pack failure code** | error code `1228` (`matchedActInfoJson.has_value()` assert) |
-| **Evidence** | shipped JSON (CONFIRMED for all schema/value claims); `libwalrus` IDA sidecar (D-AG08); `FindActInfo.so` `nm`/`strings` |
-
-The page draws on the per-set schema decode in **D-AG08** and the per-function numerics spec in **D-M05**.
+| **Evidence** | the shipped JSON (all schema and value claims); the `libwalrus` IDA sidecar; `nm`/`strings` on `FindActInfo.so` |
 
 ---
 
@@ -56,7 +54,7 @@ The page draws on the per-set schema decode in **D-AG08** and the per-function n
 | `func_exp_to_ctl_start_idx` | object | `{ func → { exponent(str) → [int,…] } }` — same, into `ctrl`. |
 | `profile_meta_data` | array | `[ per-func 30-field scalar HW-control object ]` ([§3](#3-the-30-field-profile_meta_data-record)). |
 
-> **QUIRK — the three-way `ctrl`/`ctl` spelling skew.** The control blob is referred to by **three different spellings** in three places: the roster `act_info.json` uses key `ctrl_bin` (with the `r`); the per-set profile uses key `ctl_bin` (no `r`); and the actual file is named `<set>_ctrl.bin`. Confirmed: `exp_and_others.json`'s `ctl_bin` value is the string `"exp_and_others_ctrl.bin"`, while `act_info.json`'s set entry has key `ctrl_bin`. A reader keying off the wrong spelling will silently miss the field. **The file-reference string value is authoritative** — follow it, not the key name.
+> **QUIRK — the three-way `ctrl`/`ctl` spelling skew.** The control blob is referred to by **three different spellings** in three places: the roster `act_info.json` uses key `ctrl_bin` (with the `r`); the per-set profile uses key `ctl_bin` (no `r`); and the actual file is named `<set>_ctrl.bin`. In `exp_and_others.json` the `ctl_bin` value is the string `"exp_and_others_ctrl.bin"`, while `act_info.json`'s set entry has key `ctrl_bin`. A reader keying off the wrong spelling will silently miss the field. **The file-reference string value is authoritative** — follow it, not the key name.
 
 > **NOTE — no version field on the per-set profile.** `pwp_bin_*/version.json` ships separately as `{"KaenaPWP":{"brazil_version":"","git_sha":""}}` (both fields blank, 80 bytes, both targets). The per-set profiles carry no version; provenance is owned by the roster/version file, not the manifest.
 
@@ -144,7 +142,7 @@ The per-set profile renames the per-function keys with an `f` prefix and flatten
 | `symmetry_opt_use_neg_region` | int 0/1 | `symmetry_opt_use_neg_region` | Evaluate the fold on the stored **neg** table (`sel = −|v|`). |
 | `symmetry_point` | uint32 | `symmetry_point` | Post-fold additive offset (raw f32 bits). |
 
-Confirmed values: `exp = {0,0,0,0}` → asymmetric, store both regions, evaluate signed `v`. `sigmoid = {1,1,1, 1065353216}` → point-symmetric: store **neg**, evaluate `sel = −|v|`, negate, add `1.0` ⇒ `sigmoid(x) = 1 − sigmoid(−x)`. `tanh = {1,1,0,0}` → odd about origin: store pos, evaluate `|v|`, negate.
+Shipped values: `exp = {0,0,0,0}` → asymmetric, store both regions, evaluate signed `v`. `sigmoid = {1,1,1, 1065353216}` → point-symmetric: store **neg**, evaluate `sel = −|v|`, negate, add `1.0` ⇒ `sigmoid(x) = 1 − sigmoid(−x)`. `tanh = {1,1,0,0}` → odd about origin: store pos, evaluate `|v|`, negate.
 
 ### D. Input / octave bias (5 fields)
 
@@ -200,7 +198,7 @@ The four `pwl_control` pointers are **consecutive** (`n, n+1, n+2, n+3`) in `bkt
 
 ## 4. The index maps: `func_to_*` and `func_exp_to_*`
 
-Two granularities address the blobs. The coarse one locates a function; the fine one locates one octave of one function. The fine maps are the part every prior reverse-engineering pass deferred to a later codegen report that never landed; they are decoded here from the shipped JSON.
+Two granularities address the blobs. The coarse one locates a function; the fine one locates one octave of one function. The fine maps are decoded here directly from the shipped JSON — they are not described anywhere in the binary.
 
 ### 4a. `func_to_*_start_idx` — the coarse per-function base
 
@@ -226,7 +224,7 @@ Keyed by the input's **unbiased exponent octave** (a string, e.g. `"-19"` … `"
 | **1** | `[single_region_idx]` — one region: either symmetric (`en=1`: `tanh`, `sign`, `memset_zero`, `is_finite`, `square`, `sigmoid`) or pos-only domain (`en=0` but `base_pos == base_neg`: `sqrt`, `reciprocal_sqrt`, `ln`, `reciprocal`). | `tanh`, `sign`, `square`, … |
 | **0** (`{}`) | No octave map — `parametric_relu` (runtime-α, no LUT; `fma_indirection_src_sel=2`). | `parametric_relu` |
 
-> **CORRECTION — `func_exp` is per-EXPONENT, not per-budget.** Earlier passes loosely guessed the `_exp` in `func_exp_to_*` meant a multi-*budget* expansion (one entry per precision budget). It does **not**. No shipped function has multiple budgets in a set; the map is keyed by the **input exponent octave**, and the list elements are the neg/pos region split. The `_exp` is the float exponent.
+> **GOTCHA — the `_exp` in `func_exp_to_*` is the float *exponent*, not an expansion over precision budgets.** The map is keyed by the input exponent octave, and its list elements are the neg/pos region split. No shipped function carries multiple budgets within one set, so there is nothing for a per-budget reading to index.
 
 **Decoded `bkt` map** — the value is the `bkt` section base for that octave (the same datum `ctrl.bin` bits `[0:11]` pack, pre-resolved). For `exp` (asymmetric, 2-element):
 
@@ -252,7 +250,7 @@ func_exp_to_ctl_start_idx.exp["-19"] = [0,  26]
 - `element[0] = E − exp_offset` (one consecutive `ctrl` word per neg octave: `-19→0 … 6→25`).
 - `element[1] = element[0] + 26`, where `26 = pwl_control_base_pos − pwl_control_base_neg`. Constant per function.
 
-So the two constant deltas have clean meanings: **the `ctl` delta = `base_pos − base_neg`; the `bkt` delta = the neg LUT block size.** Both are confirmed constant across all of a function's octaves.
+So the two constant deltas have clean meanings: **the `ctl` delta = `base_pos − base_neg`; the `bkt` delta = the neg LUT block size.** Both hold constant across every octave of a function.
 
 **Single-region (`listlen=1`) examples (verified):** `func_exp_to_bkt.tanh["-14"]=[813]`, `func_exp_to_ctl.tanh["-14"]=[64]` (one index, the pos region; evaluated on `|v|`, negated). `func_exp_to_bkt.tanh["-13"]=[814]`, `[65]` (octaves advance by one). `parametric_relu`'s map is `{}` in both `func_exp_to_bkt` and `func_exp_to_ctl`.
 
@@ -262,7 +260,7 @@ So the two constant deltas have clean meanings: **the `ctl` delta = `base_pos �
 
 ## 5. The consumer: "FindActInfo," the roster locator, and `updateFromActJsonFile`
 
-The task that motivated this page named a runtime lookup "FindActInfo" that supposedly walks an op's activation function → its profile entry → the blobs. **No such C++ function exists, and nothing native reads the per-set `profile_json`.** Three distinct mechanisms realize the "find the activation info" idea, and none of them parse the manifest documented above.
+The natural expectation is a runtime lookup — call it "find the act info" — that walks an op's activation function → its profile entry → the blobs. **No such C++ function exists, and nothing native reads the per-set `profile_json`.** Three distinct mechanisms realize the idea between them, and none parses the manifest documented above.
 
 <a id="findactinfo-gotcha"></a>
 > **GOTCHA — `FindActInfo` is a Python file-locator, not a profile reader; and there is no C++ symbol of that name.** A symbol sweep finds **zero** native functions named `FindActInfo` (no `_Z…FindActInfo…E`, nothing in any IDA `functions.json`/`names.json`). What *does* ship is a Cython extension `neuronxcc/driver/jobs/support/FindActInfo.cpython-3XX.so`. `nm -C` on it exposes only `PyInit_FindActInfo`, `findActInfoFile`, and `findDVEInfoFile`. Its **entire** data-string vocabulary is `act_info.json`, `dve_info.json`, `pwp_bin`, `dve_bin_gen{2,3,4,5}`, and the error `"Unable to locate act_info.json in …"`. It references **none** of the per-set profile keys — `strings … | rg 'profile_meta_data|func_exp_to|bkt_entry_cnt|ctl_entry_cnt'` returns nothing. **`FindActInfo` locates the roster file on disk; it never opens a per-set profile.**
@@ -273,7 +271,7 @@ The task that motivated this page named a runtime lookup "FindActInfo" that supp
 
 > **GOTCHA — the per-set `profile_json` is never parsed by the compiler's lowering path.** It is a build-time / simulator artifact. The numeric simulator reads the per-function `pwp_jsons` ([§10.1](pwp-model.md)); the per-set profile is the blob **manifest**, consumed at NEFF-pack time ([§5b](#5b-neff-pack--updatefromactjsonfile-confirmed-real-body)) and by the offline table generator that produced the blobs. Its 30 denormalized control fields are baked into `bkt`/`ctrl` offline, not read at op time.
 
-### 5b. NEFF-pack — `updateFromActJsonFile` (CONFIRMED, real body)
+### 5b. NEFF-pack — `updateFromActJsonFile`
 
 `neuronxcc::backend::NeffFileWriter::updateFromActJsonFile` @ `0x1542db0` (`libwalrus`; 707-line decompiled body) is the actual "find the act info and embed it" routine. Annotated pseudocode of what it reads — the **roster name** and the **binary blobs**, never the profile:
 
@@ -311,7 +309,7 @@ void NeffFileWriter::updateFromActJsonFile(const std::string &actJsonPath,
 }
 ```
 
-What this confirms, key by key:
+What the body establishes, key by key:
 
 - **Match key** = the set **name** (string), compared against `usedActSet` (the set the compiled module actually used). On mismatch the routine throws with error code **1228** — a loud, deterministic failure rather than silent fall-through.
 - **Payload embedded** = entries tagged `binary` (nlohmann type 8) — the `bkt`/`ctrl` blobs. They are added to the NEFF BOM via `addToBom` so the runtime can DMA-load them on `LoadActFuncSet`. The NEFF feature flag that gates dynamic embedding of these tables is documented in [§12.5](../formats/neff-feature-flags.md).
@@ -342,23 +340,23 @@ A reimplementer needs both: the per-set profile (this page) gives the function�
 
 ---
 
-## 7. Confidence summary
+## 7. Evidence summary
 
 | Claim | Confidence | Basis |
 |---|---|---|
-| Per-set profile = exactly 9 keys, identical across all 35 sets | **CONFIRMED** | `jq keys` over all 21+14 sets → single sorted key-set. |
-| `profile_meta_data` = exactly 30 fields/entry, identical across all 35 sets | **CONFIRMED** | `jq '[…|keys]|unique'` = 30 names; verbatim exp/sigmoid values. |
-| `func_id == neuron_id ==` silicon LUT code | **CONFIRMED** | shipped values match the [§10.1](pwp-model.md) crosswalk (exp=7, sigmoid=5, tanh=6, …). |
-| `ctrl`/`ctl`/`_ctrl.bin` three-way spelling skew | **CONFIRMED** | roster key `ctrl_bin`, profile key `ctl_bin`, value `"…_ctrl.bin"`. |
-| `func_exp` listlen = stored-region count; deltas constant per func | **CONFIRMED** | exp `[0,406]`/`[272,678]` (Δ406), ctl `[0,26]`/`[25,51]` (Δ26); tanh `[813]`/`[64]`; prelu `{}`. |
-| No native `FindActInfo` symbol; the per-set profile is never parsed natively | **CONFIRMED** | symbol sweep → 0 hits; profile keys in 0 decompiled bodies; `FindActInfo.so` is a Cython roster locator. |
-| `updateFromActJsonFile` matches by name → asserts (1228) → embeds `binary` blobs | **CONFIRMED** | `libwalrus` IDA body @ `0x1542db0` (707 lines), D-AG08; assert string + line. |
-| `fma_indirection_src_sel=2` = prelu α/bias indirection select | **STRONG / INFERRED** | unique-to-prelu pattern (CONFIRMED); silicon meaning of `2` INFERRED. |
-| profile↔blob byte ties (sat pointers, ctrl bkt-base, entry counts) | **STRONG** | cross-validated against the [§10.4](bkt-ctrl-blob.md) blob decode; not re-byte-validated here. |
-| Roster also ships as obfuscated alias `l`, byte-identical | **STRONG** | reported in D-AG08; the literal `l` file was not present in this extract to re-verify. |
+| Per-set profile = exactly 9 keys, identical across all 35 sets | CERTAIN | `jq keys` over all 21+14 sets → single sorted key-set. |
+| `profile_meta_data` = exactly 30 fields/entry, identical across all 35 sets | CERTAIN | `jq '[…|keys]|unique'` = 30 names; verbatim exp/sigmoid values. |
+| `func_id == neuron_id ==` silicon LUT code | CERTAIN | shipped values match the [§10.1](pwp-model.md) crosswalk (exp=7, sigmoid=5, tanh=6, …). |
+| `ctrl`/`ctl`/`_ctrl.bin` three-way spelling skew | CERTAIN | roster key `ctrl_bin`, profile key `ctl_bin`, value `"…_ctrl.bin"`. |
+| `func_exp` listlen = stored-region count; deltas constant per func | CERTAIN | exp `[0,406]`/`[272,678]` (Δ406), ctl `[0,26]`/`[25,51]` (Δ26); tanh `[813]`/`[64]`; prelu `{}`. |
+| No native `FindActInfo` symbol; the per-set profile is never parsed natively | CERTAIN | symbol sweep → 0 hits; profile keys in 0 decompiled bodies; `FindActInfo.so` is a Cython roster locator. |
+| `updateFromActJsonFile` matches by name → asserts (1228) → embeds `binary` blobs | CERTAIN | `libwalrus` IDA body @ `0x1542db0` (707 lines); assert string + line. |
+| `fma_indirection_src_sel=2` = prelu α/bias indirection select | MEDIUM | the unique-to-prelu pattern is read directly; the silicon meaning of the value `2` is inferred from it. |
+| profile↔blob byte ties (sat pointers, ctrl bkt-base, entry counts) | HIGH | cross-validated against the [§10.4](bkt-ctrl-blob.md) blob decode; not re-byte-validated here. |
+| Roster also ships as obfuscated alias `l`, byte-identical | HIGH | the literal `l` file was not present in this extract to re-check. |
 
 > **GOTCHA — the offline table generator is not in the wheel.** The build-time tool that consumes the per-function `pwp_jsons` and emits the per-set profile + `bkt`/`ctrl` blobs ships nowhere in the wheel. The denormalization rules (field renames, the 4-way saturation-pointer packing, the per-octave `func_exp` computation) are **inferred from the output**, not read from the generator. A reimplementer can reproduce the *runtime* and *NEFF-pack* behavior exactly from the shipped artifacts; reproducing the *generator* requires deriving these rules from the patterns documented in [§3](#3-the-30-field-profile_meta_data-record)–[§4](#4-the-index-maps-func_to_-and-func_exp_to_).
 
 ---
 
-*Sources: per-set schema decode and the `libwalrus` consumer (D-AG08); per-function PWP numerics spec (D-M05). Cross-references: the polynomial activation model ([§10.1](pwp-model.md)); the `bkt`/`ctrl` blob layout ([§10.4](bkt-ctrl-blob.md)); NEFF feature flags ([§12.5](../formats/neff-feature-flags.md)).*
+*Cross-references: the polynomial activation model ([§10.1](pwp-model.md)); the `bkt`/`ctrl` blob layout ([§10.4](bkt-ctrl-blob.md)); NEFF feature flags ([§12.5](../formats/neff-feature-flags.md)).*

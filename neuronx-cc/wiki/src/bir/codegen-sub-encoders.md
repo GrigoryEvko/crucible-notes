@@ -1,6 +1,6 @@
 # Codegen Sub-Encoders — Operand, Immediate, Register, and the Declared-Ordering Dependency Model
 
-> *All symbols, addresses, and struct offsets on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310). The codegen bodies live in `neuronxcc/starfish/lib/libwalrus.so` (`.text`/`.rodata` `VA == file offset`, base `0x62d660` / `0x1c72000`); the `bir::*` value/instruction templates they call resolve into `libBIR.so` (md5 `12bb979f7ca41248252abb0f16b2da98`). The cp311/cp312 wheels share the ABI but drift every VA — treat each address as version-pinned. Provenance: static binary analysis, cross-checked against reports D-I21, D-I23, D-I01, D-I17, D-E14, D-E19, D-H21, D-H13.*
+> *All symbols, addresses, and struct offsets on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310). The codegen bodies live in `neuronxcc/starfish/lib/libwalrus.so` (`.text`/`.rodata` `VA == file offset`, base `0x62d660` / `0x1c72000`); the `bir::*` value/instruction templates they call resolve into `libBIR.so` (md5 `12bb979f7ca41248252abb0f16b2da98`). The cp311/cp312 wheels share the ABI but drift every VA — treat each address as version-pinned. Everything here is from static binary analysis.*
 
 ## Abstract
 
@@ -20,9 +20,9 @@ This page reproduces each as annotated pseudocode keyed to real symbols, and pin
 A leaf binds an operand through exactly one of two entry points, chosen by the operand's **static type** in the `klr` op struct:
 
 - **Strand A — positional tensor** (`out` / `in0` / `in1` / `index`): the field is a `klr::TensorRef`. The leaf calls `codegenTensorRef` (`0xf18b30`), gets back a resolved `{MemoryLocation*, SmallVector<APPair,4>, base-idx, Dtype}` bundle, and hands it to its own `InstBuilder::addXxx` as a positional `MemLoc + AP`. ~50 leaves take this path. `codegenTensorRef` is owned by the AP encoder page; this page touches it only where Strand B reuses it.
-- **Strand B — scalar-or-tensor operand** (a `TensorScalar` scalar, a scan-init seed, a dropout RNG state, an activation bias): the field is a `klr::Operand` — a variant that may hold *either* an `Immediate` *or* a `TensorRef`. The leaf calls **`addOperandToInst`** (`0xf1be80`). 10 leaves take this path: `codegenTensorScalar`, `codegenTensorScalarReduce`, `codegenTensorScalarCumulative`, `codegenNcScalarTensorTensor`, `codegenTensorTensorScan`, `codegenActivate2`, `codegenExponential`, `codegenSelectReduce`, `codegenDropout`, `codegenRand2`. *(Caller set from the libwalrus callgraph; CONFIRMED.)*
+- **Strand B — scalar-or-tensor operand** (a `TensorScalar` scalar, a scan-init seed, a dropout RNG state, an activation bias): the field is a `klr::Operand` — a variant that may hold *either* an `Immediate` *or* a `TensorRef`. The leaf calls **`addOperandToInst`** (`0xf1be80`). 10 leaves take this path: `codegenTensorScalar`, `codegenTensorScalarReduce`, `codegenTensorScalarCumulative`, `codegenNcScalarTensorTensor`, `codegenTensorTensorScan`, `codegenActivate2`, `codegenExponential`, `codegenSelectReduce`, `codegenDropout`, `codegenRand2`. That caller set is the complete one in the libwalrus callgraph.
 
-`codegenOperand` (`0xf1bc80`) — the union folder Strand B uses — has **exactly one caller**: `addOperandToInst`. It is never used standalone. So the public Strand-B sub-encoder is `addOperandToInst`, which wraps `codegenOperand` and materializes the actual `bir::Argument`. *(Single-caller fact: CONFIRMED from callgraph.)*
+`codegenOperand` (`0xf1bc80`) — the union folder Strand B uses — has **exactly one caller** in the callgraph: `addOperandToInst`. It is never used standalone. So the public Strand-B sub-encoder is `addOperandToInst`, which wraps `codegenOperand` and materializes the actual `bir::Argument`.
 
 > **NOTE — why immediates and scalar tensors share one helper.** A KLR scalar operand is a sum type. When it is a compile-time constant it lowers to an inline `ImmediateValue`; when it is a runtime tensor address it lowers to an AP-bound `PhysicalAccessPattern`. `addOperandToInst` is the single sink that handles both, which is why the per-op leaves never branch on "is this scalar constant?" themselves.
 
@@ -87,15 +87,15 @@ void addOperandToInst(KlirToBirCodegen *this, shared_ptr<klr::Operand> op,
 - kind 1 → `codegenImmediate(op.+8)` (§ below) returns a `variant<float,int>`; the scalar is stored at `result+0` and `result+0x68` is set to `0` (float-arm) or `1` (int-arm).
 - kind 2 → `codegenTensorRef(op.+8)` (allow_dynamic = 0) returns the AP bundle; `result+0x68 = 2`.
 
-*(Operand kind ordinals `{1=Immediate, 2=TensorRef}` are CONFIRMED from `klr::Operand_ser` @ `0xf46bc0`; only `klr::OperandImmWrapper` / `klr::OperandTileWrapper` exist in RTTI.)*
+*Anchors: the operand kind ordinals `{1=Immediate, 2=TensorRef}` come from `klr::Operand_ser` @ `0xf46bc0`; only `klr::OperandImmWrapper` and `klr::OperandTileWrapper` exist in RTTI.*
 
 > **GOTCHA — the role is hardcoded INPUT here; the leaf owns outputs.** `addOperandToInst` *always* threads its operand onto the `Instruction+0xA0` input list. Immediates can never be outputs or indirection args; AP operands appended here are inputs by construction. The output AP (`Instruction+0xC0`) and the DMA indirection list (`Instruction+0xB0`) are written by the leaf's own `InstBuilder::addXxx(role=Output)` and indirection paths, not by this helper. A reimplementer who routes every operand through a role-selected list will silently mis-place a scalar the producer emitted in an `outputs` section. This matches the [value-model](value-model.md#the-createfromjson-dispatch)'s rule that the three immediate kinds (6/7/8) ignore the `role` argument entirely.
 
 > **QUIRK — the int arm sign-extends; the float arm zero-extends.** Both write the payload at `ImmediateValue+0x48`, but the int case emits the canonical `movsxd; sar 63; and; or` 32→64 sign-extension (`@0xf1c17c–9d`) while the float case writes the 32-bit pattern with an implicit zero-extend (`mov (dword)`). The wire `Dtype` is therefore the discriminator a reader uses to re-narrow the payload: `int32(15)` ⇒ signed dword, `float32(16)` ⇒ float bits. The immediate value-object only ever carries those two dtypes from this path (fp8/fp4 immediates are wire-illegal — see [value-model](value-model.md#the-immediate--value-family)).
 
-### Adversarial verification — the operand-append offset and immediate minting
+### Byte-level anchors — the operand-append offset and immediate minting
 
-Five claims above were re-checked byte-for-byte against `libwalrus.so`:
+The claims above resolve to these bytes in `libwalrus.so`:
 
 ```
 # input-list splice at Instruction+0xA0 (addOperandToInst, float arm)
@@ -112,7 +112,7 @@ f1c163: 41 c7 46 30 0f 00 00   movl $0xf,0x30(%r14)         # Dtype 15=int32   �
 f1bf96: e8 e5 0d 6e ff         call …Instruction::addArgument<PhysicalAccessPattern,…>  ✓
 ```
 
-All four — the `+0xA0` splice, `ArgumentKind 6`, the `0x10`/`0x0F` dtype writes, and the `addArgument<PhysicalAccessPattern>` instantiation — are **CONFIRMED byte-exact**. The `+0xA0` offset agrees with [instruction-base](instruction-base.md)'s arg-list head; the `ImmediateValue` ctor (kind 6, `0x50` bytes, value@`+0x48`, dtype@`+0x30`) agrees with [value-model §ImmediateValue](value-model.md#the-immediate--value-family).
+All four — the `+0xA0` splice, `ArgumentKind 6`, the `0x10`/`0x0F` dtype writes, and the `addArgument<PhysicalAccessPattern>` instantiation — are byte-exact. The `+0xA0` offset agrees with [instruction-base](instruction-base.md)'s arg-list head; the `ImmediateValue` ctor (kind 6, `0x50` bytes, value@`+0x48`, dtype@`+0x30`) agrees with [value-model §ImmediateValue](value-model.md#the-immediate--value-family).
 
 ## `codegenImmediate` — literal → `variant<float,int>`
 
@@ -137,16 +137,18 @@ variant<float,int> codegenImmediate(shared_ptr<klr::Immediate> imm) {
 }
 ```
 
-The two value-readers are trivial field-loads — the raw 4-byte scalar lives at `klr-inner + 4`, i.e. the wrapper is an 8-byte `{tag:u32, value:u32/f32}` header. There is **no** separate non-wrapper `codegenImmediateFloat`/`codegenImmediateInt` symbol; `…FloatWrapper` (`0xf14080`) and `…IntWrapper` (`0xf14090`) are the readers. *(CONFIRMED from `nm -DC`.)*
+The two value-readers are trivial field-loads — the raw 4-byte scalar lives at `klr-inner + 4`, i.e. the wrapper is an 8-byte `{tag:u32, value:u32/f32}` header. There is **no** separate non-wrapper `codegenImmediateFloat`/`codegenImmediateInt` symbol; `…FloatWrapper` (`0xf14080`) and `…IntWrapper` (`0xf14090`) are the readers, per `nm -DC`.
 
-> **CORRECTION — `klr::Immediate` has four arms; codegen accepts only two.** `klr::Immediate_ser` (`0xf457a0`) pins the kind enum: `1 = Nat`, `2 = Bool` (tagless arm), `3 = Int`, `4 = Float`. `codegenImmediate` lowers **only** Int(3) and Float(4) and *asserts* on Nat(1)/Bool(2). The KLR front-end must therefore pre-fold a `Nat` literal to `Int` before codegen; a Nat or Bool reaching this point is a hard `__assert_fail` at `klir_to_bir_codegen.cpp:425`. *(Four-arm enum CONFIRMED from the serializer; Bool name for arm 2 is INFERRED from the Nat/Bool/Int/Float pattern — the serializer reads no payload for it.)*
+**`klr::Immediate` has four arms; codegen accepts only two.** `klr::Immediate_ser` (`0xf457a0`) pins the kind enum: `1 = Nat`, `2 = Bool` (tagless arm), `3 = Int`, `4 = Float`. `codegenImmediate` lowers **only** Int(3) and Float(4) and *asserts* on Nat(1)/Bool(2). The KLR front-end must therefore pre-fold a `Nat` literal to `Int` before codegen; a Nat or Bool reaching this point is a hard `__assert_fail` at `klir_to_bir_codegen.cpp:425`. The four-arm enum is read from the serializer; the name `Bool` for arm 2 is [INFERRED] from the Nat/Bool/Int/Float pattern, since the serializer reads no payload for it.
+
+> **GOTCHA —** the KLR immediate type is wider than the codegen accepts. A front-end that emits a `Nat` literal (arm 1) — the natural encoding for a non-negative shape or count — aborts the compile at `klir_to_bir_codegen.cpp:425` rather than being coerced. Fold Nat to Int upstream.
 
 ## `codegenRegister` — mint or reuse a named scalar register
 
 `codegenRegister(std::string name, bir::EngineType engine)` @ `0xf141e0`. A 14-byte tail-thunk: it forwards `name` and `engine` unchanged, injects a hardcoded physical-register count of 1, and tail-jumps into `libBIR`.
 
 ```
-# neuronxcc::backend::KlirToBirCodegen::codegenRegister  @ 0xf141e0  (CONFIRMED, 14 bytes)
+# neuronxcc::backend::KlirToBirCodegen::codegenRegister  @ 0xf141e0  (14 bytes)
 f141e0: 48 8b 7f 40            mov  0x40(%rdi),%rdi          # Function* = *(KlirToBirCodegen + 0x40)
 f141e4: b9 01 00 00 00         mov  $0x1,%ecx               # 4th arg (ulong count) = 1  ← HARDCODED
 f141e9: e9 c2 9b 70 ff         jmp  bir::Function::addRegister(string const&, EngineType, ulong)
@@ -174,11 +176,11 @@ Register* addRegister(Function *f, string const& name, ulong count) {
 
 `insertElement<Register>` over the `NamedObjectContainer<Storage>` at `Function+0x58` is the mint-or-reuse-by-name point; the companion lookup `getRegisterByName` (`0x26ce10`) is a `_Hash_bytes(name, 0xC70F6907)`-keyed bucket search over `Function+104/+112` that returns the `Storage` only if its class-tag (`+0x110 == 2`) is `Register`. The two share one name-keyed namespace.
 
-> **NOTE — a codegen register is one physical reg on `ALL`, untyped at the def.** `codegenRegister` writes no dtype onto the `Register`; the def carries only `EngineType` (`+0x180`) and `numPhysicalRegs = 1` (`+0x18C`). The per-use element `Dtype` (`int32 = 15` in every register-op leaf) lives on the `RegisterAccess` argument, not the def. The callers — `codegenRegisterAluOp` / `codegenRegisterMove` and the compare-branch LHS/RHS binds — pass `EngineType = ALL(7)` (byte-witnessed `mov edx,7`), **not** `SP(6)`; `lower_branch` re-homes the register file onto `SP(6)` downstream. The codegen-time engine tag is semantic-`ALL`. Leaves use a "look-up-or-create" pattern: try `getRegisterByName(name)` first, and on NULL call `codegenRegister(name, ALL)` to mint — `codegenRegister` is the lazy mint-half. *(The 14-byte thunk and `mov $0x1,%ecx` are CONFIRMED byte-exact; engine=ALL(7) is CONFIRMED from the D-I17 callers.)*
+> **NOTE — a codegen register is one physical reg on `ALL`, untyped at the def.** `codegenRegister` writes no dtype onto the `Register`; the def carries only `EngineType` (`+0x180`) and `numPhysicalRegs = 1` (`+0x18C`). The per-use element `Dtype` (`int32 = 15` in every register-op leaf) lives on the `RegisterAccess` argument, not the def. The callers — `codegenRegisterAluOp` / `codegenRegisterMove` and the compare-branch LHS/RHS binds — pass `EngineType = ALL(7)` (byte-witnessed `mov edx,7`), **not** `SP(6)`; `lower_branch` re-homes the register file onto `SP(6)` downstream. The codegen-time engine tag is semantic-`ALL`. Leaves use a "look-up-or-create" pattern: try `getRegisterByName(name)` first, and on NULL call `codegenRegister(name, ALL)` to mint — `codegenRegister` is the lazy mint-half. *Anchors: the 14-byte thunk and its `mov $0x1,%ecx` are byte-exact; `EngineType = ALL(7)` is read from the register-op leaves that call it.*
 
 ## `codegenDependencyEdges` — replay the frontend's declared ordering
 
-`codegenDependencyEdges(shared_ptr<klr::LncKernel>)` @ `0xf1e450`. This is the **batch dependency-wiring post-pass**. `codegenLncKernel` (`0xf34140`) runs the per-statement walk (`codegenStmt` @ `0xf34ac3` in the loop), then calls `codegenDependencyEdges` **exactly once** after the walk (`@0xf352ca`). Edges are never wired per-op. *(CONFIRMED — single post-walk call site.)*
+`codegenDependencyEdges(shared_ptr<klr::LncKernel>)` @ `0xf1e450`. This is the **batch dependency-wiring post-pass**. `codegenLncKernel` (`0xf34140`) runs the per-statement walk (`codegenStmt` @ `0xf34ac3` in the loop), then calls `codegenDependencyEdges` **exactly once** after the walk (`@0xf352ca`) — that is the only call site. Edges are never wired per-op.
 
 ### What it reads
 
@@ -189,7 +191,7 @@ klr::Edges = { from:   String        @ +0x00     // the producer instruction NAM
                to:     List<String>  @ +0x20 }   // the consumer instruction NAMES
 ```
 
-That is a pure **name-keyed adjacency record**. The list of them at `LncKernel+0x98` is the frontend-declared program dependency graph. *(Both layouts CONFIRMED from the two serializers.)*
+That is a pure **name-keyed adjacency record**. The list of them at `LncKernel+0x98` is the frontend-declared program dependency graph. Both layouts are read from the two serializers.
 
 ### The body
 
@@ -232,7 +234,7 @@ The codegen edge is stamped **`EdgeKind = Ordered(1)`** — the weakest non-triv
 
 > **GOTCHA — this is declared ordering, not dependency analysis.** There is **no** last-writer-of-`MemoryLocation` map, **no** klr SSA value→producer map, **no** `AccessPattern` overlap test, and **no** Flow/Anti/Output classification anywhere in this body. The producer/consumer relation is entirely name-declared by the frontend in `klr::Edges` and replayed verbatim as `Ordered(1)`. The dependency model at the KLR-codegen boundary is therefore "frontend-declared program-ordering edges," carrying the NKI author's / klr-builder's intended execution order (RNG-state chains, explicit barriers, hand-declared ordering) into BIR before any analysis runs. A dangling name (a `from`/`to` not matching an emitted instruction) is a hard `runtime_error` — the frontend graph must reference only emitted insts.
 
-### Adversarial verification — the EdgeKind packing and the once-per-kernel replay
+### Byte-level anchors — the EdgeKind packing and the once-per-kernel replay
 
 ```
 # codegenDependencyEdges edge-emit site  @ 0xf1e6ef
@@ -244,7 +246,7 @@ f1e6f6: ba 01 00 00 00   mov  $0x1,%edx                          # edx = 1   →
 f1e6fb: e8 00 18 6d ff   call …Instruction::addDependency        ✓
 ```
 
-The edge kind (`edx=1`), the non-loop-carried flag (`ecx=0`), and the consumer→producer direction (`rdi=to`, `rsi=from`) are **CONFIRMED byte-exact**. `Ordered(1)` is consistent with [instruction-base](instruction-base.md)'s `EdgeKind = {Invalid 0, Ordered 1, Anti 2, Output 3, Flow 4}` recovery and with `addDependency`'s `PointerIntPair` packing into the `dependencies` set. The single post-walk call (`codegenLncKernel @0xf352ca`) is the once-per-kernel invariant.
+The edge kind (`edx=1`), the non-loop-carried flag (`ecx=0`), and the consumer→producer direction (`rdi=to`, `rsi=from`) are byte-exact. `Ordered(1)` is consistent with [instruction-base](instruction-base.md)'s `EdgeKind = {Invalid 0, Ordered 1, Anti 2, Output 3, Flow 4}` recovery and with `addDependency`'s `PointerIntPair` packing into the `dependencies` set. The single post-walk call (`codegenLncKernel @0xf352ca`) is the once-per-kernel invariant.
 
 ## The dependency lifecycle: where the Ordered edges go
 
@@ -258,7 +260,7 @@ The edge kind (`edx=1`), the non-loop-carried flag (`ecx=0`), and the consumer�
 | 3 | anti-dependency analyzer (`@76`) | `Anti(2)` / `Output(3)` | post-coloring physical-aliasing WAR/WAW edges, invisible to codegen (no physical addresses yet) |
 | 4 | post-sched / synchronizer / `lower_sync` | (consumes merged set) | chooses cross-engine edges needing a hardware semaphore |
 
-> **NOTE — why codegen declares only Ordered, never Flow.** At lowering time the BIR is still pre-unroll and pre-allocation: APs are symbolic, there are no physical addresses, and no materialized writer/reader use-def lists exist. The only dependency information available is what the frontend explicitly declared, and the safe encoding for "must run in this order, reason TBD" is `Ordered(1)`. `build_fdeps` later computes the real value-flow on materialized `PhysicalAP`s and the anti analyzer adds post-coloring aliasing edges; the codegen Ordered edges persist as program-order scaffolding, upgraded in place wherever a stronger kind is later proven on the same `(consumer→producer)` slot. *(Lifecycle STRONG — synthesized from the PreSched / build_fdeps / anti-analyzer reports; the Stage-0 `Ordered(1)` emission and the MAX-merge are CONFIRMED.)*
+> **NOTE — why codegen declares only Ordered, never Flow.** At lowering time the BIR is still pre-unroll and pre-allocation: APs are symbolic, there are no physical addresses, and no materialized writer/reader use-def lists exist. The only dependency information available is what the frontend explicitly declared, and the safe encoding for "must run in this order, reason TBD" is `Ordered(1)`. `build_fdeps` later computes the real value-flow on materialized `PhysicalAP`s and the anti analyzer adds post-coloring aliasing edges; the codegen Ordered edges persist as program-order scaffolding, upgraded in place wherever a stronger kind is later proven on the same `(consumer→producer)` slot. The Stage-0 `Ordered(1)` emission and the MAX-merge are read directly; the four-stage lifecycle above is assembled from the PreSched, `build_fdeps`, and anti-dependency analyzer passes rather than from any single body.
 
 ## The master operand → argument contract
 

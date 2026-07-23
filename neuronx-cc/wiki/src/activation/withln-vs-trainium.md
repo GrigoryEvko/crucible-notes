@@ -8,7 +8,7 @@ The wheel ships **two** PWP (Piece-Wise Polynomial) activation-table catalogs un
 
 The surprising answer to "what selects the target" is: *nothing inside the binary*. There is no `getPwpDir(target)`, no `"pwp_bin_" + arch` concatenation, no `cl::opt` default path, and no LayerNorm-fused codegen branch anywhere in `libwalrus`, `walrus_driver`, or the shipped Python. The choice is made entirely by the **value** of one LLVM command-line string option — `--act-root-json <absolute path>` — which the upstream Python compile-job orchestration computes and hands to `walrus_driver`. The directory the path points at *is* the selection. Both directory names (`with_ln`, `pwp_bin`) appear in exactly one shipped file, the `dist-info/RECORD` manifest that merely lists them; they occur in zero `.so`, zero executable, and zero `.py`.
 
-The split is a **training-vs-inference profile** axis, orthogonal to the ISA/arch axis. `pwp_bin_trainium` is the full production roster (forward + backward heroes); `pwp_bin_with_ln` is an inference-trimmed subset whose 22-function universe is a **strict subset** of trainium's 36. "with_ln" is not a device, not an arch codename, and not an `ArchLevel` — it is a profile descriptor ("with LayerNorm support, inference-trimmed"). The DVE engine ships the same idea packaged differently (named `tables[]` profiles inside one `dve_info.json` per gen), confirming the read.
+The split is a **training-vs-inference profile** axis, orthogonal to the ISA/arch axis. `pwp_bin_trainium` is the full production roster (forward + backward heroes); `pwp_bin_with_ln` is an inference-trimmed subset whose 22-function universe is a **strict subset** of trainium's 36. "with_ln" is not a device, not an arch codename, and not an `ArchLevel` — it is a profile descriptor ("with LayerNorm support, inference-trimmed"). The DVE engine ships the same idea packaged differently (named `tables[]` profiles inside one `dve_info.json` per gen), which corroborates that reading.
 
 For reimplementation, the contract is:
 
@@ -46,7 +46,7 @@ walrus_driver <bir.json> --neff-output-filename <out> [--act-root-json <abs path
             (called from NeffFileWriter::writeFile @ 0x1541040)
 ```
 
-The flag is registered inside `libwalrus`, so `walrus_driver` exposes it without a literal `"--act-root-json"` string of its own; only `walrus_bugpoint_driver` re-exposes the bare token `"act-root-json"` (and `"dve-root-json"`) directly — both confirmed present in that ELF, both absent from `walrus_driver`.
+The flag is registered inside `libwalrus`, so `walrus_driver` exposes it without a literal `"--act-root-json"` string of its own; only `walrus_bugpoint_driver` re-exposes the bare token `"act-root-json"` (and `"dve-root-json"`) directly — both present in that ELF, both absent from `walrus_driver`.
 
 ### Algorithm
 
@@ -145,7 +145,7 @@ The subset relation is proven by set difference (`jq` extract → `comm`):
 
 ```text
 functions in with_ln NOT in trainium  (comm -23):
-  (empty)                       ⇒  with_ln ⊆ trainium   [CONFIRMED]
+  (empty)                       ⇒  with_ln ⊆ trainium
 ```
 
 > **QUIRK —** the subset holds at the **function** level, *not* the set-name level. `with_ln` introduces three set *names* that trainium does not have — `erf_and_others`, `mish_and_small`, `softplus_tanh_and_others` — and trainium has ten set names that with_ln drops. So `comm` on the set-name lists is *not* a subset. The sets are repacked/merged (softplus is merged into the tanh set; `erf` is promoted to its own set; `mish` rides with `small`), but the *functions* they expose are a strict subset. A reimplementer who proves the subset by comparing `name` fields will get a false negative.
@@ -177,9 +177,11 @@ The pattern: **all nine `derivative_*` heroes are gone**, `silu` (and its deriva
 
 ### Why two catalogs and not one
 
-Shipping two independent directories lets the compiler embed the *minimal* image for inference (smaller NEFF, fewer LUT refills) and the *full* image for training, with the set-cover packing ([10.7](set-cover.md)) optimized independently for each. Because with_ln's shared sets carry fewer co-resident functions, their blob section count and packing differ, so the blobs are independently generated:
+Shipping two independent directories lets the compiler embed the *minimal* image for inference (smaller NEFF, fewer LUT refills) and the *full* image for training, with the set-cover packing ([10.7](set-cover.md)) optimized independently for each. Because with_ln's shared sets carry fewer co-resident functions, their blob section count and packing differ, so the blobs are independently generated.
 
-> **CORRECTION (D-M16) —** an earlier assumption held that with_ln re-uses trainium's blobs (a symlink/dedup). It does not. All 11 commonly-named `*_bkt.bin` blobs **differ byte-for-byte** between the directories (`md5`): e.g. `sqrt_and_others_bkt.bin` is `f439cf3e…` in trainium and `0bc145ce…` in with_ln. The *only* byte-identical file across the two directories is the (blank) `version.json` (`md5 bd412555…` both). The fingerprint-dedup hits reported elsewhere were cross-cpython copies (cp310/11/12 of the *same* directory), not cross-target. with_ln is a first-class, separately-built image.
+The two catalogs share no binary content. All 11 commonly-named `*_bkt.bin` blobs **differ byte-for-byte** between the directories: `sqrt_and_others_bkt.bin`, for instance, has md5 `f439cf3e…` in trainium and `0bc145ce…` in with_ln. The *only* byte-identical file across the two directories is the (blank) `version.json` (md5 `bd412555…` in both). with_ln is a first-class, separately-built image, not a symlink or a dedup of trainium.
+
+> **GOTCHA —** fingerprint-dedup tooling will report large numbers of identical PWP blobs, but those matches are between the cp310/cp311/cp312 copies of the *same* directory, never across the two targets. Deduping trainium against with_ln on the assumption that they share blobs will corrupt one of the catalogs.
 
 ### Is with_ln legacy?
 
@@ -250,15 +252,15 @@ The mechanism is fully resolved from the binary; the *policy* is not. This bound
 
 | Question | Where it lives | Confidence |
 |---|---|---|
-| What option selects the target | `cl::opt actRootJson` in libwalrus | CONFIRMED |
-| What the value means | the absolute path's directory = the catalog | CONFIRMED |
-| with_ln ⊆ trainium (functions) | the two `act_info.json` files | CONFIRMED |
-| Exact 14-function trim set | `comm -13` on the function universes | CONFIRMED |
-| PWP axis ⊥ ISA axis | gen-invariant load codegen + no per-gen dirs | CONFIRMED |
-| with_ln = inference/forward profile | subset proof + DVE `transformer_fwd` analog | STRONG |
-| **Which compile-mode/graph picks with_ln** | the Python WalrusDriver/Kelper job orchestration — **NOT in the wheel binaries** | INFERRED (gap) |
+| What option selects the target | `cl::opt actRootJson` in libwalrus | CERTAIN |
+| What the value means | the absolute path's directory = the catalog | CERTAIN |
+| with_ln ⊆ trainium (functions) | the two `act_info.json` files | CERTAIN |
+| Exact 14-function trim set | `comm -13` on the function universes | CERTAIN |
+| PWP axis ⊥ ISA axis | gen-invariant load codegen + no per-gen dirs | CERTAIN |
+| with_ln = inference/forward profile | subset proof + DVE `transformer_fwd` analog | HIGH |
+| **Which compile-mode/graph picks with_ln** | the Python WalrusDriver/Kelper job orchestration — **NOT in the wheel binaries** | MEDIUM |
 
-> **NOTE —** the upstream rule that *decides* to pass `pwp_bin_with_ln` (which front-end flag, compile-mode, or graph property triggers it) is not resolvable from the shipped wheel. The orchestration that builds the `walrus_driver` shell command is not in the 199 shipped `.py`; it is a driver/native path upstream of this binary. The `dynamic_pwp` gate (`neff_feature_dynamic_pwp`) is *orthogonal* — it toggles dynamic-vs-static table loading, not which roster, and is confirmed **not** the selector here.
+> **NOTE —** the upstream rule that *decides* to pass `pwp_bin_with_ln` (which front-end flag, compile-mode, or graph property triggers it) is not resolvable from the shipped wheel. The orchestration that builds the `walrus_driver` shell command is not in the 199 shipped `.py`; it is a driver/native path upstream of this binary. The `dynamic_pwp` gate (`neff_feature_dynamic_pwp`) is *orthogonal* — it toggles dynamic-vs-static table loading, not which roster, and is **not** the selector here.
 
 ---
 
