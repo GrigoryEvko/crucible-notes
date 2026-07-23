@@ -382,8 +382,8 @@ TensorScalarAddr TensorScalarAffineSelect TensorStore WRITE
 > **NOTE — the absolute count is method-dependent; the cross-gen diff is not.** A
 > stricter `strings` minimum length counts 40 single-token names on both gens (one
 > two-token / glue-trapped form falls outside the end-anchor *equally* on both). Either
-> count gives the **load-bearing** result — the cross-gen diff is clean `+0/−0`. The
-> 41-name set above was reproduced with `strings -n2` this session and matches the
+> count gives the **same decisive** result — the cross-gen diff is clean `+0/−0`. The
+> 41-name set above was reproduced with `strings -n2` and matches the
 > committed baseline name-for-name. [HIGH/OBSERVED for the diff; the absolute count is
 > method-dependent, MED]
 

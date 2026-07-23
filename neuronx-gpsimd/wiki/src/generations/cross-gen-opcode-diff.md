@@ -5,7 +5,7 @@ This is the **ISA-evolution step-diff** for the GPSIMD opcode namespace and the
 generation step *adds*, *changes*, and *removes* across the unified ladder —
 **SUNDA (v2) → CAYMAN (v3) → MARIANA (v4) → MARIANA_PLUS (v4+) → MAVERICK (v5)** —
 with **TONGA (V1)** characterized as the pre-unified outlier from its own,
-separate ISA package. It carries four load-bearing results, each proven from the
+separate ISA package. It carries four principal results, each proven from the
 shipped bytes:
 
 > 1. The opcode byte is a **write-once global namespace.** Every opcode that lives

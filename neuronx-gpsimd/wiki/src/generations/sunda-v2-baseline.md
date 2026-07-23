@@ -216,7 +216,7 @@ SUNDA POOL = the floor compute set — the 18 flat pool/dma kernels of §3a, wit
 
 ### 2c. The collective floor — what SUNDA *keeps*
 
-The single load-bearing collective delta is the on-chip `0xbf` SB2SB leg + the
+The single decisive collective delta is the on-chip `0xbf` SB2SB leg + the
 transpose DGE kinds (both nc≥V3). SUNDA is **not** collective-incapable: it still
 ships all nine collective pseudo-ops (`0xC7/C8/D9/DA/CB/D8/D5/C3/DB`), the
 cross-die RDMA `ExtendedInst` legs (`op6/8/9` + `DMA_DIRECT2D/INDIRECT1D`

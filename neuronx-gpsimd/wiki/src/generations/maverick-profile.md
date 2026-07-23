@@ -181,8 +181,8 @@ The four OBSERVED footprints:
 The central cross-gen deliverable. `v5 = strict v4 opcode superset (+6)` — **165
 opcodes**, all 159 mariana ops recurring with identical name=value (zero drift, zero
 drop), plus six genuine new free slots. Each opcode value below was read directly from
-`neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h` this pass (line + `// Y`
-marker shown where load-bearing). `OBS` = OBSERVED this pass; `INF` = inferred; `CIT`
+`neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h` (line + `// Y`
+marker shown where it decides the result). `OBS` = OBSERVED; `INF` = inferred; `CIT`
 = carried.
 
 | FEATURE / AXIS | MARIANA (v4) | MAVERICK (v5) | EVID |
