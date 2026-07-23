@@ -23,18 +23,18 @@ This page is the **earlier** legalization stage. The later materialization (`low
 | **Shared skeleton** | CRTP `IRVisitor`: `run()` builds a logger scope, visits Function `main` first then every other Function; per-BasicBlock visit recurses IT 105/106/108 (Loop / DynamicForLoop / DoWhile) and dispatches one DMA opcode |
 | **Dtype→bytes table** | `qword_1DE10A0` / `_1DE1220` / `_1DE0E20` — three byte-identical 20-entry mirrors `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}` |
 
-All seven body-frame addresses, the three factory invokes, and the dtype tables are read directly off the IDA disassembly and Hex-Rays decompilation of `libwalrus.so`. CONFIRMED.
+All seven body-frame addresses, the three factory invokes, and the dtype tables are read directly off the IDA disassembly and Hex-Rays decompilation of `libwalrus.so`.
 
 ---
 
 ## The shared pass skeleton
 
-All three passes are the same shape, so it is worth pinning once. Each is a `neuronxcc::backend::BackendPass` subclass registered through a `register_generator_<name>__` factory lambda. The factory `__cxa_demangle`s the pass's own class name (e.g. `"N9neuronxcc7backend18LegalizeStridedDMAE"`), allocates the 96-byte `BackendPass` object, and seeds its `logging::Logger` with the registry string (`"legalize_strided_dma"` / `"legalize_cce_dma"` / `"lower_generic_indirect"`). CONFIRMED — factory bodies read end-to-end at the three invoke addresses above.
+All three passes are the same shape, so it is worth pinning once. Each is a `neuronxcc::backend::BackendPass` subclass registered through a `register_generator_<name>__` factory lambda. The factory `__cxa_demangle`s the pass's own class name (e.g. `"N9neuronxcc7backend18LegalizeStridedDMAE"`), allocates the 96-byte `BackendPass` object, and seeds its `logging::Logger` with the registry string (`"legalize_strided_dma"` / `"legalize_cce_dma"` / `"lower_generic_indirect"`). The factory bodies were read end-to-end at the three invoke addresses above.
 
 `BackendPass::run(bir::Module&)`:
 
 ```c
-// run() — common to all three passes [CONFIRMED, decompiled all three]
+// run() — common to all three passes (decompiled in all three)
 void run(bir::Module &M) {
   // push a logging attribute scope { "module_name" = M.getName() }
   Function *main = M.getFunction("main");        // "main" visited first
@@ -53,7 +53,7 @@ The CRTP `IRVisitor::visit` walks each `BasicBlock`, recurses into the structure
 | `legalize_cce_dma` | 32 | `InstDMACopy` |
 | `lower_generic_indirect` | 42, 44 | `InstGenericIndirectLoad`, `InstGenericIndirectSave` |
 
-IT 43 (`IndirectLoad`) is intentionally **not** dispatched by `lower_generic_indirect` — it is already the concrete op the pass *produces*. CONFIRMED (`run()` + `IRVisitor::visit` decompiled for all three; opcode ownership matches the `bir::InstructionType` ordinals).
+IT 43 (`IndirectLoad`) is intentionally **not** dispatched by `lower_generic_indirect` — it is already the concrete op the pass *produces*. `run()` and `IRVisitor::visit` were decompiled for all three passes, and the opcode ownership matches the `bir::InstructionType` ordinals.
 
 ---
 
@@ -63,14 +63,14 @@ IT 43 (`IndirectLoad`) is intentionally **not** dispatched by `lower_generic_ind
 
 A partition-strided DMA load is an `InstLoad` (IT 19) whose **partition dimension is not contiguous** — i.e. the access has an inter-partition gap. The hardware DGE cannot issue such a load directly; the descriptor wants a partition-contiguous source. The pass's job is to manufacture one: stage the data into a freshly-allocated SBUF tile via a *contiguous* DMA, then re-apply the original strided pattern with an on-chip `InstTensorCopy`.
 
-This pass runs **only** under the `gen-stride-dma` CLI gate (order 18); the other two are unconditional. CONFIRMED via the `P-3-04` pass-order walk.
+This pass runs **only** under the `gen-stride-dma` CLI gate (order 18); the other two are unconditional. Both facts come from the backend pass-order walk.
 
 ### The arch budget read
 
 `run()` reads a per-arch SBUF-partition byte capacity from the hardware model and stows it on the visitor as the legalization budget. The dereference chain is `getArchModel(Module::getArch()) → (+8) → (+16) → (+40)` — the same `Board → Device → Core` singleton tree the [SBUF/PSUM geometry](../arch/sbuf-psum-geometry.md) page documents. The impl object the visitor carries is:
 
 ```c
-// LegalizeStridedDMAImpl object layout [STRONG — wiring reconstructed from run()]
+// LegalizeStridedDMAImpl object layout — offsets reconstructed from run(), no named struct
 struct Impl {
   void   *loggerScope;   // +0
   uint64  copyCounter;   // +8   init 0; ++'d per emitted copy for a unique decimal suffix
@@ -84,7 +84,7 @@ struct Impl {
 The `AccessPattern` field offsets below are the decompiler byte-offsets and match the `bir::AccessPattern` layout: dtype at `+0x30`, `MemoryLocation*` at `+0x38`, the `APPair[]` stride/num pairs at `+0x50` (each pair 16 B: `step@+0`, `num@+8`), the pattern dimension count at `+0x58` (1..4), the byte offset at `+0xD0`.
 
 ```c
-// LegalizeStridedDMAImpl::visitInstLoad(bir::InstLoad&)  @0xb5ddc0  [CONFIRMED]
+// LegalizeStridedDMAImpl::visitInstLoad(bir::InstLoad&)  @0xb5ddc0
 void visitInstLoad(InstLoad &I) {
   AccessPattern &inAP  = I.getArgument<PhysicalAccessPattern>(0);
   AccessPattern &outAP = I.getOutput<PhysicalAccessPattern>(0);
@@ -133,11 +133,11 @@ void visitInstLoad(InstLoad &I) {
 | **R2 (`/32` alignment)** | `basePart & 0x1F == 0` | DMA partition-quadrant granularity — the PE has 128 partitions, split into four 32-partition DMA groups |
 | **R4 (budget fit)** | `DtypeSize[dt] · (offset + span) ≤ SBUF budget` | the staged tile must physically fit one SBUF partition's byte capacity |
 
-If R2 or R4 fails, the load is left **unmodified** — deferred to the verifier / later legalization rather than rewritten. The `/32` figure is the DMA-quadrant constant (128 partitions ÷ 4); the SBUF byte budget is a per-arch immediate stamped into the `Statebuf` record (see [SBUF/PSUM geometry](../arch/sbuf-psum-geometry.md)). CONFIRMED for the rule structure and the `0x1F` mask; the runtime budget value lives in the arch-model ctor, not in a shipped JSON, so its numeric value is INFERRED per arch.
+If R2 or R4 fails, the load is left **unmodified** — deferred to the verifier / later legalization rather than rewritten. The `/32` figure is the DMA-quadrant constant (128 partitions ÷ 4); the SBUF byte budget is a per-arch immediate stamped into the `Statebuf` record (see [SBUF/PSUM geometry](../arch/sbuf-psum-geometry.md)). The rule structure and the `0x1F` mask are read directly; the runtime budget value lives in the arch-model constructor rather than in any shipped JSON, so its per-arch numeric value is [INFERRED].
 
-The `DtypeSize` table `qword_1DE10A0` (`.rodata 0x1de10a0`, 20 qwords) is `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}` (byte size per Dtype 0..19). CONFIRMED.
+The `DtypeSize` table `qword_1DE10A0` (`.rodata 0x1de10a0`, 20 qwords) is `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}` (byte size per Dtype 0..19).
 
-> **Cross-lib note.** `AccessPattern::isPartitionContiguous` resolves through PLT slot `off_3DCF5E0` into `libBIR.so` (its body is not in `libwalrus.so` `.text`); its truth-semantics (`true` = partition dim has no inter-partition gap) are inferred from the symbol name and call site. STRONG.
+> **NOTE — `isPartitionContiguous` lives in the other library.** `AccessPattern::isPartitionContiguous` resolves through PLT slot `off_3DCF5E0` into `libBIR.so`; its body is not in `libwalrus.so` `.text`. Its truth-semantics — `true` means the partition dim has no inter-partition gap — are read from the symbol name and the call site, not from the body.
 
 ---
 
@@ -145,16 +145,16 @@ The `DtypeSize` table `qword_1DE10A0` (`.rodata 0x1de10a0`, 20 qwords) is `{1,1,
 
 ### What it owns
 
-A collective-compute-engine DMA is an `InstDMACopy` (IT 32) for which `bir::isCCEDMA` is true. The hardware CCE engine can fan in only a bounded number of sources per copy. That bound is `board.device.core.MaxCceDmaSource` — and it is the **same field** the verifier's `checkCCEDMALegality` reads, asserting `I.num_arguments() <= MaxCceDmaSource` (NeuronAssertion code 329 — that is the *assertion code*, not the cap value). This pass exists precisely so that every CCE DMA satisfies that gate. CONFIRMED — identical `ArchModel.device.core+0x50` dereference in both the pass and the verifier.
+A collective-compute-engine DMA is an `InstDMACopy` (IT 32) for which `bir::isCCEDMA` is true. The hardware CCE engine can fan in only a bounded number of sources per copy. That bound is `board.device.core.MaxCceDmaSource` — and it is the **same field** the verifier's `checkCCEDMALegality` reads, asserting `I.num_arguments() <= MaxCceDmaSource` (NeuronAssertion code 329 — that is the *assertion code*, not the cap value). This pass exists precisely so that every CCE DMA satisfies that gate — the pass and the verifier perform the identical `ArchModel.device.core+0x50` dereference.
 
 ### The post-pass marker
 
-After visiting all functions, `run()` iterates every `Function` and sets `FunctionAttribute #21 = "stage_legalize_cce_dma_completed"` (written through the `boost::variant` attribute map at `Function+240`). This is the pipeline-bookkeeping flag the later stages key off — part of the `stage_*_completed` attribute cluster. CONFIRMED (attribute enum value 21; string present in `.rodata`).
+After visiting all functions, `run()` iterates every `Function` and sets `FunctionAttribute #21 = "stage_legalize_cce_dma_completed"` (written through the `boost::variant` attribute map at `Function+240`). This is the pipeline-bookkeeping flag the later stages key off — part of the `stage_*_completed` attribute cluster. The attribute enum value is 21 and the string is present in `.rodata`.
 
 ### The split
 
 ```c
-// LegalizeCCEDMAImpl::visitInstDMACopy(bir::InstDMACopy&)  @0xb61280  [CONFIRMED, full body read]
+// LegalizeCCEDMAImpl::visitInstDMACopy(bir::InstDMACopy&)  @0xb61280  (full body read)
 void visitInstDMACopy(InstDMACopy &I) {
   if (!bir::isCCEDMA(I)) return;                      // gate @0x607110
   Module &M  = *I.getFunction()->getModule();
@@ -196,11 +196,11 @@ void visitInstDMACopy(InstDMACopy &I) {
 
 ### The threshold, in plain terms
 
-The single split condition is `nSrc > MaxCceDmaSource`, where `nSrc = #arguments + #constants`. Each emitted chunk consumes at most `MaxCceDmaSource` sources; the per-source scale-constant `SmallVector<float>` is partitioned in lockstep, and each chunk gets a freshly-minted `"<name>_imm_output_<N>"` partial-output `MemoryLocation` tagged kind 7 at field `+224`. No queue or DGE-engine assignment happens here. CONFIRMED — full 920-line body read; helpers (clone via vtable slot 18 / `vt+0x90`, `spliceArguments`, `addMemoryLocation`, symbol-table relink) identified by call site.
+The single split condition is `nSrc > MaxCceDmaSource`, where `nSrc = #arguments + #constants`. Each emitted chunk consumes at most `MaxCceDmaSource` sources; the per-source scale-constant `SmallVector<float>` is partitioned in lockstep, and each chunk gets a freshly-minted `"<name>_imm_output_<N>"` partial-output `MemoryLocation` tagged kind 7 at field `+224`. No queue or DGE-engine assignment happens here. The full 920-line body was read; the helpers (clone via vtable slot 18 / `vt+0x90`, `spliceArguments`, `addMemoryLocation`, symbol-table relink) are identified by call site.
 
-> **Tag caveat.** Field `+224 = 7` (partial-output kind) is a *distinct* tag from the `+216` `MemoryType` field that the strided pass sets to 16 (SB). The strided pass's `MemoryType=16` is a named enum (SB); the cce pass's `+224=7` is observed-not-enum-named. STRONG / `+224=7` value INFERRED as a kind tag.
+> **GOTCHA — two different tag fields, eight bytes apart.** Field `+224 = 7` (partial-output kind) is distinct from the `+216` `MemoryType` field that the strided pass sets to 16 (SB). `MemoryType = 16` is a named enum value; `+224 = 7` has no enum name in the binary and is [INFERRED] to be a kind tag from how it is written and read.
 
-The exact numeric value of `MaxCceDmaSource` lives in the per-arch `EngineInfo`/`Target` ctor in `.text` (not in any shipped JSON); only the dereference path is pinned. GAP.
+The exact numeric value of `MaxCceDmaSource` lives in the per-arch `EngineInfo`/`Target` constructor in `.text`, not in any shipped JSON; only the dereference path is pinned here.
 
 ---
 
@@ -208,7 +208,7 @@ The exact numeric value of `MaxCceDmaSource` lives in the per-arch `EngineInfo`/
 
 ### What it owns
 
-The front end (penguin/HLO) emits a "generic" indirect access — `GenericIndirectLoad` (IT 42) or `GenericIndirectSave` (IT 44) — carrying a **multi-dimensional** index expression and unflattened address tensors. The hardware indirect DMA wants a single 1-D index, a 2-D address tensor, and one element/one address per partition. This pass bridges that gap, expanding the generic op into a concrete IR chain and forcing every index/offset/address AP to the hardware shape. CONFIRMED — `IRVisitor::visit` dispatches IT 42 → `codegenIndirectLoadSave`, IT 44 → `visitInstGenericIndirectSave` (a trivial forwarder, thunk `0x5ecf20` → `codegenIndirectLoadSave`).
+The front end (penguin/HLO) emits a "generic" indirect access — `GenericIndirectLoad` (IT 42) or `GenericIndirectSave` (IT 44) — carrying a **multi-dimensional** index expression and unflattened address tensors. The hardware indirect DMA wants a single 1-D index, a 2-D address tensor, and one element/one address per partition. This pass bridges that gap, expanding the generic op into a concrete IR chain and forcing every index/offset/address AP to the hardware shape. `IRVisitor::visit` dispatches IT 42 → `codegenIndirectLoadSave` and IT 44 → `visitInstGenericIndirectSave`, a trivial forwarder (thunk `0x5ecf20`) into the same routine.
 
 ### Input invariants asserted
 
@@ -221,12 +221,12 @@ Before lowering, the pass asserts (these strings are present verbatim in `.rodat
 - *"indirect DMA's AddrAP should be 2D"*;
 - *"Addr Tensor partition dim must match its tensor shape"*.
 
-These exactly mirror the verifier's `checkIndirectShape` / `checkTensorIndirection` ruleset — the pass produces precisely the shape the verifier then re-checks. CONFIRMED (all assertion strings located in `libwalrus.so`).
+These exactly mirror the verifier's `checkIndirectShape` / `checkTensorIndirection` ruleset — the pass produces precisely the shape the verifier then re-checks. All six assertion strings are located in `libwalrus.so`.
 
 ### The lowering chain
 
 ```c
-// LowerGenericIndirectImpl::codegenIndirectLoadSave(Instruction*, BasicBlock*)  @0xb580e0  [CONFIRMED]
+// LowerGenericIndirectImpl::codegenIndirectLoadSave(Instruction*, BasicBlock*)  @0xb580e0
 AccessPattern codegenIndirectLoadSave(Instruction *inst, BasicBlock *bb) {
   bool load = (inst->IT == 42);
   // (a) per-indirect-dim flat byte address: for each indirect dim (outer→inner) emit an
@@ -256,13 +256,13 @@ AccessPattern codegenIndirectLoadSave(Instruction *inst, BasicBlock *bb) {
 }
 ```
 
-So the generic op (IT 42/44) becomes, in order: **`ReadVarAddr`(41) → per-dim `TensorScalarPtr` address accumulation → `Memset` tile-offset → `TensorScalarPtr` offset add → `IndirectLoad`(43) / `IndirectSave`(45)**, with the index, offset, and address APs all forced to "1 element / 1 address per partition, contiguous data". CONFIRMED. The impl carries a worklist `SmallVector` (`this+1` begin / `this+4` size / `this+5` cap) to which `codegenIndirectLoadSave` appends `inst` before lowering. STRONG.
+So the generic op (IT 42/44) becomes, in order: **`ReadVarAddr`(41) → per-dim `TensorScalarPtr` address accumulation → `Memset` tile-offset → `TensorScalarPtr` offset add → `IndirectLoad`(43) / `IndirectSave`(45)**, with the index, offset, and address APs all forced to "1 element / 1 address per partition, contiguous data". The impl also carries a worklist `SmallVector` (`this+1` begin / `this+4` size / `this+5` cap) to which `codegenIndirectLoadSave` appends `inst` before lowering; those three slots are read off the access pattern in `run()`, not from a named field.
 
 ### Descriptor selection is downstream — not here
 
-This pass emits the IR-level concrete ops `IndirectLoad` (43) and `IndirectSave` (45). It does **not** choose the wire descriptor. The encoder picks among `INDIRECT16B` (3-D AP, `assignAccess3D`), `INDIRECT20B` (4-D AP, `assignAccess4D`), and `MXINDIRECT16B` (MX scale present, `assignIndirectPatternForMX`) downstream at codegen, from the lowered op's AP dimensionality, dtype, and DGE type — see [Indirect-Gather Descriptors](../isa/indirect-descriptors.md) and the [IndirectLoad/Save codegen op `0xC4`/`0xD6`](../isa/dma-encoding.md). `lower_generic_indirect`'s entire job is to make the IR indirect DMA *concrete and hardware-shaped*; the 16B-vs-20B (dim count) and MX (scale) selection happens after. STRONG — pass body produces 43/45; the descriptor encoders are codegen-resident.
+This pass emits the IR-level concrete ops `IndirectLoad` (43) and `IndirectSave` (45). It does **not** choose the wire descriptor. The encoder picks among `INDIRECT16B` (3-D AP, `assignAccess3D`), `INDIRECT20B` (4-D AP, `assignAccess4D`), and `MXINDIRECT16B` (MX scale present, `assignIndirectPatternForMX`) downstream at codegen, from the lowered op's AP dimensionality, dtype, and DGE type — see [Indirect-Gather Descriptors](../isa/indirect-descriptors.md) and the [IndirectLoad/Save codegen op `0xC4`/`0xD6`](../isa/dma-encoding.md). `lower_generic_indirect`'s entire job is to make the IR indirect DMA *concrete and hardware-shaped*; the 16B-vs-20B (dim count) and MX (scale) selection happens after. The pass body is read as producing 43/45; the descriptor encoders live in codegen and are not inspected here.
 
-The `DtypeSize` table this pass reads, `qword_1DE0E20` (`.rodata`, 20 qwords), is the byte-identical mirror `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}`. CONFIRMED.
+The `DtypeSize` table this pass reads, `qword_1DE0E20` (`.rodata`, 20 qwords), is the byte-identical mirror `{1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8}`.
 
 ---
 
@@ -277,15 +277,29 @@ The `DtypeSize` table this pass reads, `qword_1DE0E20` (`.rodata`, 20 qwords), i
 | **HW limit read** | SBUF byte budget (`core +40` chain) | `MaxCceDmaSource` (`core +0x50`, == verifier code-329 field) | none (shape-only) |
 | **Side marker** | — | `FunctionAttribute #21 stage_legalize_cce_dma_completed` | worklist `SmallVector` |
 
-Three observations tie the set together. **Opcode ownership is disjoint** — strided owns Load (19), cce owns DMACopy (32), generic-indirect owns GenericIndirect (42/44) — so no DMA op is touched by two of them. **All three honor the same arch-model root** `getArchModel() → Board+0x8 → Device+0x10 → Core` for their HW limits (strided reads the SBUF byte budget; cce reads `MaxCceDmaSource`; generic-indirect reads only the dtype tables). And **none assigns a queue or DGE engine** — `bir::DGEType` stays `Unassigned(3)` from the `InstDMA` ctor; HWDGE-engine and queue assignment are the later `assign_hwdge_engine` / `alloc_queues` passes. STRONG.
+Three observations tie the set together. **Opcode ownership is disjoint** — strided owns Load (19), cce owns DMACopy (32), generic-indirect owns GenericIndirect (42/44) — so no DMA op is touched by two of them. **All three honor the same arch-model root** `getArchModel() → Board+0x8 → Device+0x10 → Core` for their HW limits (strided reads the SBUF byte budget; cce reads `MaxCceDmaSource`; generic-indirect reads only the dtype tables). And **none assigns a queue or DGE engine** — `bir::DGEType` stays `Unassigned(3)` from the `InstDMA` ctor; HWDGE-engine and queue assignment are the later `assign_hwdge_engine` / `alloc_queues` passes.
 
 ---
 
-## Confidence & gaps
+## Evidence summary
 
-- **CONFIRMED:** the three-pass set, their order (10/18/19), the gating of order 18 on `gen-stride-dma`, every body-frame and thunk address, the three factory invokes, opcode ownership (IT 19/32/42-44), the `/32` (`0x1F`) strided alignment mask, the `nSrc > MaxCceDmaSource` cce split condition, the full cce split body, the generic-indirect lowering chain and all its named IR ops and string literals, `FunctionAttribute #21`, and the three byte-identical `DtypeSize` mirrors.
-- **STRONG:** the strided `Impl` object layout (offset wiring reconstructed from `run()`), `isPartitionContiguous` semantics (cross-lib PLT, name + call site), the generic-indirect worklist, the downstream descriptor-selection claim (pass produces 43/45; encoders are codegen-resident).
-- **INFERRED / GAP:** the *numeric* values of the per-arch SBUF byte budget and `board.device.core.MaxCceDmaSource` — both live in `EngineInfo`/`Target` ctors in `.text`, not in any shipped JSON; only the dereference paths are pinned. The cce `+224 = 7` partial-output value is an observed tag, not an enum-named constant.
+| Claim | Evidence | Confidence |
+|---|---|---|
+| The three-pass set and their order (10 / 18 / 19); order 18 gated on `gen-stride-dma` | the backend pass-order walk | CERTAIN |
+| Every body-frame and thunk address; the three factory invokes | IDA disassembly + Hex-Rays of `libwalrus.so` | CERTAIN |
+| Opcode ownership (IT 19 / 32 / 42-44), disjoint across the three passes | `run()` + `IRVisitor::visit` decompiled for all three | CERTAIN |
+| The `/32` (`0x1F`) strided alignment mask | `visitInstLoad` body @ `0xb5ddc0` | CERTAIN |
+| The `nSrc > MaxCceDmaSource` split condition and the full split body | 920-line `visitInstDMACopy` body @ `0xb61280` | CERTAIN |
+| The generic-indirect lowering chain, its named IR ops and string literals | `codegenIndirectLoadSave` @ `0xb580e0`; strings in `.rodata` | CERTAIN |
+| `FunctionAttribute #21` and the three byte-identical `DtypeSize` mirrors | attribute enum + `.rodata` tables | CERTAIN |
+| The strided `Impl` object layout | offset wiring reconstructed from `run()`; no named struct | HIGH |
+| `isPartitionContiguous` semantics | cross-library PLT: symbol name + call site, body not read | HIGH |
+| The generic-indirect worklist slots | read off the access pattern in `run()` | HIGH |
+| Descriptor selection happens downstream | the pass body produces IT 43/45; the encoders are codegen-resident | HIGH |
+
+### Limits of this reading
+
+Two numeric values that the thresholds turn on are not recoverable here: the per-arch SBUF byte budget and `board.device.core.MaxCceDmaSource`. Both are stamped into `EngineInfo`/`Target` constructors in `.text` rather than any shipped JSON, so only the dereference paths are pinned. Separately, the `+224 = 7` partial-output value in the CCE pass is an observed tag with no enum name in the binary.
 
 ---
 
