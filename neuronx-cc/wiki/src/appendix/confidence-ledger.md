@@ -153,4 +153,3 @@ This ledger is a mirror. It must not present a directly-observed claim as weak, 
 - [§0.3 Methodology & the Confidence Model](../methodology.md) — the four-tier ladder this page mirrors, and the category-level "not recoverable" catalog.
 - [§11.1 The GPSIMD CPUs: 8-core Xtensa ELF Layout](../custom-ops/gpsimd-xtensa-layout.md) — the canonical structure-only page (§1 here).
 - [§6.6.4 Production Kernel Inventory: the Three-Tree Story](../nki/production-kernel-inventory.md) — the source-withheld leaves (§5.1 here).
-- [Report ↔ Page Cross-Reference](report-page-crossref.md) — which backing report each page cites; this ledger audits *grade*, that page audits *linkage*.
