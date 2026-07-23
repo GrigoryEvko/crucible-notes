@@ -60,7 +60,7 @@ do {                                          // the spill FIXPOINT (not a rando
 } while (1);
 ```
 
-Two structural notes a reimplementer must not get wrong. First, the loop is a **spill fixpoint**, not a randomized restart — there is no RNG, no seed, no order shuffle, and no retained "best" coloring; `simplify`'s metric argument is hard-wired to 0 every pass, and the only cross-iteration change is the spill code `insert_spill_code` writes into the function (CONFIRMED — no `rand`/`srand`/`mt19937`/`shuffle`/`seed` symbol in the driver; the iteration counter is never compared to a bound). The string `"      best-of-n loop, heuristic = "` is a historical label for this fixpoint, and the value it prints is the integer iteration counter, not a score. Second, `find_partners` runs *before* `build`, so coalescing operates on the un-built graph and the merged super-nodes are what the interference graph then sees.
+Two structural notes a reimplementer must not get wrong. First, the loop is a **spill fixpoint**, not a randomized restart — there is no RNG, no seed, no order shuffle, and no retained "best" coloring; `simplify`'s metric argument is hard-wired to 0 every pass, and the only cross-iteration change is the spill code `insert_spill_code` writes into the function — the driver contains no `rand`/`srand`/`mt19937`/`shuffle`/`seed` symbol at all, and the iteration counter is never compared to a bound. The string `"      best-of-n loop, heuristic = "` is a historical label for this fixpoint, and the value it prints is the integer iteration counter, not a score. Second, `find_partners` runs *before* `build`, so coalescing operates on the un-built graph and the merged super-nodes are what the interference graph then sees.
 
 ## Setup phase A — `renumber_locations`: dense ids and the Info array
 
@@ -76,7 +76,7 @@ Info[id].bandWidth    = (MLSet[0x100] <= 0x20) ? 32 : (… ? 64 : 128);  // Info
 Info[id].height       = height_class;    // Info+0x74 — partition-band class 0..8
 ```
 
-The stamped id is the same `MLSet+348` that `find_partners` reads as `getLocation()`'s node-id (CONFIRMED cross-anchor). `renumber_locations` re-runs at the top of every spill iteration because `insert_spill_code` adds and removes nodes; it is deterministic — the same walk order yields the same ids each pass, which is part of why the fixpoint has no perturbation source. A pre-placed or output `MemoryLocationSet` (`MLSet+0xa8` byte set) takes the precolored branch and is excluded from the colorable worklist.
+The stamped id is the same `MLSet+348` that `find_partners` reads as `getLocation()`'s node-id — the two sites anchor each other. `renumber_locations` re-runs at the top of every spill iteration because `insert_spill_code` adds and removes nodes; it is deterministic — the same walk order yields the same ids each pass, which is part of why the fixpoint has no perturbation source. A pre-placed or output `MemoryLocationSet` (`MLSet+0xa8` byte set) takes the precolored branch and is excluded from the colorable worklist.
 
 The driver-visible metric `SbRenumberLocationsCount` (a `backend::BackendMetricType` enum member, published via `addMetric` @ `0x1742020`) tracks the renumbered node count; the PSUM and DRAM allocators carry the `Psum`/`Dram` twins.
 
@@ -84,7 +84,7 @@ The driver-visible metric `SbRenumberLocationsCount` (a `backend::BackendMetricT
 
 `memloc_split` @ `0xab9610` (`sb_memloc_split.cpp`) is the SBUF analogue of SSA live-range splitting / web separation, run once in setup, before the coloring loop. A single named tensor whose writes and reads happen at disjoint program points has, as *one* `MemoryLocationSet`, a live range that conservatively spans the union of all segments — pinning the storage resident the whole time and manufacturing false interference. `memloc_split` clones such a tensor into one sub-location per disjoint live segment, so each clone is an independent, shorter-lived graph node, dropping false edges and letting the disjoint segments share physical SBUF.
 
-For each Info node it gates the candidate (CONFIRMED from the disassembly):
+For each Info node it gates the candidate:
 
 ```c
 if (getPartitionDim(MLSet) == 0)        continue;   // skip scalar / 0-D locs
@@ -94,11 +94,11 @@ if (*(uint32*)(MLSet + 0x368) <= 1)     continue;   // reader/use-AP count must 
 // candidate: multiple distinct defs AND multiple distinct uses
 ```
 
-`MLSet+0x368` / `+0x390` are the count slots of the reader / writer access-pattern lists (the same lists at `MLSet+864`/`+904` whose extremes liveness uses; the `+N` here are the adjacent counts — INFERRED field identity, single-anchored). For a candidate it walks the AP list, reads each instruction's `getLoopnest()`, computes interval relationships with `fmt::bigint` big-integer stride/period arithmetic, and **clones** the `MemoryLocationSet` per segment (`_Znwm` + `memmove` of the AP records; the clone is the `cl_mem_loc` of the assert `"cloned mem loc cannot be nullptr"`), splicing the clones back via `getMemlocByTensorId`. The clone+memmove+`getMemlocByTensorId` machinery is CONFIRMED; the exact bigint period predicate that decides *where* to cut is STRONG (mechanism proven; cut boundary not byte-transcribed). The `TotalSplitSbNodesCount` metric counts the minted clones.
+`MLSet+0x368` / `+0x390` are the count slots of the reader / writer access-pattern lists (the same lists at `MLSet+864`/`+904` whose extremes liveness uses; the `+N` here are the adjacent counts, an [INFERRED] field identity resting on a single anchor). For a candidate it walks the AP list, reads each instruction's `getLoopnest()`, computes interval relationships with `fmt::bigint` big-integer stride/period arithmetic, and **clones** the `MemoryLocationSet` per segment (`_Znwm` + `memmove` of the AP records; the clone is the `cl_mem_loc` of the assert `"cloned mem loc cannot be nullptr"`), splicing the clones back via `getMemlocByTensorId`. The clone+memmove+`getMemlocByTensorId` machinery is read directly; the bigint period predicate that decides *where* to cut is not — its mechanism is visible but the cut boundary was never byte-transcribed. The `TotalSplitSbNodesCount` metric counts the minted clones.
 
 ## The Info node and the colored tensor
 
-The colorable node is `bir::MemoryLocationSet*` (the SBUF tensor; D-E13). Each is materialized as one 128-byte `Info` record, indexed `Info + (id << 7)` (CONFIRMED byte-exact across `build`, `impact`, `simplify`). The fields this front-half touches:
+The colorable node is `bir::MemoryLocationSet*` — the SBUF tensor. Each is materialized as one 128-byte `Info` record, indexed `Info + (id << 7)`; that stride reads byte-exact at every use site in `build`, `impact` and `simplify`. The fields this front-half touches:
 
 | Field | Type | Meaning | Set by |
 |---|---|---|---|
@@ -121,7 +121,7 @@ The eligibility filter `candidate(MemoryLocationSet&)` @ `0xaacbe0` admits a set
 
 ## `live_range` — building the 2-D-plus-time interval
 
-`live_range` @ `0xa9dbb0` is phase 1 of the colorer body. It does **not** re-scan the IR to find first/last; it trusts the anchors `find_first_defs`/`find_last_uses` parked at `Info+32`/`Info+40` and asserts they are non-null (`"no first def find"` @ `cpp:0x14`, `"no last use find"` @ `cpp:0x15` — both strings CONFIRMED in the binary). Its def-use *substrate* is the per-`MemoryLocationSet` writer/reader access-pattern lists the dependence builder populated:
+`live_range` @ `0xa9dbb0` is phase 1 of the colorer body. It does **not** re-scan the IR to find first/last; it trusts the anchors `find_first_defs`/`find_last_uses` parked at `Info+32`/`Info+40` and asserts they are non-null (`"no first def find"` @ `cpp:0x14`, `"no last use find"` @ `cpp:0x15` — both strings present verbatim in the binary). Its def-use *substrate* is the per-`MemoryLocationSet` writer/reader access-pattern lists the dependence builder populated:
 
 - READERS at `MLSet+864/+888/+896` (begin / data / count)
 - WRITERS at `MLSet+904/+928/+936`
@@ -130,7 +130,7 @@ Each accessor is classified by its access class at `AP+24`: `== 2` is a write (d
 
 ### The time axis
 
-The interval is `[def_idx, lastUse_idx]` in linear instruction-point index space. The flat program-order index is `bir::Instruction+0x4C` (the re-indexed program order; the same index `get_live_range_len` @ `0x994970` reads to compute the range length `max−min`). `create_eintervals` later translates `Instruction*` → integer time-coordinate through `LinearizedFunction+968`, a `DenseMap<Instruction*, uint>` of linear instruction-point indices built by walking the function's basic-block instruction list. This `LF+968` map is the bridge from `Instruction*` to the time coordinate. (The point *sequence* is `linearize`'s product; ownership of `LF+968` is built here — INFERRED, structurally certain.)
+The interval is `[def_idx, lastUse_idx]` in linear instruction-point index space. The flat program-order index is `bir::Instruction+0x4C` (the re-indexed program order; the same index `get_live_range_len` @ `0x994970` reads to compute the range length `max−min`). `create_eintervals` later translates `Instruction*` → integer time-coordinate through `LinearizedFunction+968`, a `DenseMap<Instruction*, uint>` of linear instruction-point indices built by walking the function's basic-block instruction list. This `LF+968` map is the bridge from `Instruction*` to the time coordinate. The point *sequence* is `linearize`'s product; that `LF+968` is itself built here is [INFERRED] from the structure rather than traced to a construction site.
 
 ### The partition footprint — the shrink factor
 
@@ -155,7 +155,7 @@ if (Info+84 > LF+696 /*SBUF per-partition byte BUDGET*/)
     FATAL("<name> is too big for SB, requires <liveN> bytes with SB size <budget>");
 ```
 
-The string `"is too big for SB"` is CONFIRMED in the binary. The 2-D footprint per tensor is therefore `(liveN partition-blocks) × (bytesPerBlock)`; the *base-partition offset* (`MLSet+560`) is fixed later by `select`, not here — liveness fixes the **span** (how many partitions, how many bytes, how long), placement fixes the **offset**.
+The string `"is too big for SB"` appears verbatim in the binary. The 2-D footprint per tensor is therefore `(liveN partition-blocks) × (bytesPerBlock)`; the *base-partition offset* (`MLSet+560`) is fixed later by `select`, not here — liveness fixes the **span** (how many partitions, how many bytes, how long), placement fixes the **offset**.
 
 ### The loop-aware endpoint extension — the `_with_loop` delta
 
@@ -171,7 +171,7 @@ firstDefs[defAnchor].push_back(defOrdinal);   // a4
 lastUses [useAnchor].push_back(useOrdinal);   // a5
 ```
 
-The loop terminator is found by scanning the loop body for opcode **105** (the `Loop` op, hard-kept by the don't-touch pass — CONFIRMED cross-anchor). The pre-pass `label_possible_loop_carried_dependency_node` @ `0x9945d0` (a TBB `parallel_for` over Info nodes) pre-marks which nodes are loop-carried candidates; `live_range` performs the actual extension. Net effect: a loop-carried tensor's interval is stretched `[loopHeader_idx … loopBackEdge_idx]`, so it is treated as live across the entire loop body.
+The loop terminator is found by scanning the loop body for opcode **105** — the `Loop` op, which the don't-touch pass hard-keeps for exactly this reason. The pre-pass `label_possible_loop_carried_dependency_node` @ `0x9945d0` (a TBB `parallel_for` over Info nodes) pre-marks which nodes are loop-carried candidates; `live_range` performs the actual extension. Net effect: a loop-carried tensor's interval is stretched `[loopHeader_idx … loopBackEdge_idx]`, so it is treated as live across the entire loop body.
 
 ### The outputs
 
@@ -191,7 +191,7 @@ This is the complete 2-D-plus-time live model: a tensor's liveness = a set of `[
 
 ## `build` — the interference graph: edges are time-overlaps
 
-`build` @ `0xa99410` ("build interference graph") is a classic Chaitin two-representation graph: a triangular **bit-matrix** for O(1) membership plus per-node **adjacency lists** for iteration. The bit-matrix is lower-triangular, sized `(n² + 15) >> 4` bytes (one bit per unordered pair), and an edge `(i,j)` with `lo=min`, `hi=max` maps to bit index `lo + ((hi*hi) >> 1)` (the standard half-matrix packing, CONFIRMED twice in the body).
+`build` @ `0xa99410` ("build interference graph") is a classic Chaitin two-representation graph: a triangular **bit-matrix** for O(1) membership plus per-node **adjacency lists** for iteration. The bit-matrix is lower-triangular, sized `(n² + 15) >> 4` bytes (one bit per unordered pair), and an edge `(i,j)` with `lo=min`, `hi=max` maps to bit index `lo + ((hi*hi) >> 1)` — the standard half-matrix packing, which appears twice in the body.
 
 The **edge source** is the per-node co-live set `Info+48` — an `std::set<uint>` of node-ids simultaneously live with this node, filled from the def/use maps. The decisive design choice: **two nodes interfere iff their live ranges overlap in TIME** — co-membership in `Info+48`. The 2-D partition×byte geometry is *not* folded into the boolean edge; it is carried separately as a weight (`impact`) and applied in `simplify`. So the edge is "ranges overlap in time"; the spatial dimension sharpens the *degree* into a byte-pressure, not the adjacency bit.
 
@@ -217,7 +217,7 @@ return vertical_impact_with_loop[ 9*Height(j) + Height(i) ]   // partition-band 
 // Height(x) = Info[x]+116;  bytes(x) = Info[x]+84
 ```
 
-`vertical_impact_with_loop` (symbol confirmed in the binary) is a 9×9 `int` table indexed by both nodes' Height class: 0 when their partition bands are disjoint, `>0` scaled by how the bands overlap. The 9×9 shape is CONFIRMED by the `9*Height(j)+Height(i)` index arithmetic; the individual cell values are INFERRED — the table lives in `.data` behind a relocated pointer, so only the shape and role are proven, not the integers. The second factor `bytes(i)+bytes(j)−1` is the byte extent the two tensors jointly consume in a shared band. The product is the SBUF space `j` removes from `i`'s options — the 2-D interference made numeric.
+`vertical_impact_with_loop` (symbol confirmed in the binary) is a 9×9 `int` table indexed by both nodes' Height class: 0 when their partition bands are disjoint, `>0` scaled by how the bands overlap. The `9*Height(j)+Height(i)` index arithmetic fixes the 9×9 shape; the individual cell values do not appear, because the table lives in `.data` behind a relocated pointer. Shape and role are read, the integers are [INFERRED]. The second factor `bytes(i)+bytes(j)−1` is the byte extent the two tensors jointly consume in a shared band. The product is the SBUF space `j` removes from `i`'s options — the 2-D interference made numeric.
 
 The **Height** enum (`Info+116`, 0..8) is decoded from two `.rodata` tables. Both were read byte-exact from the binary on this pass:
 
@@ -226,11 +226,13 @@ The **Height** enum (`Info+116`, 0..8) is decoded from two `.rodata` tables. Bot
 | band-base (`int32` @ `0x1DDEDA0`) | 3 | 3 | 3 | 3 | 3 | 2 | 2 | 2 | 1 |
 | divisor (`int16` @ `0x1DDEDD0`) | 32 | 32 | 32 | 32 | 32 | 64 | 64 | 64 | 128 |
 
-The band-base table is 32-bit (`{3,3,3,3,3,2,2,2,1}`, CONFIRMED dword). The divisor table is **16-bit** (`{32,32,32,32,32,64,64,64,128}`, CONFIRMED `int16` — reading it as `int32` interleaves adjacent pairs, e.g. `0x200020 = (32,32)`, which is the trap a reimplementer must avoid). The semantics, on SBUF = 128 partitions:
+The band-base table is 32-bit (`{3,3,3,3,3,2,2,2,1}`, dword elements). The divisor table is **16-bit** (`{32,32,32,32,32,64,64,64,128}`, `int16` elements). The semantics, on SBUF = 128 partitions:
 
 - Height 0..4 → divisor 32 → occupies one of **four** 32-partition bands
 - Height 5..7 → divisor 64 → occupies one of **two** 64-partition half-bands
 - Height 8 → divisor 128 → spans **all 128** partitions (a tall tensor)
+
+> **GOTCHA — the divisor table is `int16`, not `int32`.** Reading it a dword at a time silently interleaves adjacent pairs, so the first element decodes as `0x200020` — a single large value where the truth is the pair `(32, 32)`. The band-base table immediately above it *is* dword-wide, which makes the mixed widths easy to miss.
 
 `possible_placements` @ `0xab5040` turns this into the per-node color count k:
 
@@ -261,7 +263,7 @@ So the Chaitin "k available colors" is **not a single scalar** — each node car
 The exact lambda demangle is in the binary: `find_partners(LinearizedFunction*, Info*)::<lambda(const auto:40&, const auto:41&)> [with auto:40 = int; auto:41 = unsigned int]`. Given a group base partition `base` and a member tensor-partition `tp`, it normalizes the member's partition index to the group base:
 
 ```c
-assert(tp >= base);        // "tp >= base"  (physical AP) / "tps.first >= base"  (symbolic AP)  — both CONFIRMED
+assert(tp >= base);        // "tp >= base"  (physical AP) / "tps.first >= base"  (symbolic AP)
 offset = tp - base;        // partition OFFSET of each member relative to the group base
 ```
 
@@ -273,7 +275,7 @@ The pair `(int, unsigned)` is `(signed tp, unsigned base)` and the comparator co
 
 ### The Briggs conservative gate
 
-Classic Briggs coalesces a move only if the merged super-node remains colorable (`< k significant-degree neighbors`). Here the test is the **2-D analogue**: a group is coalesced only while its summed `"requires N bytes/partition"` stays under the per-band SB cap (`this+968`). The moment a group's combined byte demand exceeds the band capacity, the pass logs `"accumulation group is too large for SB"` and **disables partners** (`this+1040 = 0`), falling back to the un-coalesced graph. This is the Briggs guarantee — "don't coalesce if it would make the node uncolorable" — expressed in the SBUF byte-pressure metric that `impact`/`possible_placements` use. The mechanism is CONFIRMED; the literal "< k significant-degree neighbors" phrasing maps onto the per-band byte-cap and is INFERRED, not a separate scalar count in this allocator.
+Classic Briggs coalesces a move only if the merged super-node remains colorable (`< k significant-degree neighbors`). Here the test is the **2-D analogue**: a group is coalesced only while its summed `"requires N bytes/partition"` stays under the per-band SB cap (`this+968`). The moment a group's combined byte demand exceeds the band capacity, the pass logs `"accumulation group is too large for SB"` and **disables partners** (`this+1040 = 0`), falling back to the un-coalesced graph. This is the Briggs guarantee — "don't coalesce if it would make the node uncolorable" — expressed in the SBUF byte-pressure metric that `impact`/`possible_placements` use. The mechanism is read directly from the pass; the mapping of the classic "< k significant-degree neighbors" test onto this per-band byte cap is [INFERRED], since no separate scalar degree count exists in this allocator.
 
 The retry path `selectNodeWithPartnerRetry` (spill/select page) re-attempts a node honoring its partner set before declaring a spill, closing the coalesce↔color loop.
 
@@ -300,7 +302,7 @@ impact / possible_placements  2-D weight = vertical_impact[9*Hj+Hi]×(bytes_i+by
    └─→  find_costs → simplify → select   (spill/select half — planned page)
 ```
 
-## Diagnostic strings (all CONFIRMED present in `libwalrus.so`)
+## Diagnostic strings (all present verbatim in `libwalrus.so`)
 
 | String | Phase | Meaning |
 |---|---|---|
@@ -337,12 +339,22 @@ impact / possible_placements  2-D weight = vertical_impact[9*Hj+Hi]×(bytes_i+by
 | `label_possible_loop_carried_dependency_node` | `0x9945d0` | TBB pre-mark loop-carried nodes |
 | `vertical_impact_with_loop` | `0x3ded040` | 9×9 partition-band overlap table (`.data`) |
 
-## Confidence
+## Evidence summary
 
-- **CONFIRMED:** the source paths (`sb_*_with_loop.cpp`), all asserts/diagnostic strings above (read directly from the binary this pass), the Info stride 128 and the field offsets, the triangular bit-matrix index `min + (max²>>1)` and size `(n²+15)>>4`, the two-pass build, the `impact` formula and its 9×9 index arithmetic, the Height band-base table `{3,3,3,3,3,2,2,2,1}` (int32 @ `0x1DDEDA0`) and divisor table `{32,32,32,32,32,64,64,64,128}` (**int16** @ `0x1DDEDD0`), `possible_placements` k-by-Height, the `(int,unsigned)` lambda demangle and its `tp>=base` asserts, the `ml_base→Height` stamp, the loop opcode-105 terminator, the dense id at `MLSet+348`, the spill-fixpoint structure (no RNG / no fixed n / no best-retain).
-- **STRONG:** the interference edge = co-membership in `Info+48` (time-overlap); the band byte-cap as the Briggs-conservative coalesce gate; `memloc_split` as web-splitting (clone+memmove+`getMemlocByTensorId` proven, segmentation predicate not byte-transcribed); `SbRenumberLocationsCount`/`TotalSplitSbNodesCount` as the driver-visible node/clone counters.
-- **INFERRED:** the `vertical_impact_with_loop` numeric cell values (table is `.data`-relocated — only the 9×9 shape and role are proven); the literal "< k significant-degree neighbors" classic phrasing mapping onto the per-band byte-pressure residual; `MLSet+0x368`/`+0x390` as exactly the reader/writer AP-count slots (single-anchored, consistent with the `+864`/`+904` lists); `LF+968` ownership (built here, point sequence is `linearize`'s product).
-- **GAP:** the numeric SBUF byte budget (`LF+696`) lives in the per-arch Target/EngineInfo ctor (not JSON), tabulated in [1.05](../arch/sbuf-psum-geometry.md); the `memloc_split` bigint period cut-boundary; the `addMetric` increment site for the renumber/split counters.
+Read directly from `libwalrus.so`: the source paths (`sb_*_with_loop.cpp`); every assert and diagnostic string tabulated above; the Info stride of 128 and the field offsets; the triangular bit-matrix index `min + (max²>>1)` and its size `(n²+15)>>4`; the two-pass build; the `impact` formula and its 9×9 index arithmetic; the Height band-base table `{3,3,3,3,3,2,2,2,1}` (int32 @ `0x1DDEDA0`) and divisor table `{32,32,32,32,32,64,64,64,128}` (int16 @ `0x1DDEDD0`); `possible_placements`' k-by-Height switch; the `(int,unsigned)` lambda demangle and its `tp>=base` asserts; the `ml_base→Height` stamp; the opcode-105 loop terminator; the dense id at `MLSet+348`; and the spill-fixpoint structure, with no RNG, no fixed iteration count and no retained best coloring.
+
+Well-supported but a step short of that: the interference edge as co-membership in `Info+48`; the band byte-cap serving as the Briggs-conservative coalesce gate; `memloc_split` as web-splitting, where the clone/memmove/`getMemlocByTensorId` machinery is proven but the segmentation predicate is not byte-transcribed; and `SbRenumberLocationsCount` / `TotalSplitSbNodesCount` as the driver-visible node and clone counters.
+
+## Limits of this reading
+
+Four things are reconstructed rather than read, each flagged where it appears above:
+
+- the numeric cells of `vertical_impact_with_loop` — the table is `.data`-relocated, so only its 9×9 shape and its role are proven;
+- the mapping of the classic "< k significant-degree neighbors" test onto the per-band byte-pressure residual;
+- the identity of `MLSet+0x368` / `+0x390` as exactly the reader and writer AP-count slots (single-anchored, though consistent with the `+864` / `+904` lists);
+- ownership of `LF+968`, i.e. that it is built here rather than upstream.
+
+Three gaps remain outright. The numeric SBUF byte budget (`LF+696`) is not here at all — it lives in the per-arch Target/EngineInfo constructor rather than in JSON, and is tabulated in [1.05](../arch/sbuf-psum-geometry.md). The `memloc_split` bigint period cut-boundary is untraced. So is the `addMetric` increment site for the renumber and split counters.
 
 ## Cross-references
 
