@@ -18,12 +18,12 @@ multi-buffer rotation. The sync fields these passes emit are *consumed* by
 (the `<eng>.bin` 64-byte SEQ slots and the `def.json` `dma_queue` rows). The
 device-side decode of the emitted `EVENT_SEMAPHORE` / `DRAIN` / `CoreBarrier`
 ops lives under the Part-13 control pages (inline path:
-`neuronx-gpsimd/wiki/src/control/...`, stubs pending). The pass roster and the
+`neuronx-gpsimd/wiki/src/control/...`). The pass roster and the
 `emit_*`→opcode map are in [The GPSIMD-Relevant Compiler Map](compiler-map.md);
 the collective sync ops these passes lower into are in
 [collective-loadtime-rewrite.md](collective-loadtime-rewrite.md).
 
-All symbols, addresses, docstrings and strings below are read directly this pass
+All symbols, addresses, docstrings and strings below are read directly
 from the shipped, **not-stripped** `neuronx-cc 2.24.5133.0+58f8de22` wheel —
 the Cython codegen passes carry verbatim `.py` method names as `__pyx_*` symbols
 plus docstrings, and `libwalrus.so` carries C++ RTTI, assert strings and
@@ -33,7 +33,7 @@ build-path leaks of the form
 paraphrased.
 
 > **Confidence tags.** `[OBSERVED]` byte-exact from a shipped string/symbol/
-> docstring/address this pass; `[INFERRED]` reasoned over observed control/data
+> docstring/address; `[INFERRED]` reasoned over observed control/data
 > flow; `[CARRIED]` carried from a cited sibling page, re-grounded here.
 > `HIGH/MED/LOW` = confidence.
 
@@ -463,7 +463,7 @@ every engine stops at it, so a cross-loopnest RAW/WAR/WAW — or a shared-HBM te
 that would need too many pairwise semaphores, or a fan-in > 2 join (§3.3) — is
 resolved by **one barrier** instead of `O(n²)` pairwise semaphores.
 
-> **CORRECTION (vs DX-CC-08 §2.6).** The two `InsertCoreBarrier` docstrings
+> **CORRECTION (vs an earlier report).** The two `InsertCoreBarrier` docstrings
 > (*"Insert Corebarrier on shared HBM tensors"* / *"…raw, war, and waw … cross
 > loopnests"*) are **not** in `libwalrus.so` — `strings libwalrus.so` has no
 > *"Insert Corebarrier"* / *"shared HBM tensors"* / *"cross loopnest"* match. They
@@ -571,7 +571,7 @@ per gen `core_v2/v3/v4`); `setupDMASemaphoreUpdate` is the DMA specialization;
 (`OnWait`/`OnUpdate` `id`/`mode`/`size`/`type`/`value` mismatch;
 `getLocalSemaphore(SI.OnUpdate) == semaphore`; `hasSingleLocalUpdate(SI.OnUpdate)`).
 
-> **CORRECTION (vs DX-CC-08 §0/§2.3).** That report named the per-slot stamping
+> **CORRECTION (vs an earlier report).** That report named the per-slot stamping
 > method `setupSyncUpdate<NEURON_ISA_TPB_*_STRUCT>` (a templated function with one
 > instantiation per slot kind). **`strings`/`nm` of `libwalrus.so` carry no
 > `setupSyncUpdate` symbol or string at all** — the actual stamping surface is the
@@ -837,7 +837,7 @@ LNC2 sendrecv on `POOL`):
    waits/updates resolve to the `ln` WAIT-GE `+0x1000` / INC `+0x1800` windows
    (§3.9).
 
-`[HIGH — sync backend OBSERVED this pass; the exact `$S[..]` values INFERRED-HIGH;
+`[HIGH — sync backend OBSERVED; the exact `$S[..]` values INFERRED-HIGH;
 emit/wrap CARRIED assembly-pipeline.md.]`
 
 ---
@@ -898,7 +898,7 @@ Each claim re-grounded against the shipped artifacts; a sceptic's re-run is give
 
 ## 9. Confidence ledger & corrections
 
-**HIGH / OBSERVED** (byte-exact this pass): the registered pass spine
+**HIGH / OBSERVED** (byte-exact): the registered pass spine
 (`register_generator_<pass>` + `neuronxcc/walrus/<pass>/src/<pass>.cpp` leaks);
 `AntiDependencyAnalyzer` vtable + `-SB`/`-PSUM`/`-DRAM`/`-Alias` instances +
 `getSBPartitionRange`/`getPSUMPartitionRange`/`populate*UseMap`/`collect*Ranges` +
@@ -943,10 +943,10 @@ WAIT/INC/SET/DEC (CARRIED the Part-10 `collectives/` pages,
 that price the schedule + the DRAIN (CARRIED
 [tiling-memory-scheduling.md §6.2](tiling-memory-scheduling.md)).
 
-**Corrections issued this pass** (vs DX-CC-08; all byte-confirmed against
+**Corrections issued** (all byte-confirmed against
 `libwalrus.so` `nm`/`strings`):
 
-| # | claim corrected (DX-CC-08) | truth (this pass) | §  |
+| # | claim corrected (earlier report) | truth | §  |
 | - | --- | --- | --- |
 | 1 | the per-slot stamping method is `setupSyncUpdate<NEURON_ISA_TPB_*_STRUCT>` | **no `setupSyncUpdate` symbol/string in `libwalrus`**; the surface is `SetupSemaphoreUpdate::visitInstruction @0x113e8b0` / `setupDMASemaphoreUpdate @0x113dee0` / `enterInstLoop @0x1146290`; `AllocSemaphores::setupSync` is a *different* method | §4 |
 | 2 | the two `InsertCoreBarrier` docstrings are `libwalrus` strings | they are **not in `libwalrus`**; they live in the Cython `InsertCoreBarrier.cpython-311.so`; the C++ `CoreBarrier`/`_all_eng_barrier`/`Done renumbering core barriers.` *are* in `libwalrus` | §3.6 |
@@ -969,7 +969,7 @@ cited `libwalrus` address (`AllocateSemaphores::assignDMASemaphore @0x1138f10`,
 vtable `@0x3d8c008`, `sync_dve_pool @0x156f560`, `InsertPTCOMFlat::insertPTCOMs
 @0x16acc10`, `CoreV2GenImpl::visitInstCustomOp @0x1261370`, …) resolves exactly in
 both `nm -DC libwalrus.so` and the IDA `_native_exports.json`.
-`[HIGH/OBSERVED — cross-checked this pass against binary + IDA JSON.]`
+`[HIGH/OBSERVED — cross-checked against binary + IDA JSON.]`
 
 ---
 

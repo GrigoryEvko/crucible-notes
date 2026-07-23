@@ -39,7 +39,7 @@ reduce-vs-copy split.
 > --start-address` reads index the file directly; C++ vtable slots are measured
 > from `vptr = _ZTV + 0x10`. Device-leg strings cross-check against
 > `libnrtucode_extisa.so`. Confidence tags `[HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED]`:
-> **OBSERVED** = read/disassembled directly from a shipped artifact this pass;
+> **OBSERVED** = read/disassembled directly from a shipped artifact;
 > **INFERRED** = reasoned over OBSERVED; **CARRIED** = established on a cited
 > committed page. The reduce arithmetic itself is in silicon (the SDMA CCE ALU),
 > not the binary — the binary carries only the descriptor *builders*.
@@ -77,8 +77,8 @@ BIR InstCollective(ctype)                    // compiler emits a PSEUDO trigger 
     COMPLETE  EVT_SEM local_sem/remote_sem + add_semaphore_wait_ge_and_dec @0x273a20  (counted barrier)
 ```
 
-`[HIGH/OBSERVED — every symbol verified at the cited address by `nm -C` + `objdump`
-this pass; the PSEUDO encoding + the device leg CARRIED from
+`[HIGH/OBSERVED — every symbol verified at the cited address by `nm -C` + `objdump`;
+the PSEUDO encoding + the device leg CARRIED from
 [all-reduce.md](../collectives/ops/all-reduce.md) §1/§8 and
 [s3d3-collective.md](../collectives/ops/s3d3-collective.md).]`
 
@@ -103,8 +103,7 @@ algorithm**. At load the runtime *chooses* one, keyed on topology + size + dtype
 
 All five algorithm engines are sub-objects of a single `enc_comm` instance; the
 runtime picks per collective op which to compose. `[HIGH/CARRIED — the engine
-layout from DX-STRUCT-06 §6.2; the `enc_alg_type` enum that names them OBSERVED
-this pass.]`
+layout carried; the `enc_alg_type` enum that names them OBSERVED.]`
 
 | engine | algorithm class | role |
 |---|---|---|
@@ -120,7 +119,7 @@ and `mesh` are distinct classes.
 
 > **GOTCHA — two `metaring` discriminators, do not conflate.** The per-object
 > `enc_alg_metaring.type` sub-enum (`RING=0 / KANGARING=1 / SINGLE_CYCLE_RING=2 /
-> RDH=3 / INVALID=4`, CARRIED DX-STRUCT-06 §6.6) is **not** the global
+> RDH=3 / INVALID=4`, CARRIED) is **not** the global
 > `enc_alg_type` the selector emits and the firmware reads
 > ([§1.3](#13-the-enc_alg_type-output-enum)). The global enum places
 > `KANGARING=3` and `SINGLE_CYCLE_RING=4` — different ordinals. The global
@@ -128,7 +127,7 @@ and `mesh` are distinct classes.
 > ([§4.3](#43-the-top_sp-cc_op-program)); the per-object `.type` is an internal
 > dispatch field. A reimplementation that copies the metaring `.type` value into
 > the SPAD nibble will mis-tag `KANGARING`/`SINGLE_CYCLE_RING`.
-> `[the per-object sub-enum CARRIED MED (DX-STRUCT-06, not a committed page); the
+> `[the per-object sub-enum CARRIED MED (from a non-committed report); the
 > global enum HIGH/OBSERVED — see the divergence note in
 > [§1.3](#13-the-enc_alg_type-output-enum).]`
 
@@ -149,7 +148,7 @@ Disassembling `0x14c620 .. 0x14de30`, the `enc_can_post_*` call census is byte-e
 returns whether THAT engine is legal for the `(op, scope, size, dtype, topology)`
 tuple; `__select_algorithms` picks the per-leg winner. `nm -C` reports exactly
 **7** `enc_can_post_*` symbols total. `[HIGH/OBSERVED — the call census + the
-demangled signatures read this pass; matches
+demangled signatures read; matches
 [all-reduce.md](../collectives/ops/all-reduce.md) §6.1 byte-for-byte. The
 per-(world-size) numeric resolution depends on the `can_post` thresholds — MED,
 not exhaustively enumerated.]`
@@ -163,7 +162,7 @@ not exhaustively enumerated.]`
 
 ### 1.3 The `enc_alg_type` output enum
 
-Read from the `libnrt` DWARF this pass (`DW_TAG_enumeration_type` at DIE
+Read from the `libnrt` DWARF (`DW_TAG_enumeration_type` at DIE
 `<0x61ec6>`, each enumerator's `DW_AT_const_value`):
 
 | value | enumerator | routes to (NCFW) |
@@ -184,8 +183,8 @@ Read from the `libnrt` DWARF this pass (`DW_TAG_enumeration_type` at DIE
 All `0..10` fit the firmware's 4-bit `algo_type` nibble. The mesh sub-type
 `enc_alg_mesh_type` (firmware `algo_sub_type`, DIE `<0x125d7c>`):
 `FULL_MESH=0 / GROUPED_MESH=1 / MESH_TRN2=2 / MESH_SWITCH=3 / MESH_INVALID=4`,
-fitting the 3-bit `algo_sub_type`. `[HIGH/OBSERVED — DWARF `const_value` read this
-pass at `<0x61eca>`..`<0x61ef6>`; reconciles **byte-for-byte** with
+fitting the 3-bit `algo_sub_type`. `[HIGH/OBSERVED — DWARF `const_value` read
+at `<0x61eca>`..`<0x61ef6>`; reconciles **byte-for-byte** with
 [collective-enums.md](../collectives/ops/collective-enums.md) §3.3/§3.4.]`
 
 > **CORRECTION — `INTRA_RDH=5`, `INTER_RDH=7`, not adjacent.** A naïve reading
@@ -199,7 +198,7 @@ pass at `<0x61eca>`..`<0x61ef6>`; reconciles **byte-for-byte** with
 ### 1.4 Per-leg legality for ALL_REDUCE
 
 `__select_algorithms` constrains each leg's chosen `enc_alg_type` to a legal set,
-expressed as `.rodata` C-assertion strings (re-dumped this pass). A hierarchical
+expressed as `.rodata` C-assertion strings. A hierarchical
 all-reduce logs **five** per-leg choices: *"Hier algorithm selections - alg_intra_allg
 %d alg_intra_redsct %d alg_inter_allr %d alg_inter_allg %d alg_inter_redsct %d"*.
 
@@ -273,7 +272,7 @@ output of `findPath` over the `NeuronEdge` graph for the active replica group. T
 (`construct<NeuronEdge, int&, int&, EdgeLocality>` in the DWARF), so each edge
 carries its locality (intra-MLA vs `EdgeRemoteMLA`) at construction. `[HIGH/OBSERVED
 — the graph builders + `isIntraMLA` + the `findPath` family + the `EdgeLocality`
-constructor read this pass via `nm -C` + DWARF.]`
+constructor read via `nm -C` + DWARF.]`
 
 ### 2.2 The cross-die peer rule + the C2C ports
 
@@ -290,13 +289,13 @@ analogue of the firmware PRID-parity role split. The TRN2 and TRN3 overrides are
 `xor $0x2` rule. `caymanGetC2CPortsPerMla @0x757d0` / `marianaGetC2CPortsPerMla
 @0x78250` expose **4** C2C (chip-to-chip) ports per MLA to the router — a subset of
 the 8 physical `io_d2d` subsystems. So the topology presents 4 cross-die ports the
-collective may stripe across. `[the `xor $0x2` + the C2C symbols HIGH/OBSERVED this
-pass; `=4` CARRIED DX-DMA-03 §7.2 (the getter returns a stack-loaded value).]`
+collective may stripe across. `[the `xor $0x2` + the C2C symbols HIGH/OBSERVED;
+`=4` CARRIED (the getter returns a stack-loaded value).]`
 
 ### 2.3 The ring / kangaring leaf structs (the constructed schedule)
 
 `findPath`'s output is materialised into the `enc_alg_metaring` leaf structs. Both
-struct sizes are OBSERVED from the `libnrt` DWARF this pass:
+struct sizes are OBSERVED from the `libnrt` DWARF:
 
 ```c
 struct enc_ring {              // byte_size 24  (DWARF DIE <0x1258fb>)
@@ -322,9 +321,9 @@ struct enc_kangaring {         // byte_size 1060 (DWARF DIE <0x12594d>)
 `net_recv`/`net_send` connectors + the on-device `drv_channel`. So the host turns
 the routed path into: per-channel `{ ring prev/next OR kangaring logical_path }` +
 the peer routing_ids (`enc_peer_info.rid`). `[the struct byte_sizes + the
-`logical_path`/`peer_rmtv`/`next_peer_rmtv` field names HIGH/OBSERVED (DWARF this
-pass); the `prev`/`next`/`user_ranks` member layout + `enc_channel` CARRIED
-DX-STRUCT-06 §6.4/§6.6; the `findPath → leaf-struct` population edge INFERRED-HIGH
+`logical_path`/`peer_rmtv`/`next_peer_rmtv` field names HIGH/OBSERVED (DWARF);
+the `prev`/`next`/`user_ranks` member layout + `enc_channel` CARRIED;
+the `findPath → leaf-struct` population edge INFERRED-HIGH
 from the struct fields + the composer's use of `prev`/`next`/`peer_rmtv`.]`
 
 ### 2.4 The peer selector into the SB2SB leg — `encd_neigh`
@@ -362,7 +361,7 @@ calls; each step is one SB2SB leg, emitted as per-channel SDMA descriptors.
 
 ### 3.1 The step primitives (the channel composer's vocabulary)
 
-`enc_primitive` carries two families (signatures re-read from `nm -C` this pass):
+`enc_primitive` carries two families (signatures re-read from `nm -C`):
 
 ```c
 // COPY steps (no reduce) — carry NEITHER SDMA_CCETYPE NOR reduction_type_t
@@ -397,7 +396,7 @@ confirms `SDMA_CCETYPE` is the 2nd arg and `reduction_type_t` the 3rd);
 ### 3.2 The step → SB2SB `0xBF` leg → SDMA descriptor
 
 Every step bottoms out in the host SB2SB encoder family (addresses re-confirmed by
-`nm` this pass):
+`nm`):
 
 ```c
 __encd_dma_common_sb2sb @0x23e1b0   // loops the active channels; per channel branches on reduce_mode:
@@ -422,7 +421,7 @@ decodes it via `decode_sb2sb_collective` (`libnrtucode_extisa.so`, string
 *"SB2SB_Collective: num_chans=%0d, tpb_idx=%u"*). The `0xBF` word itself carries
 **no op field** — the reduce lives in the SDMA CCE descriptor the leg programs.
 `num_active_channels` (`1..128`, `POOLING_NUM_CHANNELS`) = the channel count the
-`__encd_dma_common_sb2sb` loop walks. `[encoder addresses HIGH/OBSERVED this pass;
+`__encd_dma_common_sb2sb` loop walks. `[encoder addresses HIGH/OBSERVED;
 the `0xBF` word + the COPY/REDUCE encoder split CARRIED
 [s3d3-collective.md](../collectives/ops/s3d3-collective.md) §4 + the
 [CCE page](../dma/cce-in-transfer.md) §6.]`
@@ -524,13 +523,13 @@ programs the inc offset (`encd_arch_get_sp_sema_i_ofst @0x2558e0` → `+0x1800`)
 `[the four windows + the `0x8280000000` base CARRIED
 [top-sp-lowering.md](../collectives/ops/top-sp-lowering.md) §4 (byte-exact:
 read `+0x1000`, set `+0x1400`, inc `+0x1800`, dec `+0x1C00`); the per-leg LOCAL/REMOTE
-two-sema CARRIED DX-DMA-03 §5; the encoder symbols OBSERVED this pass.]`
+two-sema CARRIED; the encoder symbols OBSERVED.]`
 
 > **CORRECTION (verification) — the EVT_SEM windows match the committed pages
 > exactly.** This page's windows (`+0x1000`/`+0x1400`/`+0x1800`/`+0x1C00`) are
 > **byte-identical** to [top-sp-lowering.md](../collectives/ops/top-sp-lowering.md)
 > §4 and [all-reduce.md](../collectives/ops/all-reduce.md) §8 (`sp_base + 0x1800 +
-> idx*4`). No divergence found. `[HIGH/OBSERVED — cross-checked this pass.]`
+> idx*4`). No divergence found. `[HIGH/OBSERVED — cross-checked.]`
 
 ### 4.2 The step chaining (the counted barrier)
 
@@ -549,8 +548,8 @@ steps then the *N−1* all-gather steps of a ring. The `0xBF` word's own `events
 field (`wait_mode`/`wait_idx` vs `update_mode`/`update_idx` + `semaphore_value`) is
 the per-instruction end of this — an SB2SB leg waits its inbound sem and updates the
 peer's on completion. Underneath, each 16-B BD carries a 2-bit generation tag
-busy-polled before slot reuse. `[the `add_semaphore_*` symbols HIGH/OBSERVED this
-pass; the device op `0x10A0` subop 20/21 + the read/inc/dec window targets CARRIED
+busy-polled before slot reuse. `[the `add_semaphore_*` symbols HIGH/OBSERVED;
+the device op `0x10A0` subop 20/21 + the read/inc/dec window targets CARRIED
 [ring-kangaring.md](../collectives/ncfw/ring-kangaring.md) §6 +
 [collective-end-to-end.md](../orientation/collective-end-to-end.md) §14; the
 `events`-field chaining CARRIED [s3d3-collective.md](../collectives/ops/s3d3-collective.md) §6.]`
@@ -600,7 +599,7 @@ them, per-step incrementing the `EVT_SEM` the DMA legs also bump. `[the `cc_op`
 struct + packer + the config builders CARRIED
 [top-sp-lowering.md](../collectives/ops/top-sp-lowering.md) §5; the symbols
 `create_spad_ctrl_entry @0x232cd0`, `encd_populate_{metaring,mesh}_topsp_config`
-re-confirmed by `nm` this pass.]`
+re-confirmed by `nm`.]`
 
 ### 4.4 The leader / reporter completion
 
@@ -660,7 +659,7 @@ steps rotate the reduced chunks around the ring.
 all-gather legs a plain copy. Steps chained by the `EVT_SEM` two-semaphore counted
 barrier ([§4](#4-semaphore--completion-wiring)). The TOP_SP NX core walks the `cc_op`
 SPAD program (`algo_type = RING`) issuing the m2s/s2m tail increments. `[the channel
-census HIGH/OBSERVED this pass (objdump @0x171600); the chain HIGH/OBSERVED at each
+census HIGH/OBSERVED (objdump @0x171600); the chain HIGH/OBSERVED at each
 named hop; the device leg CARRIED
 [all-reduce.md](../collectives/ops/all-reduce.md) §6/§8.]`
 
@@ -694,7 +693,7 @@ chunks.
 two-semaphore barrier; `cc_op` SPAD `algo_type = RING`. The runtime log confirms the
 copy-only nature: *"allgather: comm(%p), alg(%d), dtype(%d), channel_n(%d) …
 copy_slice_sz:0x%lx"* — `copy_slice_sz` ONLY, NO `reduce_slice_sz` (contrast §5.1's
-allreduce log which carries BOTH). `[HIGH/OBSERVED this pass — the channel census
+allreduce log which carries BOTH). `[HIGH/OBSERVED — the channel census
 (`recv_reduce` count = 0 over the range) + the log string.]`
 
 ### 5.3 The byte-exact contrast (the keystone)
@@ -712,7 +711,7 @@ only.** The `recv_reduce_*` vs `direct_*` split IS the reduce-vs-copy distinctio
 and it is byte-exact in the channel composer. The runtime logs corroborate:
 `"allreduce:"` carries BOTH `copy_slice_sz` AND `reduce_slice_sz`; `"allgather:"`
 carries `copy_slice_sz` ONLY. `[HIGH/OBSERVED — the objdump call census of both
-composers + the log strings, this pass.]`
+composers + the log strings.]`
 
 ### 5.4 The HIER / MESH / KANGARING variants
 
@@ -736,7 +735,7 @@ composers + the log strings, this pass.]`
 > [ring-kangaring.md](../collectives/ncfw/ring-kangaring.md) §5.3, re-anchored here
 > as the COMPOSE-phase evidence for the per-step topology selector.]`
 
-`[the composer symbols HIGH/OBSERVED this pass at the cited addresses; the per-leg
+`[the composer symbols HIGH/OBSERVED at the cited addresses; the per-leg
 decomposition CARRIED [all-reduce.md](../collectives/ops/all-reduce.md) §6.2 +
 [ring-kangaring.md](../collectives/ncfw/ring-kangaring.md) /
 [mesh-collective.md](../collectives/ncfw/mesh-collective.md) /
@@ -759,7 +758,7 @@ decomposition CARRIED [all-reduce.md](../collectives/ops/all-reduce.md) §6.2 +
 | DEVICE EXECUTE (run) | TOP_SP walks `cc_op` → `tp_inc_steps` m2s/s2m tail increments → POOL/Q7 `decode_sb2sb_collective` → `rdma_desc_gen(op8)`/`start(op9)` | `0xBF` SB2SB legs + CCE reduce in SDMA |
 | DEVICE COMPLETE (run) | `EVT_SEM` local_sem/remote_sem + `add_semaphore_wait_ge_and_dec @0x273a20` (§4) | step *k* → step *k+1* chained; leader posts |
 
-`[every named function OBSERVED at the cited address (this pass or CARRIED); the
+`[every named function OBSERVED at the cited address (observed here or CARRIED); the
 ISEL transform names CARRIED [sundaisel.md](sundaisel.md); the device-execute leg
 CARRIED [collective-end-to-end.md](../orientation/collective-end-to-end.md) §10-13.
 Sync insertion (the ordering of these legs against the rest of the engine schedule)

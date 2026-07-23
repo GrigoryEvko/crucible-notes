@@ -18,7 +18,7 @@ All facts below derive from static analysis of the shipped neuronx-cc
 table, the Cython `SundaISAInst` / `SundaISel` extension modules (whose qualnames survive
 in `.rodata`), and the committed device opcode ledger. Confidence is tagged per claim as
 `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`, where OBSERVED = read directly from a shipped
-artifact *this pass*, CARRIED = OBSERVED in a cited in-repo page and reused.
+artifact, CARRIED = OBSERVED in a cited in-repo page and reused.
 
 ---
 
@@ -72,7 +72,7 @@ basename minus the `Inst` prefix (`InstTensorTensor` → `"TensorTensor"`,
 
 ## 2. The full 110-class BIR `Inst*` roster
 
-Recovered byte-exact this pass by joining the `createFromJson` and `_ZTV` symbol sets in
+Recovered byte-exact by joining the `createFromJson` and `_ZTV` symbol sets in
 `libBIR.so` (both yield the identical 110-element set; see §8 self-verify). Grouped by
 lowering family. `[HIGH/OBSERVED]`
 
@@ -133,7 +133,7 @@ lowering family. `[HIGH/OBSERVED]`
 
 `30+9+4+4+5+1+7+8+9+4+24+5 = `**`110`**`.`
 
-> **CORRECTION (vs DX-CC-06 §9 reproduction recipe).** The report's repro command
+> **CORRECTION — the `C2ERKNSt` reproduction recipe undercounts by one.** The repro command
 > `nm libBIR.so | rg -o 'Inst…C2ERKNSt' | sort -u` yields **109**, not 110, because one
 > class's constructor does not take a `std::string` reference as its first argument:
 > **`InstDynamicForLoop`** (its ctor signature carries loop-bound operands first). Its
@@ -142,7 +142,7 @@ lowering family. `[HIGH/OBSERVED]`
 > class. **Ground the count on `createFromJson` or `_ZTV`, not on the `C2ERKNSt`
 > constructor pattern** — the latter silently drops `InstDynamicForLoop`. `[HIGH/OBSERVED]`
 
-> **NOTE — delta vs DX-CC-01's "73".** The "73" was the GPSIMD/compute-touching subset
+> **NOTE — delta vs the earlier "73".** The "73" was the GPSIMD/compute-touching subset
 > (families A–I minus the control spine K and the load/store J). The full 110 adds the
 > 24-class control spine (K), the 4 load/store (J), and the 5 kernel containers (L). No
 > contradiction — same hierarchy at two granularities. `[HIGH/INFERRED]`
@@ -161,7 +161,7 @@ lowering family. `[HIGH/OBSERVED]`
 Columns: **BIR class** `[engine]` \| **operands / semantics** \| **`SundaISel` rule** \|
 **`SundaISAInst`** \| **TPB opcode (numeric)** \| **conf**. Opcode numerics are the
 uppercase-hex values from [opcode-catalog-ledger](../firmware/kernels/opcode-catalog-ledger.md);
-every numeric below was cross-checked against that ledger this pass (engine column too).
+every numeric below was cross-checked against that ledger (engine column too).
 Where the report and ledger differ, a **CORRECTION** row follows.
 
 ### 3.1 POOL/DVE elementwise + reduce
@@ -221,8 +221,8 @@ Where the report and ledger differ, a **CORRECTION** row follows.
 | `InstRand` / `InstRand2` `[DVE]` | random draw | direct | — | `0x76` RAND (dormant) / `0xE2` RAND2 | HIGH/OBS |
 | `InstRandGetState` / `InstRandSetState` / `InstGetRandState` / `InstSetRandState` `[DVE]` | rng seed-state get/set | direct | `SundaSetRandState` | `0x77` RAND_GET_STATE / `0x78` RAND_SET_STATE (SEQ-inline) | HIGH/OBS |
 
-> **CORRECTION (MX forward direction, vs the earlier 0x7B reading; CARRIED from
-> DX-CC-03).** `InstQuantizeMx` is the **forward** pack and lowers to **`0xE3`
+> **CORRECTION (MX forward direction, vs the earlier 0x7B reading).**
+> `InstQuantizeMx` is the **forward** pack and lowers to **`0xE3`
 > QUANTIZE_MX on DVE**, *not* `0x7B`. `0x7B` TENSOR_DEQUANTIZE (POOL) is the **inverse**
 > dequant and has **no forward BIR producer** — it is the firmware-internal dequant the
 > MX matmul consumes (§4.3a). The ledger confirms `0xE3 QUANTIZE_MX | DVE` and `0x7B
@@ -258,7 +258,7 @@ Where the report and ledger differ, a **CORRECTION** row follows.
 | `InstInlineASMBytes` `[POOL]` | raw hex-byte Xtensa kernel | `SundaSIMDCodeGen` | — | `0xF0` EXTENDED_INST | HIGH/OBS |
 | `InstBIRKernel` / `InstNKIKernel` / `InstNKIKLIRKernel` `[POOL]` | NKI/BIR kernel container | `Rms/Softmax CodeGen` / `codegenTiledCCOp*` | `TiledRmsNormOp`/`TiledSoftmaxOp`/`TiledNativeKernel{Attention,MLP,QKV,RMSNormQuant}` | **macro (§4.2)** → POOL/PE/ACT/DVE schedule (no single opcode) | HIGH/OBS |
 
-> **CORRECTION (engine of `0xF1`, vs DX-CC-06 §I grouping).** DX-CC-06 lists
+> **CORRECTION (engine of `0xF1`).** An earlier grouping lists
 > `InstDMADescriptorTranspose`'s `0xF1 DMA_GATHER_TRANSPOSE` under the DMA family, which
 > reads as an NX/DMA opcode. The committed ledger assigns **`0xF1` to the POOL engine**
 > (`0xF1 | DMA_GATHER_TRANSPOSE | POOL`). Treat `0xF1` as a POOL-engine gather-transpose,
@@ -361,8 +361,8 @@ Opcodes in the device roster that *no BIR `Inst*` emits* — materialized by fir
 
 ## 5. The `SundaISel` rewrite rule set
 
-The BIR→ISA rewrite rules read byte-exact from `SundaISel.so` `.rodata` qualnames this
-pass: **34 `transform*` methods + 21 `*Codegen`/`*CodeGen` methods**. The pattern is
+The BIR→ISA rewrite rules read byte-exact from `SundaISel.so` `.rodata` qualnames:
+**34 `transform*` methods + 21 `*Codegen`/`*CodeGen` methods**. The pattern is
 two-phase — `transformT<X>Operator` canonicalizes the BIR-DAG, `<X>CodeGen` emits the ISA
 inst. `[HIGH/OBSERVED]`
 
@@ -391,7 +391,7 @@ inst. `[HIGH/OBSERVED]`
 | `ScatterCodegen` | `InstIndirectSave` | → scatter (`0x79`/`0xBB`) |
 | `PartitionReductionCodeGen` / `ReductionCodeGen` | `InstTongaReduceMacroSymbolic`/`InstTensorReduce` | → `0x7C`/`0x7D` + loop / `0x42`/`0x52` |
 
-**The four `SundaISel` predicate symbols** (OBSERVED in `SundaISel.so` this pass) that
+**The four `SundaISel` predicate symbols** (OBSERVED in `SundaISel.so`) that
 drive the conditional routes:
 
 - **`can_lower_generic_load_to_gather`** — turns `InstGeneric(Load)` → `0x68` gather when
@@ -403,7 +403,7 @@ drive the conditional routes:
 
 > **NOTE — `InferIntrinsicOnCC` / `LegalizePartitionReduce` are CARRIED, not OBSERVED.**
 > These two transform names appear in the lowering narrative but did **not** surface as
-> literal `.rodata` strings in `SundaISel.so` this pass — they likely live in a separate
+> literal `.rodata` strings in `SundaISel.so` — they likely live in a separate
 > `transforms/Lower*.so` or are inlined. The opcode results they produce (`0x21` relu
 > fold; `0x7C`/`0x7D` cross-lane reduce) *are* OBSERVED via the ledger. Treat the rule
 > *names* as `[MED/CARRIED]` pending a `Lower*.so` sweep. `[MED/INFERRED]`
@@ -415,7 +415,7 @@ whose 2:1 split (§4.1) is most instructive. The reconstructed shape:
 
 ```c
 /* SundaISel: lower InstGather  ->  SundaISAInst.PoolGather  ->  TPB 0x68 GATHER
- * Symbols: SundaISel.transformTGatherOperator (.rodata qualname, this pass)
+ * Symbols: SundaISel.transformTGatherOperator (.rodata qualname)
  *          SundaISel.GatherCodegen / SundaGatherCodegenT
  *          predicate SundaISel.replaceLastAPAddrWithIndex (the AP index splice)
  *          target   SundaISAInst.PoolGather (qualname OBSERVED in SundaISAInst.so)
@@ -459,7 +459,7 @@ ISAInst *generic_load_codegen(InstGeneric *bir) {
 1. **Every GPSIMD-relevant BIR `Inst*` maps to a ledger opcode** (or a §4.2 macro of
    them). The §3 map binds each compute/gather/PE/ACT/BN/MX/RNG/collective/DMA class to
    an opcode present in [opcode-catalog-ledger](../firmware/kernels/opcode-catalog-ledger.md).
-   **Zero BIR `Inst*` produces an opcode the ledger lacks.** Verified this pass by
+   **Zero BIR `Inst*` produces an opcode the ledger lacks.** Verified by
    look-up of all ~80 cited opcodes against the ledger's uppercase-hex table.
 2. **The ledger's `NONE` (decode-gap) opcodes re-classified by BIR producer.** Most
    maintained-`NONE` opcodes (`0x48` Reciprocal, `0x49` Memset, `0x72` CopyPredicated,
@@ -479,7 +479,7 @@ ISAInst *generic_load_codegen(InstGeneric *bir) {
 
 ## 7. The extended `emit_*`→opcode table, now as BIR `Inst*`→ISA
 
-DX-CC-01's 62 `emit_` rows are the **NKI-exposed subset** of the 110 BIR classes. The §3
+The 62 `emit_` rows are the **NKI-exposed subset** of the 110 BIR classes. The §3
 map adds the BIR ops the NKI surface does *not* name (reached only via XLA-HLO,
 dtype-routing, or macro internals):
 
@@ -549,8 +549,8 @@ descriptors; only the SB2SB p2p leg has a real opcode.**
 
 - **neuronx-cc** `2.24.5133.0+58f8de22` — `libBIR.so` (the 110-class roster + the
   `createFromJson`/`_ZTV` symbols), `SundaISAInst.cpython-311-*.so` (33 `*Op`),
-  `SundaISel.cpython-311-*.so` (34 `transform*` + 21 `*Codegen`/`*CodeGen`) all read this
-  pass. cp310/cp311/cp312 byte-identical.
+  `SundaISel.cpython-311-*.so` (34 `transform*` + 21 `*Codegen`/`*CodeGen`) all read.
+  cp310/cp311/cp312 byte-identical.
 - The 110-class BIR roster is gen-agnostic — one IR for all targets. The per-gen opcode
   split (sunda / cayman / mariana / maverick) is applied at `SundaISel`/walrus, not at the
   BIR layer; no silicon-generation fact is inferred from any compiler descriptor.

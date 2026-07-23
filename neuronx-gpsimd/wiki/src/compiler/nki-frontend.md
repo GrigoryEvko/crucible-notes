@@ -49,14 +49,13 @@ The counts below are programmatic, not eyeballed.
 | (2b) Numpy reference sim | `NKI/backends/simulator/*.py` | per-op pure-numpy | the VAL oracle, §4–5 [HIGH/OBSERVED] |
 | (3) IR builder | `_nki_irbuilder.*.so` | **69** mnemonics | `strings … \| rg -c '^NKI IR builder for'` → 69 [HIGH/OBSERVED] |
 
-> **CORRECTION (vs GX-REF-03 §1, which CARRIED "40 documented ops" in the `.pyi`).** The
+> **CORRECTION (the earlier "40 documented ops" reading).** The
 > shipped `.pyi` documents **35** `def`s, not 40 (`rg -c '^def ' PYI` = 35; full list in
 > §3). The 50/35/62/69 funnel is the accurate one: **50** `@_public_api` ops → **35** of
 > them documented in the cc-stubs → **62** `emit_*` mnemonics in `isa_emit.py` (one NKI op
 > can fan to several emit names, e.g. `tensor_partition_reduce` →
 > `emit_cross_lane_reduce_arith` + `_bitvec`) → **69** irbuilder docstrings (the 62 +
-> 7 not emitted from `isa_emit.py`, §6). [HIGH/OBSERVED — all four counts re-grepped this
-> pass.]
+> 7 not emitted from `isa_emit.py`, §6). [HIGH/OBSERVED — all four counts re-grepped.]
 
 The 19 `isa/*.py` modules and the ops each exports (`NKI/isa/__init__.py`, OBSERVED):
 
@@ -174,7 +173,7 @@ narrower than the live surface, which is the 50/35 gap from §1.
 ### 3.1 The cost model — GPSIMD_START vs MIN_II
 
 The `.pyi` per-op *"Estimated instruction cost"* blocks carry two named constants, both
-byte-pinned this pass:
+byte-pinned:
 
 | Constant | Value | Definition (verbatim) | `.pyi` line |
 |---|---|---|---|
@@ -218,8 +217,7 @@ The GpSimd ops pay a **fixed 150-cycle startup floor + N**; the Vector/Scalar op
 prove a device kernel computes the right value. It is the semantic specification of every
 op: a reimplementation's GPSIMD kernel is *correct* iff it matches this numpy bit-for-bit
 (modulo the dtype mapping in §4.1). The Part-15 validation replay drives kernels against
-this oracle — see `neuronx-gpsimd/wiki/src/validation/` (cited as a path; the per-op
-replay stubs may not exist yet).
+this oracle — see `neuronx-gpsimd/wiki/src/validation/` (cited as a path).
 
 The dispatch is keyed by **opcode sentinels**, not strings. The op-name→numpy-callable
 registry is `_NUMPY_FUNC_MAP` (`NKI/language/operators.py:442`, **56** entries), consumed
@@ -575,7 +573,7 @@ other means — is bounded precisely:
 
 > **GOTCHA — the irbuilder is a SUPERSET of the 62 `isa_emit.py` emit_*.** `_nki_irbuilder.so`
 > declares **69** `"NKI IR builder for …"` docstrings: the 62 emitted from `isa_emit.py`
-> **plus 7 not in `isa_emit.py`**, byte-confirmed this pass by set-difference:
+> **plus 7 not in `isa_emit.py`**, byte-confirmed by set-difference:
 > `{dma_compute, rand, rand2, rand_get_state, rand_set_state, rng, set_rng_seed}`.
 > [HIGH/OBSERVED — `strings _nki_irbuilder.so | rg -c '^NKI IR builder for'` = 69;
 > `comm -23` against the 62 emit names yields exactly those 7.]
@@ -631,4 +629,4 @@ that handshake. [HIGH/OBSERVED — five distinct strings; the join point is `uli
 
 - [compiler-map.md](compiler-map.md) — the authoritative 62-row `emit_*`→opcode table (the lowering seam this page sits on).
 - [../firmware/kernels/opcode-catalog-ledger.md](../firmware/kernels/opcode-catalog-ledger.md) — the device opcode roster the `nki.isa` names bind against.
-- Part-15 validation replay: `neuronx-gpsimd/wiki/src/validation/` — the lane that runs the §4–5 numpy simulator as the bit-exact kernel oracle (cited as a path; per-op replay stubs may not exist yet).
+- Part-15 validation replay: `neuronx-gpsimd/wiki/src/validation/` — the lane that runs the §4–5 numpy simulator as the bit-exact kernel oracle (cited as a path).

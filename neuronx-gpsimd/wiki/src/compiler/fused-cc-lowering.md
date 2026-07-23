@@ -27,10 +27,10 @@
 All facts below derive from static analysis of the shipped `neuronx-cc
 2.24.5133.0+58f8de22` wheel: the **nkilib plaintext Python kernel library** (the
 `.py` kernel bodies the NKI tracer runs to build each fused-CC BIR node, read directly
-this pass — these are binary-derived, citeable artifacts), the cc-stubs
+— these are binary-derived, citeable artifacts), the cc-stubs
 `nki/isa/__init__.pyi` op signatures, and the committed device pages cited inline.
 Confidence is tagged per claim `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`, where
-OBSERVED = read directly from a shipped artifact this pass, CARRIED = OBSERVED in a
+OBSERVED = read directly from a shipped artifact, CARRIED = OBSERVED in a
 cited in-repo page and reused, INFERRED = reasoned over OBSERVED.
 
 > **GUARD.** `sunda`/`tonga`/`cayman`/`mariana`/`maverick` are the per-generation
@@ -59,7 +59,7 @@ program the NKI tracer runs to build that BIR node. So the macro expansion **is*
 kernel body, and it is in cleartext. The recovery is:
 
 ```
-   nkilib .py kernel body          (the tracer's input — plaintext, read this pass)
+   nkilib .py kernel body          (the tracer's input — plaintext)
      └─▶ ordered nisa.<op> list     §1–§4 op DAGs
            └─▶ penguin BIR Inst*    (bir-inst-roster §3: the node the tracer builds)
                  └─▶ SundaISAInst    (the ISA inst)
@@ -460,7 +460,7 @@ out: out[d_head, s_active_bqh]  (SBUF) ──▶ HBM
 | `tensor_copy` | `InstTensorCopy` | `TensorCopy` | `0x46` COPY / `0x47` CAST | DVE/Scalar | running-stat copy / PSUM-evict |
 
 > **CORRECTION — this kernel emits `activation(op=nl.exp)` (`0x21` ACT) on BOTH gen
-> branches; it does NOT emit the standalone `0x30 EXPONENTIAL`.** The DX-CC-07 backing
+> branches; it does NOT emit the standalone `0x30 EXPONENTIAL`.** The backing
 > report read the `nc_version >= gen4` branch (L2332) as *"gen4+ → ACT `0x21`, older →
 > standalone `InstExponential` `0x30 DVE`."* The OBSERVED source contradicts the second
 > half: **both** arms call `nisa.activation(op=nl.exp, data=qk)` — gen4+ at L2349, older
@@ -472,7 +472,7 @@ out: out[d_head, s_active_bqh]  (SBUF) ──▶ HBM
 > [BIR roster](bir-inst-roster.md#31-pooldve-elementwise--reduce) and is reachable via a
 > standalone `nisa.exp`, but this attention kernel never takes it. A reimplementer tracing
 > *this* kernel should expect `0x21` for every exponential, on every gen.
-> `[HIGH/OBSERVED — `_compute_exp_qk` L2332/L2349/L2359; corrects DX-CC-07 §3.2]`
+> `[HIGH/OBSERVED — `_compute_exp_qk` L2332/L2349/L2359; corrects the earlier reading]`
 
 > **NOTE — the correction factor `exp(prev−curr)` is one fused ACT inst.**
 > `_fa_update_correction_factor` (L1074) computes
@@ -719,7 +719,7 @@ from the routing rules]`
 | RmsNorm PSUM = only `final_reduced` | `nl.psum` tag in source | [tiling `InferPSumTensor`](tiling-memory-scheduling.md) | ✔ |
 | fp elementwise → DVE; int32 → GpSimd | engine routing | [sundaisel §3.1](sundaisel.md#31-tensor_tensor-engine-resolution-tensor_opspy86124-observed-byte-exact) | ✔ |
 | Softmax = online/flash (running max/sum) | `attention_tkg.py` | [bir-inst-roster §4.2](bir-inst-roster.md#42-bir-ops-with-no-direct-opcode--macro--fan-out-highobserved) `TiledSoftmaxOp` | ✔ |
-| Softmax exp → ACT `0x21` on **both** gens (not `0x30`) | `_compute_exp_qk` L2349/L2359 | [exponential](../firmware/kernels/exponential.md) (standalone `0x30` unused here) | **CORRECTS DX-CC-07 §3.2** |
+| Softmax exp → ACT `0x21` on **both** gens (not `0x30`) | `_compute_exp_qk` L2349/L2359 | [exponential](../firmware/kernels/exponential.md) (standalone `0x30` unused here) | **CORRECTS the earlier reading** |
 | Softmax tile-sum = ones-**vector** matmul (PE) | `_tile_sum_reduction` L2589 | [pe-matmul](../firmware/kernels/pe-matmul.md) | ✔ (NEW vs report's "`0x42` reduce") |
 | reciprocal → `0x48` | `nisa.reciprocal` (L1348/L2555) | [bir-inst-roster §3.1](bir-inst-roster.md#31-pooldve-elementwise--reduce) `0x48` | ✔ |
 | AllReduce → `0xC7`/`0xC8`/`0xD9` PSEUDO | `emit_all_reduce` | [collective-loadtime-rewrite](collective-loadtime-rewrite.md) | ✔ |
@@ -733,7 +733,7 @@ from the routing rules]`
 | load via `dma_transpose` (axi2sram xbar) | `norm_tkg_utils` | [bir-inst-roster §3.4](bir-inst-roster.md#34-collective--dma--load-store--control--containers) `0xBD` | ✔ |
 
 **Verdict: zero disagreements with the BIR roster (#889), SundaISel (#885), the opcode
-ledger (#688), or the MX path — and two refinements of DX-CC-07** (both sharpening the
+ledger (#688), or the MX path — and two refinements of the earlier reading** (both sharpening the
 report against the OBSERVED source, not contradicting any opcode binding): (1) the
 Softmax exp is `0x21` ACT on **both** gen branches, not `0x21`/`0x30` gen-split (§3.2
 CORRECTION); (2) the Softmax tile-sum is a ones-**vector** PE matmul (L2589), the same
@@ -808,7 +808,7 @@ statement about the Q7 datapath.**
 
 ## 8. Honesty ledger / confidence
 
-**HIGH / OBSERVED** (read directly this pass from the shipped nkilib Python):
+**HIGH / OBSERVED** (read directly from the shipped nkilib Python):
 
 - The RmsNorm op DAG (`rmsnorm_tkg._process_rmsnorm_tile`): square / reduce / mul /
   `nc_matmul`-ones / rsqrt / mul — every `nisa.<op>` + the `nl.psum` tag on
@@ -849,7 +849,7 @@ statement about the Q7 datapath.**
 **MED / INFERRED:**
 
 - The **exact opcode order** `RmsNormCodeGen`/`SoftmaxCodeGen` emits per node was not
-  disassembled this pass (the codegen `.so` is stripped). The §1–§4 sequences are
+  disassembled (the codegen `.so` is stripped). The §1–§4 sequences are
   recovered from the **frontend** kernel the NKI tracer runs to *build* the BIR node; the
   per-op opcode is the [roster §3](bir-inst-roster.md#3-the-complete-bir-instisatpb-opcode-map)
   binding. The 1:1 correspondence (kernel `nisa.<op>` == the BIR node the tracer builds
@@ -873,7 +873,7 @@ statement about the Q7 datapath.**
 - **neuronx-cc** `2.24.5133.0+58f8de22` — the nkilib Python kernels
   (`rmsnorm_tkg.py`, `norm_tkg_utils.py`, `rmsnorm_mx_quantize_tkg.py`,
   `attention_tkg.py`, `gate_up_projection_mx.py`, `projection_mx_constants.py`) + the
-  cc-stubs `nki/isa/__init__.pyi` op signatures read this pass.
+  cc-stubs `nki/isa/__init__.pyi` op signatures.
 - The nkilib kernels are **gen-agnostic** Python. The per-gen opcode split (MX v4/v5; exp
   ACT/DVE by `nc_version`) is applied downstream at `SundaISel`/walrus and at the kernel's
   own `nc_version` branch. No silicon-generation fact is inferred from the kernel library.

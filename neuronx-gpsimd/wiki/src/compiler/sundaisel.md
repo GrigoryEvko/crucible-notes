@@ -21,7 +21,7 @@ engine and its compiler leg. The companion pages are the [Compiler Map](compiler
 > `enums.py`, the simulator value oracle), and the GPSIMD device firmware ledgers cited inline.
 > All addresses are **file-relative** offsets in the `cp310` shared objects (`nm` and the IDA
 > `function_addresses.json` agree to the byte) unless noted. Confidence is tagged per claim:
-> **HIGH/MED/LOW** × **OBSERVED** (read this pass) / **INFERRED** (reasoned over OBSERVED) /
+> **HIGH/MED/LOW** × **OBSERVED** / **INFERRED** (reasoned over OBSERVED) /
 > **CARRIED** (read in a cited device page, reused).
 
 > **GUARD.** `sunda`/`tonga`/`cayman`/`mariana`/`maverick` are the **per-generation codegen-target
@@ -118,7 +118,7 @@ load codegen is `SundaGenericLoadCodegen.codegenGenericLoad` (`__pyx_pf_…const
 > binds the BIR operator pattern and tail-calls the codegen class. The *lowering* lives in the
 > codegen body, which is what this page decodes. `[HIGH/OBSERVED — symbol bodies]`
 
-> **CORRECTION — batch-norm runs on DVE, not POOL.** The DX-CC-02 backing report's
+> **CORRECTION — batch-norm runs on DVE, not POOL.** The backing report's
 > Inst→opcode table placed `BATCH_NORM_STATS2 0x61` / `BATCH_NORM_AGGREGATE 0x62` in a "POOL"
 > column. The device opcode ledger and [batchnorm-forward](../firmware/kernels/batchnorm-forward.md)
 > are unambiguous: *"the forward half of the DVE (Data/Vector Engine, `engine_idx=3`)"* — the
@@ -421,7 +421,7 @@ void codegenGenericLoad(Inst* load) {
 ```
 
 > **CORRECTION — `dge_par_min_size` is a *keyword-argument value of* `can_use_dge`, not a separate
-> sequential gate.** The DX-CC-02 backing report's §6.1 listed `dge_par_min_size` as an independent
+> sequential gate.** The backing report's §6.1 listed `dge_par_min_size` as an independent
 > ladder step (`enable_dge_on_indirect_dma AND dge_par_min_size AND can_use_dge`). The decompile
 > shows `can_use_dge` is a **module-level free function** (resolved by global/builtin lookup), and
 > `dge_par_min_size` (`self.cg.target.dge_par_min_size`) is built into its **kwargs dict** at the
@@ -465,7 +465,7 @@ When the partition count `T` is **16-aligned**, the kernel passes `dge_mode.unkn
 the human-visible counterpart of the `dge_par_min_size` threshold inside `can_use_dge`: HWDGE wants
 16-element-aligned partition tiles; the ragged tail falls back to SWDGE.
 
-> **CORRECTION — the obfuscated `.n` of the backing report is plainly `.swdge`.** DX-CC-02 §6.3
+> **CORRECTION — the obfuscated `.n` of the backing report is plainly `.swdge`.** An earlier reading
 > read the else-branch member as an obfuscated `dge_mode.n`. The plain-Python source shows it is
 > literally `dge_mode.swdge`. The scalar single-element copy at `moe_token_gen.py:572` uses
 > `dge_mode.none` (no DGE at all). `[HIGH/OBSERVED]`
@@ -483,7 +483,7 @@ by the §6.1 ladder. The scatter-add sibling is reached via `ScatterCodegen.code
 (`0x67220`) → `NeuronIndirectRMW`.
 
 > **CORRECTION — embedding-update is `0x79` (raw SEQ) *or* `0xca` (pseudo-struct), depending on
-> stage.** DX-CC-02 §6.4/§10 attributed `ScatterCodegen` to `0x79 EMBEDDING_UPDATE`. The device
+> stage.** An earlier reading attributed `ScatterCodegen` to `0x79 EMBEDDING_UPDATE`. The device
 > [indirection-gather](../firmware/kernels/indirection-gather.md) page corrects the binding: the raw
 > SEQ opcode is **`0x79`** (handler `'y'`, `pool_embedding_update @0x01008520`), but the
 > customop/compiler-facing struct `PSEUDO_EMBEDDING_UPDATE_STRUCT` maps in `struct2opcode` to
@@ -614,8 +614,8 @@ CollectiveComputeOp!"*); `transformAllGatherOp` / `transformReduceScatterOp` /
 `num_neuroncores_per_sengine` / `num_src_partitions` / `npartitions` (the per-core × partition
 geometry). The tiled-elementwise path is restricted (*"Only AllGatherOp and ReduceScatterOp is
 supported for now!"*; `allgather_src_free_axes` computes per-core free-axis tiling). The PSEUDO
-`TriggerCollective` / CCE / DGE descriptor emission is downstream in the backend Generator; this
-pass confirms only the ISel **entry** (`CollectiveComputeOp` + sharding heuristic).
+`TriggerCollective` / CCE / DGE descriptor emission is downstream in the backend Generator; the
+ISel leg here handles only the **entry** (`CollectiveComputeOp` + sharding heuristic).
 
 ---
 
