@@ -26,13 +26,13 @@ For reimplementation, the contract is:
 | **TP-group discovery** | `neuron::GetTpReplicaGroup` @ `0x1f80360` / `0x1f808f0` **[NEURON]** |
 | **NEFF 3-D reader** | `NeffInfo.getCCRankWorldSize` (Cython `NeffInfo.so`) **[NEURON]** |
 
-> **NOTE — provenance.** Everything in [§1](#1-the-replica-group-representation)–[§4](#4-channel_id--use_global_device_ids) is **stock OpenXLA** (`xla/hlo/ir/collective_device_list.{h,cc}`, `xla/service/collective_ops_utils.cc`), statically linked. The Neuron-authored code is confined to [§5](#5-reconciliation--xla-2-d-vs-neuron-3-d-rank-model) and is tagged inline. Where this page touches `channel_id`/`use_global_device_ids` it must not contradict [4.4 Collective Stream-ID & Channel-ID Family](../hlo-opt/collective-stream-channel-id.md) or [13.6 SPMD Collective Emission](spmd-collective-emission.md); discrepancies are flagged as **CORRECTION** with byte evidence. The 3-D rank model is detailed in [13.8 (3-D rank model)](three-d-rank-model.md).
+> **NOTE — provenance.** Everything in [§1](#1-the-replica-group-representation)–[§4](#4-channel_id--use_global_device_ids) is **stock OpenXLA** (`xla/hlo/ir/collective_device_list.{h,cc}`, `xla/service/collective_ops_utils.cc`), statically linked. The Neuron-authored code is confined to [§5](#5-reconciliation--xla-2-d-vs-neuron-3-d-rank-model) and is tagged inline. Where this page touches `channel_id`/`use_global_device_ids` it must not contradict [4.4 Collective Stream-ID & Channel-ID Family](../hlo-opt/collective-stream-channel-id.md) or [13.6 SPMD Collective Emission](spmd-collective-emission.md); any discrepancy is called out with byte evidence. The 3-D rank model is detailed in [13.8 (3-D rank model)](three-d-rank-model.md).
 
 ---
 
 ## 1. The Replica-Group Representation
 
-> **Tag: STOCK-XLA · CONFIRMED**
+> **Origin: stock XLA.**
 
 Every cross-device collective — `all-reduce`, `all-gather`, `all-to-all`, `reduce-scatter`, `collective-broadcast`, `ragged-all-to-all` — carries its device topology as one `xla::CollectiveDeviceList`. The container has two interchangeable internal forms, and this binary links both: a compact strided **iota** form and an explicit `vector<ReplicaGroup>`.
 
@@ -83,7 +83,7 @@ Every downstream consumer that wants concrete device ids — `HloInstruction::re
 
 ## 2. The Compact (Strided) Form — IotaReplicaGroupList + IotaTileAssignment
 
-> **Tag: STOCK-XLA · CONFIRMED**
+> **Origin: stock XLA.**
 
 This is the heart of the page: how a four-field descriptor `(num_groups, group_size, reshape, transpose)` expands to a full device→group map without materialising it until needed.
 
@@ -126,7 +126,7 @@ The ctor `@0x97a1ac0` allocates `new char[ndims*8 + reshape_ndims*(8+4)]` (`@0x9
 `value_at(Span<long> index)` `@0x97a2d80` is the function that maps a multi-dim tile coordinate to a device id. It is three loops — linearise, delinearise-with-transpose, re-linearise:
 
 ```c
-// xla::IotaTileAssignment::value_at(Span<long> index) const  @0x97a2d80  (CONFIRMED full body)
+// xla::IotaTileAssignment::value_at(Span<long> index) const  @0x97a2d80  (full body)
 // index[] : one coordinate per tile/group dim.  Returns the device id at that tile.
 int64 value_at(const int64 *index) {
     const int64 *dims    = (int64*)buf;                       // dims base
@@ -166,7 +166,7 @@ Two helpers turn the descriptor into concrete ids:
 - `ExpandIota` `@0x9623c00` — builds the explicit `vector<ReplicaGroup>` that `replica_groups()` caches:
 
 ```c
-// xla::(anon)::ExpandIota(const IotaReplicaGroupList&)  @0x9623c00  (CONFIRMED prologue)
+// xla::(anon)::ExpandIota(const IotaReplicaGroupList&)  @0x9623c00  (prologue)
 vector<ReplicaGroup> ExpandIota(const IotaReplicaGroupList &g) {
     vector<ReplicaGroup> result;
     result.reserve(g.num_replica_groups_);                    // @0x9623ca1
@@ -190,7 +190,7 @@ So the device→group map is: **device `d` belongs to group `(position-of-d-in-a
 
 ## 3. World-Size and Group Derivation
 
-> **Tag: STOCK consumes NEURON numbers · CONFIRMED**
+> **Origin: stock XLA consuming Neuron-supplied numbers.**
 
 ### Where num_partitions / num_replicas come from
 
@@ -225,7 +225,7 @@ The op's world size = `num_replica_groups * num_devices_per_group`; per-group ra
 
 ## 4. channel_id / use_global_device_ids
 
-> **Tag: STOCK-XLA · CONFIRMED**
+> **Origin: stock XLA.**
 
 ### channel_id seeding
 
@@ -261,7 +261,7 @@ StatusOr<CollectiveOpGroupMode> mode(bool has_channel_id, optional<bool> g) {
 }
 ```
 
-> **CORRECTION — group-mode reject literal.** An earlier draft of this truth table cited the wrong reject string for the `(has_channel_id=false, use_global_device_ids=true)` branch. The actual `InvalidArgument` literal is **`"Invalid combination of has_channel_id and use_global_device_ids"`** at hlo-opt `.rodata` **`0x36e498`** (file offset `0x16e498` under the `.rodata = fileoff + 0x200000` frame), reached from the `@0x9163b74` branch of `GetCollectiveOpGroupMode @0x9163ae0`. CONFIRMED by the 13.8 grounding ([3-D rank model](three-d-rank-model.md)). The table and pseudocode above now carry the corrected literal.
+*Anchors: the `(has_channel_id=false, use_global_device_ids=true)` reject literal is `"Invalid combination of has_channel_id and use_global_device_ids"` at hlo-opt `.rodata` `0x36e498` (file offset `0x16e498` under the `.rodata = fileoff + 0x200000` frame), reached from the `@0x9163b74` branch of `GetCollectiveOpGroupMode @0x9163ae0`; cross-checked against the [3-D rank model](three-d-rank-model.md) page.*
 
 The four enum names are present in rodata and mapped by `CollectiveOpGroupModeToString` `@0x9163c50`: `kCrossReplica(0)`, `kCrossPartition(1)`, `kCrossReplicaAndPartition(2)`, `kFlattenedID(3)`. Note the counter-intuitive cell: **no channel + `use_global=false` yields `kCrossReplica`, not `kCrossPartition`** — the bool is ignored without a channel id.
 
@@ -282,7 +282,7 @@ The four enum names are present in rodata and mapped by `CollectiveOpGroupModeTo
 
 ## 5. Worked Example — 2-Axis Mesh → AllReduce Replica Groups
 
-> **Tag: derived from §2/§3 math · STRONG**
+> **Origin: derived from the §2/§3 math rather than read from a single body.**
 
 Take a mesh with two named axes, `data` (size 2) and `model` (size 4), giving 8 devices `0..7`. Axis-major flattening (row-major over `[data, model]`) lays the mesh out as:
 
@@ -353,7 +353,7 @@ XLA (hlo-opt, §1-§4):                         Neuron NEFF (getCCRankWorldSize)
 
 ### The bridge — how XLA's 2-D groups become Neuron data
 
-> **Tag: NEURON-authored · CONFIRMED**
+> **Origin: Neuron-authored.**
 
 1. XLA emits collectives whose `CollectiveDeviceList → replica_groups()` ([§1](#1-the-replica-group-representation)) yields the explicit `vector<ReplicaGroup>`. `ConvertCollectivesToCustomCall` copies `HloInstruction::replica_groups()` **verbatim** into the `AwsNeuron*` custom call — device ids preserved bit-for-bit.
 2. `xla::GetReplicaGroups(HloInstruction*)` `@0x1f8ca40` (stock) reads `inst->replica_groups()` (which lazily `ExpandIota`s) and flattens each `ReplicaGroup`'s `replica_ids` (count@+0x10, data@+0x18) into `vector<vector<int64>>` — the 2-D `[group][rank]` form Neuron consumes.
@@ -370,11 +370,11 @@ Neuron OUTER  (unique CC topologies)    <- DISTINCT collectives with different g
 
 XLA has no outer "topology" axis at the op level; it appears at NEFF-assembly time as the **set of distinct group shapes** in the module — `writeCCInfo` `@0x1523af0` (libwalrus, **NEURON**) scans all `InstCollectiveCompute` ops and de-dups their group geometries. For single-program SPMD (the supported case) every collective shares one consistent geometry, so the outer dim is effectively length 1 and Neuron's 3-D list degenerates to the XLA 2-D list at `topology[0]`. `getCCRankWorldSize` rejects the `>1`-topology case as MPMD (*"Empty topology found at index {} … possible MPMD neff"*, *"Inconsistent worker count across topologies … MPMD"*); the BIR simulator likewise asserts `replica_groups.size()==1` / *"Multiple LNCs are not supported yet"* for `ReduceScatter`/`SendRecv`.
 
-> **VERDICT —** there is **no genuine 2-D-vs-3-D mismatch** in the supported flow. XLA's `(num_replica_groups, num_devices_per_group)` is exactly Neuron's `(middle, inner)` at the single topology XLA produces; the outer axis is a NEFF-level superset for MPMD/multi-distinct-CC neffs that stock single-program SPMD never emits. **[STRONG** — data shapes CONFIRMED identical; the "outer = distinct group shapes" reading is STRONG from the `writeCCInfo` de-dup + MPMD guards, not a single decisive instruction.**]**
+> **NET —** there is **no genuine 2-D-vs-3-D mismatch** in the supported flow. XLA's `(num_replica_groups, num_devices_per_group)` is exactly Neuron's `(middle, inner)` at the single topology XLA produces; the outer axis is a NEFF-level superset for MPMD/multi-distinct-CC neffs that stock single-program SPMD never emits. The two data shapes are identical where they meet; reading the outer axis as "distinct group shapes" follows from the `writeCCInfo` de-dup plus the MPMD guards rather than from one decisive instruction.
 
 ### Rank coordinate map
 
-> **Tag: CONFIRMED (cross-binary, sim side)**
+> **Origin: cross-binary, simulator side.**
 
 ```text
 XLA: device id in a replica_group = flattened global id (kFlattenedID:
