@@ -22,10 +22,9 @@ All facts below are derived from static analysis of the shipped binaries plus a
 **live `ctypes` drive** that certifies a fresh value leaf (§6). Each claim is
 tagged **confidence** × **provenance** following
 [the Confidence & Walls model](../reference/confidence-model.md): `[HIGH/OBSERVED]`
-= read directly off the binary / executed this pass, `[MED/INFERRED]` = strong
+= read directly off the binary / executed via `ctypes`, `[MED/INFERRED]` = strong
 deduction over observed evidence, `[…/CARRIED]` = re-used at a sibling's
-confidence and re-checked here. The spine below was re-grounded against the
-shipped binaries in this pass.
+confidence.
 
 Binaries, by absolute role (paths under
 `extracted/nested/gpsimd_tools_tgz/tools/`):
@@ -42,7 +41,6 @@ XtensaTools/lib/iss/libsimxtcore.so  ~2.8 MB        the cycle-ISS HARNESS (disas
 carry the ncore2gp delta **`+0x200000`** (subtract before `xxd` on `.data`/
 `.data.rel.ro`). `libcas-core` ships a `.symtab` but **no `.debug_*`** — every
 offset below is pinned from the `mov`/`lea`-displacement encoding, not DWARF.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -59,7 +57,7 @@ lifecycle; here we read it as an **introspection API**.
 Three of the 24 `dll_*` accessors are pure descriptor publishers — a debugger
 calls them once to learn *where* every piece of state lives inside the per-instance
 block, then peeks the block directly. Each is a literal
-`lea <table>(%rip),%rax ; ret`: `[HIGH/OBSERVED]`
+`lea <table>(%rip),%rax ; ret`:
 
 | Accessor | Target table | What it tells a debugger |
 |---|---|---|
@@ -72,8 +70,7 @@ offset a peek must read. The regfile values themselves land at
 **`state+0x14eb0`** (the architectural register-slot region; `lea 0x14eb0(%rbx),%rdx`
 in `dll_initialize`), and the per-cycle committed values at **`state+0x152xx`**
 (the host-value bases). A debugger that has the offset map plus the block pointer
-can read any register without re-running anything. `[HIGH/OBSERVED — the three
-accessor targets and the `0x14eb0` displacement read off the disassembly.]`
+can read any register without re-running anything.
 
 ### 1.2 The introspection-relevant state-block offsets
 
@@ -95,8 +92,7 @@ MED/INFERRED region spans]`
 The register-slot region at `+0x14eb0` and the dispatch-hook bases at `+0x152xx`
 (values) / `+0x158xx` (timing) give the structural rule a reimplementer needs:
 **`0x152xx` = host-values, `0x14exx`/`0x158xx` = timing** — the seam
-[the timing model](./cas-timing-model.md) §7 decodes in full. `[HIGH/OBSERVED for
-the cited offsets.]`
+[the timing model](./cas-timing-model.md) §7 decodes in full.
 
 ### 1.3 The first registered architectural register is `"AR"`
 
@@ -117,9 +113,7 @@ truth is subtler than the name string alone:
 > architectural register the ISS publishes is therefore the windowed scalar **AR**
 > file (`num_aregs = 64`), not the `REV8AR` special register. A page that reads the
 > first registration name as `"REV8AR"` mis-attributes the `lea` displacement; the
-> `+4` offset is the difference. `[HIGH/OBSERVED — the `.rodata` bytes and the `lea`
-> displacement both read off the binary this pass, and re-confirmed by an
-> independent verification pass.]`
+> `+4` offset is the difference.
 
 This is the canonical string-pool suffix-sharing trap: a tool that resolves a
 registration `lea` to "the symbol the literal starts inside" rather than "the
@@ -141,7 +135,7 @@ just a clock.
 ### 2.1 The step-and-observe contract
 
 `dll_cycle_advance @0x17aa3c0 (rdi=state, esi=dir)` does three observable things
-per call, each verified from the disassembly: `[HIGH/OBSERVED]`
+per call, each verified from the disassembly:
 
 ```text
 dll_cycle_advance @0x17aa3c0 :
@@ -172,8 +166,7 @@ for (;;) {
 *sets* it (`orb $0x8`); `dll_reset_cycle_advanced @0x17aa3b0`
 (`andb $0xf7,0x5a8(%rdi) ; ret`) *clears* it. A debugger drives one cycle, reads
 bit3 to confirm the step happened, peeks state through the §1 accessors, then
-clears bit3 to re-arm the next single-step probe. `[HIGH/OBSERVED — both the `orb
-$0x8` at `0x17aa3db` and the `andb $0xf7` at `0x17aa3b0` read off the binary.]`
+clears bit3 to re-arm the next single-step probe.
 
 ### 2.2 The `dir` argument makes the step reversible
 
@@ -185,8 +178,7 @@ $0x8` at `0x17aa3db` and the `andb $0xf7` at `0x17aa3b0` read off the binary.]`
 > is **checkpointable**: the ring is the only in-flight state, and it is reversible
 > within the interlock window. A reimplementer building a reverse-debug ISS gets
 > the mechanism for free; the exact reverse-commit rule across the ~16 KB body is
-> the one MED in this section. `[HIGH presence — the three-way `dir` branch is in
-> the disasm; MED for the exact rollback rule.]`
+> the one MED in this section. `[HIGH presence; MED for the exact rollback rule]`
 
 ### 2.3 Stage squash — the misprediction / fault replay primitive
 
@@ -196,8 +188,7 @@ per-stage records and clearing in-flight bits. This is what a debugger (or the
 model itself) calls on a mispredicted branch, a taken exception, or a replay — it
 discards the speculative stages between two ring positions. Combined with the
 reversible tick, the cas ISS gives a debugger the full step / step-back / squash
-triad over the 32-deep ring. `[HIGH presence; the `memset` over the per-stage
-records is OBSERVED — MED for the exact stage-range arithmetic.]`
+triad over the 32-deep ring. `[HIGH presence; MED for the exact stage-range arithmetic]`
 
 ---
 
@@ -221,8 +212,7 @@ So a faithful debugger peeks **both** cores: cas for *when* a register is valid
 *what* it holds. The seam between them is the 119 `nx_*_interface` value ports
 ([core surface](./cas-core-surface.md) §3) — and a host that fills that seam with
 the fiss oracle gets a single core whose timing and value introspection agree
-cycle-for-cycle. `[HIGH/CARRIED — the cas/fiss split is the Part's spine; the
-introspection framing is OBSERVED from the §1 accessors + the fiss surface.]`
+cycle-for-cycle. `[HIGH/CARRIED]`
 
 ---
 
@@ -237,7 +227,7 @@ read it as the ISS's **fault-injection / fault-observation** path.
 
 ### 4.1 The 61 handlers are self-contained predicate evaluators
 
-`nm -D libfiss-base.so | rg -c 'exception__'` = **61** (re-grounded this pass).
+`nm -D libfiss-base.so | rg -c 'exception__'` = **61**.
 Each handler is a ~0x4df-byte self-contained instruction-word **predicate
 evaluator** (no external calls): it decodes the live FLIX bundle and decides
 whether *this* fault applies to the issuing instruction. The roster spans the full
@@ -248,8 +238,7 @@ Xtensa+extension fault set — fetch/decode (`IllegalInstruction`,
 (`WindowOverflow8`/`Underflow8`), coprocessor (`Coprocessor0..6`), stack-limit
 (`KSL`/`ISL`StackLimitViolation), and the **debug / single-step** group:
 `SingleStepException`, `BreakException`, `IBreakException`, `DBreakException`,
-`MaybeOCDBreakException`, `OCDInterrupt`, `HaltException`. `[HIGH/OBSERVED — count
-re-grounded; the roster CARRIED from the fiss surface page.]`
+`MaybeOCDBreakException`, `OCDInterrupt`, `HaltException`. `[HIGH/OBSERVED count; roster CARRIED from the fiss surface page]`
 
 ### 4.2 The fault path as an oracle observable
 
@@ -267,9 +256,7 @@ For oracle use the fault model is the third observable, alongside value and timi
   state always yields the same fault decision, so a differential test can assert
   the *fault behaviour* of a reimplementation against the oracle exactly as it
   asserts values. The single-step / break / OCD handlers (§4.1) are precisely the
-  debug events the §2 single-stepper raises. `[HIGH for the handler structure /
-  CARRIED; the oracle-observable framing is INFERRED — the predicate determinism
-  is OBSERVED on the disassembled bodies.]`
+  debug events the §2 single-stepper raises. `[HIGH/CARRIED handler structure; INFERRED oracle-observable framing]`
 
 > **NOTE — `libfiss.h` caps exceptions at `MAX_POSSIBLE_EXCEPTIONS 64`.** The
 > 61-handler roster sits one class below the header bound (and matches the cas
@@ -290,7 +277,7 @@ no disassembler and no trace writer.
 
 ### 5.1 The harness disassembler — `XTCORE_MEM::disasm_from_pc`
 
-`nm -D -C libsimxtcore.so` resolves the harness disassembler surface: `[HIGH/OBSERVED]`
+`nm -D -C libsimxtcore.so` resolves the harness disassembler surface:
 
 ```
 XTCORE_MEM::disasm_from_pc(XTCORE_BASE*, std::ostream&, unsigned, unsigned, unsigned)        @0xed140
@@ -303,8 +290,7 @@ CycleCore::disasm_from_di(std::ostream&, DECODED_INSTRUCTION*, unsigned, unsigne
 the bundle at that PC to an `ostream`. The `_fmt_buff` / `_slot_buff` siblings
 render a raw bundle / a single FLIX slot, and `CycleCore::disasm_from_di` renders
 an already-decoded instruction. **There is no `xt_iss_disassemble`** — a debugger
-that wants disassembly calls `disasm_from_pc`, not a flat C entry. `[HIGH/OBSERVED
-— the four mangled symbols read off `nm -D -C` this pass.]`
+that wants disassembly calls `disasm_from_pc`, not a flat C entry.
 
 ### 5.2 The trace subsystem — `TRACER` + TRAX + the 2 TraceBus ports
 
@@ -315,10 +301,9 @@ checked by `dll_cycle_advance` before firing the harness trace hook) plus exactl
 `nx_WSRTraceBus_interface` (the SR/ER register-bus trace passthrough). The harness
 *defines* both (as `CycleCore::RSRTraceBus_interface` / `WSRTraceBus_interface`),
 so the trace seam is exact: the core raises the event through a single flag + two
-ports, the harness writes the record. `[HIGH/OBSERVED — `nm -D libcas-core.so |
-rg 'U .*TraceBus'` = the two; `nm -D libsimxtcore.so` defines both.]`
+ports, the harness writes the record.
 
-The trace machinery itself lives in `libsimxtcore.so`: `[HIGH/OBSERVED]`
+The trace machinery itself lives in `libsimxtcore.so`:
 
 - **`TRACER`** — the writer class (ctors/dtor `@~0x1de1f0`), threaded through every
   core block (`MMU(CycleCore*, TRACER*, …)`, `IntrControl(CycleCore*, TRACER*, …)`,
@@ -334,15 +319,14 @@ The trace machinery itself lives in `libsimxtcore.so`: `[HIGH/OBSERVED]`
 > **`libsimxtcore.so`** C++ class (`CycleCore`), the harness wrapper above the flat
 > 24-accessor `dll_*` C core. The dlopen-boundary ABI is still the flat C
 > vocabulary; `CycleCore` is the driver that *uses* it and supplies the two
-> TraceBus ports the core imports. `[HIGH/OBSERVED — `CycleCore::*` are
-> `libsimxtcore` symbols, absent from `libcas-core`.]`
+> TraceBus ports the core imports.
 
 ### 5.3 SystemC / TLM verdict — ABSENT
 
 > **GOTCHA — there is NO SystemC / TLM wrapper anywhere in the ISS.** A reimplementer
 > hoping to graft the GPSIMD ISS into a SystemC system model via a TLM-2.0 socket
 > will not find one in the shipped toolchain. Checked across **all three** binaries
-> this pass — `nm -D -C` and a raw `rg` for `sc_core::` / `sc_module` / `tlm::` /
+> — `nm -D -C` and a raw `rg` for `sc_core::` / `sc_module` / `tlm::` /
 > `tlm_` — the count is **0 / 0 / 0**: `libcas-core` = 0, `libfiss-base` = 0,
 > `libsimxtcore` = 0. The one apparent string hit in `libsimxtcore`
 > (`SystemClockPeriod…`) is a **substring false positive** (it is a clock-period
@@ -352,9 +336,7 @@ The trace machinery itself lives in `libsimxtcore.so`: `[HIGH/OBSERVED]`
 > the 119 `nx_*_interface` ports**, *not* through SystemC TLM sockets. A reimplementer
 > wires the ISS into a host system model through those ports and the
 > `XTCORE_MEM`/`peek_phys`/`poke_phys` memory surface, never through a `sc_module`.
-> Do **not** invent a TLM wrapper. `[HIGH/OBSERVED — the 0/0/0 SystemC count and the
-> `SystemClockPeriod` false-positive both verified this pass, independently
-> re-confirmed.]`
+> Do **not** invent a TLM wrapper.
 
 ---
 
@@ -367,8 +349,7 @@ fault.** The nineteen siblings each proved one face of this; here they fuse.
 
 ### 6.1 The oracle, in five facts
 
-The oracle is a **two-library co-simulator on a shared roster**, every number
-re-grounded against the shipped binary this pass: `[HIGH/OBSERVED]`
+The oracle is a **two-library co-simulator on a shared roster**:
 
 | Fact | Value | Why it makes the ISS an oracle |
 |---|---:|---|
@@ -378,12 +359,11 @@ re-grounded against the shipped binary this pass: `[HIGH/OBSERVED]`
 | fiss decode leaves | **12,569** `slotfill__` | pure bitfield decoders, inverse of the libisa encode — the decode half of the oracle |
 | fiss self-containment | **0** host callbacks | the value oracle is a free-standing in-process interpreter — drivable directly via `ctypes` |
 
-Plus the four supporting counts re-grounded this pass: fiss **20,379** dynsym
+Plus the four supporting counts: fiss **20,379** dynsym
 exports (the largest toolchain artifact), the TIE-DB **864 xdref** source the
 leaves were generated from (cas carries the dual **68 xdsem** + **0 xdref**), the
 **61** `exception__` fault handlers (§4), and the **157,775** cas `_inst_stage`
-per-(format,slot,mnemonic) schedule thunks. `[HIGH/OBSERVED — all re-grounded by
-`nm` on the named absolute path, never the decompile.]`
+per-(format,slot,mnemonic) schedule thunks.
 
 ### 6.2 Why the reference *is* golden — ref == production, value-identical
 
@@ -395,9 +375,7 @@ modeled config, and a 71,706-call live `ctypes` battery found **0** mismatches
 between the production and `-ref-` value oracles. The consequence for oracle use is
 decisive: **there is no "more correct" reference hiding behind production** — the
 production fiss leaf a reimplementer drives *is* the golden value, and the `-ref-`
-twin would return the identical answer. The oracle is singular. `[HIGH/CARRIED —
-the value-identity is proven on the ref-vs-prod page; re-stated here as the reason
-the oracle is authoritative.]`
+twin would return the identical answer. The oracle is singular. `[HIGH/CARRIED]`
 
 ### 6.3 The certification methodology — drive the real leaf live
 
@@ -443,7 +421,7 @@ f(None, 0x0100, ctypes.byref(out))   # arg0 ignored; A=0x0100, result ptr
 ```
 
 Live results, all **byte-exact** against the read-from-byte expectation
-(`16` for zero, else `15 − bsr`): `[HIGH/OBSERVED — executed this pass.]`
+(`16` for zero, else `15 − bsr`):
 
 | `nsau(a)` | got | expect | | `nsau(a)` | got | expect |
 |---|---:|---:|---|---|---:|---:|
@@ -467,14 +445,12 @@ shape as well as the binary one.
 > the 4-arg analogue — A=`%esi`, B=`%edx`, ptr=`%rcx`, arg0 dead, per
 > [the semantic synthesis](./iss-semantic-synthesis.md) §6.2.) This single ABI
 > detail is the difference between a certified oracle and a silent no-op.
-> `[HIGH/OBSERVED — both the correct drive and the dead-`%rdi` control executed.]`
 
 ### 6.4 How a reimplementer uses the ISS as the differential reference
 
 The oracle is not documentation — it is a **test fixture**. A reimplementer
 building a Vision-Q7-compatible GPSIMD engine drives the ISS as the golden
-differential reference on all three axes: `[HIGH/INFERRED — the mechanism is OBSERVED;
-the workflow is the reimplementation recipe.]`
+differential reference on all three axes: `[HIGH/INFERRED]`
 
 1. **Values** — for any instruction, `dlopen` `libfiss-base.so`, drive the matching
    `opcode__<m>__stage_{5,14}` → `module__xdref_<op>_<W>` leaf on a fuzzed input
@@ -510,7 +486,7 @@ two cores become one, whose timing, value, fault, and trace introspection all ag
 
 ## 7. Confidence ledger & open items
 
-**HIGH / OBSERVED (re-grounded against the shipped binaries this pass):** the
+**HIGH / OBSERVED:** the
 `0x4a09f0 = 4,852,208 B` cas state size (disasm immediate `b8 f0 09 4a 00` +
 executed `ctypes` return, two witnesses); the first-registered register `"AR"` as
 the `.rodata 0x17cdb53` suffix-merged tail of `"REV8AR\0"`; `dll_cycle_advance`
@@ -518,7 +494,7 @@ setting `state+0x5a8` bit3 (`orb $0x8` @0x17aa3db) and `dll_reset_cycle_advanced
 clearing it (`andb $0xf7` @0x17aa3b0); the SystemC/TLM **0/0/0** absence across all
 three binaries and the `SystemClockPeriod` false-positive; the `XTCORE_MEM::disasm_from_pc`
 disassembler, the `TRACER`/TRAX subsystem, and the 2 cas-import / simx-export
-TraceBus ports; the re-grounded counts (119 / 0 / 864 / 12,569 / 61 / 20,379 /
+TraceBus ports; the counts (119 / 0 / 864 / 12,569 / 61 / 20,379 /
 157,775); the fresh `nsau_16_16` leaf driven live byte-exact + the dead-`%rdi`
 control.
 
@@ -548,8 +524,7 @@ flat fold, value-equivalent by associativity).
 > who sizes the instance buffer at `0x4a05f0` is **1 KB short** of what
 > `dll_initialize` will `memset`, corrupting the last page of the block. The exact
 > byte count must read **4,852,208 B (0x4a09f0, ≈4.63 MB)**. This is the single
-> strongest correction of this page. `[HIGH/OBSERVED — disasm immediate + executed
-> return, independently re-confirmed.]`
+> strongest correction of this page.
 
 With this page Part 14 is closed: the GPSIMD Vision-Q7 ISS is the **executable
 golden oracle** — a differential reference for value, timing, fault, and trace,

@@ -28,7 +28,7 @@
 Every claim is tagged `[CONF × PROV]`: confidence `HIGH/MED/LOW`; provenance `OBSERVED`
 (read byte-exact out of a shipped config header / unstripped config DLL / device disassembly
 here), `INFERRED` (derived from observed structure), `CARRIED` (from a prior in-corpus
-report, re-verified this pass). Binary paths are relative to the extracted tree; the config
+report, re-verified). Binary paths are relative to the extracted tree; the config
 DLLs live under `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/`, the config headers
 under `…/ncore2gp/xtensa-elf/arch/include/xtensa/config/`, the device toolchain under
 `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/`.
@@ -63,7 +63,7 @@ windows), both for config `ncore2gp`:
 | `0xA0000000` | 512 MiB | **RAM bypass alias** — bypass static-map alias of `XSHAL_RAM` | `XSHAL_RAM_BYPASS_VADDR=0xA0000000`, `_PSIZE=0x20000000` (`system.h:104-106`) |
 | `0xC0000000` | 512 MiB | **SimIO** — sim/host I/O | `XSHAL_SIMIO_PADDR=0xC0000000`, `_SIZE=0x20000000` (`system.h:111-114`) |
 
-`[HIGH × OBSERVED]` — every base/size above is a literal `#define` re-read this pass. The two
+`[HIGH × OBSERVED]` — every base/size above is a literal `#define`. The two
 IOBLOCK sizes are `0x0E000000 = 224 MiB` exactly. There is **no D-cache**
 (`XCHAL_DCACHE_SIZE = 0`, `core-isa.h:298`), so the system-RAM window is *not* fronted by a
 data cache — it is reached by raw AXI master transactions (§4). The cache attribute for the
@@ -221,7 +221,7 @@ every **scatter** (`IVP_SCATTER*`) is **S0-only** — reinforcing the stores-onl
 
 ### 2.3 The access granule — 64-byte natural, 8-byte SBUF word, distinct DMA beats
 
-Three granules govern a Q7 access, and conflating them is the classic error. Pinned this pass:
+Three granules govern a Q7 access, and conflating them is the classic error:
 
 | granule | value | source const | role |
 | --- | --- | --- | --- |
@@ -234,7 +234,7 @@ Three granules govern a Q7 access, and conflating them is the classic error. Pin
 | I-cache access / i-fetch | 32 B (256 b) | `XCHAL_ICACHE_ACCESS_SIZE = 32`, `XCHAL_INST_FETCH_WIDTH = 32` (`core-isa.h:383,228`) | instruction side |
 | I-cache line | 64 B | `XCHAL_ICACHE_LINESIZE = 64` (`core-isa.h:291`) | instruction side |
 
-`[HIGH × OBSERVED]` (every value above is a literal const re-read this pass, except the SBUF
+`[HIGH × OBSERVED]` (every value above is a literal const, except the SBUF
 DMA-engine beat which is `[HIGH × CARRIED]`). One sentence: **the Q7 compute data port is 64
 bytes wide; it sits on SBUF's 8-byte words through the `axi2sram` bridge; the DMA paths move
 16-/32-byte beats; the i-fetch moves 32-byte granules.**
@@ -423,7 +423,7 @@ through the `axi2sram` bridge:
   bridge and arbitrates as the **TDM DMA slot** (1/8 of the SBUF port, behind the 2-stage SBUF
   arbiter) — it is the DMA share, **not** a dedicated compute-client port.
 
-The SBUF linear addressing the Q7 uses (read byte-exact this pass from the shipped `sunda`
+The SBUF linear addressing the Q7 uses (read byte-exact from the shipped `sunda`
 arch-isa header `aws_neuron_isa_tpb_common.h`):
 
 ```c
@@ -446,7 +446,7 @@ OBSERVED]` (the SBUF/PSUM constants, sunda header); `[HIGH × CARRIED]` (apertur
 join); `[MED × CARRIED]` (the 1/8 TDM-slot arbitration detail).
 
 > **CORRECTION — the SBUF 8-byte word is OBSERVED here, not merely carried.** Earlier reports
-> carried `STATE_BUF_WORD_SIZE = 8` from the DMA Part. This pass reads it byte-exact out of the
+> carried `STATE_BUF_WORD_SIZE = 8` from the DMA Part; it is read byte-exact out of the
 > shipped `sunda` arch-isa header (`aws_neuron_isa_tpb_common.h:40`), alongside the 29-bit
 > `TPB_PARTITION_ADDR_MASK = 0x1fffffff` and `PSUM_BUF_OFFSET = 0x2000000`. Provenance upgraded
 > `CARRIED → OBSERVED`.
@@ -521,7 +521,7 @@ S32I:                        VAddrBase DEF@1; art (store data) USE@5; ScalarMemD
 L32EX / S32EX (exclusive):   + XTSYNC barrier @6 (the exclusive-monitor sync).
 ```
 
-`[HIGH × CARRIED]` (DX-ISA ld_st). A scalar misaligned `L32I`/`S32I` traps before any of this
+`[HIGH × CARRIED]`. A scalar misaligned `L32I`/`S32I` traps before any of this
 (§2.4).
 
 ### 5.2 Vector load — port @9, vec dest @10, valign @9
@@ -654,25 +654,25 @@ canonical co-issue, observed in device code:
 
 ## 7. Cross-check / reconciliation
 
-| claim | this page (header / DLL) | prior source | verdict |
-| --- | --- | --- | --- |
-| 2 LSU, unified | `NUM_LOADSTORE_UNITS=2`, `UNIFIED=1` | DX-HW-01 §4 | **CONFIRMED** |
-| 2 load ports, 1 store port | `nx_Load_{0,1}_interface` + `nx_Store_0_interface`; no `Store_1` | DX-HW-03 §3.1 | **CONFIRMED (stronger)** |
-| stores S0-only | 0 distinct stores in S1 (0/18 CAS, 0/66 ISA) | DX-HW-03 §3.1 | **CONFIRMED** |
-| F4 = dual-load | `F4 S0_Ld + S1_Ld` | DX-HW-03 §4.2 | **CONFIRMED** |
-| 64-byte data bus | `DATA_WIDTH=64` | DX-HW-01 §2 | **CONFIRMED** |
-| 8-byte SBUF word | `STATE_BUF_WORD_SIZE=8` (sunda hdr) | DX-DMA-06 §1.3 | **CONFIRMED (now OBSERVED)** |
-| scalar unaligned traps | `UNALIGNED_*_EXC=1, HW=0` | DX-HW-01 §4 | **CONFIRMED** |
-| valign = unaligned vector mech | `uul`/`uus` prime/iterate/flush (device disasm) | DX-ISA-06/07 | **CONSOLIDATED** |
-| 64-B align-down + disables | `eff & ~0x3f` + `VectorStoreByteDisable` | DX-ISA-07 §4 | **CONSOLIDATED** |
-| IRAM 0x0 / DataRAM 0x80000 / 4 banks | `INSTRAM0/DATARAM0`, `BANKS=4` | DX-HW-01 §2 | **CONFIRMED** |
-| system RAM 1 GiB @0x100000 | `XSHAL_RAM` | DX-HW-01 §2 | **CONFIRMED** |
-| IOBLOCK 224 MiB each | `0x0E000000` | DX-HW-01 §2 | **CONFIRMED exact** |
-| AXI/ACE-Lite ECC master | `AXI/ACELITE/AXI_ECC=1` | DX-HW-01 §2 | **CONFIRMED** |
-| write buffer 8 entries | `WRITEBUFFER=8` | DX-HW-01 §2 | **CONFIRMED** |
-| iDMA 128 b / desc 64 / outstanding 32 | `IDMA_*` | DX-HW-01 §3 | **CONFIRMED** |
-| PSUM unreachable | no AXI aperture / no NX window | DX-DMA-06/SEC-06 | **CONSISTENT** |
-| load port@9 / vec@10 / store commit@11 | `mov $0x9/$0xa/$0xb` in `libcas-core.so` | DX-HW-03 §5 / [pipeline-timing](./pipeline-timing.md) | **CONFIRMED** |
+| claim | this page (header / DLL) | verdict |
+| --- | --- | --- |
+| 2 LSU, unified | `NUM_LOADSTORE_UNITS=2`, `UNIFIED=1` | **CONFIRMED** |
+| 2 load ports, 1 store port | `nx_Load_{0,1}_interface` + `nx_Store_0_interface`; no `Store_1` | **CONFIRMED (stronger)** |
+| stores S0-only | 0 distinct stores in S1 (0/18 CAS, 0/66 ISA) | **CONFIRMED** |
+| F4 = dual-load | `F4 S0_Ld + S1_Ld` | **CONFIRMED** |
+| 64-byte data bus | `DATA_WIDTH=64` | **CONFIRMED** |
+| 8-byte SBUF word | `STATE_BUF_WORD_SIZE=8` (sunda hdr) | **CONFIRMED (now OBSERVED)** |
+| scalar unaligned traps | `UNALIGNED_*_EXC=1, HW=0` | **CONFIRMED** |
+| valign = unaligned vector mech | `uul`/`uus` prime/iterate/flush (device disasm) | **CONSOLIDATED** |
+| 64-B align-down + disables | `eff & ~0x3f` + `VectorStoreByteDisable` | **CONSOLIDATED** |
+| IRAM 0x0 / DataRAM 0x80000 / 4 banks | `INSTRAM0/DATARAM0`, `BANKS=4` | **CONFIRMED** |
+| system RAM 1 GiB @0x100000 | `XSHAL_RAM` | **CONFIRMED** |
+| IOBLOCK 224 MiB each | `0x0E000000` | **CONFIRMED exact** |
+| AXI/ACE-Lite ECC master | `AXI/ACELITE/AXI_ECC=1` | **CONFIRMED** |
+| write buffer 8 entries | `WRITEBUFFER=8` | **CONFIRMED** |
+| iDMA 128 b / desc 64 / outstanding 32 | `IDMA_*` | **CONFIRMED** |
+| PSUM unreachable | no AXI aperture / no NX window | **CONSISTENT** |
+| load port@9 / vec@10 / store commit@11 | `mov $0x9/$0xa/$0xb` in `libcas-core.so` (see [pipeline-timing](./pipeline-timing.md)) | **CONFIRMED** |
 
 **Open reconciliation (logged for the per-Part reconcile pass):** the load-side valign stage
 is exposed as **@9** by the hazard model (this page, observed in `LA2NX8_IP`) and as **@10

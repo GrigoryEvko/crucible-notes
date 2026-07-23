@@ -17,7 +17,7 @@ requirement and exactly where the edges are.
 
 Every figure on this page carries its provenance, and every wall its closability, per
 [The Confidence & Walls Model](../reference/confidence-model.md). The numbers here are the
-**reconciled** wiki figures (the later DX-VAL-20 / DX-ISS-20 execution census, not an earlier
+**reconciled** wiki figures (the later VAL-20 / ISS-20 execution census, not an earlier
 snapshot); they match [What GPSIMD Is](what-gpsimd-is.md), the [front door](../index.md), and the
 Part-0 reference pages exactly. This page is the **navigable** companion to the two exhaustive
 appendix registers (`appendix/open-questions-register.md` and `appendix/coverage-ledger.md`);
@@ -302,8 +302,7 @@ fully-cross-referenced versions — read them when you need the complete *why-un
 - **The Coverage Ledger** — `appendix/coverage-ledger.md` — the per-axis, per-lane coverage
   accounting behind the five headline fractions on this page.
 
-(Both are tracked as their own pages; until they land in the sidebar they are *planned*, and this
-map carries the defining subset they expand.)
+(Both are full appendix pages in the sidebar; this map carries the defining subset they expand.)
 
 ---
 

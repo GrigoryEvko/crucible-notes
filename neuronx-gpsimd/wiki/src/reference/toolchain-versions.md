@@ -342,7 +342,7 @@ objects, the `.deb` payloads, the unstripped per-config libraries):
 |---|---|---|
 | `objdump`, `nm`, `readelf`, `addr2line`, `strings` | `GNU Binutils 2.46-3.fc44` | x86-64 host ELF analysis |
 
-`2.46-3.fc44` is `[HIGH/OBSERVED]` from each tool's `--version`. Count claims are re-grounded
+`2.46-3.fc44` is `[HIGH/OBSERVED]` from each tool's `--version`. Count claims are grounded
 with `nm <obj> | rg -c`, never grepped from decompile dumps.
 
 ### B.3 The unstripped CAS libraries (ISS oracle)

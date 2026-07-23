@@ -13,7 +13,7 @@ function.
 
 Every claim below is anchored to a recovered symbol, byte sequence, state-table struct,
 device round-trip, or a **live** drive of the `libfiss-base.so` soft-float oracle. Tags are
-`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
+`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`; untagged claims default to `[HIGH/OBSERVED]`.
 
 > **Scope anchor.** All tokens here (`NXF16`, `N_2XF32`, `S2_Mul`/`S3_ALU`, `stage 10..15`,
 > `RoundMode`, `FS0..FS7`, `512`-bit) are **lane-width / flag-register / pipeline-stage /
@@ -29,7 +29,7 @@ absolute path; `extracted/` is gitignored):
   `*_issue` bodies. Each `_issue` body stamps every operand's pipeline stage as a
   `mov $0xN,%esi` immediate — that is the **OBSERVED stage table**.
 * `libfiss-base.so` — the host x86-64 ISS value oracle. `866` `module__xdref_*` value
-  functions, driven **live** via `ctypes` this pass.
+  functions, driven **live** via `ctypes`.
 * `libisa-core.so` — the iclass / opcode / state roster. Field membership read from the
   `Iclass_*_stateArgs` arrays; the Xtensa `states[]` table holds each state's width and
   `SHARED_OR` attribute.
@@ -44,14 +44,16 @@ absolute path; `extracted/` is gitignored):
 
 ## 0. Headline findings
 
-| # | Finding | Strongest anchor | Tag |
-|---|---------|------------------|-----|
-| 1 | The VFPU is **one** fully-multiplexed FMA pipe for binary16 (`NXF16`, 32 lanes) + binary32 (`N_2XF32`, 16 lanes); `d = round_RM(±(a·b) ± c)` with a **single rounding** | `MADD_S/MADD_H/IVP_MULAN_2XF32T/IVP_MULANXF16T` share the s0/s1/s2 skeleton; co-issue round-trips this pass | HIGH/OBSERVED |
-| 2 | "2×FMA" = the datapath **placed in two FLIX slots** — `S3_ALU` primary + `S2_Mul` borrow in F2/F7/N1 (on N1, which has no `S3_ALU` slot, the only FP-FMA placement *is* `S2_Mul`) — so one wide bundle co-issues two FMAs | `nm 'Opcode_madd_s_Slot'` = `s2_mul` ×3 (f2/f7/n1) + `s3_alu` ×4 (f0/f1/f2/f7); `{ … ivp_muln_2xf32 v3,v4,v5 ; madd.h v2,v0,v1 }` assembles legal | HIGH/OBSERVED |
-| 3 | FCR = `RoundMode(2b)` + 5 enables; FSR = 5 flags each `XTENSA_STATE_IS_SHARED_OR` (lanes sticky-OR to one bit) | `Iclass_rur_fcr_stateArgs` / `Iclass_rur_fsr_stateArgs`; state structs `flags=0x02` on Flags, `0x00` on Enables | HIGH/OBSERVED |
-| 4 | The 11-field FCR+FSR pack is `movscfv`/`movvscf`, order `{IxF,UfF,OfF,DzF,IvF, RM, IxE,UfE,OfE,DzE,IvE}` + CPENABLE gate | `Iclass_IVP_MOVVSCF_stateArgs` resolved verbatim this pass | HIGH/OBSERVED |
-| 5 | Two-tier exceptions: **precise** `Coprocessor1Exception` (cp1 @stage 3, squash) vs **imprecise** FSR flags @stage 14 + `VectorPipeImpreciseErr` @stage 15 | `Coprocessor1Exception_exc@0x1780ff0`; `nx_VectorPipeImpreciseErr_interface`; `_issue` stage immediates `0xa/0xd/0xe` | HIGH/OBSERVED |
-| 6 | Soft-float ISS == hardware FP pipe (one value function). The fp16 add body @`0x51c640` carries **zero** hardware-FP insns | `objdump` count `0` over `addss/mulss/cvtss/movss/fadd/addsd/subss/divss`; 18× binary16 masks `0x7c00/0x3ff/0x1f` | HIGH/OBSERVED |
+All six findings are `[HIGH/OBSERVED]`.
+
+| # | Finding | Strongest anchor |
+|---|---------|------------------|
+| 1 | The VFPU is **one** fully-multiplexed FMA pipe for binary16 (`NXF16`, 32 lanes) + binary32 (`N_2XF32`, 16 lanes); `d = round_RM(±(a·b) ± c)` with a **single rounding** | `MADD_S/MADD_H/IVP_MULAN_2XF32T/IVP_MULANXF16T` share the s0/s1/s2 skeleton; co-issue round-trips |
+| 2 | "2×FMA" = the datapath **placed in two FLIX slots** — `S3_ALU` primary + `S2_Mul` borrow in F2/F7/N1 (on N1, which has no `S3_ALU` slot, the only FP-FMA placement *is* `S2_Mul`) — so one wide bundle co-issues two FMAs | `nm 'Opcode_madd_s_Slot'` = `s2_mul` ×3 (f2/f7/n1) + `s3_alu` ×4 (f0/f1/f2/f7); `{ … ivp_muln_2xf32 v3,v4,v5 ; madd.h v2,v0,v1 }` assembles legal |
+| 3 | FCR = `RoundMode(2b)` + 5 enables; FSR = 5 flags each `XTENSA_STATE_IS_SHARED_OR` (lanes sticky-OR to one bit) | `Iclass_rur_fcr_stateArgs` / `Iclass_rur_fsr_stateArgs`; state structs `flags=0x02` on Flags, `0x00` on Enables |
+| 4 | The 11-field FCR+FSR pack is `movscfv`/`movvscf`, order `{IxF,UfF,OfF,DzF,IvF, RM, IxE,UfE,OfE,DzE,IvE}` + CPENABLE gate | `Iclass_IVP_MOVVSCF_stateArgs` resolved verbatim |
+| 5 | Two-tier exceptions: **precise** `Coprocessor1Exception` (cp1 @stage 3, squash) vs **imprecise** FSR flags @stage 14 + `VectorPipeImpreciseErr` @stage 15 | `Coprocessor1Exception_exc@0x1780ff0`; `nx_VectorPipeImpreciseErr_interface`; `_issue` stage immediates `0xa/0xd/0xe` |
+| 6 | Soft-float ISS == hardware FP pipe (one value function). The fp16 add body @`0x51c640` carries **zero** hardware-FP insns | `objdump` count `0` over `addss/mulss/cvtss/movss/fadd/addsd/subss/divss`; 18× binary16 masks `0x7c00/0x3ff/0x1f` |
 
 ---
 
@@ -145,7 +147,7 @@ The s0/s1/s2 align/normalize/round skeleton is shared. `[HIGH/OBSERVED roster; I
 
 ## 2. The FCR / FSR register model — exact field membership
 
-Read this pass directly from the device iclass `stateArgs` arrays in `libisa-core.so`. Each
+Read directly from the device iclass `stateArgs` arrays in `libisa-core.so`. Each
 `stateArgs` entry is a 16-byte `{ state_name_ptr(8), direction(8) }` pair, where direction
 `0x69 = 'i'` (state read / input), `0x6d = 'm'` and `0x6f = 'o'` are write/output forms.
 
@@ -195,7 +197,7 @@ Located via the relocation whose addend equals the name string offset, then dump
 | `InexactFlag` | `0x6cd7a0` | 1 | **`0x02`** | `XTENSA_STATE_IS_SHARED_OR` |
 | `InvalidEnable` | `0x6cd7c0` | 1 | `0x00` | plain (not shared) |
 
-`[HIGH/OBSERVED — struct bytes read this pass.]` So **`flags=0x02` ⇒ SHARED_OR**: all 5 Flags
+`[HIGH/OBSERVED — struct bytes read.]` So **`flags=0x02` ⇒ SHARED_OR**: all 5 Flags
 carry it (the `N` lanes sticky-OR into one bit, IEEE sticky semantics), all 5 Enables are plain,
 and `RoundMode` is a 2-bit field. The five `IVP_FS0..FS7` (each 64-bit) are a **separate**
 8×64-bit predicate-accumulator file (the `movvfs`/`movfsv` + `fs[0-7]ltu` file), *not* the
@@ -272,7 +274,7 @@ dense at `out[4:0]` and `RoundMode ++ 5 flags` dense at `out[11:5]`.
 > names label them the *other* way (the host's `movscfv` leaf is the read body). The **field
 > set, order, and bit positions are identical**; only the labels disagree. Trust the TIE arg
 > direction (`'i'`/`'o'`), not the mnemonic. Confirmed: the device encodes both in slot
-> `S2_Mul` (`Opcode_ivp_movscfv_Slot_f0_s2_mul_encode`); a round-trip this pass shows
+> `S2_Mul` (`Opcode_ivp_movscfv_Slot_f0_s2_mul_encode`); a round-trip shows
 > `{ … ivp_movscfv v2; nop }` lands in the Mul slot. `[HIGH/OBSERVED]`
 
 The host pack leaf is `module__xdref_movscfv_1_1_1_1_1_2_1_1_1_1_1_32` — five 1-bit flags, one
@@ -291,7 +293,7 @@ The host pack leaf is `module__xdref_movscfv_1_1_1_1_1_2_1_1_1_1_1_32` — five 
 | `11`=3 | **−inf / RD** | toward −∞ |
 | (4) | **away / RNA** | round-to-nearest, ties-away — a 3rd-state extension beyond the 2-bit field |
 
-Driven **live** through the soft-float add leaf this pass. ABI of
+Driven **live** through the soft-float add leaf. ABI of
 `module__xdref_add_1_1_1_16f_16f_16f_2 @0x51c640` (recovered by disassembly): scalar inputs in
 `(esi = a16, edx = b16, ecx = RoundMode)`, four `*u32` output ports (`r8, r9, stack[+0x38],
 stack[+0x40]`); the rounded result lands in the **4th** output port. At the exact half-way tie
@@ -310,10 +312,10 @@ rnd=4 away -> 0x3c00 = 1.0           (no increment at the exact half — see QUI
 > the **R** (round) bit only; at a narrow exact-half the sticky bits below R are zero, so there
 > is nothing to push the increment. Beyond that, the **raw, un-parameterized** fiss leaf falls
 > back to a **round-zero (RZ) two-level default** when the device `RoundMode` parameter is not
-> threaded through — observed this pass: at `1.0 + ¾ulp` (sticky set) mode 4 still returned `1.0`,
+> threaded through — observed: at `1.0 + ¾ulp` (sticky set) mode 4 still returned `1.0`,
 > tracking RTZ rather than rounding up. This is the documented **two-level rounding** wall: the
 > un-parameterized leaf default is RZ; the device round mode must be supplied for the
-> nearest/directed modes to engage. `[HIGH/OBSERVED — live oracle this pass]`
+> nearest/directed modes to engage. `[HIGH/OBSERVED — live oracle]`
 
 > **NOTE — no FTZ/DAZ on fp16 convert.** The HP convert path does not flush denormals; the fp16
 > convert scale uses the **4-bit** `i_imm4` field (`fld_ivpep_sem_hp_cvt_i_imm4`), versus the
@@ -322,7 +324,7 @@ rnd=4 away -> 0x3c00 = 1.0           (no increment at the exact half — see QUI
 
 ### 3.3 Live FSR flag generation
 
-The same add leaf's status ports were probed this pass (the flag ports are `[Inexact, Overflow,
+The same add leaf's status ports were probed (the flag ports are `[Inexact, Overflow,
 Invalid]`):
 
 ```
@@ -333,7 +335,7 @@ maxnorm + maxnorm -> Overflow + Inexact set, result 0x7c00 (+inf) ; port[0]=1, p
 ```
 
 ⇒ Invalid on `inf − inf` (canonical qNaN `0x7e00`), Overflow+Inexact on overflow, Inexact on a
-rounded-away tiny addend. `[HIGH/OBSERVED — live oracle this pass]`
+rounded-away tiny addend. `[HIGH/OBSERVED — live oracle]`
 
 ---
 
@@ -451,10 +453,10 @@ FLIX BUNDLE (wide formats F0..F11 / narrow N0..N2)
  side gate (early):  stage 3  CPENABLE(cp1)  --clear-->  Coprocessor1Exception (squash)
 ```
 
-### 5.1 Device round-trip (this pass)
+### 5.1 Device round-trip
 
 `XTENSA_SYSTEM=…/XtensaTools/config`, `XTENSA_CORE=ncore2gp`, GNU binutils 2.34.20200201 /
-Xtensa Tools 14.09. All assembled + disassembled **bit-exact** this pass (`{ nop; nop; <op> }`
+Xtensa Tools 14.09. All assembled + disassembled **bit-exact** (`{ nop; nop; <op> }`
 slot framing shows the FP-FMA in S3):
 
 | mnemonic | bytes | note |
@@ -494,7 +496,7 @@ datapath stages, recovered from the `INSTR_SCHEDULE` flop names. The device deco
 `add.h`/`madd.h`/`mul.s` as real FP-FMA ops (§5.1).
 
 **(B) The ISS VFPU = integer-only soft-float.** The `libfiss-base.so` host model computes the FP
-value math with **no host FP**. Confirmed this pass: the fp16 add body
+value math with **no host FP**. Confirmed: the fp16 add body
 `module__xdref_add_1_1_1_16f_16f_16f_2 @0x51c640` (range `0x51c640..0x51ce70`) contains **zero**
 `addss/mulss/cvtss/movss/fadd/addsd/subss/divss` insns and **18** references to the binary16
 field masks `0x7c00`/`0x3ff`/`0x1f`. The fp32 add `@0x871790` is likewise zero hardware-FP. The
@@ -523,7 +525,7 @@ a parameter (`ecx`).
 
 **Conclusion.** One IEEE-754 value function, with a hardware implementation (the s0/s1/s2 VFPU
 tree) and a bit-identical integer reference model (the `libfiss` `xdref` leaves) — cross-validated
-to 0 mismatch. `[HIGH/OBSERVED: the zero-hardware-FP disasm + the live oracle this pass; the
+to 0 mismatch. `[HIGH/OBSERVED: the zero-hardware-FP disasm + the live oracle; the
 bit-exactness carried from the VAL fp families.]`
 
 ---
@@ -551,6 +553,6 @@ bit-exactness carried from the VAL fp families.]`
    note the different denominators.
 2. The `'N'`-class flag behaviour splits: the **scalar** `MADDN_S/_H` suppress *all* flags
    (`@14` count = 0), but the **SP** `IVP_DIVNN_2XF32T` still posts 3 (Overflow/Underflow/Inexact,
-   no Invalid). DX-HW-09's prose grouped "the 'N' forms" as flag-suppressing and "DIVN" as
+   no Invalid). Prior prose grouped "the 'N' forms" as flag-suppressing and "DIVN" as
    flag-posting; this page pins both behaviours per-mnemonic from the `_issue` bodies. Recorded
    for the Part-3/Part-4 reconcile (the running B04/B05 signed-flag-count agenda).

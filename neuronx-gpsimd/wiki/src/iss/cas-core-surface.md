@@ -20,7 +20,7 @@ ELF64 LSB shared object, x86-64, SYSV, dynamically linked, NOT stripped
 Tooling: `nm -D`, `readelf -d/-V/-r/-S`, `objdump -d/-s`. Each claim is tagged
 **confidence** × **provenance** (`OBSERVED` = read directly off the binary,
 `INFERRED` = strong deduction from observed evidence, `CARRIED` = taken from a
-prior report and re-checked here). The one recovered header cited
+prior report). The one recovered header cited
 (`tools/XtensaTools/include/iss/libfiss.h`) is treated as a binary-adjacent
 artifact: it ships in the same toolchain and its constants are corroborated
 against the binary at every use.
@@ -44,7 +44,7 @@ against the binary at every use.
 > `libcas-Xtensa.so` is the generic Tensilica/Cadence ISS DLL identity; the
 > *shipped* file is renamed `libcas-core.so` but keeps the BASE version-def. The
 > file is a Tensilica TIE cycle-accurate ISS plugin specialized to the GPSIMD
-> Cayman / Vision-Q7 vector core. (CARRIED from SX-ISS-01; the BASE string and
+> Cayman / Vision-Q7 vector core. (CARRIED from ISS-01; the BASE string and
 > the vector regfile names are OBSERVED.)
 
 > **GOTCHA — instance size.** `dll_get_data_size` returns
@@ -86,7 +86,6 @@ The 1111 `T` functions partition cleanly: **24 `dll_*`** (plugin ABI, §2) +
 > harness-installed function-pointer vtable. The contract is fixed by the
 > recovered header `libfiss.h` (`#define LIBFISS_VERSION 2`). Earlier framing that
 > assumed a `getInterface`/`register_client` shape is wrong for this binary.
-> *(HIGH · OBSERVED — absence verified against the unstripped symbol table.)*
 
 ### 2.1 dlopen model
 
@@ -134,7 +133,6 @@ are a literal `lea <table>(%rip),%rax ; ret`.
 > resolvable in the same tick because the *value* comes from the host vtable, not
 > from a modeled bus. This is a direct structural consequence of the no-values
 > design — there is no datapath inside `libcas-core` that could stall on a result.
-> *(HIGH · OBSERVED.)*
 
 ### Key state-struct offsets (decoded from accessor bodies)
 
@@ -194,8 +192,6 @@ register and calls back through that table (`call *0x10(rbx)`, `call *0x28(rbx)`
 …), passing the harness handle, a name string from `.rodata`, and the address of
 the matching state slot. **This is the "register" half of the dlopen/register/run
 lifecycle** — implemented as core-calls-harness, not harness-calls-factory.
-*(HIGH · OBSERVED — `memset 0x4a09f0`, `rep movsq`, and the `call *N(rbx)` chain
-are all in the disassembly.)*
 
 > **GOTCHA — the first registered name is `"AR"`, not `"REV8AR"`.** The `lea`
 > targets `.rodata 0x17cdb53`, but the pooled string `"REV8AR\0"`
@@ -206,7 +202,6 @@ are all in the disassembly.)*
 > (`num_aregs = 64`), not the `REV8AR` special register. A naïve "read the
 > null-terminated string at the `lea` displacement" reports `REV8AR` for what is
 > really `AR`. See [`iss-oracle-synthesis`](./iss-oracle-synthesis.md) §2.
-> *(HIGH · OBSERVED.)*
 
 ### 2.4 `dll_cycle_advance` — the one-tick pipeline stepper
 
@@ -261,7 +256,7 @@ for those prefixes over its `nm -D` exports returns 0. Its 1071 `my_*` exports a
 Total role-suffixed accessors = **1068** of 1071. The remaining 3 are the
 SuperGather deferred-commit hooks (`my_gvr_commit_data`, `my_gvr_def_addr`,
 `my_gvr_use_addr`). None of these names a datapath operation; they name *which
-registers an op touches and in which pipeline role*. *(HIGH · OBSERVED.)*
+registers an op touches and in which pipeline role*.
 
 **Proof 2 — fiss-base exports exactly the value functions.** The sibling
 `libfiss-base.so` (12,330,016 B) carries the matching set, keyed by the same seven
@@ -277,11 +272,11 @@ registers an op touches and in which pipeline role*. *(HIGH · OBSERVED.)*
 
 These are the per-stage value kernels — the side documented in
 [The fiss Datapath Oracle](./fiss-datapath-oracle.md) (the "864-leaf oracle" =
-the `module__` set above). *(HIGH · OBSERVED.)*
+the `module__` set above).
 
 **Proof 3 — the 119 ports are the value boundary.** cas-core's only non-libc
 imports are 119 `nx_*_interface` callbacks (§3.1). These are *host TIE ports*:
-the cas-core reads/writes element data only by calling them. Re-verified count:
+the cas-core reads/writes element data only by calling them. The count:
 
 ```
 $ nm -D libcas-core.so | rg ' U ' | rg -c 'nx_.*_interface'
@@ -290,7 +285,7 @@ $ nm -D libcas-core.so | rg ' U ' | rg -v 'nx_.*_interface'
                  U memset
 ```
 
-**119**, no more, no less; the only other import is `memset`. *(HIGH · OBSERVED.)*
+**119**, no more, no less; the only other import is `memset`.
 
 > **The reimplementation takeaway.** To rebuild a Vision-Q7-compatible engine you
 > need *two* models, not one: a **timing model** (scoreboard read/write sets +
@@ -320,8 +315,7 @@ Grouped by regex bucket (groups overlap; counts are not a strict partition).
 > — the 5 control ports above **plus `nx_ScatterData_0`**, which this page also
 > buckets under the 52 memory ports. The buckets overlap by design, so
 > `nx_ScatterData_0` is counted in *both* the memory and the SuperGather views; the
-> 119 total is unchanged either way. *(HIGH · OBSERVED —
-> `nm -D \| rg -c 'nx_GS\|nx_ScatterData' == 6`.)*
+> 119 total is unchanged either way.
 
 > **NOTE — dual `_0`/`_1` LSU.** Many memory ports come in `_0`/`_1` pairs
 > (`nx_Load_0`/`nx_Load_1`, `nx_VAddrBase_0`/`_1`, `nx_GSControl_0`/`_1`). This is
@@ -334,7 +328,7 @@ Grouped by regex bucket (groups overlap; counts are not a strict partition).
 
 The 16 `opnd_sem_<rf>_addr` resolvers mask the instruction operand field to a
 register index; **the mask is the regfile size**. This is the cleanest way to read
-the modeled core's register topology straight off the binary. *(HIGH · OBSERVED.)*
+the modeled core's register topology straight off the binary.
 
 | Resolver | Mask | Regfile size | Regfile role |
 |---|---|---|---|
@@ -422,7 +416,7 @@ with `readelf -SW`:
 > resolve to `.data.rel.ro`. To read their *bytes* off the file, subtract
 > `0x200000` (file offset `0x207ecc0`). Applying the libtpu `0x400000` delta — or
 > assuming VMA==fileoffset because `.text`/`.rodata` are — lands you in the wrong
-> place and yields a spurious "table is garbage" finding. *(HIGH · OBSERVED.)*
+> place and yields a spurious "table is garbage" finding.
 
 ---
 
@@ -448,9 +442,9 @@ How these slices are *invoked* (the run half of dlopen/register/run) is on
 on [The cas Timing Model](./cas-timing-model.md); the value semantics are on
 [The fiss Datapath Oracle](./fiss-datapath-oracle.md); and both halves are unified
 in [The ISS as Executable Oracle](./iss-oracle-synthesis.md). The cross-validation
-against the reference cores (`libcas-ref-core.so` / `libfiss-ref-base.so`) and the
-appendix port catalog are referenced by title only — those Parts are not yet
-written.
+against the reference cores (`libcas-ref-core.so` / `libfiss-ref-base.so`) is on
+[ref-vs-production diff](./ref-vs-production-diff.md); the appendix port catalog is
+referenced by title only.
 
 ---
 

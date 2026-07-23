@@ -25,12 +25,12 @@ composing the observable layers. Five layers are independently OBSERVED:
 | **L2 — per-opcode pipeline-stage model** | read port @10, result @11/12/13, the `wvec` (12,12) RMW | `libcas-core.so` `*_issue` operand stamps ([pipeline-timing](pipeline-timing.md)) |
 | **L3 — FLIX co-issue / slot-class binding** | which cluster rides which slot, the class-exclusivity bounds | `libisa-core.so` `Slot_<fmt>_s<n>_<class>` getters ([regfile-ports §3](regfile-ports.md)) |
 | **L4 — regfile read/write port-stage model** | the unified @10 read, staggered writes, the gather `gt`/`gs` ports | `libcas-core.so` `my_<rf>_<slot>_opnd_*` accessors ([regfile-ports](regfile-ports.md)) |
-| **L5 — the executable value model** | the i8→24 / i16→48 accumulate, the 4-tap dot-product, single-rounded FMA | `libfiss-base.so` `module__xdref_*` leaves, **driven live** this pass |
+| **L5 — the executable value model** | the i8→24 / i16→48 accumulate, the 4-tap dot-product, single-rounded FMA | `libfiss-base.so` `module__xdref_*` leaves, **driven live** |
 
 > **The big upgrade over a prior backing analysis: the multiplier datapath is NOT merely inferred —
-> it is NAMED.** A prior report (DX-HW-08) tagged "no native multiplier; partial-product / carry-save
+> it is NAMED.** A prior report tagged "no native multiplier; partial-product / carry-save
 > trees" as `[INFERRED]` because the only value bodies it had were the host-`imul` *simulation* in the
-> x86 ISS. This pass disassembles `libcas-core.so` and finds the **device hardware-block models
+> x86 ISS. Disassembling `libcas-core.so` finds the **device hardware-block models
 > themselves** as named functions — Booth encoders, partial-product generators, 3:2/4:2/5:2 carry-save
 > compressors, the multiply-slice pipeline — and confirms they contain **zero** host `imul`/`mul`
 > instructions (they build the product bit-by-bit). So "Booth + partial-product + carry-save Wallace
@@ -38,7 +38,7 @@ composing the observable layers. Five layers are independently OBSERVED:
 > exact tree wiring (which compressor feeds which) remains `[INFERRED]`.
 
 Tags per claim: `[HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED]`. `OBSERVED` = a symbol / byte / stage /
-**executed** value read from a shipped binary or shipped public header this pass; `INFERRED` =
+**executed** value read from a shipped binary or shipped public header; `INFERRED` =
 reasoned over OBSERVED; `CARRIED` = re-used at a cited sibling page's confidence. All prose reads as
 derived from shipped-binary + shipped-public-header + device-disassembler static analysis (lawful
 interoperability reverse engineering, DMCA 17 U.S.C. 1201(f)). Binary paths under
@@ -78,7 +78,7 @@ All five read their vector sources through **one unified stage-10 vec read port*
 through a **staggered** write port (10/11/12/13 by latency class). The integer MAC accumulator
 (`wvec`) is a **separate same-stage `(12,12)` read-modify-write** file enabling an `II=1` MAC chain.
 
-`[HIGH/OBSERVED — device round-trip this pass]` The slot binding is confirmed on silicon-targeted
+`[HIGH/OBSERVED — device round-trip]` The slot binding is confirmed on silicon-targeted
 encodings via the device assembler/disassembler (`xtensa-elf-as`/`-objdump`, GNU binutils
 2.34.20200201 / "Xtensa Tools 14.09", `XTENSA_CORE=ncore2gp`):
 
@@ -267,7 +267,7 @@ width — never a wider physical file. `[HIGH/OBSERVED — regfile table walk + 
 
 The accumulate direction is a **decode-selected datapath path**, not a runtime mode: OVERWRITE
 (`mul`/`muln`/`mulp`/`mulq`: `wvt = product`, no prior-acc read), RMW-ADD (`mula`: `wvt += product`),
-RMW-SUB (`muls`: `wvt -= product`). Driven live in-process via `ctypes` this pass against the
+RMW-SUB (`muls`: `wvt -= product`). Driven live in-process via `ctypes` against the
 `libfiss-base.so` leaves (these integer leaves take no context pointer, so they call cleanly):
 
 ```
@@ -499,7 +499,7 @@ see the CORRECTION — and the VFPU control/status (RoundMode + the 5 IEEE flags
 the flag DEFs land @14). Device confirm: `MADD.S v4,v5,v6` co-issues with a MAC.
 
 > **CORRECTION — FP-FMA is NOT slot-3-exclusive; it rides `S2_Mul` OR `S3_ALU`.** A prior backing
-> analysis (DX-HW-08 §4.5) bound the VFPU to the `S3_ALU` lane, "distinct from the integer-MAC
+> analysis bound the VFPU to the `S3_ALU` lane, "distinct from the integer-MAC
 > `S2_Mul`." The binary disproves this: `nm libcas-core.so` resolves **both**
 > `my_vec_2_opnd_ivp_sem_spfma_{vr,vs,vt}_use` *and* `my_vec_3_opnd_ivp_sem_spfma_*` (likewise
 > `fp_sem_hp_fma` on `vec_2` and `vec_3`). So an FMA may ride the multiply lane (`s2`) *or* an ALU
@@ -534,7 +534,7 @@ instruction (the D-phase) across a latency window, never directly named as an AL
 the collected element bytes (8 entries `gr0..gr7`).
 
 > **CORRECTION — `gvr` carries scatter/gather data operands; it is not a "RUR-only / no-operand"
-> file.** A prior backing analysis (DX-HW-08 §7) modeled `gvr` as carrying *zero* schedule operands
+> file.** A prior backing analysis modeled `gvr` as carrying *zero* schedule operands
 > (accessed only via `RUR`/`WUR`). The binary disproves this: `nm libcas-core.so` resolves
 > `my_gvr_0_opnd_ivp_sem_vec_scatter_gather_gt_def` (the gather **target** index vector, written by
 > the A-phase on slot 0) and `my_gvr_1_opnd_ivp_sem_vec_scatter_gather_gs_use` (the gather **source**
@@ -621,7 +621,7 @@ lane-select permute crossbar (lane-granular arbitrary select at the ALU) are **d
 ## 7. Datapath ↔ regfile connectivity map
 
 `[HIGH/OBSERVED]` The 8 register files (geometry walked directly from the `libisa-core.so` descriptor
-table this pass — file offset `0x54a800`, 56-byte stride, 8 entries) and which clusters they feed,
+table — file offset `0x54a800`, 56-byte stride, 8 entries) and which clusters they feed,
 with the port-STAGE each connection operates at ([regfile-ports §2/§6](regfile-ports.md)):
 
 | idx | file | geom | reads (USE) | writes (DEF) | feeds / fed-by |
@@ -737,7 +737,7 @@ this page are identical to those siblings. The integer-MAC count frame follows t
 (`module_ivp_booth_enc_*`, `module_ivp_su_xtmulpp_*`, `module_ivp_comp_{3,4,5}_2_arr_*`,
 `module_ivp_sem_csa_*`, `module_pdx_sem_spfma_slice_*`, `tie_function_AddMul_23x23x11`) and operand
 accessors (`my_<rf>_<slot>_opnd_*`); the `libisa-core.so` opcode roster + regfile descriptor table
-(walked this pass: 8 files, 56-byte stride, `wvec` 1536b×4 / `vec` 512b×32 / `gvr` 512b×8 flags
+(walked: 8 files, 56-byte stride, `wvec` 1536b×4 / `vec` 512b×32 / `gvr` 512b×8 flags
 `0x0d`); the `libfiss-base.so` `module__xdref_*` value leaves **driven live** in-process via `ctypes`
 (`mul_24_8_8`, `mula_24_24_8_8`, `mul4t2n8xr8_24_8_8_8_8_64` — bit-exact); the `xt_ivp32.h` intrinsic
 CTYPEs (`xb_vec2Nx24`/`xb_vecNx48`/`xb_vecN_2x64w`/`xb_int64pr`/`xb_gsr`); and the device-native

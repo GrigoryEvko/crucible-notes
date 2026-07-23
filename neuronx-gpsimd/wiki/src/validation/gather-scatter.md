@@ -29,7 +29,7 @@ have a single clean keystone: `dlopen` the binary, call the `module__xdref_*` va
 the lane result the **binary itself computed**. The SuperGather family breaks that because the
 gathered/scattered **element bytes never travel through an in-process leaf** — they cross the
 external SuperGather memory **port** (the host `callback_data` the rest of the pipeline cannot
-see). Disassembled this pass, the `opcode__ivp_gather*__stage_10` bodies touch **only
+see). In the disassembly, the `opcode__ivp_gather*__stage_10` bodies touch **only
 `%rdi`** (the op-context) — no `call`, no `%rsi`/`%rdx` callback, no memory window:
 
 ```
@@ -42,8 +42,8 @@ So the differential ground **splits into two bit-exact layers**, both validated 
 
 | Layer | What it is | How it is validated |
 |-------|-----------|---------------------|
-| **LAYER-1** — the index/staging/sentinel/predicate machine the binary owns **in-process** | the `offset → gsr` marshal, the `0xffffffff` sentinel init, the validity-accumulator zeroing, the per-width staging control marker, the scatter-inc no-data marshal, the writeback `GSEnable` validity-AND merge | **DRIVEN LIVE** — the real `libfiss-base.so` stage/writeback bodies called on a hand-built op-context buffer; 200 marshal probes + 3 264 merge lane-words, all bit-exact `[HIGH/OBSERVED]` |
-| **LAYER-2** — the end-to-end **value** over a shared flat memory table | gather (`OOB → miss`), scatter (last-writer), scatter-add (histogram) | the SEM closed form vs the nki numpy reference, the same in-process marshal the LIVE binary produces composed with a shared SuperGather-port model; 4 500 probes, all bit-exact `[HIGH/OBSERVED]` |
+| **LAYER-1** — the index/staging/sentinel/predicate machine the binary owns **in-process** | the `offset → gsr` marshal, the `0xffffffff` sentinel init, the validity-accumulator zeroing, the per-width staging control marker, the scatter-inc no-data marshal, the writeback `GSEnable` validity-AND merge | **DRIVEN LIVE** — the real `libfiss-base.so` stage/writeback bodies called on a hand-built op-context buffer; 200 marshal probes + 3 264 merge lane-words, all bit-exact |
+| **LAYER-2** — the end-to-end **value** over a shared flat memory table | gather (`OOB → miss`), scatter (last-writer), scatter-add (histogram) | the SEM closed form vs the nki numpy reference, the same in-process marshal the LIVE binary produces composed with a shared SuperGather-port model; 4 500 probes, all bit-exact |
 
 > **GOTCHA — do not bind a gather leaf like an ALU leaf.** The ALU `module__xdref_*` leaf has
 > a 3-arg/4-arg `(xstate, A[, B], *out)` ABI and returns the lane value through `*out`. The
@@ -56,9 +56,9 @@ So the differential ground **splits into two bit-exact layers**, both validated 
 
 ---
 
-## 2. The family — nm-grounded leaf census  `[HIGH/OBSERVED]`
+## 2. The family — nm-grounded leaf census
 
-`nm` against the 12 330 016-byte `libfiss-base.so` this pass (the decompile is never counted):
+`nm` against the 12 330 016-byte `libfiss-base.so` (the decompile is never counted):
 
 ```
 $ FISS=.../ncore2gp/config/libfiss-base.so
@@ -89,11 +89,11 @@ device-decode-confirmed (§6).
 
 ---
 
-## 3. LAYER-1 — the in-process marshal, driven LIVE  `[HIGH/OBSERVED]`
+## 3. LAYER-1 — the in-process marshal, driven LIVE
 
 ### 3.1 The `gathera` address-issue marshal (`gatheranx16__stage_10` @0x2bfc60)
 
-Disassembled and **executed live** this pass. The body, on `op_context` `%rdi` only, does four
+Disassembled and **executed live**. The body, on `op_context` `%rdi` only, does four
 things in order. First it copies the **16-word offset image** `0xd4 → 0x118` as a straight
 identity — the gsr staging-offset image (`base + off·elem_sz` is applied host-side, so the
 core just stages the raw per-lane offset words):
@@ -140,7 +140,7 @@ bit) → `0x19c`, OR'd with `0x1ac` → `0x1b0`:
 ```
 
 **LIVE-vs-SEM marshal: 200 probes** (3 widths × the §5 directed + fuzz offset cases × the
-control word), **ZERO mismatches** after the §3.3 marker root-cause. `[HIGH/OBSERVED]`
+control word), **ZERO mismatches** after the §3.3 marker root-cause.
 
 ### 3.2 The writeback `GSEnable` validity-AND merge (`writeback__ivp_gatheranx16` @0x2c0070)
 
@@ -177,7 +177,7 @@ result[i] = (gathered[i] & EN[i]) | (newdata[i] & ~EN[i])
 **ENABLED** lanes (`EN[i] = 0xffffffff`) keep the gathered element; **DISABLED** lanes
 (`EN[i] = 0`) fall through to the existing register data — the exact per-lane `GSEnable`
 predicate AND. **LIVE-vs-formula: 3 264 lane-words** (4 directed EN patterns + 200 fuzz,
-16 words each), **ZERO mismatches**. `[HIGH/OBSERVED]`
+16 words each), **ZERO mismatches**.
 
 > **CORRECTION (a driver bug the fuzz caught — the binary was right).** The first writeback
 > fuzz diverged because the LIVE *driver* staged the enable words at byte `16·i` instead of
@@ -186,10 +186,10 @@ predicate AND. **LIVE-vs-formula: 3 264 lane-words** (4 directed EN patterns + 2
 > index, not the model. This is exactly the LIVE-vs-lift self-check the method exists for: a
 > mismatch means *the harness mis-read the layout*, and the binary wins.
 
-### 3.3 The per-width staging control marker @0x158  `[HIGH/OBSERVED]`
+### 3.3 The per-width staging control marker @0x158
 
 The first LIVE run **diverged**: the SEM model had hard-coded `0x41`, but the binary writes a
-**per-width constant**. Disassembled at three sites this pass:
+**per-width constant**. Disassembled at three sites:
 
 | Width | marker | site | bit decode |
 |-------|--------|------|-----------|
@@ -207,7 +207,7 @@ This is the in-process `elem_sz` descriptor the gsr staging carries; it pairs wi
 `GSControl.elem_sz_fld` (§4). **The SEM model was corrected** from the hard-coded NX16 value to
 this width table. The offset image and the `0xffffffff` data sentinel were already bit-exact
 across all three widths (verified: all three stage bodies write exactly 16 `0xffffffff`
-sentinels). `[HIGH/OBSERVED]`
+sentinels).
 
 > **This is the divergence the method exists to catch.** A model frozen at one width passes
 > NX16 and silently corrupts the other two; only the LIVE binary surfaces it, and only an
@@ -229,9 +229,9 @@ window** (the `+1` increment is implicit):
 
 This confirms the `IVP_SCATTERINCNX16(short* b, xb_vecNx16U c)` two-operand (base + offset)
 shape — no third data operand — and grounds the histogram RMW model. The LIVE drive confirms
-the `0xffffffff` init across the no-data region. `[HIGH/OBSERVED]`
+the `0xffffffff` init across the no-data region.
 
-### 3.5 The `gatheran_2x32` regload — `addr = base + Voff`, `shl $0x4` ×16-lane  `[HIGH/OBSERVED]`
+### 3.5 The `gatheran_2x32` regload — `addr = base + Voff`, `shl $0x4` ×16-lane
 
 The `regload__ivp_gatheran_2x32` @0x2c0590 stage reads the per-lane offset register and
 forms the **16-lane staging base** by `shl $0x4` (×16) of the `Voff` index word `0xd0(%rdi)`,
@@ -251,19 +251,19 @@ image `0xd4..`:
 ```
 
 The `t`-predicated `regload__ivp_gatheran_2x32t` @0x2c20e0 has the identical `Voff << 4` base
-arithmetic with the extra predicate-operand load — driven LIVE this pass and byte-exact
-against the offset-image image the SEM model stages.
+arithmetic with the extra predicate-operand load — driven LIVE and byte-exact
+against the offset image the SEM model stages.
 
 ---
 
-## 4. LAYER-2 — the end-to-end value  `[HIGH/OBSERVED]`
+## 4. LAYER-2 — the end-to-end value
 
 The four legs share one flat little-endian `MemTable`. The SEM closed form (leg **a**, lifted
-from the GX-SEM TIE-XML) packs `GSControl[15:0] = {8'd0, elem_sz_fld[1:0], offst_sz_fld[1:0],
+from the SEM TIE-XML) packs `GSControl[15:0] = {8'd0, elem_sz_fld[1:0], offst_sz_fld[1:0],
 operation_fld[3:0]}` with `operation_fld ∈ {gathera→1, gatherd→2, mgatherd→3, scatter→4,
 scatterw→5, scatterinc→6}` and the byte scale `elem_sz_fld {0,1,2} → {1,2,4}` (NX8U=1, NX16=2,
 N_2X32=4) — matching [B19 §1.3](../isa/ref/b19-scatter-gather.md) byte-for-byte. The nki leg
-(leg **c**) is the numpy reference following the [DX-CC](../firmware/kernels/indirection-gather.md)
+(leg **c**) is the numpy reference following the [indirection-gather](../firmware/kernels/indirection-gather.md)
 lowering (§7).
 
 ### 4.1 GATHER (D-phase value, `OOB → miss`)
@@ -293,7 +293,7 @@ for enabled in-bounds lane k:  mem[addr[k]] += 1     ; colliding lanes ACCUMULAT
 
 Directed ground truth: `collide_all` (32 lanes → 1 element) → **+32**; `collide_pairs`
 (2 lanes/address) → **+2** per address. The full table image matches byte-for-byte.
-**ZERO mismatches.** `[HIGH/OBSERVED]`
+**ZERO mismatches.**
 
 > **NOTE — the scatter-add resolution (value vs cycle interleave).** The histogram **value**
 > is a commutative sum, so the total is **order-independent and bit-exact** regardless of how
@@ -315,11 +315,11 @@ With a `byte[i] = i` table and a single offset `5`:
 | NX8U | 1 | 5 | `0x05` |
 | N_2X32 | 4 | 20 | `0x1514` (bytes 20,21 → low half) |
 
-`addr = base + offset·elem_sz`, `elem_sz ∈ {2,1,4}`, **EXACT** end-to-end. `[HIGH/OBSERVED]`
+`addr = base + offset·elem_sz`, `elem_sz ∈ {2,1,4}`, **EXACT** end-to-end.
 
 ---
 
-## 5. The edge corpus (identical inputs across all legs)  `[HIGH/OBSERVED]`
+## 5. The edge corpus (identical inputs across all legs)
 
 OFFSET cases (per-lane element indices; 32 lanes NX16/NX8U, 16 lanes N_2X32):
 
@@ -346,7 +346,7 @@ genuinely past-end; all legs share the identical image.
 
 ---
 
-## 6. The device-decode identity leg (b)  `[HIGH/OBSERVED]`
+## 6. The device-decode identity leg (b)
 
 Leg (b) certifies that the mnemonic each value leaf claims is the mnemonic the **device
 decoder** emits from the actual bytes. The shipped device toolchain
@@ -363,7 +363,7 @@ and disassembles cleanly: `gatheranx16`/`anx8u`/`an_2x32`, `gatherdnx16`,
 
 ---
 
-## 7. Tie to the NKI `0xe7` / `0x68` lowerings  `[HIGH/OBSERVED]`
+## 7. Tie to the NKI `0xe7` / `0x68` lowerings
 
 The nki leg (c) is the numpy reference for the gather-lowering split documented in
 [indirection-gather](../firmware/kernels/indirection-gather.md):
@@ -386,11 +386,10 @@ picks, not a value difference. The scatter / reduce-scatter side (`emit_reduce_s
 
 ---
 
-## 8. The 4-way cross-validation result  `[HIGH/OBSERVED]`
+## 8. The 4-way cross-validation result
 
 Legs: **[a]** SEM closed form · **[b]** FLIX device decode identity · **[c]** nki numpy
-reference · **[d]** LIVE `libfiss-base.so` (driven this pass). "agree" = all available legs
-concur.
+reference · **[d]** LIVE `libfiss-base.so`. "agree" = all available legs concur.
 
 | # | op / case | [a] SEM | [c] nki ref | [d] LIVE fiss | verdict |
 |---|-----------|---------|-------------|---------------|---------|
@@ -409,49 +408,46 @@ concur.
 ZERO mismatches** across every leg the references jointly define. The SuperGather two-phase
 split, the `elem_sz` scaling, the `0xffffffff` sentinel, the `GSEnable` validity AND,
 duplicate-destination scatter, and the scatter-add collision accumulate are all reproduced by
-**EXECUTING the real shipped `libfiss-base.so`**. `[HIGH/OBSERVED]`
+**EXECUTING the real shipped `libfiss-base.so`**.
 
 ---
 
-## 9. Adversarial self-verify — the 5 strongest claims, re-challenged
+## 9. Adversarial self-verify
 
-Each claim was re-checked against the binary this pass; tag = confidence × evidence.
+Tag = confidence × evidence.
 
 1. **The `0xffffffff` sentinel is 16 explicit stores, identical across all three widths.**
-   `[HIGH/OBSERVED]` Re-challenge: a per-width sentinel would break the cross-width tie.
    `objdump` of the three stage bodies (`0x2bfc60` NX16, `0x2bf650` NX8U, `0x2c0270` N_2X32)
    each `rg -c '0xffffffff'` → **16, 16, 16**. The sentinel is width-invariant — only the §3.3
-   marker `@0x158` is per-width. Confirmed.
+   marker `@0x158` is per-width.
 
 2. **The `GSEnable` merge is `(gathered & EN) | (newdata & ~EN)`, EN packed at `0x6c+4i`.**
-   `[HIGH/OBSERVED]` Re-challenge: is `EN[i]` at `4i` or `16i`? The disassembly at `0x2c0088`
+   The disassembly at `0x2c0088`
    (`mov 0x6c(%rdi),%r8d`) → `0x2c00ad` (`mov 0x70(%rdi),%esi`) → `0x2c00c9` (`mov 0x74…`)
    steps by **4** per lane — a packed 32-bit-per-lane array. The `and/not/and/or` quartet
    (`0x2c0099`–`0x2c00a3`) is literal. The driver `16i` bug (§3.2 CORRECTION) was the harness,
-   not the binary. Confirmed `4i`.
+   not the binary.
 
 3. **Scatter-add value is bit-exact; only the cycle interleave is untraced.** `[HIGH/OBSERVED
-   value; MED/INFERRED cycle order]` Re-challenge: could a non-commutative RMW change the sum?
-   No — `+1` accumulation is integer addition, associative and commutative; `collide_all` →
+   value; MED/INFERRED cycle order]` `+1` accumulation is integer addition, associative and
+   commutative; `collide_all` →
    `+32` is the unique sum under any serialisation. The scatterinc stage body (`0x2c8a50`) has
    **no data operand** (offset-only `0x50→0x94`, §3.4), so the increment is a fixed `+1` with
    no value freedom. The untraced part is strictly the port's per-cycle visibility — flagged
-   NOTE, not failure. Confirmed.
+   NOTE, not failure.
 
 4. **The LIVE ctypes drive uses the real stage/writeback signatures, not the ALU value ABI.**
-   `[HIGH/OBSERVED]` Re-challenge: could the gather leaves share the `module__xdref_*` value
-   ABI? No — `nm` shows `opcode__ivp_gather*__stage_10` and `writeback__ivp_gather*` are
+   `nm` shows `opcode__ivp_gather*__stage_10` and `writeback__ivp_gather*` are
    distinct symbols (§2), and the stage body returns `void` after mutating `%rdi` offsets with
    **no `*out` store and no `call`** (`rg -c 'call'` over `0x2bfc60..0x2bfef7` → 0). Binding
    them like ALU leaves would read the staging marker, not a value — the GOTCHA in §1.
-   Confirmed.
 
 5. **The `gatheran_2x32` regload forms its base as `Voff << 4` (16-lane stride).**
-   `[HIGH/OBSERVED]` Re-challenge: is the `shl $0x4` a byte-scale or a lane-stride? It is a
+   It is a
    **lane index** stride: `0x2c05a4 mov 0xd0(%rdi),%eax; 0x2c05aa shl $0x4,%eax` then 16
    `lea N(%rax)` loads from `(%rdx,%rcx,4)` — i.e. `regtbl[(Voff<<4)+N]`, the 16-lane vector
    block base. The byte-scale `elem_sz` is a *separate* host-side multiply on the gathered
-   address (§4.4), not this stride. Confirmed — distinct mechanisms, both verified.
+   address (§4.4), not this stride — distinct mechanisms.
 
 ---
 
@@ -459,18 +455,18 @@ Each claim was re-checked against the binary this pass; tag = confidence × evid
 
 | Claim | Tag | Ground |
 |-------|-----|--------|
-| 23 `gather\|scatter` mnemonics × {regload, stage_10, writeback}; `movgatherd` = 24th op | HIGH / OBSERVED | `nm \| rg -c` on the 12 330 016-byte `libfiss-base.so` this pass |
-| `gatheranx16` marshal: offset img `0xd4→0x118`, 16× `0xffffffff` sentinel, validity zeroing, control fold `0x24 shr1 xor1 and1` | HIGH / OBSERVED | disassembled `@0x2bfc60` this pass |
-| per-width marker `@0x158` = `0x41`/`0x01`/`0x91` (NX16/NX8U/N_2X32) | HIGH / OBSERVED | disassembled `@0x2bfee0`/`0x2bf8d0`/`0x2c04f0` this pass |
-| writeback merge `(g&EN)\|(nd&~EN)`, guard `0x1a4`, dest `0x28<<4` via `0x38(0x8(%rsi))` | HIGH / OBSERVED | disassembled `@0x2c0070` + LIVE 3 264 lane-words this pass |
-| scatterinc offset-only (no data window), `0xffffffff` init `@0xd8` | HIGH / OBSERVED | disassembled `@0x2c8a50` this pass |
-| `gatheran_2x32` regload base `= Voff << 4` (16-lane stride) | HIGH / OBSERVED | disassembled `@0x2c0590` this pass |
-| stage_10 touches only `%rdi` (no callback / no `*out`) | HIGH / OBSERVED | `rg -c 'call'` over the stage body = 0 this pass |
+| 23 `gather\|scatter` mnemonics × {regload, stage_10, writeback}; `movgatherd` = 24th op | HIGH / OBSERVED | `nm \| rg -c` on the 12 330 016-byte `libfiss-base.so` |
+| `gatheranx16` marshal: offset img `0xd4→0x118`, 16× `0xffffffff` sentinel, validity zeroing, control fold `0x24 shr1 xor1 and1` | HIGH / OBSERVED | disassembled `@0x2bfc60` |
+| per-width marker `@0x158` = `0x41`/`0x01`/`0x91` (NX16/NX8U/N_2X32) | HIGH / OBSERVED | disassembled `@0x2bfee0`/`0x2bf8d0`/`0x2c04f0` |
+| writeback merge `(g&EN)\|(nd&~EN)`, guard `0x1a4`, dest `0x28<<4` via `0x38(0x8(%rsi))` | HIGH / OBSERVED | disassembled `@0x2c0070` + LIVE 3 264 lane-words |
+| scatterinc offset-only (no data window), `0xffffffff` init `@0xd8` | HIGH / OBSERVED | disassembled `@0x2c8a50` |
+| `gatheran_2x32` regload base `= Voff << 4` (16-lane stride) | HIGH / OBSERVED | disassembled `@0x2c0590` |
+| stage_10 touches only `%rdi` (no callback / no `*out`) | HIGH / OBSERVED | `rg -c 'call'` over the stage body = 0 |
 | `GSControl` op_fld `{1..6}` + elem_sz `{1,2,4}` device-identity | HIGH / OBSERVED | the device `xtensa-elf-as`/`objdump` 13-bundle round trip; B19 packing cross-check |
-| gather `OOB → 0` miss value; `0x68`/`0xe7` value tie | HIGH / OBSERVED (value) / MED (routing documented) | nki numpy ref vs SEM, 4 500 probes; routing per the DX-CC lowering |
+| gather `OOB → 0` miss value; `0x68`/`0xe7` value tie | HIGH / OBSERVED (value) / MED (routing documented) | nki numpy ref vs SEM, 4 500 probes; routing per the indirection-gather lowering |
 | scatter-add exact per-cycle RMW interleave under collision | MED / INFERRED | value is commutative ⇒ sum bit-exact; per-cycle visibility is port-timing (LOAD/STORE cosim scope) |
 | LAYER-2 element bytes via a python flat-table port (not a real host memory callback) | LOW | LAYER-1 marshal is LIVE; a full cosim through the real memory callback is the LOAD/STORE-value scope |
-| the `2NX8` half-split gather/scatter (`gatherd2nx8_h`, `scatter2nx8_{h,l}`) half-lane masks | MED / INFERRED | same staging mux structurally covered; not value-fuzzed this pass (wide-permute scope) |
+| the `2NX8` half-split gather/scatter (`gatherd2nx8_h`, `scatter2nx8_{h,l}`) half-lane masks | MED / INFERRED | same staging mux structurally covered; not value-fuzzed (wide-permute scope) |
 
 No silicon-generation / gen-count / codename is inferred anywhere on this page: every
 `NX16/NX8U/N_2X32`, `elem_sz`, `0x41/0x01/0x91`, `0xffffffff`, `0x68/0xe7` token is a

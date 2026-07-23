@@ -21,9 +21,9 @@ ISA  = ncore2gp/config/libisa-core.so    ( 9,690,712 B; ELF64 x86-64 SYSV, not s
 ```
 
 Each claim is tagged **confidence** × **provenance**: `OBSERVED` = read directly
-off the binary this pass; `INFERRED` = strong deduction from observed evidence;
-`CARRIED` = taken from a sibling report (`SX-ISS-09`/`SX-ISS-13`, the fiss surface
-and datapath analyses) and re-checked here. `.text` and `.rodata` are
+off the binary; `INFERRED` = strong deduction from observed evidence;
+`CARRIED` = taken from a sibling report (`ISS-09`/`ISS-13`, the fiss surface
+and datapath analyses). `.text` and `.rodata` are
 VMA==file-offset in both libraries; the writable sections carry the ncore2gp
 `0x200000` delta — confirmed for FISS below (§6) and matching the gateway's
 finding for libcas-core.
@@ -35,7 +35,7 @@ finding for libcas-core.
 `libfiss-base.so` exports **20,368** defined `T` functions (`nm -D --defined-only |
 rg -c ' T '`); `nm -D` lists **20,384** dynamic symbols including version/abs
 entries. They partition by the seven `libfiss.h` stage prefixes plus `slotfill__`
-and `opcode__`. The headline census, re-counted this pass and consistent with the
+and `opcode__`. The headline census, consistent with the
 gateway:
 
 | fiss-base prefix | count | role |
@@ -54,13 +54,12 @@ gateway:
 > the ~20.4k total exports are the full per-(mnemonic×stage) value-kernel matrix.
 > The slotfill count **12,569** equals the libisa-core `Opcode_*_encode` thunk count
 > exactly (both `nm \| rg -c` = 12,569) — one decode function per encode thunk. The
-> decode layer is the encode layer's structural mirror. *(HIGH · OBSERVED.)*
-
+> decode layer is the encode layer's structural mirror.
 ### 1.1 Census — the F0–F3 slice (reconciled to the unit)
 
 `nm -D --defined-only FISS \| rg 'slotfill__F[0123]__'` selects **6,288** of the
-12,569 — the F0–F3 slice. The per-format and per-(format×slot×unit) totals,
-re-counted this pass, are exact:
+12,569 — the F0–F3 slice. The per-format and per-(format×slot×unit) totals
+are exact:
 
 | format | slots | per-cell counts | total |
 |---|--:|---|--:|
@@ -76,8 +75,7 @@ matching the libisa `formats[]` roster
 `LdSt·Ld·Mul·ALU·ALU`). The placement census on the *encode* side
 ([FLIX VLIW Encoding §6.3](../isa/core/flix-encoding.md)) carries the **identical**
 per-cell totals (F3 `S0_LdSt 342 … S4_ALU 91` etc.) — the per-(format×slot)
-opcode population is the same matrix viewed from either end. *(HIGH · OBSERVED.)*
-
+opcode population is the same matrix viewed from either end.
 > **CORRECTION — the "role-tag" suffix census is not a clean partition; the trailing
 > token is mostly an IVP datatype suffix.** A backing report tabulated F0–F3 by a
 > per-slot encoding tag (`_H 455 / _S 442 / _A 259 / _W15 243 / _N 23 / _WB 3`).
@@ -89,8 +87,7 @@ opcode population is the same matrix viewed from either end. *(HIGH · OBSERVED.
 > and **`_WB` = 0** (no F0–F3 symbol ends in `_WB`). The earlier `_S 442`/`_WB 3`
 > counts came from substring greps that also matched `_slot` and mnemonic interiors.
 > Use the **per-format/per-cell** counts (§1.1) — those are exact; treat any
-> standalone "tag distribution" with suspicion. *(HIGH · OBSERVED — recounted on the
-> binary symtab this pass.)*
+> standalone "tag distribution" with suspicion.
 
 There are ~1,533 distinct base-mnemonic spellings across the F0–F3 slotfill set
 (`nm -D \| rg -o 'slot[0-9]__[A-Z].*$' \| sort -u \| wc -l`), but they collapse into
@@ -108,8 +105,7 @@ frame in the simple bodies, and `xor eax,eax ; ret` on success. It reads the raw
 bundle from the head of the context and writes decoded operand **indices**
 (register numbers) / **immediates** into fixed operand-latch offsets of the *same*
 context. It performs **no arithmetic on operand values** — only index math,
-sign/zero-extension, and sub-opcode selection. *(HIGH · OBSERVED across every body
-disassembled below.)*
+sign/zero-extension, and sub-opcode selection.
 
 ```
 ctx (%rdi) layout TOUCHED by the F0–F3 slotfill:
@@ -135,8 +131,7 @@ ctx (%rdi) layout TOUCHED by the F0–F3 slotfill:
 > `ctx+0x00..0x0c` and the slotfill `mov (%rdi)` / `mov 0x4(%rdi)` / `mov 0x8(%rdi)`
 > reads them as four little-endian dwords. A reimplementation must place the live
 > bundle word at the head of the op-context *before* invoking the slot decoder; the
-> decoder never receives the bundle as a separate argument. *(HIGH · OBSERVED.)*
-
+> decoder never receives the bundle as a separate argument.
 **Index→value pairing (the regload handoff).** The slotfill is the *only* producer
 of operand indices; `regload__<m>` converts each index to a 512-bit value. Read off
 `regload__add_h` @`0x7eb160`:
@@ -229,7 +224,7 @@ one nibble above each, e.g. dst bank at bit 15/63/etc.):
 * **`F3_S1` is the narrow 22-bit `Ld` slot** (libisa `slots[]` width 22); its dst
   field is packed at `{26,29,30}` rather than `{60,61,62}` — the
   `shr $0x1c & 6 \| shr $0x1a & 1 \| shr $0x1f` chain at `0x42b801..0x42b821` builds
-  dst from word0/word1 boundary bits. `[HIGH · OBSERVED]`
+  dst from word0/word1 boundary bits.
 
 > **GOTCHA — the AR field is 4 bits, not 3.** Naming a scalar operand by its low
 > triple alone (e.g. "dst = `{12,13,14}`") silently drops the **XOR-inverted high
@@ -296,8 +291,7 @@ int slotfill__F0_S3_ALU__ADD_S(op_ctx *c) {            /* @0x770e10             
 > `word1` bit 24 → bundle bit 56. So `vr = {56, 45, 46, 47, 48}` — the low four are
 > 45–48, an off-by-one from the report. The latch (`0xd8`), the `(sw&1)\|((sw>>3)&0x1e)`
 > *shape*, and the 5-bit width are all correct; only the absolute bit list shifts by
-> one. *(HIGH · OBSERVED — re-disassembled this pass; see §4a for the libisa-side
-> match.)*
+> one.
 
 ### 3.3 The sub-opcode selector case (`IVP_MULNX16`)
 
@@ -349,8 +343,7 @@ int slotfill__Inst__ADDI(op_ctx *c) {                    /* @0x2963f0           
 The exact bytes are `c1 e0 08` (`shl $0x8,%eax`), `c1 f8 18` (`sar $0x18,%eax`),
 `89 47 50` (`mov %eax,0x50(%rdi)`). The sibling `ADDMI` uses `sar $0x10` (16-bit
 shift → `imm << 8` form). The slotfill stores the architecturally-meaningful value,
-never raw bits. *(HIGH · OBSERVED.)*
-
+never raw bits.
 ---
 
 ## 4. Encode/decode inverse cross-validation (slotfill ⇄ libisa-core)
@@ -408,8 +401,7 @@ emulation.)*
 > or ; or ; mov %esi,(%rdi)`: it writes `v&1` → slotword bit 0 and `(v>>1)&0xf` →
 > slotword bits `[7:4]`, masking the target with `0x0e`/`0xf0`. The `get`
 > (`(sw&1)\|((sw>>3)&0x1e)`) reads precisely those positions back. The round-trip is
-> structural, not coincidental. *(HIGH · OBSERVED.)*
-
+> structural, not coincidental.
 ### 4b. Per-slot cross-checks (libisa composed vs slotfill latch)
 
 | cell | libisa `get_fn ∘ field` | slotfill latches | verdict |
@@ -449,8 +441,7 @@ inverts the `x24` base encoding. **CONFIRMED.**
 > is *not* byte-identical to `F0_S0 ADDI` (same algorithm, different register
 > allocation/ordering). The byte-identity holds for the simplest RRR bodies; do not
 > assume it for every mnemonic. The *field math* is shared; the exact instruction
-> scheduling is per-symbol. *(HIGH · OBSERVED.)*
-
+> scheduling is per-symbol.
 No mismatch was found in any cross-check above except the documented `±1` Mul-slot
 high-bank residual (§4b) and the corrected `F0_S3_ALU vr` bit list (§3.2). The
 field bodies and the primary register bits agree everywhere.
@@ -476,15 +467,13 @@ So the slotfill is the **only** producer of operand indices; `regload` turns ind
 into 512-bit values; `opcode__*_stage_5` calls the `module__xdref_*` leaf per lane
 ([The fiss Datapath Oracle](./fiss-datapath-oracle.md)); `writeback` commits the
 result lanes back into `regfile[index]`. **The slotfill is the decode root of the
-entire per-instruction pipeline.** *(HIGH · OBSERVED for the latch addresses and the
-gather/scatter strides; the `add_h` chain is traced through five real symbols.)*
+entire per-instruction pipeline.**
 
 > **QUIRK — vector dst overlaps a source latch.** For the IVP vector ALU form the
 > destination index is re-read from `ctx+0x50` (the `vs` latch) by `writeback`: the
 > encoding overlaps dst with the `vt/vs` field group. The scalar analogue writes its
 > result through `ctx+0x24` (dst). A reimplementation must not assume a separate dst
-> latch for the vector forms. *(HIGH · OBSERVED.)*
-
+> latch for the vector forms.
 ---
 
 ## 6. Section map — the `.data` offset hazard (FISS)
@@ -503,13 +492,12 @@ and `.rodata` templates works directly. The writable sections carry the ncore2gp
 
 Every slotfill address quoted on this page is `.text` (≥ `0x190430`), so it is read
 directly; only if you walk a `.data.rel.ro` dispatch pointer must you subtract
-`0x200000` to reach the file bytes. *(HIGH · OBSERVED.)*
-
+`0x200000` to reach the file bytes.
 ---
 
 ## 7. Confidence ledger
 
-**HIGH · OBSERVED** — read from disassembly / `nm` / emulation this pass:
+**HIGH · OBSERVED** — read from disassembly / `nm` / emulation:
 
 * the 6,288 F0–F3 slotfill census and every per-(format×slot×unit) count (§1.1);
 * the slotfill ABI (bundle dwords @`0x0–0xc`; scalar latches `0x24/0x48/0x50`;
@@ -535,9 +523,9 @@ directly; only if you walk a `.data.rel.ro` dispatch pointer must you subtract
 * the 32-entry × 16-dword vector regfile size — inferred from the ×16 gather stride
   and 5-bit index width, not a declared bound.
 
-The cross-validation against the reference cores (`libfiss-ref-base.so`) and the
-runnable-oracle wiring are referenced by title only — those Parts are not yet
-written. The sibling slotfill pages cover the remaining formats:
+The cross-validation against the reference cores (`libfiss-ref-base.so`) is on
+[ref-vs-production diff](./ref-vs-production-diff.md); the runnable-oracle wiring is on
+[Runnable ISS Infrastructure](./runnable-iss-infra.md). The sibling slotfill pages cover the remaining formats:
 [F4/F6/F7/F11](./fiss-slotfill-f4-f11.md) and the
 [narrow N0/N1/N2](./fiss-slotfill-n0-n2.md) forms; the fiss surface and exception
 model is on [libfiss-base Surface + Exception Model](./fiss-surface-exceptions.md);

@@ -10,7 +10,7 @@ co-issue / memory-port companion to the [Pipeline Timing Model](pipeline-timing.
 the [Local-Memory / LSU Model](lsu-memory.md) (port detail); read this page when you need to know
 *how many of what* a scheduler may pack into one 128-bit bundle and *when* their operands land.
 
-Everything here is read **directly from the shipped `ncore2gp` artifacts this pass**: the
+Everything here is read **directly from the shipped `ncore2gp` artifacts**: the
 `libisa-core.so` `format_decoder` / `length_decoder` / `length_table` / `slots[]` / 12 569
 `Opcode_*_Slot_*_encode` thunks (the **encoding** structure); `libcas-core.so`'s
 `slot_issue_functions` / `slot_semantic_functions` / `slot_stall_functions` dispatch tables and its
@@ -40,7 +40,7 @@ confidence; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuit
 > issue/stage functions are `.text` (VMA == file offset); the `slots[]`, `formats[]`,
 > `length_table`, and `slot_issue_functions` tables they index are in `.rodata` (VMA == file
 > offset) or `.data.rel.ro` / `.data` (file = VMA − `0x200000`). Confirmed per-section with
-> `readelf -SW` this pass: `libisa-core.so` `.data.rel.ro` VMA `0x67bb00` / file `0x47bb00`;
+> `readelf -SW`: `libisa-core.so` `.data.rel.ro` VMA `0x67bb00` / file `0x47bb00`;
 > `libcas-core.so` `.data.rel.ro` VMA `0x2070900` / file `0x1e70900` — both exactly `0x200000`.
 > `extracted/` is gitignored; reach it with an absolute path or `fd --no-ignore`.
 
@@ -59,7 +59,7 @@ word, both in `libisa-core.so`, both hardcoded (no pointer-table dispatch):
 The format index selects the **slot roster** (which lanes exist); the length advances the sweep
 pointer. The two are **mutually exact** — every word the format decoder calls *wide* is length 16,
 every *narrow* is 8, every *illegal* is −1 — proven below by a 4096-combo simulation with **0
-mismatches** (re-run this pass).
+mismatches**.
 
 ### 1.1 The length key — `byte3.low4 × byte0.low4`
 
@@ -75,7 +75,7 @@ int length_decoder(const uint8_t *inst) {
 ```
 
 The 256-cell `length_table` was read straight from `.rodata` (file offset `0x3d4100`, VMA == file
-offset) this pass. Only the **last column** (`op0 == 0xF`) varies with `byte3.low4`; the value
+offset). Only the **last column** (`op0 == 0xF`) varies with `byte3.low4`; the value
 census over all 256 cells is `{3:128, 2:96, 16:22, 8:8, −1:2}`:
 
 | `byte3.low4 (b3lo)` ↓  `op0` → | 0–7 | 8–B | C–D | E | F |
@@ -99,7 +99,7 @@ So the length rule is: `op0 ∈ 0..7` ⇒ **3** (core `x24`); `op0 ∈ 8..B` ⇒
 
 `format_decoder` runs a flat mask-and-match ladder on `w`, first hit wins, else `−1`. **Every mask
 and compare immediate below was read directly from the disassembled `and $imm` / `cmp $imm` bytes**
-(`f6 c2 08`, `83 e0 0c`, `81 e1 0f 00 00 0b`, …) this pass:
+(`f6 c2 08`, `83 e0 0c`, `81 e1 0f 00 00 0b`, …):
 
 ```c
 // libisa-core.so  format_decoder @ 0x3b5970  (behavioural equal of the cmovne body)
@@ -163,7 +163,7 @@ Slot-count census: `4+5+4+4+5+4+4+4+3+2+4+1+1+1 = 46 = num_slots`. The two **5-s
 `F3` and `F11` (the `op0==0xE` class). `F5`/`F8`/`F9`/`F10` do not exist — the `Fn` numbering is
 sparse. `[HIGH/OBSERVED]`
 
-### 1.4 Decoder self-consistency — 0 mismatch / 4096 combos (re-run this pass)
+### 1.4 Decoder self-consistency — 0 mismatch / 4096 combos
 
 Simulating `format_decoder` over the full `(byte0.low4 × byte3)` space (4096 combos — bytes 1,2 do
 not affect either decoder) and comparing each result's format length against `length_table`:
@@ -183,7 +183,7 @@ the length table keys on, and they never disagree. `[HIGH/OBSERVED]`
 
 The 12 569 `Opcode_<mnem>_Slot_<slot>_encode` thunks are the **placement matrix**: one thunk per
 legal `(mnemonic × slot)` pair. Grouping them by slot gives the per-slot opcode population
-(re-counted from `nm libisa-core.so | rg -c` this pass; the sum is exactly `12569`):
+(from `nm libisa-core.so | rg -c`; the sum is exactly `12569`):
 
 ```
 F0:   S0_LdSt 348  S1_Ld 260  S2_Mul 322  S3_ALU 564                    = 1494
@@ -205,20 +205,20 @@ The three `None` slots (`N0_S1`, `N0_S2`, `N1_S1`) host **exactly one** opcode �
 NOP-only filler, not real issue ports. `[HIGH/OBSERVED]`
 
 > **CORRECTION — `F4_S2_Mul` is `61`, not `60`/`65`.** Earlier internal drafts variously stated 60
-> and 65 multiply placements for `F4`'s mul slot. The binary truth, re-counted this pass
-> (`nm libisa-core.so | rg -c 'Slot_f4_s2_mul_encode'`), is **`61`**. Use 61. `[HIGH/OBSERVED]`
+> and 65 multiply placements for `F4`'s mul slot. The binary truth
+> (`nm libisa-core.so | rg -c 'Slot_f4_s2_mul_encode'`) is **`61`**. Use 61. `[HIGH/OBSERVED]`
 
 These per-slot **opcode populations are permissive supersets** (Tensilica lists `vec_alu`-class ops
 in nearly every slot). To turn them into a *co-issue* model we need the **class-exclusive** facts —
 the ones a scheduler can rely on — derived by asking *which functional class appears in NO other
-slot*. Each of the four facts below was re-derived from the slot/unit, then adversarially
-re-challenged against the opcode-name superset.
+slot*. Each of the four facts below is grounded in the slot/unit and cross-checked against the
+opcode-name superset.
 
 ### 2.1 The two memory lanes — `XCHAL_NUM_LOADSTORE_UNITS = 2`
 
 `S0` and `S1` are the **two** memory lanes. The hardware fact is `XCHAL_NUM_LOADSTORE_UNITS = 2` and
 `XCHAL_UNIFIED_LOADSTORE = 1` (`core-isa.h`) — a unified two-port LSU. It surfaces three ways, all
-OBSERVED this pass:
+OBSERVED:
 
 * **Slot roster:** every format carries S0 (a `ldst`/`ldstalu` unit) + S1 (a `ld` unit). No format
   has a *third* memory slot.
@@ -240,7 +240,7 @@ Scatter/gather (SuperGather) ops concentrate in the memory slots: `S0_LdStALU`/`
 
 The genuine integer **quad-MAC** (multiply-accumulate into the 1536-bit `wvec` accumulator) is the
 `ivp_mulqa*` family. Its placement is **`S2_Mul`-exclusive**: `Opcode_ivp_mulqa*_Slot_*` outside
-`*_s2_mul` = **∅** this pass. Every format has **exactly one** `S2_Mul` slot (the `mul` functional
+`*_s2_mul` = **∅**. Every format has **exactly one** `S2_Mul` slot (the `mul` functional
 unit, absent only in `N0`/`N2`). There is **no replicated multiplier** (`XCHAL_HAVE_MAC16 = 0`;
 `HAVE_MUL16`/`MUL32`/`MUL32_HIGH = 1`). Therefore **at most one integer quad-MAC issues per bundle.**
 `[HIGH/OBSERVED]`
@@ -359,7 +359,7 @@ true Load/Store or scatter/gather op (escaped `\|` are literal column borders):
 The shipped GPSIMD device library `libneuroncustomop.a` (`custom_op/neuron/`, elf32-xtensa-le, 30
 members) was disassembled with the device-native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`,
 `XTENSA_SYSTEM=…/ncore2gp/config`) and every FLIX `{ … }` bundle counted and classified by the §1
-decoders. Reproduced this pass:
+decoders. Reproduced:
 
 * **1479 / 1479** FLIX bundles decoded (`rg -c '{.*}'` = 1479; per-member Σ = 1094 wrapper_api + 122
   start_exit + 110 data_transfer + 66 translation + 43 allocator + 21 stack_switch + 20
@@ -389,7 +389,7 @@ A long-standing residual stated the per-port single-issue reservation (the rule 
 count" — e.g. *can two ALU ops and a mov truly all retire this cycle*) was unrecoverable because the
 `MODULE_SCHEDULE` reservation bodies ship **empty**. That is **true of the `libisa-core.so` TIE
 tables** (the encoding DB carries no schedule) but **false of `libcas-core.so`** — the cycle model
-ships the reservation as fully populated function bodies, re-confirmed this pass:
+ships the reservation as fully populated function bodies:
 
 | family (`nm libcas-core.so`) | count | role |
 |---|--:|---|
@@ -542,7 +542,7 @@ tag carries the access width. `[HIGH/OBSERVED]`
 
 ---
 
-## 6. Adversarial self-verification — the 5 strongest claims, re-challenged this pass
+## 6. Adversarial self-verification — the 5 strongest claims, re-challenged
 
 1. **Peak issue width = 5 (F3, F11).** `format_decoder` + `slots[]` give `F3`/`F11` five slots each;
    the slot-count census sums to 46. **Re-challenge:** the device library tops out at 4-op bundles

@@ -43,7 +43,7 @@ OBJD = …/gpsimd_tools/tools/XtensaTools/bin/xtensa-elf-objdump   (XTENSA_CORE=
 
 **Confidence tags** follow
 [the Confidence & Walls Model](../reference/confidence-model.md): `OBSERVED` =
-a byte/string/header read this session; `INFERRED` = reasoned over OBSERVED
+a byte/string/header read; `INFERRED` = reasoned over OBSERVED
 facts; `CARRIED` = consolidated from a cited sibling at its stated confidence.
 Crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but
 real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive
@@ -74,7 +74,7 @@ reading), **NOTE** (orientation).
 4. **The boot signature is a relocated CAYMAN shape** (§4): NX reset `j 0x1dc`
    (== CAYMAN), but `enter_run @0x94` (CAYMAN `@0x90`, **+0x4**), Q7 reset
    `j 0x220` (CAYMAN `j 0x200`, **+0x20**), window base `0x00100000`
-   (CAYMAN-family `0x04000000`). `[HIGH/OBSERVED — native objdump re-decoded]`
+   (CAYMAN-family `0x04000000`). `[HIGH/OBSERVED]`
 5. **"Sunda-mode" ≠ SUNDA** (§4f): the CAYMAN-and-later runtime software-fetch
    *fallback* is *named after* the legacy SUNDA-style fetch but is **not** the
    SUNDA generation. The SUNDA NX image is the pre-dual-mode monolithic baseline
@@ -556,10 +556,10 @@ engine carves are byte-identical to their `.a` RELEASE members (full shas in
 [SUNDA SP + remaining engines](../images/sunda-sp-remaining.md)); the POOL/Q7
 carves likewise (see [SUNDA POOL](../images/sunda-pool.md)).
 
-### 4c. The boot / reset signature (re-decoded this session with the native objdump)
+### 4c. The boot / reset signature
 
-I re-carved `img_SUNDA_NX_POOL_RELEASE_IRAM` from `A` (sha256 `0ef85167…f06b68`,
-matching the page anchor) and re-decoded the reset/enter_run trampoline with
+The carved `img_SUNDA_NX_POOL_RELEASE_IRAM` from `A` (sha256 `0ef85167…f06b68`,
+matching the page anchor) decodes its reset/enter_run trampoline under
 `OBJD` (`XTENSA_CORE=ncore2gp`):
 
 ```
@@ -585,7 +585,7 @@ CAYMAN), DRAM `@0x18` = `4 × 0x00001000` dispatcher-state init block (==).
 > CAYMAN-family window base is `0x04000000`. The v2 boot is a *relocated variant*
 > of the same trampoline shape, not a new boot path: same `06 76` reset value,
 > `enter_run @0x94` (vs `0x90`), Q7 reset `+0x20`, window `0x00100000`.
-> `[HIGH/OBSERVED — reset/enter_run native-decoded this session; window base
+> `[HIGH/OBSERVED for reset/enter_run; window base
 > CARRIED from the POOL image survey]`
 
 ### 4d. The NCFW management-core topology (the SUNDA-distinct fabric)
@@ -718,8 +718,7 @@ partial-order bottom.**
 
 ## 6. Adversarial self-verification
 
-Five strongest claims, each re-challenged against the shipped binaries/headers
-this session:
+Five strongest claims, each re-challenged against the shipped binaries/headers:
 
 | # | Claim | Challenge | Verdict |
 |---|---|---|---|

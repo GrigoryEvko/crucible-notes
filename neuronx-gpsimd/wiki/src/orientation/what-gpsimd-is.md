@@ -36,7 +36,7 @@ integer `281040` decodes through the shipped `xtensa-versions.h` macro
 `XTENSA_HWVERSION_RI_2020_4 281040 /* versions NX1.1.4, LX7.1.4 */`, so the **HW
 IP** is the RI-2020.4 release while the **toolchain** that builds for it is
 RI-2022.9 — two axes a reimplementer must not conflate.
-`[HIGH/OBSERVED — re-read this pass: ncore2gp-params, all nine tokens]`
+`[HIGH/OBSERVED]`
 
 The compute core itself is small, dense, and entirely conventional Tensilica:
 
@@ -50,8 +50,8 @@ The compute core itself is small, dense, and entirely conventional Tensilica:
 | SIMD datapath | 512-bit (32 × 16-bit lanes) + quad-MAC widening into the 1536-bit `wvec` accumulators | `regfiles[]` (`vec` 512b×32, `wvec` 1536b×4) |
 | SPMD width | **8** Q7 cores, one image, `rank = PRID ∈ {0..7}` | `NRTUCODE_CORE_*_NX_POOL` enum; PRID = special-reg 235 |
 
-All five FLIX/regfile immediates above were re-disassembled directly out of
-`libisa-core.so` this pass (`mov $0xe`, `mov $0x2e`, `mov $0x8` at the named
+The five FLIX/regfile immediates above read directly out of
+`libisa-core.so` (`mov $0xe`, `mov $0x2e`, `mov $0x8` at the named
 addresses). `[HIGH/OBSERVED]`
 
 > **GOTCHA — say "7 outcomes → 4 byte-lengths", never one number alone.** The
@@ -71,7 +71,7 @@ int32/uint32 add/sub/mul datapath (opcode `0x41`, `TENSOR_TENSOR_ARITH_OP`); the
 **gather/scatter/cross-lane-reduce/custom-op** lane (a hand-authored PyTorch op
 rides opcode `0xF0`, `EXTENDED_INST`); and the **SB2SB collective hop** (opcode
 `0xBF`, `SB2SB_COLLECTIVE` — one step of a ring all-reduce). All three opcode
-bytes were re-read this pass from the arch-ISA header
+bytes are read from the arch-ISA header
 `aws_neuron_isa_tpb_common.h`. `[HIGH/OBSERVED]`
 
 > **GOTCHA — the keystone fact reimplementers get wrong.** GPSIMD is **not** the
@@ -167,8 +167,8 @@ The five GPSIMD product generations are **not five processors**. They are one
 Vision-Q7 "Cairo" core wrapped in a per-generation SoC envelope. The host runtime
 spells the mapping out: the decompiled `nrtucode_get_ext_isa_internal`
 (@ `0x9b2b30`, a `jmp *%rdx` jump table) routes a **coretype** byte to a
-per-generation `*_libs` table (`cayman_libs`, `mariana_libs`, … re-confirmed at
-their `lea`-targeted addresses this pass). The coretype constants are read
+per-generation `*_libs` table (`cayman_libs`, `mariana_libs`, … at
+their `lea`-targeted addresses). The coretype constants are read
 directly; the host-side `arch_id` selector byte is `coretype − 1` — a stride, not
 a literal table.
 
@@ -183,7 +183,7 @@ a literal table.
 
 The `{6,13,21,29,37}` coretypes are read directly from the dispatch switch and
 the `NRTUCODE_CORE_{SUNDA,CAYMAN,MARIANA,MARIANA_PLUS,MAVERICK}_NX_POOL` enum
-(all five present in `libnrtucode_internal.so` this pass). `[HIGH/OBSERVED]`
+(all five present in `libnrtucode_internal.so`). `[HIGH/OBSERVED]`
 
 > **The gen-invariance thesis, in one line.** There is a single Vision-Q7
 > reimplementation R(Q7) — one FLIX decoder, one microarch, one XEA3 boot/IRQ
@@ -200,7 +200,7 @@ the `NRTUCODE_CORE_{SUNDA,CAYMAN,MARIANA,MARIANA_PLUS,MAVERICK}_NX_POOL` enum
 > `arch_id 0x24` falls through to the unsupported default — there is no `cmp
 > $0x24` anywhere. So `coretype 37` is **OBSERVED** (the switch arm, the enum
 > ordinal, the `maverick` literal × **189** in the twin vs × 0 in the shipped
-> front, all re-counted this pass) but `arch_id 36/0x24` is **INFERRED** from the
+> front) but `arch_id 36/0x24` is **INFERRED** from the
 > stride. Every claim about v5 *interiors* is tagged INFERRED, and no product
 > "Trn4" binding is named in this corpus. `[ct37 OBSERVED · arch_id 36 INFERRED]`
 > Full table: [Codename ↔ Generation Cross-Walk](../reference/codename-crosswalk.md).
@@ -214,12 +214,12 @@ the `NRTUCODE_CORE_{SUNDA,CAYMAN,MARIANA,MARIANA_PLUS,MAVERICK}_NX_POOL` enum
 
 ## 5. What you can rebuild from this guide
 
-After the analysis wave closed, the GPSIMD / Vision-Q7 "Cairo" toolchain is a
+The GPSIMD / Vision-Q7 "Cairo" toolchain is a
 **byte-grounded, execution-validated reimplementation reference for the v2–v4
 silicon**, and a **header-OBSERVED + bounded-INFERRED reference for v5 (MAVERICK)
 and v1 (TONGA)**. The lever behind that strength: the shipped `libfiss-base.so`
-value leaves (**864** `module__xdref_` per-element functions, `nm`-confirmed this
-pass) are driven **live, per input, via `ctypes`** — so the binary itself is the
+value leaves (**864** `module__xdref_` per-element functions, `nm`-confirmed)
+are driven **live, per input, via `ctypes`** — so the binary itself is the
 arbiter of value semantics, not a guess.
 
 | Axis | Result | Confidence |
@@ -270,7 +270,5 @@ covers SUNDA through (the header surface of) MAVERICK.
 ---
 
 *Every claim on this page carries a `[CONF/PROV]` tag per the
-[Confidence & Walls Model](../reference/confidence-model.md); the identity tokens,
-FLIX/regfile immediates, opcode bytes, coretype enum, and 864-leaf count were all
-re-read against the shipped binaries this pass. Term anchors are in the
+[Confidence & Walls Model](../reference/confidence-model.md). Term anchors are in the
 [Master Glossary](../glossary.md).*

@@ -174,7 +174,7 @@ lifts. `[HIGH]`
 > Vision coprocessor, no FLIX/VLIW. Because `ncore2gp` is the *only* config that
 > ships, pointing it at NCFW code makes objdump read scalar `op0 = 0xe`/`0xf` bytes
 > as Vision FLIX bundles. That is the entire origin of the spurious "~26-28% FLIX"
-> artifact some early non-DX tasks reported, demonstrated empirically on a crafted
+> artifact some early analyses reported, demonstrated empirically on a crafted
 > blob. NCFW must be decoded with the **scalar-LX length rule** (`op0` ∈ {e,f} ⇒
 > 3-byte instruction) and resynced at `retw.n`; the only real limit there is the
 > absent NCFW config, not a real FLIX layer.
@@ -187,7 +187,7 @@ header is compiled with `gcc` and field offsets + struct size are read directly 
 `offsetof()`/`sizeof()`, confirming the header's own `ISA_STATIC_ASSERT(sizeof==N)`.
 This promotes a layout from `INFERRED` to `OBSERVED-by-compilation`.
 
-**Anchor (verified this pass):** the shipped CAYMAN header
+**Anchor:** the shipped CAYMAN header
 `.../neuron_cayman_arch_isa/tpb/aws_neuron_isa_tpb_ctrl_mv.h` carries
 `ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_CTRL_MV_STRUCT) == 64, ...)`; the four
 per-gen header trees ship as cayman (111 headers) / mariana (120) / maverick (126) /
@@ -253,7 +253,7 @@ roster is byte-identical in array order between the source and the binary. `[HIG
 ### (g) The confidence discipline + premise-correction culture
 
 Every claim carries a per-**claim** confidence (`HIGH`/`MED`/`LOW`) and an evidence
-tag (`OBSERVED` = read from shipped bytes/files **or executed this pass**;
+tag (`OBSERVED` = read from shipped bytes/files **or executed**;
 `INFERRED` = reasoned over `OBSERVED`; `CARRIED` = re-used at a cited report's
 confidence). A synthesis **never inflates** a source's confidence — it carries it
 forward. The defining habit is **adversarial premise-correction**: when later binary
@@ -387,7 +387,7 @@ for A, B in [(0,0),(0,1),(1,0),(127,128),(128,127),(200,200),(5,250),(250,5)]:
     assert v_ltu == v_fs0 == (1 if (A & 0xff) < (B & 0xff) else 0)
 ```
 
-**Step 4 — the result.** Re-running this pass: 20 live calls across a 10-pair
+**Step 4 — the result.** 20 live calls across a 10-pair
 boundary grid, `fs0ltu` ≡ `ltu_1_8_8` ≡ `(unsigned)(A<B)`, **0 mismatches**. The
 claim is now `HIGH/OBSERVED-by-execution` — anchored in `nm` (count + symbol
 address), `objdump` (wrapper body + delegate semantics), and the live binary itself
@@ -409,7 +409,7 @@ missed. Each was hit, diagnosed, and codified.
 
 For carving a `.rodata`-resident struct by its vaddr you can `xxd`/`objdump` directly
 — the file offset equals the VMA. **`.data` does not.** It carries a per-binary
-delta. Confirmed on the oracle binary this pass with `readelf -SW`:
+delta. Confirmed on the oracle binary with `readelf -SW`:
 
 ```text
 [11] .text    Addr 0000…0190430  Off 190430   ; equal

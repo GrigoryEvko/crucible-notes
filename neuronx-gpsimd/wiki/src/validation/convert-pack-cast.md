@@ -2,8 +2,8 @@
 
 This page is the **differential-validation certificate** for the width-changing datapath of the
 Vision-Q7 *Cairo* (`ncore2gp`) GPSIMD engine: the **convert / pack / cast** kernel family. It
-applies the [4-oracle bit-exact method](four-oracle-method.md) — **GX-SEM** (an x86-body model
-lifted this pass from the disassembly), **GX-FLIX** (the device-assembled + device-decoded FLIX
+applies the [4-oracle bit-exact method](four-oracle-method.md) — **SEM** (an x86-body model
+lifted from the disassembly), **FLIX** (the device-assembled + device-decoded FLIX
 bundle), **nki-0.3.0** (the shipped numpy reference simulator), and **libfiss-base** driven
 **LIVE** via `ctypes` — to *prove* every sign-fill, zero-fill, width-boundary, saturation, and
 round-vs-truncate behaviour of the family **bit-exact** against the shipped vendor binary, on an
@@ -12,7 +12,7 @@ identical width-boundary / sign-fill / saturation / round-vs-truncate edge + fuz
 The arbiter is **leg (d)**: the real shipped `libfiss-base.so` is `dlopen`'d and each
 `module__xdref_*` value leaf is **called on every input** (the binary computes the result; the
 SEM model is checked against it, never the reverse). Every value claim below carries
-`[HIGH/OBSERVED·exec]` where it was computed by the binary in-process this pass, per the
+`[HIGH/OBSERVED·exec]` where it was computed by the binary in-process, per the
 [confidence model](../reference/confidence-model.md).
 
 This is the **value-and-edge** companion to four encoding/semantics pages, each of which it
@@ -28,18 +28,18 @@ cross-validates:
 > **NOTE — the binary and the address arithmetic this page uses.** `libfiss-base.so`
 > (`extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/`, gitignored — reach it with an
 > absolute path or `fd --no-ignore`): ELF64 x86-64, **not stripped**, **12,330,016 B**, sha256
-> `260b110cd59c76b090cbdeb4d5d90f5245be34792618c023ab963ce108d3cc94` (re-hashed this pass). Its
+> `260b110cd59c76b090cbdeb4d5d90f5245be34792618c023ab963ce108d3cc94`. Its
 > `module__xdref_*` value leaves are in `.text`, **VMA == file-offset** (so every address below
-> is both an objdump start and a symbol address — `nm` re-read this pass). The device toolchain
+> is both an objdump start and a symbol address, read from `nm`). The device toolchain
 > (`xtensa-elf-as`/`xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`, GNU binutils 2.34.20200201)
-> assembles + decodes the FLIX bundle (§6, the GX-FLIX leg); device mnemonics come from
-> `libisa-core.so` strings. `[HIGH/OBSERVED]`
+> assembles + decodes the FLIX bundle (§6, the FLIX leg); device mnemonics come from
+> `libisa-core.so` strings.
 
 > **GOTCHA — these are x86-64 host leaves, not device code.** `libfiss-base.so` is the *host
 > ISS value oracle*; its bodies are x86-64 (`movsbw`, `cmova`, `shr %cl`). The device IVP32
 > mnemonics (`ivp_packpnx48`, `ivp_cvtf32f16`) live in the FLIX leg (§6). Leg (d) computes the
 > *value*; leg (b) binds the *device encoding* to that value. Do not disassemble `libfiss-base.so`
-> expecting Xtensa. `[HIGH/OBSERVED]`
+> expecting Xtensa.
 
 ---
 
@@ -49,7 +49,7 @@ The convert/pack/cast family is the **width-changing** part of the datapath: it 
 between the 8/16/24/32/48-bit integer containers (and fp16↔fp32) with one of three *fill*
 disciplines (zero-fill, sign-fill, saturating clamp) or rounds an accumulator down with one of two
 *round* disciplines (round-half-up, truncate). `nm` grounds the census against the **864**-leaf
-`module__xdref_*` oracle (`nm libfiss-base.so | rg -c module__xdref_` = **864**, this pass):
+`module__xdref_*` oracle (`nm libfiss-base.so | rg -c module__xdref_` = **864**):
 
 | Sub-family | Symbols (representative) | `nm -c` count | Discipline |
 |---|---|---|---|
@@ -71,13 +71,13 @@ disciplines (zero-fill, sign-fill, saturating clamp) or rounds an accumulator do
 
 ---
 
-## 2. The recovered semantics (leg a — lifted from this-pass disassembly)
+## 2. The recovered semantics (leg a — lifted from disassembly)
 
-Each leaf body below was re-disassembled this pass with plain `objdump -d` at the `nm` address.
+Each leaf body below was disassembled with plain `objdump -d` at the `nm` address.
 The pseudocode names the real symbol and is what leg (a) computes; leg (d) (the live binary) is the
 authority it is checked against.
 
-### 2.1 SEXT / ZEROEXT — the sign-fill vs zero-fill axis `[HIGH/OBSERVED]`
+### 2.1 SEXT / ZEROEXT — the sign-fill vs zero-fill axis
 
 ```
 module__xdref_sext_16_8   @0x870bc0 : movsbw %sil,%si ; movzwl %si,%esi ; mov %esi,(%rdx)
@@ -90,11 +90,11 @@ module__xdref_zeroext_16_8@0x870c30 : mov %esi,(%rdx)                    // bare
 module__xdref_zeroext_48_32@0x85a950: low = value ; high word(s) = 0
 ```
 
-The disassembly of `sext_16_8`'s tail (`mov %esi,(%rdx); ret`) was re-read this pass; the entry
+The tail of `sext_16_8` is `mov %esi,(%rdx); ret`; the entry
 `movsbw`/`movzwl` precede it. The `sext_2_1`/`sext_4_1` "replicate-bit0" idiom (`shl 31; sar 31`)
 broadcasts bit0 to all bits, then masks to the destination field width — a sub-byte sign fill.
 
-### 2.2 CVT narrow / widen — the three narrow disciplines `[HIGH/OBSERVED]`
+### 2.2 CVT narrow / widen — the three narrow disciplines
 
 ```
 module__xdref_cvt32s_32_24 @0x5ba860 : shl $8 ; sar $8 ; mov %esi,(%rdx)
@@ -113,12 +113,12 @@ module__xdref_cvt16s_16_24{l,h}, cvt32s_32_48{l,h} : thin wrappers that CALL sat
 > (low16 = 0). A reimplementer who *clamps* here diverges on every input whose low-16 high bit is
 > set. `[HIGH/OBSERVED·exec]` (this is the cvt32 phantom of the convert family, extended.)
 
-### 2.3 SATS_* saturating narrow — the CLAMP `[HIGH/OBSERVED]`
+### 2.3 SATS_* saturating narrow — the CLAMP
 
 All four share the **redundant-sign-bits** overflow test: broadcast the destination sign bit and
 compare it against the bits being dropped; if those are pure sign-extension the value is in range,
 else clamp to {pos_max, neg_min} with the **source sign bit preserved at top**. The
-`sats_8_16` body (`@0x8711a0`), re-disassembled this pass:
+`sats_8_16` body (`@0x8711a0`):
 
 ```asm
 sats_8_16 @0x8711a0:
@@ -146,9 +146,9 @@ sats_32_48 @0x5ba760 : ptr-ABI {lo@*rsi, hi16@*(rsi+4)} ; signword=lo sar31 ;
                        in-range iff hi==signword else clamp {0x7fffffff,0x80000000}
 ```
 
-### 2.4 PACK core — the round-half-up engine `[HIGH/OBSERVED]`
+### 2.4 PACK core — the round-half-up engine
 
-`module__xdref_pack @0x82cd10`, re-disassembled this pass (the canonical round-half-up repack):
+`module__xdref_pack @0x82cd10` (the canonical round-half-up repack):
 
 ```asm
 pack @0x82cd10:                         ; (rsi=&acc, rdx=shift, rcx=out)
@@ -176,7 +176,7 @@ packp_16_48 @0x82cd80, packq_16_48 @0x82cdf0 : wrap _nosat with a final (xstate-
 packl_16_48 @0x5e95e0 : movzwl (%rsi) -> low-16 TRUNCATE (no bias) ; packm = mid-word
 ```
 
-### 2.5 PACKVR / PACKVRNR / PACKVRU — variable-shift, the round-vs-truncate distinction `[HIGH/OBSERVED]`
+### 2.5 PACKVR / PACKVRNR / PACKVRU — variable-shift, the round-vs-truncate distinction
 
 ```
 packvr_16_24_32   @0x5e9610 : sh = min(shift,0x17) ; v = sign_extend24(acc) ;
@@ -191,9 +191,9 @@ packvru_16_24_32  @0x5e9700 : round bias as packvr, UNSIGNED clamp (overflow -> 
 > **GOTCHA — the `*vr/*vrnr/*vru` accumulator is passed BY VALUE in `%esi`, not by pointer.**
 > Unlike the wide `pack` core (which reads `(%rsi)`), these variable-shift leaves take a `u32`
 > accumulator *by value* in `%esi`, the shift in `%edx`, the out pointer in `%rcx`. A driver that
-> passes a pointer reads garbage (a found-and-fixed harness false-positive, §8). `[HIGH/OBSERVED]`
+> passes a pointer reads garbage (a found-and-fixed harness false-positive, §8).
 
-### 2.6 fp round-to-integral and fp→int (legs c/d — full IEEE-754 soft-float) `[HIGH/OBSERVED]`
+### 2.6 fp round-to-integral and fp→int (legs c/d — full IEEE-754 soft-float)
 
 ```
 fitrunc/ficeil/fifloor/firound/firint_1_32f_32f @0x87d8e0/0x87d3c0/0x87d5a0/0x87d760/0x87d9d0 :
@@ -215,7 +215,7 @@ cvtf32_1_32f_16f @0x5b77f0 : fp16 -> fp32 widen (exact, no rounding).
 
 ## 3. Live oracle — exact `ctypes` binds (leg d)
 
-The bodies above are *checked against* the live binary. The ABI signatures recovered this pass
+The bodies above are *checked against* the live binary. The recovered ABI signatures
 (`restype = None`, all outputs via pointer):
 
 | Leaf | Recovered C-ABI | Out slot |
@@ -238,8 +238,8 @@ The bodies above are *checked against* the live binary. The ABI signatures recov
 
 | Leg | Reference | What it computes |
 |---|---|---|
-| **(a) GX-SEM** | python from §2 (disassembly-lifted) | the recovered x86-body model |
-| **(b) GX-FLIX** | device `xtensa-elf-as` assemble + `xtensa-elf-objdump` decode | raw-bytes → mnemonic identity (§6) |
+| **(a) SEM** | python from §2 (disassembly-lifted) | the recovered x86-body model |
+| **(b) FLIX** | device `xtensa-elf-as` assemble + `xtensa-elf-objdump` decode | raw-bytes → mnemonic identity (§6) |
 | **(c) nki** | `result.astype(dst)` in the shipped `nki-0.3.0` simulator | numpy narrow = **truncate-wrap**; fp→int = truncate-toward-zero |
 | **(d) libfiss LIVE** | `ctypes` dlopen of the real `libfiss-base.so` | the **arbiter** — the binary's own arithmetic |
 
@@ -247,7 +247,7 @@ The bodies above are *checked against* the live binary. The ABI signatures recov
 > literally `result.astype(int8/int16)` = numpy **mod-2ⁿ truncate-wrap**. The hardware `sats_*` /
 > signed `cvtNs` is a **CLAMP**. nki routes dtype-narrowing through the Vector/DVE engine, so leg
 > (c) *legitimately* diverges on every overflow (§5.2) — a property of the nki API surface, not a
-> validation weakness. `[HIGH/OBSERVED]`
+> validation weakness.
 
 ---
 
@@ -276,7 +276,7 @@ The bodies above are *checked against* the live binary. The ABI signatures recov
 
 ### 5.2 SATURATING-NARROW — the 4-way differential (the nki divergence)
 
-These are the **live** `sats_8_16` outputs reproduced this pass (cf. §2.3 body); nki's
+These are the **live** `sats_8_16` outputs (cf. §2.3 body); nki's
 `astype(int8)` wraps where the hardware clamps:
 
 | input | SEM(a) | **LIVE(d)** | nki(c) | verdict |
@@ -291,14 +291,14 @@ These are the **live** `sats_8_16` outputs reproduced this pass (cf. §2.3 body)
 | `0xffff` (−1) | 0xff | **0xff** | 0xff | AGREE |
 | `0x8000` (−32768) | 0x80 | **0x80** | 0x00 | a=d CLAMP \| c WRAP |
 
-`sats_16_32` LIVE this pass: `0x00008000`→`0x7fff`, `0xffff8000`→`0x8000`, `0x0000ffff`→`0x7fff`.
+`sats_16_32` LIVE: `0x00008000`→`0x7fff`, `0xffff8000`→`0x8000`, `0x0000ffff`→`0x7fff`.
 **SEM and LIVE agree bit-exact on every case (the CLAMP); nki(c) diverges only on overflow** —
 root cause: numpy astype = truncate-wrap, hardware = clamp. `[HIGH/OBSERVED·exec]`
 
 ### 5.3 PACK ROUND vs TRUNCATE — the central distinction (SEM ≡ LIVE on both)
 
 The headline of this page. The `packvr` (round-half-up + signed-sat) and `packvrnr` (pure
-truncate) columns are the **live** outputs reproduced this pass — they differ *precisely* when the
+truncate) columns are the **live** outputs — they differ *precisely* when the
 dropped fraction's MSB is set (`rb = 1<<(sh-1)`) or when rounding pushes across the SAT clamp:
 
 | (acc, shift) | `packvr` (round+sat) | `packvrnr` (truncate) | round ≠ trunc? |
@@ -316,8 +316,7 @@ vs `0x18>>5 = 0` (truncate). The **pack core** was also driven live: `pack(0x18,
 
 ### 5.4 fp round-to-integral and fp→int — LIVE(d) vs numpy(c)
 
-The **live** `firound` vs `firint` outputs reproduced this pass (the *silent rounding mismatch*
-hunted in the report **"Silent Mismatches in Rounding / Saturation Edge Cases"**):
+The **live** `firound` vs `firint` outputs (the *silent rounding mismatch* class):
 
 | x | `firound` (half-away) | `firint` (RNE / half-even) |
 |---|---|---|
@@ -347,7 +346,7 @@ rule). `fp32→int32` (`trunc_1_1_32_32f_32`) is bit-exact with numpy truncate-t
 
 `module__xdref_shift_amt_satu_32` (`@0x80e7e0`, body `cmp $0x20,%esi ; mov $0x20,%eax ; cmova
 %eax,%esi ; mov %esi,(%rdx)`) — `cmova` = conditional-move if **unsigned-above** — gates the shift
-of every pack/narrow. LIVE this pass:
+of every pack/narrow. LIVE:
 
 | amt | `0` | `31` | `32` | `33` | `0x7fffffff` | `0x80000000` | `0xffffffff` |
 |---|---|---|---|---|---|---|---|
@@ -369,7 +368,7 @@ The pack/convert mnemonics come from `libisa-core.so` strings: `ivp_packlnx48`, 
 `packpnx48`, `packqnx48`, `packvnx48`, `packvrnx48`, `packvrnrnx48`, `packvru2nx24`, `cvt24s2nx16`,
 `cvt32s24`, `cvt48snx32`, `cvtf16f32`, `cvtf32f16`, `sats*` (the device names of the §2 leaves).
 The bundle (`flix.s`) assembled by `xtensa-elf-as` (`XTENSA_CORE=ncore2gp`) and decoded bit-exact
-by `xtensa-elf-objdump` (the GX-FLIX oracle):
+by `xtensa-elf-objdump` (the FLIX oracle):
 
 ```
  0:  { nop; ivp_packlnx48      v2, wv0 }
@@ -388,7 +387,7 @@ Raw `.text` bytes (LE): `2fc51438 2962a402` (packl), `2fc52038 2962a402` (packp)
 > from the wide-vector regfile `wv` (the 48-bit accumulator) and writes the NX16 regfile `v`; the
 > variable-shift packs take their shift from a scalar AR `a`. **`packvr` vs `packvrnr` differ in
 > exactly ONE encoding nibble** — the 5th byte, `0x29` (round) vs `0x28` (no-round) — the
-> round/no-round selector. This binds the §5.3 value distinction to the encoding. `[HIGH/OBSERVED]`
+> round/no-round selector. This binds the §5.3 value distinction to the encoding.
 
 ---
 
@@ -421,7 +420,7 @@ Raw `.text` bytes (LE): `2fc51438 2962a402` (packl), `2fc52038 2962a402` (packp)
 ## 8. Harness-side false positives — found, fixed, arbitrated by the live binary
 
 In the spirit of the method (the live binary is always the arbiter), four *driver* bugs surfaced
-and were corrected this pass — none was a firmware divergence:
+and were corrected — none was a firmware divergence:
 
 1. **`packvr/packvrnr/packvru` accumulator passed by value, not pointer.** Initial driver passed a
    pointer and read garbage; corrected to `%esi` by-value (§2.5) ⇒ 100% agreement.
@@ -432,35 +431,29 @@ and were corrected this pass — none was a firmware divergence:
 4. **`sats_16_24` was fed out-of-domain 32-bit inputs** (it is a 24-bit-input narrow); restricting
    the corpus to the 24-bit domain removed 2 spurious mismatches.
 
-`[HIGH/OBSERVED]`
-
 ---
 
-## 9. Adversarial self-verify — the five strongest claims re-challenged
+## 9. Adversarial self-verify
 
-1. **"`pack` core is round-half-up `rb=1<<(sh-1)`."** Re-challenge: could the `>>` be arithmetic
-   (sign-fill)? The body `and $0x7fffffff` *before* `shr %cl` clears bit31, so the shift operates
-   on a 31-bit non-negative value — it is **logical**, and the bias is added before it. Confirmed
-   against live `pack(0x18,5)=0x0001` (round); the same input is `0x0000` under truncate.
-   `[HIGH/OBSERVED·exec]`
-2. **"`packvr` rounds + sat, `packvrnr` truncates."** Re-challenge: is the difference real or a
-   harness artifact? Live `(0x000018,5)`: `packvr=0x0001`, `packvrnr=0x0000` — they DIFFER on the
-   same input, and the FLIX encoding differs in exactly the 5th nibble (`0x29` vs `0x28`). Both
-   the value and the encoding separate them. `[HIGH/OBSERVED·exec]`
-3. **"FIROUND = half-away, FIRINT = RNE."** Re-challenge: is FIRINT's `+0.0` on `+0.5` an ABI
-   artifact (reading the wrong slot)? The value `+0.0` (RNE of 0.5) appears in `r9` and is the
+1. **`pack` core is round-half-up `rb=1<<(sh-1)`.** The body `and $0x7fffffff` *before* `shr %cl`
+   clears bit31, so the shift operates on a 31-bit non-negative value — it is **logical**, and the
+   bias is added before it. Confirmed against live `pack(0x18,5)=0x0001` (round); the same input is
+   `0x0000` under truncate. `[HIGH/OBSERVED·exec]`
+2. **`packvr` rounds + sat, `packvrnr` truncates.** Live `(0x000018,5)`: `packvr=0x0001`,
+   `packvrnr=0x0000` — they DIFFER on the same input, and the FLIX encoding differs in exactly the
+   5th nibble (`0x29` vs `0x28`). Both the value and the encoding separate them. `[HIGH/OBSERVED·exec]`
+3. **FIROUND = half-away, FIRINT = RNE.** The value `+0.0` (RNE of 0.5) appears in `r9` and is the
    *correct RNE result*; `firound(+2.5)=+3` but `firint(+2.5)=+2` confirms half-even independently.
    `[HIGH/OBSERVED·exec]`
-4. **"cvtf32 fp16→fp32 is exact: 1.0→0x3f800000, qNaN→0x7fc00000."** Re-challenge: is qNaN
-   canonicalised or passed through? Live `cvtf32_1_32f_16f(0x7e00 fp16-qNaN) = 0x7fc00000`
-   (canonical fp32 qNaN), `0x3c00→0x3f800000`, `0x7c00(+inf)→0x7f800000`, `0x3800(0.5)→0x3f000000`.
-   Exact widen, qNaN canonicalised. `[HIGH/OBSERVED·exec]`
-5. **"shift_amt_satu_32 unsigned-clamps to 32, not mask-mod-32."** Re-challenge: could `0xffffffff`
-   wrap to a small value? Live `0xffffffff→32`, `0x80000000→32`, `0x21→32` — `cmova` (unsigned
-   above) sends every high-bit-set or >32 value to exactly 32. A masked `>>` would give `0`.
+4. **cvtf32 fp16→fp32 is exact: 1.0→0x3f800000, qNaN→0x7fc00000.** Live
+   `cvtf32_1_32f_16f(0x7e00 fp16-qNaN) = 0x7fc00000` (canonical fp32 qNaN), `0x3c00→0x3f800000`,
+   `0x7c00(+inf)→0x7f800000`, `0x3800(0.5)→0x3f000000`. Exact widen, qNaN canonicalised.
    `[HIGH/OBSERVED·exec]`
+5. **shift_amt_satu_32 unsigned-clamps to 32, not mask-mod-32.** Live `0xffffffff→32`,
+   `0x80000000→32`, `0x21→32` — `cmova` (unsigned above) sends every high-bit-set or >32 value to
+   exactly 32. A masked `>>` would give `0`. `[HIGH/OBSERVED·exec]`
 
-All five survive re-challenge against the binary. The single most consequential **CORRECTION**
+The single most consequential **CORRECTION**
 this page asserts is in §5.4: a reimplementer's natural "one round() routine" for fp
 round-to-integral is **silently wrong on every even-integer `.5` tie** — `FIROUND` (half-away) and
 `FIRINT` (round-half-even) are *distinct* shipped leaves, and `firint` additionally returns its
@@ -470,7 +463,7 @@ result in a *different* output pointer (`r9`, not `rcx`).
 
 ## 10. Verdict
 
-`[HIGH/OBSERVED·exec]` The convert/pack/cast family is **bit-exact between the GX-SEM lift (a)
+`[HIGH/OBSERVED·exec]` The convert/pack/cast family is **bit-exact between the SEM lift (a)
 and the LIVE shipped `libfiss-base.so` (d)** over an edge + ~4,000-per-op random corpus —
 **~64,000 lane comparisons, 0 mismatch** — covering sext/zeroext (sign vs zero fill),
 `cvtNs`/`cvtNu` (sign-extend-from-bitN vs mask), `sats_*` (saturating CLAMP narrow with

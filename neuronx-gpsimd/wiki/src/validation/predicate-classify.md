@@ -3,8 +3,8 @@
 > **Scope.** This page proves the **predicate / vbool + classify / compare**
 > family — the boolean datapath that drives *every* predicated execution on the
 > Vision-Q7 GPSIMD core — **bit-exact** against the 4-oracle differential of
-> [four-oracle-method](four-oracle-method.md): GX-SEM (the IEEE / two's-complement
-> RTL model), GX-FLIX (the device bundle-decode identity), nki-0.3.0 (the numpy
+> [four-oracle-method](four-oracle-method.md): SEM (the IEEE / two's-complement
+> RTL model), FLIX (the device bundle-decode identity), nki-0.3.0 (the numpy
 > simulator), and **`libfiss-base` LIVE via `ctypes`** — the shipped ISS binary
 > *itself* computing every `vbool`, every 8-bit class mask, every FS-bank result.
 > Each hex below is a byte-for-byte reproduction of an actual call into the
@@ -82,20 +82,21 @@ fuzz/exhaustive comparisons, 0 mismatch** — including the fp16 classify run
 ## 2. The leaf map (nm-grounded)
 
 The family spans six op groups. All addresses are `.text` (VMA==file-offset, so
-the nm address is the objdump address) and every leaf is a dynamic `T` export.
+the nm address is the objdump address) and every leaf is a dynamic `T` export; every leaf below
+is `[HIGH/OBSERVED]`.
 
-| Group | xdref leaf (representative) | addr | semantics | tag |
-|---|---|---|---|---|
-| INT compare → vbool | `module__xdref_lt_2_16_16` | `0x8585c0` | signed `i16 < i16` → 2-bit field | `[HIGH/OBSERVED]` |
-| INT compare (unsigned) | `module__xdref_ltu_2_16_16` | `0x858660` | unsigned `u16 < u16` → 2-bit field | `[HIGH/OBSERVED]` |
-| FP compare (ordered) | `module__xdref_olt_1_1_16f_16f` | `0x521e60` | ordered fp16 `<`, NaN ⇒ FALSE | `[HIGH/OBSERVED]` |
-| FP compare (unordered) | `module__xdref_un_1_1_16f_16f` | `0x522010` | pure `isUnordered(a,b)` | `[HIGH/OBSERVED]` |
-| CLASSIFY | `module__xdref_clsfy_16f_16f` | `0x524b00` | fp16 → 8-bit class mask | `[HIGH/OBSERVED]` |
-| MASK LOGIC | `module__xdref_andb_64_64_64` | `0x856f80` | 64-bit 2-word `A & B` | `[HIGH/OBSERVED]` |
-| PREDICATION (merge) | `module__xdref_bitkillt_16_2` | `0x85cc20` | kill-on-TRUE merge mask | `[HIGH/OBSERVED]` |
-| FS FLAG BANK | `module__xdref_fs0ltu_64_8_8` | `0x8328d0` | unsigned i8 LT → `FS0` | `[HIGH/OBSERVED]` |
-| FS REDUCE | `module__xdref_borfs_2n_…` | `0x8327f0` | OR-reduce 8 vbool → FS | `[HIGH/OBSERVED]` |
-| BIT-PLANE | `module__xdref_extbi_1_8_32` | `0x5e92e0` | extract 1 lane bit | `[HIGH/OBSERVED]` |
+| Group | xdref leaf (representative) | addr | semantics |
+|---|---|---|---|
+| INT compare → vbool | `module__xdref_lt_2_16_16` | `0x8585c0` | signed `i16 < i16` → 2-bit field |
+| INT compare (unsigned) | `module__xdref_ltu_2_16_16` | `0x858660` | unsigned `u16 < u16` → 2-bit field |
+| FP compare (ordered) | `module__xdref_olt_1_1_16f_16f` | `0x521e60` | ordered fp16 `<`, NaN ⇒ FALSE |
+| FP compare (unordered) | `module__xdref_un_1_1_16f_16f` | `0x522010` | pure `isUnordered(a,b)` |
+| CLASSIFY | `module__xdref_clsfy_16f_16f` | `0x524b00` | fp16 → 8-bit class mask |
+| MASK LOGIC | `module__xdref_andb_64_64_64` | `0x856f80` | 64-bit 2-word `A & B` |
+| PREDICATION (merge) | `module__xdref_bitkillt_16_2` | `0x85cc20` | kill-on-TRUE merge mask |
+| FS FLAG BANK | `module__xdref_fs0ltu_64_8_8` | `0x8328d0` | unsigned i8 LT → `FS0` |
+| FS REDUCE | `module__xdref_borfs_2n_…` | `0x8327f0` | OR-reduce 8 vbool → FS |
+| BIT-PLANE | `module__xdref_extbi_1_8_32` | `0x5e92e0` | extract 1 lane bit |
 
 ### 2.1 The width grid is the spine
 
@@ -131,7 +132,7 @@ module__xdref_oeq_1_2_16f_16f_2f_t @0x5b41f0   module__xdref_olt_1_4_32f_32f_4f_
 > compare; fp32 lanes are 32-bit (`_1_4`, 4-bit field). The `_t` predicated tails
 > exist only for `_1_2_16f_16f` (`_2f_t`) and `_1_4_32f_32f` (`_4f_t`) — there is
 > no `_1_1` tail (a 1-bit field is the int-lane form, not an fp lane). A
-> reimplementer who binds `oeq_1_4_16f_16f` finds **no symbol**. `[HIGH/OBSERVED]`
+> reimplementer who binds `oeq_1_4_16f_16f` finds **no symbol**.
 
 ---
 
@@ -152,7 +153,7 @@ extbi                 : f(rdi=xstate, esi=val, edx=bit,        rcx=*out)      ->
 injbi (RMW)           : f(rdi=xstate, esi=b, edx=pred, ecx=bit, r8=*out)     -> void   ; 5-arg bit-inject
 ```
 
-> **CORRECTION (the single most important ABI fact, proven this pass).** The
+> **CORRECTION (the single most important ABI fact).** The
 > **ordered** fp compares are 5-arg: they write a **reserved aux word to `(%rcx)`
 > *and* the real predicate to `(%r8)`** — two stores. `module__xdref_olt_1_1_16f_16f`
 > stores the aux at `0x521f00` (`mov %edx,(%rcx)`) and the **result** at
@@ -161,14 +162,14 @@ injbi (RMW)           : f(rdi=xstate, esi=b, edx=pred, ecx=bit, r8=*out)     -> 
 > reserved aux for the result and reads back **0** for every ordered predicate.
 > The **bare int compares and the pure-unordered `un`** are 4-arg and store the
 > result directly at `(%rcx)`. Bind `result_ptr` to `%r8` for ordered fp, `%rcx`
-> for everything else. `[HIGH/OBSERVED]`
+> for everything else.
 
 > **GOTCHA — `%rdi` (the ISS `xstate`) is dead for every leaf in this family.**
 > The classify, compare, mask-logic, bitkill, FS-bank and bit-plane bodies never
 > dereference `%rdi` — so the bare ctypes drive passes `NULL`/`0` and they all
 > compute correctly. None of these leaves route through the ISS soft-float
 > dispatch, so none hit the `recipqli` wall of
-> [four-oracle-method §7](four-oracle-method.md). `[HIGH/OBSERVED]`
+> [four-oracle-method §7](four-oracle-method.md).
 
 The classify-MSB / NaN classification is **integer-only soft-float** — no
 x87/SSE; fp16 uses `exp=(x>>10)&0x1f`, `mant=x&0x3ff`, sign=`x>>15`; fp32 uses
@@ -216,7 +217,7 @@ uint16 a = A ^ 0x8000, b = B ^ 0x8000;        // bias both operands
 > 512-bit datapath ([cas-predicate-boolean §2.3](../iss/cas-predicate-boolean.md),
 > [b11-vbool-alu §4.4](../isa/ref/b11-vbool-alu.md)), so a 16-bit lane occupies 2
 > bits and a 32-bit lane 4. The width is structural — a distinct leaf — never a
-> runtime field-width register. `[HIGH/OBSERVED]`
+> runtime field-width register.
 
 ### 4.2 The ordered fp compare — NaN ⇒ FALSE (the `and`-in-not-NaN tail)
 
@@ -304,7 +305,7 @@ QNAN, SNAN, ONE = 0x7e00, 0x7c01, 0x3c00   # qNaN (mant-MSB set), sNaN (mant-MSB
 Signed-zero / infinity edges, all reproduced live and agreeing across every leg:
 `oeq16(+0,-0)=1`, `oeq16(+inf,+inf)=1`, `olt16(-inf,+inf)=1`. sNaN and qNaN both
 route to the unordered branch (no trap in the value oracle; the `(%rcx)` aux word
-is a reserved 0). `[HIGH/OBSERVED]`
+is a reserved 0).
 
 ### 4.5 LIVE — the signed/unsigned separator (byte-exact)
 
@@ -325,7 +326,6 @@ def cmp16(name, A, B):                            # bare int compare: 4-arg, res
 The first two rows are the **separating cells**: the same `(0x8000, 0x0001)` input
 gives opposite truth under signed vs unsigned — the only thing that distinguishes
 the legs is the sign-bias prologue, which is a distinct opcode, not a flag.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -393,12 +393,11 @@ def clsfy16(x):                                  # UNARY 3-arg: (xstate, x, *cla
 > (mant-MSB = 1) → `0x20` (nan only). Both omit bit7 — a NaN is never `finite`. A
 > classifier that copies "finite = !inf" forgets that NaN is also non-finite, and
 > one that tests only "exp==max && mant!=0" can flag *nan* but never *snan*. The
-> exhaustive sweep below catches both. `[HIGH/OBSERVED]`
+> exhaustive sweep below catches both.
 
 The fp16 classify was driven **EXHAUSTIVELY over all 65,536 patterns** against
-the GX-SEM model: **0 mismatch**. fp32 classify (`module__xdref_clsfy_32f_32f
+the SEM model: **0 mismatch**. fp32 classify (`module__xdref_clsfy_32f_32f
 @0x87dc60`, mant-MSB = bit 22) was fuzzed over 30,000 patterns: 0 mismatch.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -462,7 +461,7 @@ mask leaves are byte-short and **opposite polarity** — both store via `(%rdx)`
 > reimplementation that zero-fills killed lanes is wrong for *every* `_t`
 > arithmetic / select / predicated-move / masked-store on this core. The
 > identity-merge: an `_t` op under an all-FALSE predicate is a no-op (the
-> destination survives unchanged), not a clear. `[HIGH/OBSERVED]`
+> destination survives unchanged), not a clear.
 
 The width grid (note the **asymmetry**): `bitkillt` ships `8_1`@0x5bc360,
 `16_2`@0x85cc20, `32_4`@0x528dd0 — but `bitkillf` ships `16_1`@0x82d050,
@@ -511,7 +510,7 @@ def bitkill(name, pred):                          # UNARY 3-arg: (xstate, pred, 
 | `bitkillf_16_2(pred=0)` | `0x0000` | killed → 0 |
 
 The bitkill rows are the merge proof: `bitkillt` and `bitkillf` return *swapped*
-masks for the same predicate. `[HIGH/OBSERVED]`
+masks for the same predicate.
 
 ---
 
@@ -566,7 +565,7 @@ binary's domain — `movfsv` is its own authoritative oracle.
 > FS bank is 8 independent predicate-state destinations over **one** shared
 > unsigned-i8-LT compute. The single-hot `BORFS` reduce of eight banks each set to
 > a distinct bit `{bit0..bit7}` → `0xff`; `BNORFS` → its complement. None of this
-> is a silicon-gen axis. `[HIGH/OBSERVED]`
+> is a silicon-gen axis.
 
 ### 7.4 LIVE — FS bank + reduce (byte-exact)
 
@@ -585,14 +584,14 @@ def fsltu(name, A, B):                              # (xstate, A, B, *FSn) — s
 | `BNORFS` of the same | `0xffffffffffffff00` |
 
 All eight FSnLTU agree because they share `ltu_1_8_8`; the FSn index is the
-destination, not the compute. `[HIGH/OBSERVED]`
+destination, not the compute.
 
 ---
 
 ## 8. The bit-plane move — EXTBI (extract) / INJBI (RMW inject)
 
 `extbi` extracts one lane bit and replicates it into the lane field width; `injbi`
-is a read-modify-write single-bit inject. Both byte-read this pass:
+is a read-modify-write single-bit inject. Both byte-read:
 
 ```asm
 ; module__xdref_extbi_1_8_32 @0x5e92e0   — extract bit i, 1-bit field (returns 0/1)
@@ -634,7 +633,7 @@ def extbi(name, val, bit):                          # (xstate, val, bit, *out) �
 | `injbi_8_8_1_32(base=0xff, pred=0, bit=3)` | `0xf7` | bit 3 cleared, rest kept |
 
 `extbi`'s replication mirrors the compare-leaf field width (§4.1): the extracted
-predicate carries its lane-field encoding. `[HIGH/OBSERVED]`
+predicate carries its lane-field encoding.
 
 ---
 
@@ -651,7 +650,7 @@ with the device `xtensa-elf-objdump`: **33/33 raw-bytes → mnemonic** round-tri
 all N0 format (`op0` byte `0x2f`). Crucially, `fs0ltu2nx8` and `fs7ltu2nx8` decode
 to **different bytes** (the FSn index lives in the slot stream), confirming the
 index is opcode identity, exactly as the eight byte-identical wrapper bodies (§7.1)
-imply. `[HIGH/OBSERVED]`
+imply.
 
 ### 9.2 The agreement table (the result)
 
@@ -678,7 +677,6 @@ classify 30,000 · int16 compare 90,000 = **381,536, 0 mismatch**. Grand total
 > classify mask, `bitkillt/f`, the FS bank, or extbi/injbi. Those are validated
 > **3-way** (SEM + FLIX-decode + LIVE) and the LIVE binary closes them against the
 > shipped oracle directly — mark `n/a` in the nki column, never hide them.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -735,42 +733,39 @@ bitkillt(pred=0) = 0xffff
 
 ## 11. Adversarial self-verify
 
-The five strongest claims, re-challenged against the binary:
+The five strongest claims:
 
-1. **"The vbool field width is 1/2/4-bit, structural per lane width."**
-   `[HIGH/OBSERVED]` — `lt_2_16_16` ends `and $0x3` (2-bit), the 8-bit leaf
+1. **The vbool field width is 1/2/4-bit, structural per lane width.**
+   `lt_2_16_16` ends `and $0x3` (2-bit), the 8-bit leaf
    `and $0x1`, the 32-bit `and $0xf`; `extbi_1_8_32` returns 0/1 while
    `extbi_2_16_32` returns 0/3 (the `neg; and $0x3` replicate) — driven live.
    There is a *distinct leaf per width* (no `_1_4` 16f symbol exists), so it cannot
-   be a runtime mode. Challenge passed.
-2. **"The `_t` is a destination-MERGE, not a zero-fill — proven by `bitkillt`."**
-   `[HIGH/OBSERVED]` — `bitkillt_16_2(pred=0)=0xFFFF` (all-ones in the KILLED lane =
+   be a runtime mode.
+2. **The `_t` is a destination-MERGE, not a zero-fill — proven by `bitkillt`.**
+   `bitkillt_16_2(pred=0)=0xFFFF` (all-ones in the KILLED lane =
    "keep dst"), `bitkillt_16_2(pred=1)=0x0000`; `bitkillf_16_2` returns the
    *swapped* masks. The `_t` tail gate (`and $1,%ecx; je`) short-circuits to a
    no-write under an inactive predicate — identity-merge. A zero-fill model is wrong
-   for every `_t` op. Challenge passed (and matches
+   for every `_t` op (matches
    [cas-predicate-boolean §6](../iss/cas-predicate-boolean.md)).
-3. **"The fp classify 8-bit mask discriminates sNaN/qNaN by the mantissa MSB, and
-   sNaN is not finite."** `[HIGH/OBSERVED]` — the body's `shr $0x9; xor $0x1` on
+3. **The fp classify 8-bit mask discriminates sNaN/qNaN by the mantissa MSB, and
+   sNaN is not finite.** The body's `shr $0x9; xor $0x1` on
    the raw fp16 isolates bit 9 (mant MSB); live `clsfy16(0x7c01)=0x60` (nan+snan,
    no bit7) vs `clsfy16(0x7e00)=0x20` (nan only). Both omit `finite` (bit7). The
    fp16 classify was swept **EXHAUSTIVELY over all 65,536 patterns**: 0 mismatch.
-   Challenge passed.
-4. **"The live-ctypes outputs are byte-exact, and the ordered fp ABI result is at
-   `%r8` not `%rcx`."** `[HIGH/OBSERVED]` — *corrected during authoring.* A partial
-   read of `olt_1_1_16f_16f` saw the `(%rcx)` store at `0x521f00` and nearly bound
-   the result there; the FULL body shows `(%rcx)` is the reserved **aux** word and
+4. **The live-ctypes outputs are byte-exact, and the ordered fp ABI result is at
+   `%r8` not `%rcx`.** The FULL body of `olt_1_1_16f_16f` shows `(%rcx)` is the
+   reserved **aux** word and
    the final ordered predicate stores at `(%r8)` (`0x521f32`). Binding the result to
    `%rcx` reads back **0** for every ordered predicate. The bare int / `un` leaves
    *do* store at `(%rcx)`. Every hex in this page is a captured ctypes call; `.text`
-   VMA==file-offset makes the objdump addresses file-accurate. Challenge passed
-   after fix.
-5. **"The 8 FSnLTU ops share one `ltu_1_8_8`; the FSn index is opcode identity."**
-   `[HIGH/OBSERVED]` — `fs0ltu`@0x8328d0 and `fs7ltu`@0x8329b0 are byte-identical
+   VMA==file-offset makes the objdump addresses file-accurate.
+5. **The 8 FSnLTU ops share one `ltu_1_8_8`; the FSn index is opcode identity.**
+   `fs0ltu`@0x8328d0 and `fs7ltu`@0x8329b0 are byte-identical
    except the `call` rel-offset (both relay `ltu_1_8_8@plt`); live `fs0ltu…fs7ltu
    (3,5)=1` all agree. The device decode (leg b) confirms `fs0ltu2nx8` vs
    `fs7ltu2nx8` produce *different* bundle bytes (index in the slot stream) — i.e.
-   the index is in the opcode, not the body. Challenge passed.
+   the index is in the opcode, not the body.
 
 **Ungrounded / flagged.** The full `MOVFSV` per-lane harvest *permutation* beyond
 the two probed mappings (`word0 bit7→FS7 bit0`, `bit14→FS6 bit1`) is `[MED/INFERRED]`
@@ -794,7 +789,7 @@ predicate, silently turning `oeq`/`olt`/`ole` into a constant 0.
 
 ## 12. Cross-references
 
-- [four-oracle-method](four-oracle-method.md) — the GX-SEM / GX-FLIX / nki-0.3.0 /
+- [four-oracle-method](four-oracle-method.md) — the SEM / FLIX / nki-0.3.0 /
   libfiss-base LIVE differential this page instantiates (the per-leaf ABI, the
   `RTLD_GLOBAL` rule, the wall triage).
 - [b11-vbool-alu](../isa/ref/b11-vbool-alu.md) — the per-instruction ISA reference

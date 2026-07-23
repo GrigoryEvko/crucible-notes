@@ -24,7 +24,7 @@ The reconstruction rests on the two-binary split that the whole ISS is built on 
 > **Scope in one line.** This page = *cas* DECODE+TIMING **⊕** *fiss* VALUE for the MAC/FMAC family:
 > the multiply operands + accumulator model, the widening dtype matrix, the 2×/4×/4T dual-issue
 > mechanics, the `a·b+c` value (rounding/saturation, **driven live**), the 1536-bit `wvec`
-> wide-accumulator timing (LAT 12), and the fp-vs-int MAC split. `[HIGH/OBSERVED]`
+> wide-accumulator timing (LAT 12), and the fp-vs-int MAC split.
 
 For both `.so` the `.text` and `.rodata` VMA **equals** the file offset (so an `objdump
 --start-address=0xNNN` reads the same bytes a runtime `dladdr` would); only `.data.rel.ro` carries the
@@ -77,20 +77,18 @@ division (cas = decode + timing; fiss = value).
 | **INTEGER MAC** (widening) | `MULA*` / `MULS*` / `MULP*` / `MULQ*` / `MUL4T*` | `s2_mul` (Mul unit) | **`wvec`** — dedicated 4-entry **1536-bit** RMW | **12** | `ivp_sem_multiply_semantic` → 4 host ports |
 | **FP MAC** (FMA) | `MULAN_2XF32` / `MULANXF16` / `MULSN*` / `MULANN*` / `MULSONE*` | `s3_alu` (ALU unit) | **dest vec reg** (`d = a·b+c`) | **10** | `fp_sem_hp_fma` (fp16) / `ivp_sem_spfma` (fp32) |
 
-The decisive evidence (each item independently re-verified against the binary for this page):
+The decisive evidence:
 
 * **212 `IVP_MUL*` strings** in cas — `strings libcas-core.so | rg -c '^IVP_MUL'` returns exactly
   `212`, split `142` plain `MUL` / `23` `MULA` (mul-**add** = MAC) / `47` `MULS` (mul-**sub**).
-  `[HIGH/OBSERVED]`
 * The integer accumulator is a **dedicated 4-entry 1536-bit `wvec`** file (`opnd_sem_wvec_addr`
-  = `and $0x3`; `wvt_def` copies 48 dwords = 192 B); the FP FMA has **no** wide file. `[HIGH/OBSERVED]`
+  = `and $0x3`; `wvt_def` copies 48 dwords = 192 B); the FP FMA has **no** wide file.
 * The fiss MAC value `mula_48_48_16_16` literally computes `acc48 = acc48 + sext48(a16 · b16)` — and
   it returns that, byte-for-byte, when **driven live** ([§5](#5-the-fiss-value--driven-live)).
-  `[HIGH/OBSERVED]`
 * The "2× FMAC" is the **PAIR** (`P`) variant — one Mul-slot op summing two products — *not* two FLIX
-  Mul slots (every format exposes exactly one `s2_mul`). `[HIGH/OBSERVED]`
+  Mul slots (every format exposes exactly one `s2_mul`).
 * The FP FMA is integer-only **soft-float** (zero `addss`/`mulss`/`vfmadd`) with full IEEE binary16/32
-  field logic, executing in the ALU slot at LAT 10. `[HIGH/OBSERVED]`
+  field logic, executing in the ALU slot at LAT 10.
 
 > **NOTE — naming.** The IVP ISA uses Tensilica `MULA`/`MULS` (mul-add / mul-sub) for the MAC; there is
 > **no** `IVP_MAC` or `IVP_FMAC` string. The *fused* FP form surfaces only through the
@@ -148,7 +146,6 @@ F0_F0_S2_Mul_28_IVP_MULANX16_inst_stage0   @0xdfddf0:   (the MAC sibling)
 The plain multiply lights byte `0xa72`, the MAC lights byte `0xa73` — **distinct opcodes routed
 through the same Mul-slot decode/executor**, exactly as the formal ADD-vs-SUB split in
 [group-semantics-I](../isa/semantics/group-semantics-i.md#2-group-2--multiply--mac-ivp_sem_mul_slice).
-`[HIGH/OBSERVED]`
 
 ### 3.2 The shared Mul-slot executor and the four host ports
 
@@ -170,7 +167,7 @@ The four ports write the **four 512-bit lanes/halves of the 1536-bit `wvec`** pr
 (3 × 512 + a carry/overflow lane). cas itself computes **no product** — the element value is delegated
 to the host value port (the fiss `xdref` oracle), keyed by whichever MAC decode bit is live. The
 `esi=$0xa` immediate is the *execute-stage* read latency (10); the *result* def latency (12) is posted
-later, in stage12 ([§6](#6-the-cas-timing--lat-12-and-accumulator-forwarding)). `[HIGH/OBSERVED]`
+later, in stage12 ([§6](#6-the-cas-timing--lat-12-and-accumulator-forwarding)).
 
 > **GOTCHA — port count ≠ four operands.** The four `0x273bf0…c08` calls are **not** four operands; they
 > are the four 512-bit *halves* of the single wide accumulator. The MAC reads two vector operands (or a
@@ -212,7 +209,7 @@ The **full-tile** (1536-bit) accumulator forms are the matmul spine: `module__xd
 stride) and `module__xdref_mul4ta2n8xr8_1536_1536_512_512_64` `@0x818520` (the `i8` 4-term form). The
 `1536` in the signature is the byte-level confirmation of the 192-byte `wvt_def` copy
 ([§3.2 note](#32-the-shared-mul-slot-executor-and-the-four-host-ports) and
-[§7](#7-the-accumulator-model--a-1536-bit-4-entry-rmw-regfile)). `[HIGH/OBSERVED]`
+[§7](#7-the-accumulator-model--a-1536-bit-4-entry-rmw-regfile)).
 
 Lane counts follow the 512-bit datapath: `2NX8` = 64 `i8` lanes, `NX16` = 32 `i16`, `N_2X32` = 16
 `i32`, `NXF16` = 32 fp16, `N_2XF32` = 16 fp32. `[HIGH/INFERRED from the 512-bit width + lane tokens]`
@@ -238,7 +235,7 @@ oracle ABI: `A` in the accumulator slot, `B`/`C` the two factors, the result wri
 ```
 
 `acc24 = (acc + a8·b8) mod 2^24`. Signed product, **wrapping** accumulate (mask to acc width), no
-rounding (it is integer). ABI: `A=esi` (acc in-value), `B=dl`, `C=cl`, result `*=r8`. `[HIGH/OBSERVED]`
+rounding (it is integer). ABI: `A=esi` (acc in-value), `B=dl`, `C=cl`, result `*=r8`.
 
 ### 5.2 The int16 MAC body — `module__xdref_mula_48_48_16_16 @0x68a6b0`
 
@@ -259,7 +256,7 @@ rounding (it is integer). ABI: `A=esi` (acc in-value), `B=dl`, `C=cl`, result `*
 `acc48 = acc48 + sext48(a16·b16)`. The 32-bit product is sign-extended to 48 bits and added into the
 two-word (low32 + high16) accumulator; the `-1`/`+1 lea` sequences are the careful two-word
 add-with-sign that avoids a spurious carry. ABI: `A=(%rsi)` (acc pointer), `B=cx`, `C=dx`, result
-`*=r8`. `[HIGH/OBSERVED]`
+`*=r8`.
 
 > **CORRECTION — the operand order is `(acc, dx, cx)`, not `(acc, cx, dx)`.** The body multiplies
 > `movswl %cx` × `movswl %dx`, i.e. arg4 (`rcx`) × arg3 (`rdx`); when calling through `ctypes` you must
@@ -323,15 +320,15 @@ Executed (all triples returned **exactly** the reference `a·b+c`):
 > mnemonic asks for it, happens only in the **`PACKL` narrowing post-op** (`xdref` pack-saturate), never
 > inside the MAC accumulate. This matters for a reimplementation: a 256-deep `i8` MAC chain that would
 > overflow 24 bits *silently wraps* — the headroom (24 vs 8+8=16 product bits ⇒ ~256 sums) is the
-> architectural guarantee, and the firmware is responsible for not exceeding it. `[HIGH/OBSERVED]`
+> architectural guarantee, and the firmware is responsible for not exceeding it.
 
 ### 5.4 Mul-subtract, unsigned, and the pair (2×) bodies
 
 * **`module__xdref_muls_48_48_16_16 @0x68a840`** — byte-identical to the int16 MAC except the final
   `48 29 d0  sub %rdx,%rax` ⇒ `acc48 = acc48 − sext48(a16·b16)`. (The `MULS` root = mul-sub; do not
-  confuse with the leading saturate `S`.) `[HIGH/OBSERVED]`
+  confuse with the leading saturate `S`.)
 * **`module__xdref_muluua_48_48_16_16 @0x68a720`** — same shape, raw `imul` (no sign-extend) ⇒ unsigned
-  product. `[HIGH/OBSERVED]`
+  product.
 * **The 2×-FMAC core — `module__xdref_mulp_48_16_16_16_16 @0x816030`** calls the
   `module__xdref_mul_48_16_16_8@plt` (16×16→48) primitive **twice** and sums the two products:
 
@@ -345,11 +342,10 @@ Executed (all triples returned **exactly** the reference `a·b+c`):
   `mulp = a1·b1 + a2·b2`. Its accumulate sibling **`module__xdref_mulpa_48_48_16_16_16_16 @0x8160c0`**
   calls `mulp` then adds the wide accumulator: `acc48 = acc48 + (a1·b1 + a2·b2)` — **two FMACs per
   op**. `mulps @0x816130` is the pair-subtract sibling; `mulq*`/`mul4t*` extend this to four products.
-  `[HIGH/OBSERVED]`
 * **The XR (reduce-register) MAC — `module__xdref_mula2n8xr16_24_24_8_64 @0x5c10b0`** sources one
   factor from the **XR broadcast/reduce register** (`movswl (%rcx),%eax`, the matmul weight bus) and the
   other from the activation lane (`movsbl %dl`): `movswl (%rcx),%eax ; movsbl %dl,%edx ; imul %eax,%edx ;
-  add %edx,%esi ; and $0xffffff` — the matmul inner-product MAC. `[HIGH/OBSERVED]`
+  add %edx,%esi ; and $0xffffff` — the matmul inner-product MAC.
 
 ### 5.5 The FP FMA — integer-only soft-float, single round
 
@@ -411,7 +407,7 @@ fp32) — the same latency as any vector ALU op.
 
 Inputs are read at stage 10, the wide-acc result is posted at stage 12, so the MAC has **2-cycle
 result latency with II = 1** — consistent with the [B04 key-facts](../isa/ref/b04-mac-integer.md#1-key-facts)
-framing of "inputs `@10` → result `@12`". `[HIGH/OBSERVED]`
+framing of "inputs `@10` → result `@12`".
 
 ### 6.2 Accumulator-chain forwarding — the matmul throughput property
 
@@ -436,7 +432,7 @@ Commit drains the accumulator value into the regfile commit array N stages later
 `my_wvec_commit_value` / `my_wvec_set_commit_value @0x1765a00/0x1765a50` are the `wvec`-specific commit
 hooks. The MAC also shares the Mul-slot writeback-port and multi-slot-dispatch stall chains (a single
 `s2` Mul unit per FLIX format), so two *independent* MACs cannot co-issue from one bundle except via the
-P/Q/4T packing ([§8](#8-the-2--4-dual-issue-mechanics--packed-not-co-issued)). `[HIGH]`
+P/Q/4T packing ([§8](#8-the-2--4-dual-issue-mechanics--packed-not-co-issued)).
 
 ---
 
@@ -449,7 +445,7 @@ The integer MAC's accumulator is a **dedicated** wide register file, **not** the
 `b32_pr` = `& 0xf` (16). The width is **1536 bits**: `my_wvec_2_opnd_ivp_sem_multiply_wvt_def @0x17a80b0`
 copies the accumulator value word-by-word — 48 dwords, offsets `0x00`…`0xbc(%rdx)` (the last,
 `mov 0xbc(%rdx),%edx`, is loaded into `%edx` not `%ecx`, which is why a `,%ecx`-only grep undercounts to
-47) — = **192 bytes = 1536 bits = 3 × 512-bit vector registers**. `[HIGH/OBSERVED]`
+47) — = **192 bytes = 1536 bits = 3 × 512-bit vector registers**.
 
 > **GOTCHA — 48 dwords, not 47.** The copy loop in `wvt_def` is `mov N(%rdx),%ecx ; mov %ecx,M(%rsp)` for
 > offsets `0x00`…`0xb8`, **plus a trailing `mov 0xbc(%rdx),%edx`** (different dest register). Counting
@@ -475,7 +471,7 @@ copies the accumulator value word-by-word — 48 dwords, offsets `0x00`…`0xbc(
 Both `wvu` (read) and `wvt` (write) address the **same** `wvec` file ⇒ the accumulator is a
 **same-regfile read-modify-write** operand: `acc ← acc (via wvu) + a·b (via wvt)`. It is *not* an
 implicit single global accumulator and *not* a vec-dst RMW — it is its own wide file with explicit
-src(`wvu`)/dst(`wvt`) roles, the classic back-to-back MAC chain. `[HIGH/OBSERVED]`
+src(`wvu`)/dst(`wvt`) roles, the classic back-to-back MAC chain.
 
 **Init / carry.** The accumulator is an architectural register; "init to 0" / "carry across MACs" is the
 caller's job (zero the `wvec` before the first MAC, then chain). cas schedules only the `wvu`-read /
@@ -485,7 +481,6 @@ op being `wvec_pack`]`
 **Pack / drain** bracket a MAC chain: `ivp_sem_wvec_pack_semantic` (S1_Ld slot, stage3) packs `vec`
 lanes **into** `wvec` (zero/seed the accumulator), and `ivp_sem_unpack_wvec_mov_semantic` (S2_Mul,
 stage12) moves the `wvec` result **out** to a `vec` register for the next stage / requant.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -496,11 +491,10 @@ op**, *not* by two FLIX Mul slots:
 
 * **Exactly one Mul slot per FLIX format.** Only `F*_S2_Mul` / `N1_S2_Mul` slot strings exist — there is
   **no** `S1_Mul`, `S3_Mul`, or `S4_Mul` anywhere in cas. The Mul unit sits at `s2` in every wide format
-  F0…F11. `[HIGH/OBSERVED]`
+  F0…F11.
 * **PAIR (`P`) packs two multiplies + a sum into one op** (`mulp = a1·b1 + a2·b2`,
   [§5.4](#54-mul-subtract-unsigned-and-the-pair-2-bodies)); **QUAD (`Q`)** packs four; **4T** packs four
   (4-term dot). The accumulate variants (`PA`/`QA`/`4TA`) add that packed sum to the wide accumulator.
-  `[HIGH/OBSERVED]`
 * **Operand sourcing:** the two/four factor-pairs come from adjacent lanes of the operand vectors, and
   the shared factor (the **weight**) from the **XR reduce-register** (the `*XR8`/`*XR16` token; the body
   reads it via `(%rcx)`, [§5.4](#54-mul-subtract-unsigned-and-the-pair-2-bodies)). So a 2×/4× MAC reads:
@@ -546,7 +540,6 @@ join:
 * The matmul inner loop on the NX core is the **integer widening MAC** (`MULA*`/`MULPA*`/`MULQA*`/`MUL4TA*`
   in `s2_mul`) folding into the **4-entry 1536-bit `wvec`** accumulator; the **weight** is broadcast via
   the **XR reduce-register** (the `*XR8`/`*XR16` operand), the **activation** via the vector operand.
-  `[HIGH for the op mechanics]`
 * A matmul tile is: **zero/seed** the `wvec` (`ivp_sem_wvec_pack`) → run a chain of `PA`/`QA`/`4TA` MACs
   (2/4 input pairs each, accumulator-forwarded back-to-back inside the LAT-12 bypass window) → **drain**
   via `ivp_sem_unpack_wvec_mov` to a `vec` register for the next stage / requant.
@@ -559,7 +552,7 @@ join:
 
 ## 11. Adversarial self-verify ledger
 
-The five strongest claims, each re-challenged against the binary for this page:
+The five strongest claims and their evidence:
 
 | claim | challenge | result |
 |---|---|---|

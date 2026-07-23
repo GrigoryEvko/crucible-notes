@@ -20,7 +20,7 @@ a jump table whose bounding `cmp` and whose five live arms are quoted
 byte-exact.
 
 **Confidence tags.** Every cell carries **HIGH / MED / LOW** crossed with
-**OBSERVED** (read from bytes / disassembly / a shipped header this session),
+**OBSERVED** (read from bytes / disassembly / a shipped header),
 **INFERRED** (deduced from structure with no contradicting evidence), or
 **CARRIED** (taken from a cross-referenced sibling surface at its stated
 confidence). The single most important caveat on the page is the starred `36*`
@@ -71,7 +71,7 @@ family (§7). One row per generation, every cell tagged:
 | **MAVERICK** | NC-v5 | **37** | **36\*** `[INFERRED]` | — (no NCFW image) | *(none — `arch_id 0x24` hits `ja` default)* | gen-5 (distinct SoC) | **NO — internal twin only** | `a92c8ba0e9dfb2d8…87f4` |
 | *TONGA* | *NC-v1 (outlier)* | *— (none)* | *— (Product ID `0x01`)* | *— (none)* | *— (absent from every selector)* | *Inf1 (legacy V1)* | *legacy ISA headers only* | *— (no EXTISA blob)* |
 
-**Per-cell / per-column grounding** (all re-run this session):
+**Per-cell / per-column grounding:**
 
 - **coretype `{6,13,21,29,37}`** — the live set of the 32-case `get_ext_isa`
   jump table (§3), independently re-confirmed by two resolver bitmasks. The
@@ -96,7 +96,7 @@ family (§7). One row per generation, every cell tagged:
 - **shipped?** — the 4-shipped / 5-internal split (§6): `libnrtucode.a` has
   **0** MAVERICK members; `NRTUCODE_CORE_*` in `SO` names four generations, in
   `INT` names five. **[HIGH / OBSERVED]**
-- **EXTISA blob `sha256`** — idx0 representative, carved this session via the
+- **EXTISA blob `sha256`** — idx0 representative, carved via the
   `*_SO_get` thunks (§5 of the cross-walk gives the per-index table). MARIANA
   and MARIANA_PLUS idx0 are **byte-identical** (`9f2ce049…`), confirmed three
   ways (§6). Cross-reference
@@ -236,7 +236,7 @@ bound is computed and applied:
 
 The live-set is **exactly `{6, 13, 21, 29, 37}`** — the 27 other cases all jump
 to the shared default/epilogue `0x9b2c6a`, which leaves `eax = 1` (error) and
-returns. **[HIGH / OBSERVED — jump table read this session.]**
+returns. **[HIGH / OBSERVED]**
 
 > **NOTE — the live arms are not in codename order in the table, but resolve
 > correctly.** The five `lea <gen>_libs` targets are interleaved
@@ -288,7 +288,7 @@ int nrtucode_get_ext_isa_internal(uint32_t coretype, int isa_index,
 ### 3.5 · Two independent corroborations of the live-set
 
 The jump table is not the only firmware structure that fixes
-`{6,13,21,29,37}`. Two resolver bitmasks, decoded this session, agree:
+`{6,13,21,29,37}`. Two resolver bitmasks agree:
 
 ```
 nrtucode_get_num_ext_isa_libs   @0x9b2c90:
@@ -309,7 +309,7 @@ nrtucode_ll_get_libraries_from_opcodes @0x9b1880:
    0x9b18bc  bt     %rcx,%rdx
 ```
 
-Bit-decode (this session): `0x2020202000 → {13,21,29,37}`,
+Bit-decode: `0x2020202000 → {13,21,29,37}`,
 `0x2020202040 → {6,13,21,29,37}`. Three structures (the jump table + two
 bitmasks) independently fix the same gen-set. **[HIGH / OBSERVED]**
 
@@ -360,7 +360,7 @@ So `arch_id 36 = 0x24` is consistent with the four shipped rows arithmetically
 but has **no direct anchor and a structural counter-signal**. Mark it `36*`,
 tag it **MED / INFERRED**, and never present it as binary-observed.
 
-> **CORRECTION to SX-GEN-01.** The backing survey treats MAVERICK `arch_id 36`
+> **CORRECTION to GEN-01.** The backing survey treats MAVERICK `arch_id 36`
 > as "INFERRED from coretype = arch_id + 1" but does not record that the enum
 > slot at 36 is a `__REMOVED__` placeholder while the real
 > `MAVERICK_NX_TOPSP` is at 54. The `NX_TOPSP = arch_id` correspondence that
@@ -473,7 +473,7 @@ libnrtucode.a  total members ............... 435
 `ar t A | rg -i maverick | wc -l` → **0**. MAVERICK does not ship in the
 archive. **[HIGH / OBSERVED]**
 
-**The split is sharp in three symbol/string tallies** (re-counted this session):
+**The split is sharp in three symbol/string tallies:**
 
 - `NRTUCODE_CORE_*` enum literals: `INT` names **five** generations
   (incl. `NRTUCODE_CORE_MAVERICK_NX_POOL`); `SO` names **four** (no MAVERICK).
@@ -483,7 +483,7 @@ archive. **[HIGH / OBSERVED]**
   **0**. (`nm -D` dynamic on `INT` → 0 maverick: these are static/local
   symbols, consistent with internal-only microcode.) **[HIGH / OBSERVED]**
 
-> **CORRECTION to SX-GEN-01.** SX-GEN-01 §4 records the MAVERICK string tally as
+> **CORRECTION to GEN-01.** GEN-01 §4 records the MAVERICK string tally as
 > "internal=187, front=0". The session re-count is **189** strings occurrences
 > (`strings INT | rg -oi maverick | wc -l`) and **125** symtab symbols
 > (`nm INT | rg -ci maverick`). The `187` figure was a `rg -ac` raw-byte-pattern
@@ -491,7 +491,7 @@ archive. **[HIGH / OBSERVED]**
 > Use **189 strings-occurrences / 125 symtab-symbols / 0 in `SO`**. The cross-
 > walk §4 already says 189; this page ratifies 189 over 187.
 
-**Per-generation EXTISA blob `sha256` (idx0 representative; carved this session
+**Per-generation EXTISA blob `sha256` (idx0 representative; carved
 via the `*_SO_get` thunks).** The five `*_libs` tables are `nm`-confirmed at
 `sunda_libs@0x9b8f80 < cayman_libs@0x9b8f90 < mariana_libs@0x9b8fd0 <
 mariana_plus_libs@0x9b9010 < maverick_libs@0x9b9050`, indexed by the
@@ -589,15 +589,15 @@ dtype/opcode expansion detail.
 Every place where a report, a header, or a binary has disagreed on a generation
 identity, with the resolution. The first three are inherited from prior waves
 (do not re-introduce them); the last two are CORRECTIONs this page makes to
-SX-GEN-01.
+GEN-01.
 
 | # | claim in conflict | wrong reading | resolved reading | anchor |
 |---|---|---|---|---|
 | **L1** | NCFW codename↔v# on the v3/v4 rows | "0x0c = mariana, 0x14 = cayman" (NCFW-04/05/06) — labels crossed | `0x05=v2=SUNDA, 0x0c=v3=CAYMAN, 0x14=v4=MARIANA, 0x1c=v4+=MARIANA_PLUS` | triple-anchored: `je` blob-address order + `.c` string order + `*_ncfw_*` symbol-offset order (§5 GOTCHA) |
 | **L2** | `get_memory_image` arg0 | mis-labeled "coretype" (RT-16/RT-03) | a **flat (gen × engine) image index 0..37**, *not* the coretype `{6,13,21,29,37}` that `get_ext_isa` keys on. Value 37 collides (MAVERICK coretype AND its Q7_POOL flat index) but they are different fields | RT-17 §5/§8; keep the three key-spaces (coretype / arch_id / flat index) apart |
 | **L3** | `NRTUCODE_MPLUS_ON_MARIANA` env | a live "MPLUS-on-MARIANA" selector (RT-03) | a **removed-flag tripwire**: if set, `get_memory_image` fwrites "…flag has been removed… transition to NEURON_RT_DBG_V4_PLUS=0/1" and returns 8. The live v4/v4+ selector is `NEURON_RT_DBG_V4_PLUS` | the tripwire string is still in `SO` (§6) |
-| **L4** | MAVERICK `arch_id 36` grounding | "INFERRED from coretype = arch_id + 1" (SX-GEN-01) — *understated* | **doubly INFERRED**: the enum slot at 36 is `NRTUCODE_CORE_MAVERICK_NX__REMOVED__` (a placeholder), while the real `MAVERICK_NX_TOPSP` is at index **54**. The `NX_TOPSP = arch_id` correspondence that holds for the other four rows *fails* for MAVERICK | `nrtucode.h:54,55` (§4) — **this page's CORRECTION** |
-| **L5** | MAVERICK string tally | "internal=187" (SX-GEN-01 §4) | **189** strings-occurrences / **125** symtab-symbols / **0** in `SO`. The `187` was a `rg -ac` raw-byte count; use the `strings`-tokenized 189 | `strings INT \| rg -oi maverick \| wc -l` (§6) — **this page's CORRECTION** |
+| **L4** | MAVERICK `arch_id 36` grounding | "INFERRED from coretype = arch_id + 1" (GEN-01) — *understated* | **doubly INFERRED**: the enum slot at 36 is `NRTUCODE_CORE_MAVERICK_NX__REMOVED__` (a placeholder), while the real `MAVERICK_NX_TOPSP` is at index **54**. The `NX_TOPSP = arch_id` correspondence that holds for the other four rows *fails* for MAVERICK | `nrtucode.h:54,55` (§4) — **this page's CORRECTION** |
+| **L5** | MAVERICK string tally | "internal=187" (GEN-01 §4) | **189** strings-occurrences / **125** symtab-symbols / **0** in `SO`. The `187` was a `rg -ac` raw-byte count; use the `strings`-tokenized 189 | `strings INT \| rg -oi maverick \| wc -l` (§6) — **this page's CORRECTION** |
 
 **Non-contradictions (consistency confirmations, for the record):** the live
 coretype set `{6,13,21,29,37}` agrees across the jump table and both resolver
@@ -610,7 +610,7 @@ No firmware structure contradicts any of these.
 
 ## 9 · Confidence rollup / honest gaps
 
-**HIGH / OBSERVED** (binary/header-exact, re-verified this session): the five
+**HIGH / OBSERVED** (binary/header-exact): the five
 codenames; `coretype {6,13,21,29,37}` (jump table + two bitmasks); `arch_id
 {5,12,20,28}` (`NX_TOPSP` ordinals + NCFW selector); `coretype = arch_id + 1`
 (enum-layout consequence); the 32-case `get_ext_isa` dispatch with live-set

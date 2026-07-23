@@ -28,8 +28,7 @@ extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/
 Tooling: `readelf -SW/-d/-n`, `nm -D/-S`, `objdump -d/-s`, `xxd`/`dd`+`sha256sum`,
 and a live `ctypes` drive. Each claim is tagged **confidence** × **provenance**
 (`OBSERVED` = read/executed directly off the binary, `INFERRED` = strong deduction
-from observed evidence, `CARRIED` = taken from a sibling ISS page and re-checked
-here). `.text`/`.rodata` are VMA==file-offset on all four; the writable sections
+from observed evidence, `CARRIED` = taken from a sibling ISS page). `.text`/`.rodata` are VMA==file-offset on all four; the writable sections
 carry the ncore2gp `0x200000` delta (§5).
 
 ---
@@ -55,8 +54,6 @@ value oracles**.
 | Extra validation/assertions in `-ref-`? | **No new ones** — zero `assert`/`abort` in either; identical import set | §2.4 |
 | Different rounding / precision? | **No** — soft-float fp16/fp32 bodies byte-identical at exact `nm` size | §3.3 |
 | Identical results, or divergent? | **IDENTICAL** — 71,706 live calls, 0 mismatches; identical leaf bodies | §3.2, §3.3 |
-
-*(HIGH · OBSERVED — the verdict rests on executed equality, not on naming.)*
 
 > **GOTCHA — "-ref-" does *not* mean "golden/correct" here.** The infix is the
 > toolchain's *build-flavor* tag, not a correctness pedigree. Both files are the
@@ -87,7 +84,7 @@ Two pairs, characterized side by side. Every figure is `readelf -SW` /
 | `dll_get_version` | `0x1381f` (79903) | **`0x1381f` (79903)** | n/a | n/a |
 | Build-id note | *absent* | *absent* | *absent* | *absent* |
 
-*(HIGH · OBSERVED.)* The two cas files differ by 13 MB; the two fiss files differ
+The two cas files differ by 13 MB; the two fiss files differ
 by **200 bytes** — a first, blunt signal that the fiss split is near-identical and
 the cas split is a genuine codegen difference, but *not* a versioning or
 model-config difference: `dll_get_version` is the **same `0x1381f`** in both cas
@@ -98,8 +95,7 @@ files.
 > (`libgcc`/`libfloat`-style helpers, the 4.4.6 portion) is linked alongside the
 > 4.9.4-built interpreter. Both cas files are pure GCC 4.9.4 (no soft-float
 > runtime — cas computes no values). This is identical *within* each pair.
-> *(HIGH · OBSERVED.)*
-
+>
 ### 2.2 Section sizes (the codegen story)
 
 | Section | cas-core | cas-ref-core | Δ (ref/prod) | fiss-base | fiss-ref-base | Δ (ref/prod) |
@@ -115,8 +111,7 @@ files.
 semantic/issue/stall arrays for cas and the `semantic_functions`/`stage_functions`
 tables for fiss) are the **same size** across each pair — same number of modeled
 opcodes/slots. The export count (`.dynsym`) is **identical**. The only substantial
-difference is cas's `.text`: cas-ref has 5.2 MB less code. *(HIGH · OBSERVED.)*
-
+difference is cas's `.text`: cas-ref has 5.2 MB less code.
 ### 2.3 Symbol-set equality
 
 | Pair | Total dyn (`nm -D`) | Defined (`T`+`A`) | Undefined (`U`/`w`) | Name-set diff |
@@ -135,15 +130,13 @@ Both `diff`s return empty (exit 0): every export name in production exists in
 `-ref-` and vice versa, at the same version (`@@VERS_1.1` for cas). cas-ref keeps
 the exact partition **24 `dll_*` + 16 `opnd_sem_*` + 1071 `my_*` = 1111** plus the
 `VERS_1.1` anchor; fiss-ref keeps all 20,379 (`slotfill__` 12,569, `module__` 864,
-the 1,534×3 stage families, 61 `exception__`, …). *(HIGH · OBSERVED.)*
-
+the 1,534×3 stage families, 61 `exception__`, …).
 > **NOTE — same names, different addresses.** Identical *names* does not mean
 > identical *addresses*. Every symbol relocates: `module__xdref_add_16_16_16` is
 > `@0x858480` in fiss-base but `@0x81dbe0` in fiss-ref-base;
 > `my_ActiveFairness_def` is `@0x1786ee0` in cas-core but `@0x103a6a0` in
 > cas-ref-core. The two builds lay code out differently; the *contract* (the
-> name→behavior map) is what is preserved. *(HIGH · OBSERVED.)*
-
+> name→behavior map) is what is preserved.
 ### 2.4 Import set and the "extra validation?" question
 
 ```
@@ -158,8 +151,7 @@ is the **same 5 weak libc/runtime stubs** (`__cxa_finalize`, `__gmon_start__`,
 `_ITM_{de,}registerTMCloneTable`, `_Jv_RegisterClasses`) as fiss production — no
 `nx_*`, no libm, fully self-contained. **No `__assert_fail`, no `abort`, no
 `assert`/`reference`/`golden` string** appears in either `-ref-` binary (`nm -D`
-and `strings -a` both 0). *(HIGH · OBSERVED.)*
-
+and `strings -a` both 0).
 | "Extra validation in -ref-?" probe | cas-ref-core | fiss-ref-base |
 |---|---|---|
 | `__assert_fail` / `abort` import | 0 | 0 |
@@ -172,8 +164,7 @@ and `strings -a` both 0). *(HIGH · OBSERVED.)*
 > not: neither `-ref-` file imports `__assert_fail` or `abort`, and neither
 > carries an `assert` string. The cas-ref `.text` is *smaller*, not larger — the
 > opposite of an assertion-heavy debug build. Whatever distinguishes the variant
-> is **not** added validation. *(HIGH · OBSERVED — symbol/string absence verified
-> against the named binaries.)*
+> is **not** added validation.
 
 ---
 
@@ -206,8 +197,7 @@ module__xdref_adds_16_16_16 @ fiss-base 0x85aa10 / fiss-ref 0x820170 :
 
 Both the trivial wrapping `add` and the non-trivial **saturating** `adds` (a
 17-instruction signed-overflow-detect-and-clamp) disassemble instruction-for-
-instruction the same in the two files. *(HIGH · OBSERVED.)*
-
+instruction the same in the two files.
 ### 3.2 Live battery — 71,706 calls, zero mismatches
 
 A `ctypes` harness loads both fiss libraries and calls the same leaf in each:
@@ -239,8 +229,7 @@ would show up first.)*
 > would, by definition, disagree somewhere on the saturation boundary or the
 > wrap/clamp corner. It does not — 0/71,706. Combined with the byte-identical
 > bodies (§3.1, §3.3), `-ref-` and production fiss are **the same value oracle**.
-> *(HIGH · OBSERVED.)*
-
+>
 ### 3.3 Soft-float too — byte-identical at exact `nm` size
 
 The interesting risk is *rounding*: a reference build could use a different
@@ -255,14 +244,12 @@ neighbour function):
 
 Both the fp16 (2,085-byte) and fp32 (2,184-byte) full IEEE-754 emulation bodies
 hash identically across the pair. **No different rounding, no different
-precision.** *(HIGH · OBSERVED — exact-size `dd`+`sha256sum`; an earlier
-over-wide window spuriously "differed" until clamped to the `nm -S` size.)*
+precision.**
 
 > **GOTCHA — hash at the `nm -S` size, not a guessed window.** These bodies are
 > 2 KB+ and sit back-to-back with unrelated leaves. Hashing a generous window
 > (e.g. `0x1a00`) overruns into the next function and reports a false "DIFFER".
-> Always size the byte-compare to the symbol's `nm -S` length. *(HIGH · OBSERVED —
-> this exact mistake produced a false divergence here before correction.)*
+> Always size the byte-compare to the symbol's `nm -S` length.
 
 ---
 
@@ -292,8 +279,7 @@ my_ActiveFairness_def  @ cas-core 0x1786ee0 :        @ cas-ref-core 0x103a6a0 :
 Same five instructions, same hazard-role semantics (check valid byte → set valid →
 store def value); only the offsets differ (`0x1257/0x1250/0x1234` vs
 `0xc3b/0xc34/0xc18`). The model is identical; the instance memory map is
-re-packed. *(HIGH · OBSERVED.)*
-
+re-packed.
 ### 4.2 The size tradeoff is real and quantified
 
 | Metric | cas-core | cas-ref-core | Ratio |
@@ -317,8 +303,7 @@ version, same 24/16/1071 partition, zero value functions, same 119-port boundary
 > simulated core, not the production `0x4a09f0`. `dll_initialize` `memset`s exactly
 > the file's own `dll_get_data_size` (`mov $0xa1de50,%edx ; call memset@plt` in
 > cas-ref). Hard-coding the production size against the `-ref-` core under-allocates
-> by 5.76 MB and corrupts the heap. *(HIGH · OBSERVED.)*
-
+> by 5.76 MB and corrupts the heap.
 ---
 
 ## 5. The variant discriminator and the `.data` offset hazard
@@ -346,7 +331,7 @@ build-variant fingerprint — the binary's own production-vs-`-ref-` discriminat
 > value-free vs cycle-gated distinction at the toolchain boundary). The
 > production-vs-`-ref-` choice is therefore *not* a licensed-feature gate; it is a
 > build-flavor selection the harness makes when it picks which `config/` file to
-> `dlopen`. *(HIGH · OBSERVED — license-symbol count 0 in all four.)*
+> `dlopen`.
 
 ### 5.2 Section deltas (same family caveat as the surfaces)
 
@@ -387,7 +372,7 @@ How both halves are invoked, and how the timing of each op is modeled, are on
 [The cas Timing Model](./cas-timing-model.md) and the surfaces. The unified
 runnable oracle is [The ISS as Executable Oracle](./iss-oracle-synthesis.md). The
 formal back-to-back differential harness that *runs* this comparison as a
-regression gate belongs to the validation Part (not yet written) — referenced by
+regression gate belongs to the validation Part — referenced by
 title only.
 
 ---

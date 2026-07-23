@@ -38,8 +38,8 @@ input. For this family they are:
 
 | Oracle | Role | What it contributes to fp validation |
 |---|---|---|
-| **GX-SEM (TIE-XML)** | the device semantic spec | the per-op fp semantic group membership and the FCR round-mode / FSR sticky-flag wiring the op claims |
-| **GX-FLIX (firmware-decode)** | the device-native disassembler | the slot/format the mnemonic occupies, and the operand bit-map — confirms *which* op a bit pattern decodes to |
+| **SEM (TIE-XML)** | the device semantic spec | the per-op fp semantic group membership and the FCR round-mode / FSR sticky-flag wiring the op claims |
+| **FLIX (firmware-decode)** | the device-native disassembler | the slot/format the mnemonic occupies, and the operand bit-map — confirms *which* op a bit pattern decodes to |
 | **nki-0.3.0 (numpy)** | the host reference model | `numpy.float16`/`float32` IEEE arithmetic — the "textbook" leg the binary is checked against |
 | **libfiss-base.so (LIVE)** | the soft-float value oracle | the **shipped** integer-only soft-float, driven in-process by `ctypes` — the device's own answer |
 
@@ -62,7 +62,7 @@ executes.
 | `.text` / `.rodata` | **VMA == file offset** | `readelf -SW` |
 | `.data.rel.ro` / `.data` | VMA − file = **`0x200000`** | `readelf -SW` (the gpsimd delta, **not** libtpu's `0x400000`) |
 
-`[HIGH/OBSERVED]` — all re-read this pass. The `0x200000` writable-section delta is irrelevant
+The `0x200000` writable-section delta is irrelevant
 to this page (every leaf body lives in `.text`, VMA == file) but is pinned so a reader doing
 their own `objdump` on a data-resident table does not misread it.
 
@@ -77,8 +77,7 @@ their own `objdump` on a data-resident table does not misread it.
 The `module__xdref_*` leaves are **plain C functions with a multi-output pointer ABI** (no C++
 vtables, no context object). Recovering it is prerequisite to the live leg; it was reversed by
 disassembly **and confirmed by execution**. There are four ABI shapes in this family, keyed by
-arity. `[HIGH/OBSERVED]` — each shape verified by a live call whose output matched the
-disassembled store target.
+arity — each shape verified by a live call whose output matched the disassembled store target.
 
 ### 2.1 Unary — `neg` / `abs` / `clsfy`
 
@@ -257,7 +256,7 @@ raises Invalid uniformly on every NaN-bearing compare will mis-set the FSR stick
 
 Driven LIVE through the fiss leaves with operand `b` set to qNaN (`0x7fc00000`) then sNaN
 (`0x7fa00000`), `a = 1.0`. Each cell is `result / invalid` as returned in `(%r8)` / `(%rcx)`.
-Every value below is a real `ctypes` return. `[HIGH/OBSERVED]`.
+Every value below is a real `ctypes` return.
 
 | predicate | `(1.0, qNaN)` result/inv | `(1.0, sNaN)` result/inv | signals on quiet NaN? |
 |---|---|---|---|
@@ -306,8 +305,7 @@ leaves.
 ### 6.1 Two distinct NaN rules: *generated* vs *propagated*
 
 The arithmetic leaves use **two different** NaN-construction rules, and conflating them is the
-single most common bit-exactness bug here. `[HIGH/OBSERVED]` — every value below is a live `add`
-return.
+single most common bit-exactness bug here. Every value below is a live `add` return.
 
 **(a) GENERATED NaN — an invalid operation with no NaN input** (inf−inf, 0·inf). The result is
 the **fixed canonical** qNaN, built by the idiom seen verbatim in the disassembly (e.g.
@@ -347,7 +345,7 @@ The `0xffa00000 → 0xffe00000` transition is the crisp byte-level certificate: 
 > that returns the fixed canonical for *every* NaN result passes inf−inf but **fails**
 > `−qNaN + 1.0` (expects `0xffc00000`, not `0x7fc00000`) and `sNaN 0x7fa00000 + 1.0` (expects
 > `0x7fe00000`, not `0x7fc00000`). The `and 0x3fffff / or 0x7fc00000` idiom in §(a) is the
-> *generated*-NaN path only; the *quieting* path is a single `or $0x400000`. `[HIGH/OBSERVED]`.
+> *generated*-NaN path only; the *quieting* path is a single `or $0x400000`.
 
 ### 6.2 Overflow → inf, underflow, and signed zero (live)
 
@@ -359,7 +357,7 @@ The `0xffa00000 → 0xffe00000` transition is the crisp byte-level certificate: 
 | `sub` | `(+0.0) − (−0.0)` | `[0, 0, 0, 0x00000000]` | `+0` |
 | `sub` | `1.0 − 1.0` | `[0, 0, 0, 0x00000000]` | `+0` (RNE) |
 
-`[HIGH/OBSERVED]`. The signed-zero rule (`+0 + −0 = +0` under RNE) is the IEEE default and agrees
+The signed-zero rule (`+0 + −0 = +0` under RNE) is the IEEE default and agrees
 across all four legs.
 
 ### 6.3 `neg`/`abs` do **not** canonicalize — and `min`/`max` vs `minnum`/`maxnum`
@@ -409,7 +407,7 @@ Two reimplementation-grade facts fall out:
 > signal Invalid on a quiet NaN (numpy does not) and they are order-sensitive on `±0`
 > (`fmin`/`fmax` are not). The numpy leg must model `min`/`max` as "Invalid-on-any-NaN,
 > propagate-NaN, echo-operand-a-on-tie" and `minnum`/`maxnum` as the IEEE `minNum`/`maxNum`, or
-> the differential fails. `[HIGH/OBSERVED]`.
+> the differential fails.
 
 ### 6.4 `clsfy` — the 8-bit class mask (live)
 
@@ -434,8 +432,7 @@ So the mask is `bit0=sign, bit1=zero, bit2=denormal, bit3=normal, bit4=inf, bit5
 bit6=sNaN, bit7=finite-group`. The sNaN class **also sets the qNaN bit** (`0x60 = 0x40|0x20`) —
 a signalling NaN is reported as "NaN, and specifically signalling", not as a disjoint class. The
 `finite` group bit (`0x80`) is set for zero/denormal/normal and clear for inf/NaN. This is the
-exact 8-bit `CLSFY` mask referenced by [the fp sub-ISA page](../isa/core/fp-sub-isa.md). `[HIGH/
-OBSERVED]`.
+exact 8-bit `CLSFY` mask referenced by [the fp sub-ISA page](../isa/core/fp-sub-isa.md).
 
 ---
 
@@ -460,7 +457,7 @@ target — the direction is chosen by the **parity of the result mantissa**, whi
 definition of round-to-even and is *not* reproducible by round-half-up (which rounds all three
 the same way) or round-half-away. All five ties report **Inexact = 1** and match Python's own
 correctly-rounded `float` (RNE). fp16 confirms the same: `1.0 + 2⁻¹¹ (0x3c00 + 0x1000) →
-0x3c00` (even, stays); `(1.0+ulp) 0x3c01 + 2⁻¹¹ → 0x3c02` (odd → up). `[HIGH/OBSERVED]`.
+0x3c00` (even, stays); `(1.0+ulp) 0x3c01 + 2⁻¹¹ → 0x3c02` (odd → up).
 
 **Round-mode sweep** — `1.0 + 2⁻²⁴` under each FCR mode, live:
 
@@ -475,7 +472,7 @@ The four modes produce two distinct results, and only RU (toward +∞) lifts the
 half-ulp residue to `1.0 + ulp` — exactly the `00=RNE, 01=RZ, 10=RU, 11=RD` encoding from
 [the fp sub-ISA page](../isa/core/fp-sub-isa.md), now **confirmed by execution** on the value
 oracle, not just read from the round-mode state field. Cross-leg: `numpy` (which is RNE-only)
-matches the RNE column; the TIE-XML round-mode semantics and the GX-FLIX-decoded FCR field match
+matches the RNE column; the TIE-XML round-mode semantics and the FLIX-decoded FCR field match
 the encoding; **4-oracle agreement holds on the RNE column**, and the non-RNE columns are pinned
 by the round-mode-parameter sweep against the fiss leaf.
 

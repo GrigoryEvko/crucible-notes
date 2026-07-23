@@ -39,7 +39,7 @@ from*, confidence says *how much you should trust it*. A claim can be `OBSERVED`
 |---|---|
 | **OBSERVED** | Read directly from a shipped artifact: a byte at a named symbol/offset, a string in a section, a config field in an XML/`.params`/golden-DB file, an instruction at a resolved address, or a value **computed by executing the shipped simulator** on a known input. The binary is the witness. |
 | **INFERRED** | Reasoned *over* one or more OBSERVED facts. No single artifact states it; it follows from observed evidence by a stated deduction (a stride pattern, a structural mirror, a cross-reference, an absence-implies argument). The reasoning chain is named. |
-| **CARRIED** | OBSERVED (or INFERRED) in a *cited* prior analysis report and reused here at that report's original confidence, **without re-reading the artifact this pass**. Carrying is legitimate provenance, but it is one inheritance step removed from the binary: the claim is only as good as the cited source, and a stale-copy hazard exists if that source was later corrected. |
+| **CARRIED** | OBSERVED (or INFERRED) in a *cited* prior analysis report and reused here at that report's original confidence, **without re-reading the artifact**. Carrying is legitimate provenance, but it is one inheritance step removed from the binary: the claim is only as good as the cited source, and a stale-copy hazard exists if that source was later corrected. |
 
 The crucial distinction is OBSERVED-by-execution. Because the shipped value simulator
 (`libfiss-base.so`, 864 `module__xdref_` value leaves) is **callable in-process via ctypes
@@ -214,7 +214,7 @@ the gen-selection bitmask `0x2020202000` sets bit 37, the ext-ISA dispatch switc
 though the v5 *collective firmware image* is not.
 
 **Provenance.** `[HIGH/OBSERVED]` — multiple independent witnesses (bitmask, switch arm,
-symbol census), re-verified against the binary.
+symbol census).
 
 **Closability — not a wall (anchor).** `ct37` is the OBSERVED counterpart that bounds §4.1's
 inference. It is listed here precisely to mark the boundary line: *coretype crossed it
@@ -378,9 +378,9 @@ The tag is an instruction to the reimplementer. Read it as follows:
   it is a thesis over evidence. If you can later *observe* it directly, do — an OBSERVED
   confirmation is strictly stronger.
 - **`MED/*`** — **use it, flag it, plan to confirm it.** Single-witness, tooling-bounded, or
-  one-step-inferred. Build on it provisionally; a later observation may refine it. The
-  Correction Ledger exists because MED claims are exactly where later passes have refined
-  earlier ones (a desync literal corrected, a stride boundary tightened).
+  one-step-inferred. Build on it provisionally; a later observation may refine it — MED claims
+  are exactly where later passes have refined earlier ones (a desync literal corrected, a
+  stride boundary tightened).
 - **`*/CARRIED`** — **trust it at its cited source's strength, and check that source was not
   later corrected.** A carry is one inheritance step from the binary. HIGH/CARRIED is a
   re-verified verdict; MED/CARRIED usually crosses a checkout boundary and warrants

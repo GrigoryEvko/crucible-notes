@@ -295,7 +295,7 @@ address, the library selector, the image size, and a load/unload direction:
 
 The normal path emits **one** record (target core == the `ll`'s context); a cross-context
 fallback emits **eight** identical copies — most plausibly one per Q7 POOL core — plus a
-warning. This is the sole producer of the `0x1095` record. `[HIGH/OBSERVED]` — verified: the
+warning. This is the sole producer of the `0x1095` record. `[HIGH/OBSERVED]` — the
 constant is written as `movw $0x1095,(%rsi)` at five consecutive 0x40-byte offsets (the
 8-record fallback). Note the two distinct magics: `0x1095` is the host→device load-*record*
 container; `"UCPL "` is the prelinked device-*image* the record points at.
@@ -439,7 +439,7 @@ jump to [End-to-End ABI Synthesis](../abi/abi-synthesis.md) and
 
 ### Self-verification (the five strongest stage-claims, re-grounded in the binary)
 
-Each claim below was re-read directly from a shipped file, not carried from a report.
+Each claim below is read directly from a shipped file.
 
 1. **Stage 1 wrapper template.** `script/build_custom_op.py` `_create_wrapper` emits
    `customop_setup(true)`, `customop_return_tensor(output)`, `asm("j switchBack")`, and

@@ -30,7 +30,7 @@ For a predicate, the split is concrete and visible:
   consume a `vbool` per lane through the `bitkillt` mask and **merge** (§6).
 
 Confidence/provenance tags follow [the Confidence & Walls model](../reference/confidence-model.md):
-`[HIGH/OBSERVED]` = read from disassembled bytes this pass, `[MED/INFERRED]` =
+`[HIGH/OBSERVED]` = read from disassembled bytes, `[MED/INFERRED]` =
 reasoned over OBSERVED evidence, `[…/CARRIED]` = re-used from a reconciled sibling
 report at its confidence. All offsets are into the shipped binaries:
 
@@ -46,8 +46,7 @@ extracted/.../ncore2gp/config/libisa-core.so    9,690,712 B  ELF64 x86-64  NOT s
 > → file `0x2080ed8`) carry a **`0x200000` delta** (`readelf -SW`). The
 > `dll_regfile_table` (§2) lives in `.data.rel.ro`, so every `xxd`/`objdump -s` on
 > it subtracts `0x200000`. In `libfiss-base.so`, `.text` (`0x190430`) is
-> **VMA == file offset** — `xdref` bodies disassemble at raw VMA. `[HIGH/OBSERVED]`
-
+> **VMA == file offset** — `xdref` bodies disassemble at raw VMA.
 ---
 
 ## 1. The executive finding — five decoded layers
@@ -63,18 +62,18 @@ fiss-VALUE split:
 | CONSUME (`_t` masked) | `add*t`/`sel*t`/`dsel*t`/`mov*t`/`sv*t` (per-lane **MERGE**, not zero) | 10 | `bitkillt` mask + per-lane op | §6 |
 | BOOL-REDUCE | `randbn` = reduce-AND / `rorbn` = reduce-OR (fold mask → scalar bool) | 10 | `randbn`/`rorbn`_64_64 | §7 |
 
-The decisive facts, each re-challenged against the binary this pass:
+The decisive facts:
 
 * **The `vbool` file is 16 entries × 64 bits.** `opnd_sem_vbool_addr` masks the
   operand with `and $0xf` (16 regs); `dll_regfile_table[3]` reads
   `{name="vbool", short="vb", count=0x10, width=0x40}`. A separate `b32_pr`
   (`regfile[6]`, 16 × 64) feeds the matmul `pr` operand; the scalar Xtensa `BR`
-  file (`regfile[1]`, 16 × 1-bit) is the single-bit cousin. `[HIGH/OBSERVED]`
+  file (`regfile[1]`, 16 × 1-bit) is the single-bit cousin.
 * **Ordered fp compares are FALSE on NaN; unordered are TRUE on NaN.** The ordered
   bodies `and`-in a "both-operands-ordered" (not-NaN) flag before the store; the
   unordered bodies `or`-in the NaN flag. This is exactly IEEE-754
   ordered/unordered predicate semantics, byte-confirmed with full binary16/binary32
-  NaN classification, integer-only soft-float (zero x87/SSE). `[HIGH/OBSERVED]`
+  NaN classification, integer-only soft-float (zero x87/SSE).
 * **The `_t` masked consume is a MERGE, not a zero-fill.** `bitkillt` emits
   **all-ones in the KILLED (predicate-FALSE) lane** — the "keep the destination"
   mask. A killed lane retains its prior destination value; a live lane takes the
@@ -82,11 +81,10 @@ The decisive facts, each re-challenged against the binary this pass:
   destination-retain at commit INFERRED-HIGH]`
 * **`randbn` is reduce-AND, `rorbn` is reduce-OR — not RNG.** `randbn` gathers the
   per-lane bits and tests `cmp $0xffffffff ; sete` (all set); `rorbn` ends in
-  `setne` (any set). `[HIGH/OBSERVED]`
+  `setne` (any set).
 * **cas never inspects the predicate value.** Ordered/unordered/signed/unsigned
   variants share one cas timing model; only the host/fiss callback differs.
-  `[HIGH/OBSERVED]`
-
+ 
 ---
 
 ## 2. The `vbool` register-file model
@@ -130,12 +128,10 @@ the ISA roster):
 | 6 | **`b32_pr`** | `pr` | **16** | **64** | PACKED PREDICATE-REGISTER (MAC `pr`) |
 | 7 | `gvr` | `gr` | 8 | 512 | SuperGather registers |
 
-`[HIGH/OBSERVED — each `+0x10` qword byte-read this pass.]`
-
 > **CORRECTION — the count/width field order, pinned by cross-check.** The `+0x10`
 > qword is `(count << 32) | widthBits`: the **high** 32 bits are the register count,
 > the **low** 32 bits are the bit-width. This is *not* obvious from a single record,
-> so it is pinned against three records of known geometry, byte-read this pass
+> so it is pinned against three records of known geometry, byte-read
 > (`xxd -e`, low word then high word):
 >
 > | record | low word | high word | known geometry | ⇒ field order |
@@ -149,8 +145,7 @@ the ISA roster):
 > **width = `0x40` = 64** — exactly consistent with the `opnd_sem_vbool_addr`
 > `and $0xf` (16 registers). A naïve "low = count" reading would (wrongly) make
 > `vec` a 512-register file and `vbool` a 64-register file; the `AR`/`vec`/`wvec`
-> cross-check rules that out. `[HIGH/OBSERVED]`
-
+> cross-check rules that out.
 ### 2.3 The width — 64 bits = 1 predicate bit per 8-bit sub-lane
 
 A 64-bit `vbool` register holds exactly one bit per **8-bit sub-lane** of the
@@ -176,15 +171,13 @@ meaningful there; for `NX16` (32 lanes) only 32 bits are meaningful, for `N_2X32
 * **`b32_pr` (16 × 64-bit)** — the **packed predicate-register** fed to the matmul
   as the `pr0`/`pr1`/`pr2` operand (the MAC `pr` operand of the convolution ops).
   Converted from `vec` by `MOVVPR`, copied by `MOVPRPR`, packed by the `predflag*`
-  ops; consumed by `EXTRPR`/`DEXTRPR` and the `MUL*XR16` family. `[HIGH/OBSERVED —
-  the operand accessors + roster.]`
+  ops; consumed by `EXTRPR`/`DEXTRPR` and the `MUL*XR16` family.
 
 > **QUIRK — the `pr` file is not the `vbool` file.** A reimplementation must keep
 > `vbool` (general per-lane predicate, consumed by `bitkillt`) and `b32_pr` (matmul
 > column-mask, consumed by the systolic MAC) as **separate 16×64 files** with
 > separate operand fields. They share the `and $0xf` indexer geometry but never the
-> same physical register. `[HIGH/OBSERVED]`
-
+> same physical register.
 ---
 
 ## 3. The predicate-generating FP compares (ordered + unordered, NaN-aware)
@@ -202,8 +195,7 @@ UNORDERED  : ivp_ueqn / ulen / ultn / uleqn / ultqn / uneqn / unn _2xf32(t) (+ *
              ; un = the pure isUnordered (isNaN(a) || isNaN(b)) test
 ```
 
-12 distinct ordered, 31 unordered, all with `_t` variants. `[HIGH/OBSERVED]`
-
+12 distinct ordered, 31 unordered, all with `_t` variants.
 ### 3.2 The NaN semantics — byte-exact (fiss)
 
 The ordered fp16 less-than `module__xdref_olt_1_1_16f_16f @0x521e60` classifies NaN
@@ -233,12 +225,11 @@ unordered compare is **TRUE** when an operand is NaN.
 > (the body `or`s in the NaN flag); `unn` is the pure `isUnordered` test. The whole
 > classification is **integer-only soft-float** — no x87/SSE; binary16 uses
 > `0x1f`/`0x3ff`/`0x7c00`, binary32 uses `0xff`/`0x7fffff`/`0x7f800000`.
-> `[HIGH/OBSERVED — `olt`/`ole`/`oeq`/`ult` bodies read this pass.]`
 
 ### 3.3 The cas decode/encode — the +0x1000 predicate nibble (libisa-core)
 
 The fp-compare predicate is a per-format **enumerated nibble**, not a global bit.
-On `F1_S3_ALU`, the `Opcode_*_encode` thunks write (byte-exact, this pass):
+On `F1_S3_ALU`, the `Opcode_*_encode` thunks write (byte-exact):
 
 ```asm
 ; Opcode_ivp_oeqn_2xf32_Slot_f1_s3_alu_encode @0x34b490
@@ -252,8 +243,7 @@ On `F1_S3_ALU`, the `Opcode_*_encode` thunks write (byte-exact, this pass):
 The `{eq:5, le:6, lt:7}` field steps **+0x1000** each. The **unordered** variants
 flip the `c8` → `cc` byte (the bit-10 "unordered" toggle, e.g. `ueqn` →
 `0x2704cc00`) and use a distinct nibble; `unn` encodes `0x2782c800` (the pure
-isUnordered test). `[HIGH/OBSERVED — read from the encode thunks; reconciles the
-ISA `+0x1000` predicate-nibble model.]`
+isUnordered test).
 
 ### 3.4 The result `vbool` lane layout
 
@@ -261,8 +251,7 @@ The per-lane compare writes a small predicate word (the int compares mask the
 result `and $0x3` and write `0x3`/`0x0`; the fp compares write `0`/`1`); the `_t`
 per-lane consume reads bit 0 (`bitkillt … and $0x1`). The per-instance staging then
 packs these into the 64-bit `vbool` register (the `predflag` packers do the
-lane→bit compaction — §7.3). `[HIGH/OBSERVED]`
-
+lane→bit compaction — §7.3).
 ---
 
 ## 4. The predicate-generating integer compares
@@ -298,7 +287,6 @@ So **signed** compares use the sign-bias + unsigned-compare trick (the same
 structural trick as the fiss min/max); **unsigned** compares are a bare `cmp`. The
 8-bit (`@0x5bc450`…) and 32-bit (`@0x5c0cc0`…) forms share the shape per width. The
 result is a 2-bit per-lane predicate value (`0x3` = true / `0x0` = false).
-`[HIGH/OBSERVED]`
 
 ### 4.3 The cas timing — int compare posts its def one stage later
 
@@ -306,8 +294,7 @@ The int-compare issue fn `LTNX16` writes its `vbool` **result** at **LAT 11**
 (`mov $0xb,%esi` immediately after `opnd_sem_vbool_addr`) and reads its two `vec`
 sources at LAT 10; the fp compare (`OLEN`, §8) posts its `vbool` **result** at
 **LAT 10**. The 1-stage difference is the def-post position; both are forwardable
-within the `vbool` interlock window (§8). `[HIGH/OBSERVED — both issue fns read
-this pass.]`
+within the `vbool` interlock window (§8).
 
 ---
 
@@ -317,8 +304,7 @@ this pass.]`
 
 `IVP_ANDB`, `ORB`, `XORB`, `NOTB`, `ANDNOTB`, `ORNOTB` over `vbool`, plus the 1-bit
 `BR` forms `NOTB1`, `ANDNOTB1`, `ORNOTB1`. There is **no `XORNOTB`** — XOR has no
-not-variant. `[HIGH/OBSERVED]`
-
+not-variant.
 ### 5.2 The fiss value — plain 64-bit bitwise, two 32-bit halves
 
 ABI: `A=%rsi`, `B=%rdx`, result=`%rcx`; each body processes the register as two
@@ -335,8 +321,7 @@ ABI: `A=%rsi`, `B=%rdx`, result=`%rcx`; each body processes the register as two
 
 Semantics are pure per-bit (= per-lane) boolean logic with **no element
 boundaries** — the whole 64-bit register is processed at once. The 1-bit `BR`
-analogues are `notb1_1_1 @0x5b8020` / `andnotb1_1_1_1 @0x5b8030`. `[HIGH/OBSERVED]`
-
+analogues are `notb1_1_1 @0x5b8020` / `andnotb1_1_1_1 @0x5b8030`.
 > **NOTE — `andnotb` complements the SECOND operand.** The fiss leaf computes
 > `A & ~B` — the **B** operand (`%rdx`) is the one inverted. The ISA reference batch
 > [B11 — vbool ALU §4.1](../isa/ref/b11-vbool-alu.md) documents the same op under
@@ -356,8 +341,7 @@ base-ISA boolean opcode:
 3418a0:  c7 07 70 10 4a 00   movl $0x004a1070,(%rdi)   ; xt_booleans-package opcode
 ```
 
-So the `vbool` boolean ops issue in `S1_Ld` and post at LAT 10. `[HIGH/OBSERVED —
-encode byte-read this pass.]`
+So the `vbool` boolean ops issue in `S1_Ld` and post at LAT 10.
 
 ---
 
@@ -389,8 +373,7 @@ encode byte-read this pass.]`
 The 8-bit and 32-bit lane widths share the polarity:
 `bitkillt_8_1 @0x5bc360` (`test;sete;neg;and $0xff`), `bitkillt_32_4 @0x528dd0`
 (`and $1;xor $1;neg`). So **`bitkillt` = "all-ones where the lane should be KILLED
-(kept)"`; `bitkillf` = "all-ones where the lane is LIVE (written)".** `[HIGH/OBSERVED]`
-
+(kept)"`; `bitkillf` = "all-ones where the lane is LIVE (written)".**
 ### 6.2 The merge semantics — how the mask is applied
 
 The canonical `_t` arithmetic body
@@ -456,7 +439,7 @@ CARRIED from the load/store and reduce siblings.]`
 > `rand`/`ror`-stemmed predicate ops are *reduce-**AND**-bool* and
 > *reduce-**OR**-bool* respectively (the bodies are bit-reductions, §7.2). The only
 > `rand`-stemmed ops in the whole ISA are this AND-reduce — there is no on-core RNG
-> instruction here. `[HIGH/OBSERVED — bodies read this pass.]`
+> instruction here.
 
 ### 7.2 The fiss value — byte-exact
 
@@ -472,8 +455,7 @@ The narrow `b2n` forms are the clean all-set / any-set tests:
 `randb2n_64_64 @0x81cc40` = `cmpl $0xffffffff,(%rsi) && cmpl $0xffffffff,0x4(%rsi)`
 (both halves all-set); `rorb2n_64_64 @0x81cc70` = `test (%rsi); test 0x4(%rsi); setne`
 (any bit). The `_2` variants (`randbn_2_64_64 @0x81cfd0`, `rorbn_2_64_64 @0x81d0a0`)
-are second-lane-stride forms. `[HIGH/OBSERVED]`
-
+are second-lane-stride forms.
 > **GOTCHA — within-mask reduce vs multi-register fold.** `randbn`/`rorbn` reduce
 > **the lanes of one mask** ("is every / any lane of *this* `vbool` set?"). They are
 > distinct from the `borfs2n`/`bnorfs2n` ops, which OR/NOR-reduce **eight separate
@@ -493,8 +475,7 @@ bitkill_mov{eqz,nez,gez,ltz}_1 @0x5b7780..   — make a 1-bit predicate FROM a s
 ```
 
 The `predflag` packers do the lane→bit compaction noted in §3.4; the
-`bitkill_mov*` ops are the scalar-condition predicate generators. `[HIGH/OBSERVED]`
-
+`bitkill_mov*` ops are the scalar-condition predicate generators.
 ### 7.4 The cas decode for `randbn`
 
 `randbn` rides the shared boolean-slot stage functions (no dedicated `_issue`
@@ -529,10 +510,8 @@ Interpretation:
 
 * A **compare** posts its `vbool` **result def** at **LAT 10** (fp) / **11** (int)
   — the same vector-ALU result stage as any `vec` op; a consumer (a `_t` op, a
-  boolean op, a reduce) needs the predicate at LAT 10. `[HIGH/OBSERVED — both def
-  sites read this pass.]`
-* The **boolean ops** post at LAT 10 in the `S1_Ld` boolean unit. `[HIGH/OBSERVED]`
-
+  boolean op, a reduce) needs the predicate at LAT 10.
+* The **boolean ops** post at LAT 10 in the `S1_Ld` boolean unit.
 > **CORRECTION — "int=11 / fp=10" is a *def-post* rule, not a per-operand one.**
 > The LAT differs on the *result definition*: `LTNX16` writes its `vbool` def at
 > `mov $0xb` (11) right after the `opnd_sem_vbool_addr` call (@`0xde12e9`); the fp
@@ -541,19 +520,17 @@ Interpretation:
 > (@`0xde1482`) — that is the `_t` mask input, not the result. So an issue fn
 > legitimately carries **both** LAT 10 and LAT 11 `vbool` slots; the clean rule is
 > per the *result def* (int 11 / fp 10), not "every `vbool` slot in an fp compare is
-> 10". `[HIGH/OBSERVED]`
-
+> 10".
 * The `_t` predicate-**consume** reads the `vbool` operand at LAT 10 (it must be
   forwardable by the consumer's read stage); the per-file interlock-scan window for
   `vbool` is **12–13 stages**, so a predicate produced up to ~3 stages before the
   consume forwards without a stall. `[HIGH numbers / MED window-rule.]`
 * The `$0xe`(14) values fed to `*0x15648/0x15650(%rbx)` are the WB-port / bypass-
-  horizon **structural** stall args — **not** value latencies. `[HIGH/OBSERVED]`
+  horizon **structural** stall args — **not** value latencies.
 * As always, the cas scoreboard never inspects the predicate **value** — it
   schedules reg#/LAT slots; the value is computed by the fiss `xdref` bodies (§3–§7).
   Ordered/unordered/signed/unsigned variants share the **same** cas timing; they
-  differ only in the host/fiss callback. `[HIGH/OBSERVED]`
-
+  differ only in the host/fiss callback.
 ---
 
 ## 9. Generate → consume reconciled — the Dropout chain end to end
@@ -574,8 +551,7 @@ Reconciliation:
 
 * The Dropout `random < p` test **is** an ordered fp32 less-than producing a
   `vbool` (§3): the ordered NaN-handling means a NaN random value yields predicate
-  FALSE = "drop". The compare writes the 16×64-bit `vbool`. `[HIGH/OBSERVED — body
-  located, calls `olt_1_4_32f_32f_4f_t`.]`
+  FALSE = "drop". The compare writes the 16×64-bit `vbool`.
 * The mask-apply select **consumes** that `vbool` via `bitkillt_16_2` (§6) — a
   MERGE: survivor lanes (pred true) take the activation, killed lanes take the
   merge-source (zero in the `dsel`-vs-zero blend). `[HIGH/OBSERVED — `selnx16t`
@@ -586,8 +562,7 @@ Reconciliation:
 So the Dropout op is **composed entirely** from the standard `vbool` predicate
 primitives decoded here: `compare(generate) → bitkillt(consume/merge) →
 predicated-multiply`. There is no bespoke dropout hardware op; the generate→consume
-chain is closed. `[HIGH/OBSERVED]`
-
+chain is closed.
 ---
 
 ## 10. Reimplementation checklist
@@ -626,8 +601,7 @@ corroborate the merge polarity and the reduce direction documented above.
 > predicate-FALSE (killed) lane** — an all-ones "keep the prior destination" mask —
 > and `0x0000` in the live lane. A reimplementation that zero-fills killed lanes
 > (the naïve "masked op" assumption) is wrong for *every* `_t` arithmetic, select,
-> predicated-move and masked-store on this core. `[HIGH/OBSERVED]`
-
+> predicated-move and masked-store on this core.
 ---
 
 ## 11. Cross-references

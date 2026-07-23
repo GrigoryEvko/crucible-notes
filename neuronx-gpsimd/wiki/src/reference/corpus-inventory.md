@@ -14,7 +14,7 @@ sibling reverse-engineering corpora are used only for cross-checks. A wave of 67
 analysis reports is derived output, not a primary artifact, and is catalogued as such at the
 end.
 
-Every count and size on this page was **re-derived directly from the files on disk this pass**
+Every count and size on this page is **derived directly from the files on disk**
 (`sha256sum`, `stat -c%s`, `file`, `nm`, `readelf`), not copied from a report. Where a count
 matters, it is tagged `[CONF/PROV]` per the [Confidence & Walls Model](confidence-model.md), and
 counts taken from a symbol table say so explicitly — **symbol-table counts via `nm`, never a
@@ -80,12 +80,12 @@ internalise here, and the inventory makes it explicit.
 | `libnrtucode.so` | 3 208 440 | ELF64 x86-64 `.so`, **stripped** | dynsym only | Shared form of the loader; carries **12 embedded ELF32-Xtensa device images** (`e_machine = 94`). Stripped → structure read via T1 IDA sidecar + embedded-image carving. |
 | `libnrtucode_internal.so` | 10 276 288 | ELF64 x86-64 `.so`, **not stripped** | 946 (`nm`) | The **richer wrapper**: 66 `…_EXTISA_*_(SO\|JSON)_get` blob accessors and **16 embedded ELF32-Xtensa device images** (`e_machine = 94`). Carries the `NRTUCODE_CORE_*_NX_POOL` core-kind enum and the per-codename image getters. Ground truth for the **image set, the core-kind enum, and the loader dispatch.** |
 
-SHA-256 of the two firmware `.so` wrappers (re-hashed this pass):
+SHA-256 of the two firmware `.so` wrappers:
 - `libnrtucode_internal.so` = `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b`
 - `libnrtucode.so` = `06d3f0b1630e38828ace79d3c9f3123ac14b3ea4c5cde4aa906a31b3e82ccce5`
 - `libnrtucode.a` = `158dadc5c76dc0491b9243091458b43c2d59091ba3ba5a727206915bd7bd6130`
 
-**Counts re-derived this pass** (all `[HIGH/OBSERVED]`):
+**Counts** (all `[HIGH/OBSERVED]`):
 - `libnrtucode_internal.so` has **946** total `.symtab` symbols (`nm | wc -l`) and **66**
   `…_EXTISA_*_(SO|JSON)_get` accessor symbols. Per-codename `…_SO_get` image getters:
   **1 SUNDA, 4 CAYMAN, 4 MARIANA, 4 MARIANA_PLUS, 4 MAVERICK = 17** (the JSON-twins double this
@@ -108,7 +108,7 @@ them prevents fabrication.
 |---|---|---|
 | `libnrtucode_extisa.so` | **NOT-PRESENT** (not a file) | There is no separate ext-ISA `.so`. The "EXTISA" content is the **embedded blob set** (`CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_get`, …) *inside* `libnrtucode_internal.so`. |
 | `libncfw.so` | **NOT-PRESENT** | No standalone NCFW (scalar-Xtensa-LX management-core) shared object ships here. NCFW analysis rests on its image *inside* the wrapper / sibling reports. |
-| `libnrt.so` (host runtime, `.2.x`) | **NOT-PRESENT** | The host NeuronCore runtime library is **absent from this checkout**. Its struct/enum/RTTI census (the large host-side census referenced in the appendix) is therefore a **`CARRIED`** claim from sibling/host-runtime corpora, not OBSERVED here — see §6 and the planned host-runtime struct-census appendix. The v5 `Q7_CC_TOP` collective firmware image is likewise file-absent (a named wall in the [Confidence & Walls Model](confidence-model.md)). |
+| `libnrt.so` (host runtime, `.2.x`) | **NOT-PRESENT** | The host NeuronCore runtime library is **absent from this checkout**. Its struct/enum/RTTI census (the large host-side census referenced in the appendix) is therefore a **`CARRIED`** claim from sibling/host-runtime corpora, not OBSERVED here — see §6 and the host-runtime struct-census appendix. The v5 `Q7_CC_TOP` collective firmware image is likewise file-absent (a named wall in the [Confidence & Walls Model](confidence-model.md)). |
 
 ---
 
@@ -176,7 +176,7 @@ naming families** — a fact a reimplementer must not flatten:
 Each `instruction_mapping.json` has top-level keys `{struct2opcode, struct2pseudo_opcode}`
 (`struct2pseudo_opcode` = 2 in every gen). The monotone climb 89→99→108→114 is the OBSERVED
 per-generation opcode growth. The `cayman` map hashes to
-`4e9c1f6abe0d015d…` (re-verified this pass). `[HIGH/OBSERVED]`
+`4e9c1f6abe0d015d…`. `[HIGH/OBSERVED]`
 
 The **core-kind enum** that ties these names to firmware is read directly from
 `libnrtucode_internal.so` strings: `NRTUCODE_CORE_{SUNDA,CAYMAN,MARIANA,MARIANA_PLUS,MAVERICK}_NX_POOL`
@@ -191,7 +191,7 @@ the `_internal` variant lists all five.) `[HIGH/OBSERVED]`
 | **Maverick `al_address_map_db.pkl`** | `CUSTOMOP/c10/include/arch-headers/maverick/ext/al_address_map_db.pkl` | **216 631 794** B | The Maverick **address-map value oracle** (Python pickle). Its JSON twin `al_address_map_db.json` is **514 276 583** B. The ground truth for v5 address decoding. |
 | Maverick `vpc-mirror/arch-regs/…` | `CUSTOMOP/c10/include/arch-headers/maverick/vpc-mirror/…` | (large) | Maverick secure/user internal address maps + per-block CSR JSON. |
 
-`[HIGH/OBSERVED]` on every size/path above (re-`stat`-ed this pass). Note: the `al_address_map_db.pkl`
+`[HIGH/OBSERVED]` on every size/path above. Note: the `al_address_map_db.pkl`
 lives in the **maverick** customop arch-headers, not in the `cayman-arch-regs` tarball — both are
 catalogued above so the distinction is explicit.
 
@@ -255,7 +255,7 @@ source. `[HIGH/INFERRED]`
 
 Three independently-shipped Neuron corpora live in the same repo tree and are used **only to
 corroborate** a gpsimd-internal fact from a separate build — never as the sole source of one.
-`[HIGH/OBSERVED]` (presence re-checked this pass.)
+`[HIGH/OBSERVED]`
 
 | Corpus | Location | Cross-check role |
 |---|---|---|
@@ -271,8 +271,7 @@ The `raw/` directory holds **680 entries — 677 `.txt` analysis reports + 3 dat
 (`E007_native_link_graph_edges.tsv`, `W028_package_payload_tree_atlas.tsv`,
 `W031_ida_sidecar_manifest_catalog.jsonl`). **This wave is derived output of T0/T1 analysis — it
 is documentation, not a witness.** A `CARRIED` claim cites a report here; to become `OBSERVED` it
-must trace through to the T0/T1 file the report was built from. `[HIGH/OBSERVED]` (census
-re-counted this pass.)
+must trace through to the T0/T1 file the report was built from. `[HIGH/OBSERVED]`
 
 Breakdown by report family:
 
@@ -327,5 +326,5 @@ lane (`libfiss-base.so`) requires no license and is the only oracle this referen
   toolchain and host analysis tools named in §6.
 - **[Codename ↔ Generation Cross-Walk](codename-crosswalk.md)** — the five-codename axis the §5
   header sets and §3 core-kind enum are keyed on.
-- The planned **Bibliography of Source Binaries** appendix is the formal, fully-hashed citation
+- The **Bibliography of Source Binaries** appendix is the formal, fully-hashed citation
   list this page's working inventory feeds into.

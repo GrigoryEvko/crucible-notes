@@ -24,8 +24,8 @@ extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/lib/libtie.so               
 
 Tooling: `nm -D`, `readelf -SW/-V/-d`, `objdump -d`, plus a `python3` cipher decoder
 run against the embedded blobs. Each claim is tagged **confidence** × **provenance**
-(`OBSERVED` = read directly off the binary this pass, `INFERRED` = strong deduction
-from observed evidence, `CARRIED` = taken from a prior report and re-checked).
+(`OBSERVED` = read directly off the binary, `INFERRED` = strong deduction
+from observed evidence, `CARRIED` = taken from a prior report).
 
 ---
 
@@ -47,15 +47,13 @@ TIE-XML out through a fixed five-symbol ABI.
 > files, and the bit-precise reference semantics). The two `libtie-*.so` files are
 > **not** parsers — they are the on-disk, in-shared-object serialization of the
 > TIE-compiler's XML export, vended by trivial getters. The parser is a separate
-> file, `XtensaTools/lib/libtie.so`. *(HIGH · OBSERVED.)*
-
+> file, `XtensaTools/lib/libtie.so`.
 > **GOTCHA — `libtie.so` ≠ `libtie-core.so`.** The 424 KB `libtie.so` under
 > `XtensaTools/lib/` is the **runtime** (657 `xtie_*` exports, parses XML). The
 > 51 MB `libtie-core.so` under `ncore2gp/config/` is the **data** (4 XML blobs, 5
 > exports). They share a `VERS_1.1` version-def whose BASE name is the same generic
 > identity string `libtie-Xtensa.so`, which makes them easy to conflate. Keep them
-> distinct: one is code, one is the 49 MB ciphered DB. *(HIGH · OBSERVED.)*
-
+> distinct: one is code, one is the 49 MB ciphered DB.
 Both providers carry **zero RTTI** (no `_ZTV`/`_ZTI`/`_ZTS`) and **zero imports** —
 structurally confirmed below. Neither has a GNU build-id (`readelf -n` shows only
 the `.comment` GCC tag); the `libtie.so` runtime's mtime is Jun-2022 (the
@@ -114,8 +112,7 @@ $ nm -D libtie-core.so | rg ' U ' | wc -l
 > **1.0**. The adjacent `.rodata` at `0x388` spells the ASCII string
 > `Xtensa xti2752.9` — the XtensaTools release tag. So `interface_version` is a
 > *provider-ABI version* the runtime checks before trusting the blob layout, and its
-> current value is `1.0`. *(HIGH · OBSERVED — `movsd`/double bytes both read off the
-> file; supersedes the prior report's "returns a double" without the value.)*
+> current value is `1.0`.
 
 ### 2.1 The provider-role binding
 
@@ -136,8 +133,7 @@ xml-base-dll      xml-msem-dll        xml-tie-dll
 So `libtie-core` = the **`xml-base`** provider (the per-op datapath DB);
 `libtie-Xtensa-msem` = the **`xml-msem`** provider (the machine-semantics overlay).
 The runtime selects a provider per role and reads it through the five-getter
-contract. *(HIGH · OBSERVED — both the params binding and the `nativesim` string
-refs are read off the files.)*
+contract.
 
 ---
 
@@ -163,8 +159,7 @@ The phases are TIE-compiler intermediate-representation snapshots of the one DB 
 - **post_parse** — the just-after-parse snapshot, *emptied* in the shipped build (a
   50-byte stub).
 - **post_rewrite** — the post-rewrite / post-`gen` DB: the folded, fully-elaborated
-  operation / encoding / semantics tree the tools consume. Decoded header (this
-  pass): `<xdoc type="tie" name="core" xdocversion="202000" endian="little"
+  operation / encoding / semantics tree the tools consume. Decoded header: `<xdoc type="tie" name="core" xdocversion="202000" endian="little"
   rstage="0" estage="3" mstage="4" wstage="6" instbuf_width="256">` — byte-for-
   structure identical to the standalone `Xtensa.xml`'s decoded head. This is the
   blob that matters.
@@ -240,8 +235,6 @@ static char *tie_xml_decode(unsigned char *blob, size_t n) {
 > bytes in a shipped `.so`. The formal-semantics model
 > ([The Complete Formal ISA-Semantics Model](../isa/semantics/formal-isa-model.md))
 > was built by running this decode and walking the resulting tree.
-> *(HIGH · OBSERVED — the decode was run this pass; the body byte-identity is a
-> direct comparison.)*
 
 ---
 
@@ -261,7 +254,7 @@ authoring-superset census — and it matches the standalone TIE-DB **exactly**, 
 | `xdref_` token | 19,476 | — | — | HIGH · OBSERVED |
 | `xdsem` token | 1,047 | — | — | HIGH · OBSERVED |
 
-Sample decoded context (this pass): `<OPCODEDEF package="xt_wide_branch"
+Sample decoded context: `<OPCODEDEF package="xt_wide_branch"
 file="coretie2_internalmodules.tie"><ID name="BEQZ.W18"/>…` — the same single
 synthetic source file, and the same `BEQZ.W18` TIE-DB-only wide-branch macro.
 
@@ -275,8 +268,6 @@ synthetic source file, and the same `BEQZ.W18` TIE-DB-only wide-branch macro.
 > [1534/1607/12642 tally](../isa/core/coverage-tally.md) for the full reconciliation
 > and the [TIE database four-source model](../isa/core/tie-database.md) for why four
 > independently-generated files all back-trace to this one DB.
-> *(HIGH · OBSERVED — the 1607/12642 counts were decoded from the blob this pass,
-> upgrading the tally page's CARRIED tag on those two figures to OBSERVED.)*
 
 ---
 
@@ -293,7 +284,7 @@ empty. Sizes from the symbol table (same `0x200000` delta):
 | `xml_data_compiler` | 123 B | empty `<xdoc type="minimal-tie" name="compiler_xml">` |
 | `xml_data_xinfo` | 124 B | empty `<xdoc type="minimal-tie" name="xinfo_xml">` |
 
-Decoding the msem `post_rewrite` and taking a construct census (this pass):
+Decoding the msem `post_rewrite` and taking a construct census:
 
 | Construct | Count | Meaning | Conf · Prov |
 |---|---|---|---|
@@ -327,8 +318,7 @@ prefix = *Xtensa machine semantics*.
 > `<PACKAGE>` body (the 4 PACKAGE/ENDPACKAGE pairs nest `msem` › `xt_msem`), **not**
 > in the doc header. Distinguish the two providers by their *content* (645 INTERFACE
 > + 118 FUNCTION, 0 OPCODEDEF) and by the `xml-msem-dll` role binding, not by the
-> `<xdoc name>` attribute. *(HIGH · OBSERVED — both decoded headers read off the
-> blobs this pass.)*
+> `<xdoc name>` attribute.
 
 > **NOTE — "m" = memory or machine?** The *content* (memory-access INTERFACE +
 > load/store reference FUNCTIONs) is OBSERVED; the exact gloss of the "m" in `msem`
@@ -340,8 +330,7 @@ prefix = *Xtensa machine semantics*.
 The two providers are **complementary, not overlapping**: the token `msem` appears
 **0 times** in the base DB, and the base DB's `<OPCODEDEF>`/`<ICLASS>`/`xt_ivp32`
 constructs appear **0 times** in msem. `xml-base-dll` = per-op datapath;
-`xml-msem-dll` = memory/control interface. *(HIGH · OBSERVED.)*
-
+`xml-msem-dll` = memory/control interface.
 ---
 
 ## 6. The parser — `libtie.so` and its 657 `xtie_*` accessors
@@ -356,8 +345,7 @@ table.
 > `nm -D --defined-only libtie.so | rg -c 'xtie_'` = **657**, and the total
 > `T`-export count is also 657 (every dynamic export is an `xtie_*`; there are no
 > non-`xtie_` exports beyond the `VERS_1.1` anchor). Prior framing of "658" is off
-> by one. *(HIGH · OBSERVED.)*
-
+> by one.
 ### 6.1 The phase getters — one runtime accessor per provider getter
 
 The four runtime phase accessors map 1:1 onto the provider's four getters:
@@ -431,8 +419,7 @@ Consumers of the getters (string + reloc refs): `XtensaTools/lib/tc/nativesim`
 (the native ISS), `XtensaTools/libexec/xt-gen-os`, the LLVM config generators
 (`llvm-tblgen`, `llvm-xtensa-config-gen`), and `libtie.so` itself; `libauto.so` and
 `libfusion.so` list `libtie.so` as NEEDED. The TIE runtime is an
-authoring / config-generation / native-sim path. *(HIGH · OBSERVED.)*
-
+authoring / config-generation / native-sim path.
 ---
 
 ## 7. The link to cas / fiss — `libtie-core` **is** the ISS source
@@ -530,4 +517,4 @@ GEN-/ISA-side findings.)*
 - **[HIGH]** Everything in §1–§7 and §9 (the three files, the five-getter ABI, the
   four blobs + cipher, the 1607/12642 base-DB census, the msem census, the 657
   `xtie_*` parser API + phase mapping, and the `xdref`/`xdsem` name-identity to
-  cas/fiss) is direct binary evidence read or decoded this pass.
+  cas/fiss) is direct binary evidence read or decoded.

@@ -3,7 +3,7 @@
 > **Scope.** This page proves the **MAC / multiply family** (`ivp_sem_multiply`
 > and its `MUL` / `MULA` / `MULS` / `MULP` / `SQRP` / `DECNEGW` / `PACK` leaves)
 > **bit-exact** against the 4-oracle differential of
-> [four-oracle-method](four-oracle-method.md) — GX-SEM, GX-FLIX, nki-0.3.0, and
+> [four-oracle-method](four-oracle-method.md) — SEM, FLIX, nki-0.3.0, and
 > **libfiss-base LIVE via `ctypes`**. Every hex result below is a byte-for-byte
 > reproduction of an actual call into the shipped simulator, not a hand model.
 > The accumulator is the **1536-bit / 48-dword / 192-byte `wvec`** file; the
@@ -57,18 +57,19 @@ three, and shows the byte-exact output.
 ## 2. The leaf map (nm-grounded)
 
 The family is exported as four tiers. Counts are from
-`nm -D --defined-only libfiss-base.so \| rg <pat>` against the **one** binary.
+`nm -D --defined-only libfiss-base.so \| rg <pat>` against the **one** binary; every leaf below
+is `[HIGH/OBSERVED]`.
 
-| ISA op | xdref leaf (representative) | semantics | tag |
-|---|---|---|---|
-| `MUL` (widen, no acc) | `module__xdref_mul_24_8_8` | `(int8 a · int8 b) & 0xFFFFFF` | `[HIGH/OBSERVED]` |
-| `MULA` (mul-add into acc) | `module__xdref_mula_24_24_8_8` | `acc = (acc + a·b) & 0xFFFFFF` | `[HIGH/OBSERVED]` |
-| `MULS` (mul-sub into acc) | `module__xdref_muls_24_24_8_8` | `acc = (acc − a·b) & 0xFFFFFF` | `[HIGH/OBSERVED]` |
-| `MULP` (sum-of-2-products) | `module__xdref_mulp_24_8_8_8_8` | `(a·b + c·d) & 0xFFFFFF` | `[HIGH/OBSERVED]` |
-| `SQRP` (sum-of-squares) | `module__xdref_sqrp_24_8_8` | `(a·a + b·b) & 0xFFFFFF` | `[HIGH/OBSERVED]` |
-| `DECNEGW` (carry fix-up) | `module__xdref_decnegw_24_24` | `if acc<0: acc=(acc−1)&mask` | `[HIGH/OBSERVED]` |
-| `PACKL` (truncate read-out) | `module__xdref_packl_8_24` | `out = acc & 0xFF` (wrap) | `[HIGH/OBSERVED]` |
-| `PACKVR` (round+sat read-out) | `module__xdref_packvr_8_24_32` | round by `sh`, saturate to dst | `[HIGH/OBSERVED]` |
+| ISA op | xdref leaf (representative) | semantics |
+|---|---|---|
+| `MUL` (widen, no acc) | `module__xdref_mul_24_8_8` | `(int8 a · int8 b) & 0xFFFFFF` |
+| `MULA` (mul-add into acc) | `module__xdref_mula_24_24_8_8` | `acc = (acc + a·b) & 0xFFFFFF` |
+| `MULS` (mul-sub into acc) | `module__xdref_muls_24_24_8_8` | `acc = (acc − a·b) & 0xFFFFFF` |
+| `MULP` (sum-of-2-products) | `module__xdref_mulp_24_8_8_8_8` | `(a·b + c·d) & 0xFFFFFF` |
+| `SQRP` (sum-of-squares) | `module__xdref_sqrp_24_8_8` | `(a·a + b·b) & 0xFFFFFF` |
+| `DECNEGW` (carry fix-up) | `module__xdref_decnegw_24_24` | `if acc<0: acc=(acc−1)&mask` |
+| `PACKL` (truncate read-out) | `module__xdref_packl_8_24` | `out = acc & 0xFF` (wrap) |
+| `PACKVR` (round+sat read-out) | `module__xdref_packvr_8_24_32` | round by `sh`, saturate to dst |
 
 The **width grid** is the spine of the family. Every integer form ships at three
 widths plus complex and floating-point variants (`nm` excerpt, sorted):
@@ -91,7 +92,7 @@ module__xdref_mul_1_1_1_1_32f_32f_32f_2   module__xdref_mula_1_1_1_1_32f_32f_32f
 > `srcW·srcW` product (`2·srcW` bits) **plus** ≥`srcW` bits of accumulation
 > headroom before the modular mask bites. The fp forms carry width `1` — they
 > are per-lane soft-float, **not** widened (see [fp-soft-float](fp-soft-float.md),
-> [convert-pack-cast](convert-pack-cast.md)). `[HIGH/OBSERVED]`
+> [convert-pack-cast](convert-pack-cast.md)).
 
 ---
 
@@ -118,7 +119,7 @@ arg4 = %r8    out* (24-bit forms) / out* (wide forms)
 >
 > Do **not** mistake `%rdi` for the first operand: that off-by-one-arg error
 > silently shifts every operand and is the most common way to mis-drive this
-> binary live. `[HIGH/OBSERVED]`
+> binary live.
 
 The wide (48/96-bit) accumulator forms take **`acc*` and `out*` as pointers** to
 packed-dword arrays — 48-bit = `low dword + high word` (8 bytes), 96-bit =
@@ -169,7 +170,7 @@ Reproduced as annotated pseudocode naming the **real** symbols:
 > accumulator is a pure `Z/2²⁴` ring during the chain; this is why a `MULA` chain
 > can transiently exceed the destination width and still be correct once
 > `PACKVR`-clamped at the end. A reimplementation that saturates *inside* `MULA`
-> will diverge on any chain that overshoots and comes back. `[HIGH/OBSERVED]`
+> will diverge on any chain that overshoots and comes back.
 
 ### LIVE — 24-bit corpus (byte-exact)
 
@@ -254,7 +255,7 @@ mula96(0, ctypes.cast(a96, P), 0x40000000, 0x40000000, ctypes.cast(a96, P))
 > [cas-mac-fmac §7](../iss/cas-mac-fmac.md) and [b10-wvec-pack](../isa/ref/b10-wvec-pack.md).
 > One 1536-bit `wvec` entry holds **64 × 24-bit**, or **32 × 48-bit**, or
 > **16 × 96-bit** lane accumulators — the xdref leaves above compute *one lane's*
-> slice of that file. `[HIGH/OBSERVED]`
+> slice of that file.
 
 ---
 
@@ -283,7 +284,7 @@ for **every** out-of-destination-range input.
 > bits of the ring value and discards the sign. `+256` (`0x100`, in-range as a
 > 24-bit value) reads out as `0x00`. There is an explicit `packl_16_48_nosat`
 > sibling, whose `_nosat` name is itself the binary's confirmation that the
-> default `PACK*` policy *does* clamp. `[HIGH/OBSERVED]`
+> default `PACK*` policy *does* clamp.
 
 ### 6.2 `PACKVR` — round, then saturate
 
@@ -322,16 +323,16 @@ packvr16 = bind("module__xdref_packvr_16_24_32", [i, i, i, P])   # round+sat (16
 Reading the first row aloud: `PACKL(0x100) = 0x00` silently throws the value
 away; `PACKVR(0x100, sh=0) = 0x7f` correctly reports "overflow, clamped to max".
 The hardware default for a saturating store is `PACKVR`; `PACKL` is the
-deliberate "I want the raw low bits" path. **The task's worked saturate example
+deliberate "I want the raw low bits" path. **The worked saturate example
 — two operands of `0x7000` summing past the 16-bit window — resolves to
 `0x7fff` through the `PACKVR_*_16` read-out**, which is exactly the
-`packvr_16_24_32(0xE000) = 0x7fff` row above. `[HIGH/OBSERVED]`
+`packvr_16_24_32(0xE000) = 0x7fff` row above.
 
 > **CORRECTION — `PACKVR` is *not* "`PACKL` plus a round bit".** It is
 > `round → scale → saturate`; for any value outside the destination range the
 > two produce *unrelated* bytes (`0x00` vs `0x7f` for `+256`). Modelling
 > `PACKVR` as truncate-with-rounding — a common shortcut — is wrong on every
-> overflow and on the `+128`→sign-flip boundary. See [b10-wvec-pack](../isa/ref/b10-wvec-pack.md). `[HIGH/OBSERVED]`
+> overflow and on the `+128`→sign-flip boundary. See [b10-wvec-pack](../isa/ref/b10-wvec-pack.md).
 
 ---
 
@@ -358,7 +359,7 @@ deliberate "I want the raw low bits" path. **The task's worked saturate example
 > wires `arg1` into both factors of product-0 and `arg2` into both factors of
 > product-1, so it is the **sum-of-squares** primitive (complex magnitude
 > `re² + im²`). Naming it after a single square is the trap. Verified live:
-> `sqrp_24_8_8(5, 12) = 0x0000a9 = 169 = 5² + 12²`. `[HIGH/OBSERVED]`
+> `sqrp_24_8_8(5, 12) = 0x0000a9 = 169 = 5² + 12²`.
 
 ### 7.2 Complex / conjugate cross-add
 
@@ -367,7 +368,7 @@ The complex MAC `module__xdref_mula_96c_96c_32c_32c @ 0x8336f0` calls
 real and imaginary halves separately (the `test/je/sub/lea` borrow idiom per
 dword). The conjugate form `…_32j_32c` flips the sign of the cross term so that
 `(a+bi)·conj(c+di) = (ac+bd) + (bc−ad)i` instead of the straight product. Both
-are byte-checked against GX-SEM / nki-0.3.0 on the complex corpus.
+are byte-checked against SEM / nki-0.3.0 on the complex corpus.
 
 ```c
 // straight   mula_96c…32c_32c : acc.re += a.re·b.re − a.im·b.im
@@ -406,7 +407,7 @@ lane).
 > borrow propagation. Verified live: `decnegw_24_24(0x800000) = 0x7fffff`
 > (the most-negative 24-bit value decrements to `+max` after masking),
 > `decnegw_24_24(0xfffffb /*−5*/) = 0xfffffa /*−6*/`,
-> `decnegw_24_24(0x000005 /*+5*/) = 0x000005` (positive untouched). `[HIGH/OBSERVED]`
+> `decnegw_24_24(0x000005 /*+5*/) = 0x000005` (positive untouched).
 
 ---
 
@@ -453,31 +454,29 @@ module__xdref_packvr_8_24_32    (0, 0x100, 0) = 0x00007f
 
 ## 9. Adversarial self-verify
 
-The five strongest claims, re-challenged against the binary:
+The five strongest claims and their grounding:
 
-1. **"The accumulator is 1536-bit / 48-dword / 192 B."** `[HIGH/CARRIED]` —
-   *Carried* from [cas-mac-fmac §7](../iss/cas-mac-fmac.md)
-   (`wvt_def @0x17a80b0`, 48-dword copy, off-by-one 48-not-47 GOTCHA), which is
-   the authoritative page; this page does not re-derive it. The **per-lane**
+1. **The accumulator is 1536-bit / 48-dword / 192 B.** `[HIGH/CARRIED]` —
+   Carried from [cas-mac-fmac §7](../iss/cas-mac-fmac.md)
+   (`wvt_def @0x17a80b0`, 48-dword copy, off-by-one 48-not-47 GOTCHA), the
+   authoritative page; this page does not re-derive it. The **per-lane**
    xdref leaves here operate on the 24/48/96-bit *slice* of that file, never on
-   the full 1536 bits at once — a distinction this page is careful to draw
-   (§5 NOTE). Challenge passed: the two views are consistent (64×24 = 32×48 =
-   16×96 = 1536).
-2. **"`PACKL` truncates, `PACKVR` rounds+saturates."** `[HIGH/OBSERVED]` —
-   Re-ran live: `packl_8_24(0x100)=0x00`, `packvr_8_24_32(0x100,0)=0x7f`,
+   the full 1536 bits at once (§5 NOTE); the two views are consistent
+   (64×24 = 32×48 = 16×96 = 1536).
+2. **`PACKL` truncates, `PACKVR` rounds+saturates.** Live:
+   `packl_8_24(0x100)=0x00`, `packvr_8_24_32(0x100,0)=0x7f`,
    `packvr_16_24_32(0xE000,0)=0x7fff`. Disassembly shows `and $0xff` (slice) vs
-   `cmova` shift-clamp + round-bit + overflow `cmp` (sat). Challenge passed.
-3. **"The live `ctypes` outputs are byte-exact."** `[HIGH/OBSERVED]` — Every hex
+   `cmova` shift-clamp + round-bit + overflow `cmp` (sat).
+3. **The live `ctypes` outputs are byte-exact.** Every hex
    in this page is a captured `ctypes` call into the shipped `.so`; the §8 block
    is reproducible verbatim. `.text` VMA==file-offset confirms the objdump
-   addresses are file-accurate. Challenge passed.
-4. **"`SQRP` is `a²+b²`."** `[HIGH/OBSERVED]` — *Corrected during authoring.* An
-   initial read assumed `a²`; the live call `sqrp(6,9)=117=36+81` (vs `sqrp(6,0)=36`)
-   proved the second operand is a real factor, and `mulp` disassembly confirmed
-   `a·b + c·d` with `arg1→pair0, arg2→pair1`. Challenge passed after fix.
-5. **"`%rdi` is ignored on the scalar leaves."** `[HIGH/OBSERVED]` — Re-ran
+   addresses are file-accurate.
+4. **`SQRP` is `a²+b²`.** The live call `sqrp(6,9)=117=36+81` (vs `sqrp(6,0)=36`)
+   proves the second operand is a real factor, and `mulp` disassembly confirms
+   `a·b + c·d` with `arg1→pair0, arg2→pair1`.
+5. **`%rdi` is ignored on the scalar leaves.**
    `mula(0xdeadbeef, …) == mula(0, …)`; the 24-bit disassembly never reads
-   `%rdi`. Challenge passed. (It is *not* ignored on stateful intrinsics — only
+   `%rdi`. (It is *not* ignored on stateful intrinsics — only
    on these pure reference leaves.)
 
 **Single strongest CORRECTION:** `SQRP` is **`a² + b²` (sum of squares), not
@@ -489,7 +488,7 @@ squared terms of the underlying `MULP` (`a·b + c·d`) primitive. Proven live by
 
 ## 10. Cross-references
 
-- [four-oracle-method](four-oracle-method.md) — the GX-SEM / GX-FLIX /
+- [four-oracle-method](four-oracle-method.md) — the SEM / FLIX /
   nki-0.3.0 / libfiss-base LIVE differential this page instantiates.
 - [b04-mac-integer](../isa/ref/b04-mac-integer.md) — integer `MUL`/`MULA`/`MULS`
   ISA reference (width grid, signed forms).

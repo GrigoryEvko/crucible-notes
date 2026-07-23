@@ -34,7 +34,7 @@ Tooling: `nm -D`, `readelf -SW`, `objdump -d/-s`, plus a small x86 field-probe
 emulator (toggle one encoded bundle bit, observe which decoded field moves).
 Every claim is tagged **confidence** × **provenance**: `OBSERVED` = read directly
 off the binary, `INFERRED` = strong deduction from observed evidence, `CARRIED` =
-taken from a prior report and re-checked here against the binary.
+taken from a prior report.
 
 > **NOTE — section offsets.** `.text` and `.rodata` are mapped **VMA == file
 > offset** (`readelf -SW`: `.text` VMA `0x190430` / off `0x190430`; `.rodata` VMA
@@ -56,8 +56,7 @@ slotfill `shr/and/or`-masks the slot's operand sub-fields and writes register
 *indices*, sign-extended *immediates*, or *sub-opcode* selectors into fixed
 operand latches. **No arithmetic on operand values.** `word2`/`word3` (bundle
 offsets `0x8`/`0xc`) are **never read** — the defining narrow trait, verified for
-every body probed. `[HIGH · OBSERVED]`
-
+every body probed.
 The slice carries **exactly 1,790** slotfill exports, reconciled to the unit per
 `(format × slot × unit)` cell (§2). The three formats map to:
 
@@ -69,9 +68,8 @@ The slice carries **exactly 1,790** slotfill exports, reconciled to the unit per
 
 The three `None` slots (`N0_S1`, `N0_S2`, `N1_S1`) are pure **NOP placeholders**:
 their slotfill body is literally `xor %eax,%eax ; ret` — no operand decode.
-`[HIGH · OBSERVED]`
 
-Two decode families coexist (identical to the wide formats) `[HIGH · OBSERVED]`:
+Two decode families coexist (identical to the wide formats):
 
 * **(a) Scalar base-Xtensa RRR/RRI8 AR form** — 3 index bits + 1 high
   window/bank-select bit (XOR-inverted, ×8) + window-base (`ctx+0x30` ×8), masked
@@ -110,15 +108,13 @@ The genuine **narrow-format-specific** findings of this slice:
 > the word0/word1 boundary — purely with `shr`/`and`/`or` over those two dwords.
 > "Byte/half granularity" lives in the **`and`-mask widths** (e.g. `and $0x7` =
 > 3-bit AR index, `and $0x1f` = 5-bit vreg, `and $0xffffff80` = 8-bit signed
-> imm), not in the load width. `[HIGH · OBSERVED]`
-
+> imm), not in the load width.
 ---
 
 ## 2. Slotfill census — reconciled to the unit
 
 `nm -D --defined-only FISS | rg -c 'slotfill__'` = **12,569**; of those
-`rg -c 'slotfill__(N0|N1|N2)__'` = **1,790**. `[HIGH · OBSERVED]`
-
+`rg -c 'slotfill__(N0|N1|N2)__'` = **1,790**.
 | Format | nm count | Slots |
 |---|---|---|
 | N0 | **652** | 4 |
@@ -140,8 +136,7 @@ Per `(format × slot × unit)` cell — `rg -o '<FMT>_S[0-9]_<UNIT>_slot[0-9]' |
 
 All 9 cells enumerated; column sums equal the per-format `nm` counts exactly;
 grand total = 1,790. Slot counts (N0=4 / N1=3 / N2=2) match the FLIX format table
-in [FLIX Encoding](../isa/core/flix-encoding.md). `[HIGH · OBSERVED]`
-
+in [FLIX Encoding](../isa/core/flix-encoding.md).
 The 3 `None` cells (count 1 each) are the single NOP filler per slot:
 
 | Symbol | Address | Body |
@@ -150,12 +145,11 @@ The 3 `None` cells (count 1 each) are the single NOP filler per slot:
 | `slotfill__N0__N0_S2_None_slot2__NOP` | `0x388030` | `xor %eax,%eax ; ret` |
 | `slotfill__N1__N1_S1_None_slot1__NOP` | `0x73d0b0` | `xor %eax,%eax ; ret` |
 
-`[HIGH · OBSERVED]` These carry **no** operand decode — they are the
+These carry **no** operand decode — they are the
 narrow-bundle reserved positions (FLIX slot widths 1/1/3 bits). The slotfill just
 returns success (`eax = 0`).
 
-Per-cell scalar/vector composition (`rg` over the `IVP_` prefix in symbols)
-`[HIGH · OBSERVED]`:
+Per-cell scalar/vector composition (`rg` over the `IVP_` prefix in symbols):
 
 | Cell | Total | IVP (vector) | scalar/base | Notes |
 |---|---:|---:|---:|---|
@@ -176,8 +170,7 @@ field math within a `(form, slot)` is identical across mnemonics (§6).
 ### 3.1 Calling convention and context layout
 
 Single argument `%rdi` → context; returns `0` in `eax`. No host call, no stack
-frame — verified across every N0/N1/N2 body. `[HIGH · OBSERVED]`
-
+frame — verified across every N0/N1/N2 body.
 | Offset | Direction | Meaning |
 |---|---|---|
 | `+0x00` | **read** | `word0` — bundle bits `[31:0]` |
@@ -197,7 +190,7 @@ frame — verified across every N0/N1/N2 body. `[HIGH · OBSERVED]`
 | `+0xec` / `+0x130` | write | MUL2NX8-class vreg fields (multiplicand / 3rd reg) |
 | `+0x34` / `+0x78` | write | vbool / lane-mask compare fields |
 
-`[HIGH · OBSERVED]` The latch set is **identical** to F0–F11 — only the bundle
+The latch set is **identical** to F0–F11 — only the bundle
 bit-positions the indices are gathered *from* differ (narrow scatter within
 `[0:63]`). The operand-VALUE blocks (16-dword / 512-bit NX16) at each latch+4 are
 written by `regload`, **not** by slotfill (§5).
@@ -206,11 +199,10 @@ written by `regload`, **not** by slotfill (§5).
 > renders without a displacement in `objdump`, so a naive `rg 'mov .*0x.*\(%rdi\)'`
 > will **miss** the word0 load and make a body look like it reads only one word.
 > Always grep for `mov\s+\(%rdi\)` as well. (e.g. `N0_S0` ADD reads `(%rdi)` at
-> `0x38170b` and the ctx fields `0x2c`/`0x30`.) `[HIGH · OBSERVED]`
-
+> `0x38170b` and the ctx fields `0x2c`/`0x30`.)
 ### 3.2 Window-rotation arithmetic (scalar AR — 64 physical registers)
 
-Recovered from `N0_S0_LdSt` ADD `@0x381700` `[HIGH · OBSERVED]`:
+Recovered from `N0_S0_LdSt` ADD `@0x381700`:
 
 ```
 0x381700  mov  0x2c(%rdi),%eax     ; windowed-mode predicate
@@ -240,7 +232,6 @@ So `AR_index = (word>>HIGH & 1 XOR 1)·8 + (word>>LOW & 7) + window_base·8`, ma
 | reg field = 0 | 2 | 8 + 16 = 24 |
 
 ⇒ exactly the 64-physical-AR / 4-bit-field-plus-window scheme of F0–F11.
-`[HIGH · OBSERVED]`
 
 ### 3.3 Scalar RRR cells — per-format byte-anchored decode
 
@@ -261,10 +252,8 @@ added, masked `& 0x3f`. Emulated both windowed and non-windowed; paths agree.
 > PC-relative `je` *label*, whose `74 77` rel8 displacement is the same +0x88 in
 > all three). They are byte-identical to `slotfill__x24__Inst_slot0__ADD` (the
 > base-ISA scalar decoder at `0x296320`) and to `F0_S0_LdSt` ADD — one decoder
-> re-anchored at slot bit-offset 4. `[HIGH · OBSERVED]`
-
-The **narrow Ld** dst is *split-packed*. `N2_S1_Ld` ADD `@0x37a5c0`
-`[HIGH · OBSERVED]`:
+> re-anchored at slot bit-offset 4.
+The **narrow Ld** dst is *split-packed*. `N2_S1_Ld` ADD `@0x37a5c0`:
 
 ```
 0x37a5c0  shr  $0x1c,%edx ; and $0x6      ; dst bits {29,30}
@@ -276,8 +265,7 @@ The **narrow Ld** dst is *split-packed*. `N2_S1_Ld` ADD `@0x37a5c0`
 
 `N2_S1_Ld` ADD is **byte-identical** to `slotfill__F4__F4_S1_Ld_slot1__ADD`
 (`0x2a5cf0`) — the same narrow split-dst decoder the F4 page documents. (`S0`
-offset 4 / Ld slot offset 16 match the FLIX slot table.) `[HIGH · OBSERVED]`
-
+offset 4 / Ld slot offset 16 match the FLIX slot table.)
 ### 3.4 Immediate operand — the format-specific scatter
 
 RRI8 form (ADDI / S32I store-offset): `dst(r)→0x24`, `src(s)→0x48`, **IMM→0x50**.
@@ -291,7 +279,7 @@ format** — the genuine narrow finding.
 | `N2_S0` ADDI | `0x3fba80` | `{12,13,14,15}∪{25}∪{33,34}∪{38}` | bit **38** | bit 25 | `shl $0x19` |
 | `N2_S0` S32I | `0x3fca60` | identical scatter to N2 ADDI (store offset reuses the RRI8 decoder) | bit 38 | bit 25 | `shl $0x19` |
 
-`[HIGH · OBSERVED]` The sign-extension is uniform: each body assembles the 8 imm
+The sign-extension is uniform: each body assembles the 8 imm
 bits into the top of a 32-bit register, then `shl $0xN ; sar $0x18` floods the
 sign. Disassembly excerpt, N0 ADDI:
 
@@ -304,8 +292,7 @@ sign. Disassembly excerpt, N0 ADDI:
 N1 and N2 use `shl $0x19` (25) instead of `shl $0xd` (13) — same `sar $0x18`,
 same `-128..127` result. Single-bit probe: setting **only** the sign bit yields
 `0x50 = 0xFFFFFF80` (= -128); each low bit yields 1,2,4,8,16,32,64 — a clean
-8-bit signed field. `[HIGH · OBSERVED]`
-
+8-bit signed field.
 > **QUIRK — the imm straddles word0/word1.** Because N1/N2 push the imm high bits
 > into bundle bits 33/34/38 (all in `word1`), the ADDI body loads **both**
 > `(%rdi)` (word0) and `0x4(%rdi)` (word1) and `or`s their masked fragments — the
@@ -313,8 +300,7 @@ same `-128..127` result. Single-bit probe: setting **only** the sign bit yields
 > `{12,13,14,15}` and bits `{33,34}` are **shared** across all three formats;
 > only the sign/mid bits move. Extension mode is the operand-kind discriminator:
 > **REG = zero-extend** (`shr;and`), **IMM = sign-extend** (`shl;sar`).
-> `[HIGH · OBSERVED]`
-
+>
 ### 3.5 Vector IVP cells
 
 **Full-width form (`IVP_*NX16`; Mul/alt latch set):** `vt→0x28`, `vs→0x6c`,
@@ -340,8 +326,7 @@ into `word1`. Reads word0+word1 only. Field math is uniform across the ALU cell 
 `IVP_MAXNX16` and `IVP_MINNX16` bodies are **byte-identical** to `IVP_ADDNX16`
 (operand decode reused per cell). The cell also hosts 2-reg softfloat `_S`/`_H`
 thunks (e.g. `ADDEXP_S @0x388520`): `vt→0x28` plus a dest/guard latch `0xac` —
-the unary scalar-of-vector form writing one source + one dest. `[HIGH · OBSERVED]`
-
+the unary scalar-of-vector form writing one source + one dest.
 **3-register ALU-canonical form (`ADD_S` in the Mul slot):** `vt→0x94`,
 `vs→0x50`, `vr→0xd8`.
 
@@ -353,8 +338,7 @@ The N1 Mul slot carries **both** families: the 2-lane canonical `ADD_S`
 (`0x94`/`0x50`/`0xd8`) and the full-width `MUL2NX8`/`MULNX16`
 (`0x28`/`0xec`/`0x130`, below). Both read word0+word1 only. The vr field
 `{22,23,35,36,37}` is **shared** between `ADD_S` (`0xd8`) and `MUL2NX8` (`0x130`)
-— the Mul slot's 3rd-reg field. `[HIGH · OBSERVED]`
-
+— the Mul slot's 3rd-reg field.
 **Mul-slot MUL2NX8-class form (2-bit sub-op + two vregs):**
 
 | Cell | Address | rep | subop `0x28` | vfield `0xec` | vr `0x130` | Conf |
@@ -368,7 +352,7 @@ The N1 Mul slot carries **both** families: the 2-lane canonical `ADD_S`
 page documents for `MULNX16 {28,29}` and the F6/F7/F11 page for `MUL2NX8`; here
 the narrow Mul slot anchors at bit 16.) The multiplicand `vfield {16-20}` sits at
 the slot offset; `vr {22,23,35,36,37}` spills into `word1`. Body, confirmed by
-disassembly `[HIGH · OBSERVED]`:
+disassembly:
 
 ```
 0x3f6d50  shr $1,%edx ; and $0x1c                   ; \  vr low fragment
@@ -393,8 +377,7 @@ The compare ops in the LdSt slot decode into the vbool/lane-mask latch set
 > `movz`/byte-load instruction count is **0**. Every operand — down to a 1-bit
 > bank select or a 2-bit sub-op — is extracted from a 32-bit dword by
 > `shr`+`and`. The "sub-dword / byte granularity" is in the *mask*, not the
-> *load*. `[HIGH · OBSERVED]`
-
+> *load*.
 ---
 
 ## 4. Annotated C pseudocode — the three narrow decoders
@@ -493,7 +476,7 @@ the full field range.
 
 ### 5.1 get_fn BITOFF symbols match the slot table exactly
 
-From `nm --defined-only ISA` `[HIGH · OBSERVED]`:
+From `nm --defined-only ISA`:
 
 | Slot | get_fn symbol | get / set addr |
 |---|---|---|
@@ -508,17 +491,15 @@ From `nm --defined-only ISA` `[HIGH · OBSERVED]`:
 | `n2 s1` | `Slot_n2_Format_n2_s1_ld_16_get` | `0x3b5250` / `0x3b5320` |
 
 Every BITOFF token (`_4`, `_58`, `_59`, `_16`, `_54`) equals the FLIX slot
-bit-offset. `[HIGH · OBSERVED]`
-
+bit-offset.
 > **NOTE — the `None` get_fn BITOFFs (58/59/54) are real.** The two N0 `None`
 > slots sit at bundle bits 58/59 and the N1 `None` at bit 54 in `libisa-core`'s
 > slot table, even though the **slotfill** body for those slots is a pure NOP.
 > The placeholder *has* a bit position in the encoder; the decoder just declines
-> to read it. `[HIGH · OBSERVED]`
-
+> to read it.
 ### 5.2 Field composition matches the slotfill latch — field-for-field
 
-`[HIGH · OBSERVED]` (set/get accessor pairs all present, e.g.
+(set/get accessor pairs all present, e.g.
 `Field_fld_n0_s0_ldst_12_4_Slot_n0_s0_ldst_{get,set}`,
 `Field_fld_n2_s1_ld_24_16_Slot_n2_s1_ld_{get,set}`):
 
@@ -543,12 +524,10 @@ bit-offset. `[HIGH · OBSERVED]`
 > multiplicand field — the same `vt == vs` aliasing the F6/F11 page documents.
 > The slotfill writes only the field bits each mnemonic needs (e.g. `multiply_arr`
 > is the full 4-bit array selector `{25,26,29,30}`; the per-mnemonic body writes
-> the 2 selector bits `{31,32}` it uses). `[HIGH · OBSERVED]`
-
+> the 2 selector bits `{31,32}` it uses).
 ### 5.3 Field-level `set == get⁻¹` inverse
 
-`field_get(field_set(0, v)) == v` over the **full** field width
-`[HIGH · OBSERVED]`:
+`field_get(field_set(0, v)) == v` over the **full** field width:
 
 | Field width | Fields | Range | Result |
 |---|---|---|---|
@@ -561,7 +540,7 @@ range — encode and decode are mutual inverses.
 ### 5.4 Format-framing inverse (encode template ⇄ decode trigger)
 
 `Format_N{0,1,2}_encode` (libisa, at `0x3b5950`/`0x3b5910`/`0x3b5930`) write a
-16-byte template from `.rodata`. The first dword bytes (LE) `[HIGH · OBSERVED]`:
+16-byte template from `.rodata`. The first dword bytes (LE):
 
 | Format | `.rodata` addr | bytes (byte0..3) | word0 (LE) |
 |---|---|---|---|
@@ -574,8 +553,7 @@ N0/N1/N2 respectively — `encode == decode⁻¹` at the framing level. **Disjoi
 no N-format slotfill operand field touches bits `[0:3]` (the op0 selector); the
 minimum operand bit is 4 (S0) or 16 (S1/S2/S3). Selector and operand fields are
 disjoint, so encode and decode are mutually consistent. **No mismatch was found in
-any cross-check in this slice.** `[HIGH · OBSERVED]`
-
+any cross-check in this slice.**
 ---
 
 ## 6. Operand-struct handoff — feeding the pipeline
@@ -586,8 +564,7 @@ N-format mnemonics therefore feed the **same shared handoff path** proven for
 F0–F11 — the narrow-format work is **entirely** in the slotfill bit decode;
 everything downstream reads the operand-index latches.
 
-End-to-end trace for a full-width `IVP_ADDNX16` (`N0_S3_ALU` class)
-`[HIGH · OBSERVED]`:
+End-to-end trace for a full-width `IVP_ADDNX16` (`N0_S3_ALU` class):
 
 | Stage | Symbol | Action |
 |---|---|---|
@@ -602,8 +579,7 @@ The three index latches `regload` dereferences (`0x6c`/`0xb0`/`0x28`) are
 `regload__ivp_addnx16` / `writeback__ivp_addnx16` the F4/F6/F7/F11 page traces,
 confirming the narrow formats reuse the shared downstream machinery. The scalar
 path is the analogue with `dst→0x24` (`writeback__add`:
-`ctx[0x28] → regfile[ctx[0x24]]`). `[HIGH · OBSERVED]`
-
+`ctx[0x28] → regfile[ctx[0x24]]`).
 So: **slotfill** = the only producer of operand *indices*; **regload** converts
 indices → 512-bit values; **opcode** computes per-lane; **writeback** commits to
 `regfile[idx]`. The N0/N1/N2 slotfill is the decode root of the per-instruction
@@ -625,8 +601,7 @@ pipeline, with the same downstream path as F0–F11.
 
 The decoder is the same machine. The only narrow-specific code is: (1) the
 absence of `word2`/`word3` reads, (2) the low ALU/Mul slot anchor, and (3) the
-per-format immediate scatter shift (`shl $0xd` vs `shl $0x19`). `[HIGH · OBSERVED]`
-
+per-format immediate scatter shift (`shl $0xd` vs `shl $0x19`).
 ---
 
 ## 8. ASCII picture — the three narrow 64-bit bundles

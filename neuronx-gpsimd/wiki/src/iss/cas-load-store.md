@@ -34,8 +34,8 @@ built on top of this aligned primitive — VALIGN — is in the shuffle/valign p
 (per-lane scatter/gather) counterpart is [cas SuperGather](cas-supergather.md).
 
 > **Confidence tags.** `[OBSERVED]` byte-exact from a shipped symbol / address /
-> instruction read this pass; `[INFERRED]` reasoned over observed control/data flow;
-> `[CARRIED]` carried from a cited sibling page, re-grounded here. `HIGH/MED/LOW` =
+> instruction; `[INFERRED]` reasoned over observed control/data flow;
+> `[CARRIED]` carried from a cited sibling page. `HIGH/MED/LOW` =
 > confidence. Every cas/fiss symbol and address below is from `nm`/`objdump -d` of
 > the two shipped `.so` files by absolute path. `.text`/`.rodata` have **VMA ==
 > file offset** (confirmed `readelf -SW`: `.text` @ `0x572fa0`); `.data` carries a
@@ -52,8 +52,7 @@ built on top of this aligned primitive — VALIGN — is in the shuffle/valign p
 
 ## 1. The family — what counts as a load/store, and where it issues
 
-### 1.1 Two naming tiers, one operand grammar `[HIGH/OBSERVED]`
-
+### 1.1 Two naming tiers, one operand grammar
 The plain (non-indexed) memory-access family splits into two IVP / Tensilica naming
 tiers, recovered by an `nm` sweep of `libcas-core.so` (35 load/store roots):
 
@@ -66,7 +65,7 @@ tiers, recovered by an `nm` sweep of `libcas-core.so` (35 load/store roots):
 > **GOTCHA.** The 16-bit plain vector load is **`LSNX16` / `SSNX16`** — it lives in
 > the *aligned* `LS/SS` tier. There is **no `LVNX16` / `SVNX16`**; the 16-bit width
 > is not a variable-element form. Reach for `LS*` when you want the contiguous
-> 16-bit vector load, `LV*` only for the 8-bit / `n_2x16` element forms. `[HIGH/OBSERVED — roster sweep]`
+> 16-bit vector load, `LV*` only for the 8-bit / `n_2x16` element forms.
 
 Two prefixed families look like loads but are **not plain data loads**: `LB*`
 (bit-load) and the compare-loads `LE*/LT*/LTU*/LTR*` compute a `vbool` boundary
@@ -74,8 +73,7 @@ predicate from a vector (the gather `vbMask` producers `ivp_ltun/leun_2x32`, con
 by [SuperGather](cas-supergather.md)) — they carry an `L` prefix but produce a
 predicate, not a memory datum. `[HIGH/OBSERVED roster; MED for the semantic binding via the gather page]`
 
-### 1.2 Slot placement — `S0_LdSt` and `S1_Ld`, every FLIX format `[HIGH/OBSERVED]`
-
+### 1.2 Slot placement — `S0_LdSt` and `S1_Ld`, every FLIX format
 Every load issues in the two LSU slots of every wide FLIX format `F0..F7,F11` and the
 narrow `N0/N1/N2`. The `LSNX16_I` issue symbol is present in (sampled from `nm`):
 
@@ -91,10 +89,8 @@ bundle can co-issue one `S0` op and one `S1` op — **two memory ops per cycle**
 modeled by the two host pipes `nx_Load_0` / `nx_Load_1`. These are exactly the two
 slots [valign](cas-valign-shuffle-reduce.md) uses for `lalign(S0+S1)`/`salign(S0)`
 and [SuperGather](cas-supergather.md) uses for `gather(S0)`/`drain(S1)`. The plain
-aligned load **is** the LSU primitive those two build on. `[HIGH/OBSERVED]`
-
-### 1.3 The scalar base-ISA load/store `[HIGH/OBSERVED]`
-
+aligned load **is** the LSU primitive those two build on.
+### 1.3 The scalar base-ISA load/store
 Distinct from the vector LSU is the Xtensa scalar core ld/st, present in both
 binaries: `L32I/L32I_N/L32R/L32AI/L32E` (32-bit word), `L16UI/L16SI/L16U/L16S`
 (16-bit zero/sign-extending), `L8UI/L8` (8-bit); `S32I/S32I_N/S32RI/S32E/S32NB/S32STK`,
@@ -119,8 +115,7 @@ anchors:
 The operand fields are identical across the grid — what changes is **how many AR
 operands are decoded and whether the base AR is defined a second time**.
 
-### 2.1 `_i` immediate-offset (`0x71ddc0`) `[HIGH/OBSERVED]`
-
+### 2.1 `_i` immediate-offset (`0x71ddc0`)
 The issue routine decodes exactly two operands:
 
 ```c
@@ -140,10 +135,8 @@ ctx->vec_host_hook(/*esi=*/ 0xa);              // hook 0x15200, LAT = 10 (vector
 
 The **immediate offset is not a register operand** — it is a field in the
 instruction word, consumed later in the fiss execute stage (§5). cas posts the base
-AR at LAT 1 and the destination vector at LAT 10. `[HIGH/OBSERVED]`
-
-### 2.2 `_x` register-indexed (`0x71deb0`) `[HIGH/OBSERVED]`
-
+AR at LAT 1 and the destination vector at LAT 10.
+### 2.2 `_x` register-indexed (`0x71deb0`)
 `_x` decodes a **third** operand — a second AR holding the index — between the base
 and the vector:
 
@@ -161,10 +154,8 @@ opnd_sem_vec_addr(ctx, vec);
 ctx->vec_host_hook(0xa);                               // LAT 10
 ```
 
-`addr = base + index_AR`. The index is a full architectural AR, read at LAT 1. `[HIGH/OBSERVED]`
-
-### 2.3 `_ip` immediate post-increment (`0x71de20`) — **the post-update rule** `[HIGH/OBSERVED]`
-
+`addr = base + index_AR`. The index is a full architectural AR, read at LAT 1.
+### 2.3 `_ip` immediate post-increment (`0x71de20`) — **the post-update rule**
 `_ip` is the keystone of the post-increment family. The cas issue decodes the base
 AR **twice** — once as the *read* base, once as the *write-back* def of the same
 register number:
@@ -186,16 +177,14 @@ The decisive evidence is the **doubled `and $0xf`**: `_i` masks the base registe
 number once (one AR operand); `_ip` masks the identical field a second time and posts
 it as a fresh AR def. That second AR def **is** the post-increment write-back. The
 address used by the access is the *current* base; the base register is then
-re-defined to the incremented value. `[HIGH/OBSERVED]`
-
+re-defined to the incremented value.
 > **QUIRK.** Post-increment costs an extra architectural register **write** but
 > updates *the same register it read* — so a chain of `_ip` loads walking a buffer
 > never frees the base AR for another use; the scoreboard sees a fresh def of that
 > AR at LAT 1 every iteration. A reimplementation that models the base as
 > read-only on `_ip` will diverge: the ISS posts a second `AR_def`.
 
-### 2.4 `_xp` register post-increment (`0x71df40`) `[HIGH/OBSERVED]`
-
+### 2.4 `_xp` register post-increment (`0x71df40`)
 `_xp` is `_ip`'s shape with the increment sourced from the **index register** instead
 of an immediate: base AR (read) + index AR + base-AR write-back (`base := base + index`)
 + dst vec. The per-format encoding template that repacks the `_x → _xp` delta — a
@@ -203,15 +192,12 @@ fixed positional bit-shift per FLIX format — and the roster-wide post-update m
 (`opcodes[].flags` bit 11, set on all `ivp_*_ip/_xp` plus `lddr32.p`/`sddr32.p`) are
 carried from the ISA-reference encoding page. `[HIGH for the 2-AR cas decode OBSERVED here; CARRIED for the flags/template]`
 
-### 2.5 LV (variable) vs LS (aligned) — **identical cas decode** `[HIGH/OBSERVED]`
-
+### 2.5 LV (variable) vs LS (aligned) — **identical cas decode**
 `N1_N1_S0_LdSt_4_inst_IVP_LV2NX8_I_issue` decodes base AR (`& 0xf`, LAT 1) + dst vec
 (bits[8:4], LAT 10) — byte-for-byte the same operand grammar as `LSNX16_I`. **LV and
 LS differ only in the fiss value** (element width and alignment-fault behavior, §3–4),
-never in the cas operand decode or timing. `[HIGH/OBSERVED]`
-
-### 2.6 The store decode — one shared LSU semantic `[HIGH/OBSERVED]`
-
+never in the cas operand decode or timing.
+### 2.6 The store decode — one shared LSU semantic
 Stores carry **no separate `_issue` symbol**. The admit/decode lives in a thin
 per-mnemonic wrapper `<fmt>_<slot>_IVP_<m>_inst_stage1` that sets a per-mnemonic
 select bit, calls the **one shared** LSU decode for that (format, slot), then clears
@@ -230,14 +216,13 @@ dispatcher: a ladder of `testb/testl` over the per-mnemonic select region
 (`0x6dc..0xbab` of the op context) choosing which load/store variant decode runs. The
 execute handoff is the shared `ivp_sem_ld_st_semantic_stage10.isra`
 (`@0x11b54a0`) → the host VALUE callback (vec hook `0x15200`) + the per-instance port
-pointers. `[HIGH/OBSERVED for the wrapper + shared-semantic structure; the full per-mnemonic flag map is a select-bit ladder, not enumerated field-by-field this pass — LOW for the exhaustive map]`
+pointers. `[HIGH/OBSERVED for the wrapper + shared-semantic structure; LOW for the exhaustive per-mnemonic flag map (a select-bit ladder, not enumerated field-by-field)]`
 
 ---
 
 ## 3. Alignment — the natural-element model (why VALIGN exists)
 
-### 3.1 The vector alignment mask scales with element width `[HIGH/OBSERVED]`
-
+### 3.1 The vector alignment mask scales with element width
 Each fiss `memload__ivp_<m>_i` fetches a **64-byte line** at `addr & MASK_W`, where the
 mask clears the in-line bits below the element granularity. Read byte-exact from the
 `and $0xffffff??,%esi` immediately before the host read (all reads `mov $0x40,%edx`):
@@ -254,7 +239,7 @@ mask clears the in-line bits below the element granularity. Read byte-exact from
 This was verified across all six `memload__ivp_lsn_*_i` / `lvnx8u_i` bodies. The mask
 forces a **natural-element-aligned 64-byte line read**: a vector load whose address is
 element-aligned (e.g. a 16-bit load at any even byte) reads cleanly **without a fault**,
-and the residual low bits feed the element-extract funnel. `[HIGH/OBSERVED — byte-exact, all six widths]`
+and the residual low bits feed the element-extract funnel.
 
 > **NOTE.** The mask "scales" because the funnel only needs to extract one element
 > from within the fetched line; the line is always 64 bytes regardless of width. The
@@ -262,8 +247,7 @@ and the residual low bits feed the element-extract funnel. `[HIGH/OBSERVED — b
 > fewer of them. The `nx8`/`16x256` masks coincide (`0xdf`, bit 5) — both use the
 > `_256` funnel, which is why the table has two `0xdf` rows.
 
-### 3.2 The within-line extract — the funnel shift `[HIGH/OBSERVED]`
-
+### 3.2 The within-line extract — the funnel shift
 `opcode__ivp_lsnx16_i__stage_14` (`@0x390fb0`) computes `edx = (base+offset) & 0x3f`
 (the 6-bit byte offset within the 64-byte line) and calls
 `module__xdref_wideldshift_16_512_6` (`@0x857410`). Its body, read in full:
@@ -286,19 +270,15 @@ return elem & 0xffff;                   // and $0xffff,%eax -> mask to 16 bits
 The `_6` token is the 6-bit `addr_lo`. This **same** `wideldshift_W_512_6` family is
 what [valign](cas-valign-shuffle-reduce.md) uses behind the unaligned access — the
 plain load applies it to the in-line pick over *one* 64-byte line; valign applies it
-*across two* lines for full byte misalignment. `[HIGH/OBSERVED]`
-
-### 3.3 The byte-phase bit `[HIGH/OBSERVED]`
-
+*across two* lines for full byte misalignment.
+### 3.3 The byte-phase bit
 `opcode__ivp_lsnx16_i__stage_5` (`@0x390f70`) derives a phase/parity bit from the
 instruction word (`shr $1 ; xor $1 ; and $1`) and the memload gates the host read on
 `addr & 0x1` ORed with a disable mask (`sete` → a `je` that skips the host read on
 disable / odd phase). This is the same byte-phase tracking valign's `lalign` carries,
 so the plain aligned word composes cleanly into the align-register two-phase
-streaming. `[HIGH/OBSERVED]`
-
-### 3.4 The scalar load **faults** on misalignment `[HIGH/OBSERVED]`
-
+streaming.
+### 3.4 The scalar load **faults** on misalignment
 The scalar core is hard-natural-aligned. `memload__l32i` (`@0x88a3a0`):
 
 ```c
@@ -311,8 +291,7 @@ host_read(addr, /*len=*/ 4);             // mov $0x4,%edx ; call *0x18(%r10)
 `memload__l16ui` tests `$0x1` (2-byte align); `memload__l8ui` does no alignment test.
 The fault surfaces through cas `LoadStoreAlignmentException` (§6.4). So: **scalar ld/st
 = hard natural alignment; vector LSU = element-alignment-tolerant via the funnel; full
-byte misalignment of a vector access is the VALIGN regime**. `[HIGH/OBSERVED]`
-
+byte misalignment of a vector access is the VALIGN regime**.
 ---
 
 ## 4. Access width — uniform 64-byte line, per-op element granularity
@@ -320,8 +299,7 @@ byte misalignment of a vector access is the VALIGN regime**. `[HIGH/OBSERVED]`
 Every vector LSU access is a **64-byte (512-bit) host transfer** (`mov $0x40,%edx`
 before every `memload` host read). The 512-bit vector register is the natural unit
 (32 × int16, 64 × int8, 16 × int32). The per-op **element** granularity is selected
-purely by the funnel suffix `W`: `[HIGH/OBSERVED]`
-
+purely by the funnel suffix `W`:
 ```text
 LSNX16     -> wideldshift_16_512_6     (16-bit elements, 32 lanes)
 LSN_2X32   -> wideldshift_32_512_6     (32-bit,          16 lanes)
@@ -333,8 +311,7 @@ LVNX8U     -> wideldshift_256_512_6    (the 2nx8 64×8-bit access)
 
 The host width ports confirm the supported set: `nx_MemDataIs{8,16,32,64,128,256,512}Bits`
 — eight access widths, each `_0/_1` dual-pipe. `nx_MemDataIs512Bits` is the full-vector
-access; the narrower ports serve the sub-vector / scalar accesses. `[HIGH/OBSERVED]`
-
+access; the narrower ports serve the sub-vector / scalar accesses.
 > **NOTE.** There is **no 1536-bit memory transfer**. The wide MAC accumulator (`wvec`,
 > 1536-bit, 4-entry) is filled *from vector registers* by the register op
 > `ivp_sem_wvec_pack` (in `S1_Ld`), not by a memory load — the memory side stays
@@ -358,10 +335,8 @@ A vector load is a **6-stage fiss pipeline**. The `lsnx16_i` chain, byte-exact:
 The memload stage is **where cas's decode hands the access to the host memory model**:
 `mov 0x40(%r10),%rdi ; mov $0x40,%edx ; call *0x18(%r10)` is the indirect call through
 the load port into the host's 64-byte line fetch. fiss does not own the bytes — it
-asks the host for them, then applies the funnel. `[HIGH/OBSERVED]`
-
-### 5.1 The `_x` / `_ip` address-compute deltas `[HIGH/OBSERVED]`
-
+asks the host for them, then applies the funnel.
+### 5.1 The `_x` / `_ip` address-compute deltas
 The four addressing modes differ only in which context slot supplies the offset and
 whether an AR write-back fires:
 
@@ -380,10 +355,8 @@ shamt      = ctx->addr & 0x3f;           // and $0x3f -- extract offset UNCHANGE
 ```
 
 The funnel/extract is identical across modes — only the offset **slot** (`0x90`
-immediate vs `0x94` register) and the presence of the base-update differ. `[HIGH/OBSERVED]`
-
-### 5.2 The post-increment write-back — vec **and** AR `[HIGH/OBSERVED]`
-
+immediate vs `0x94` register) and the presence of the base-update differ.
+### 5.2 The post-increment write-back — vec **and** AR
 This is where the second AR def of §2.3 becomes a real regfile write. The `_ip`
 write-back emits **two** writes; the `_i` write-back emits **one**:
 
@@ -398,22 +371,18 @@ write_ar_regfile (ctx->ar_regnum  /*0x6c*/,      ctx->new_base /*0x74*/);  // th
 
 The `_i` write-back contains no `0x6c`/`0x74` reference — the extra AR write is the
 sole structural difference. This matches the cas issue's doubled `and $0xf` (§2.3).
-`[HIGH/OBSERVED]`
 
-### 5.3 The store — the inverse funnel `[HIGH/OBSERVED]`
-
+### 5.3 The store — the inverse funnel
 Stores execute at **stage 11** (the write-back stage). `opcode__ivp_ssnx16_i__stage_11`
 (`@0x395330`): `addr = base(0x70) + offset(0x90)`; then `(addr & 0x3f)` + the source
 datum feed `module__xdref_widestshift_512_16_6` (`@0x857a00`) — the **inverse** of the
 load funnel: it splices the 16-bit element *into* the 512-bit line at bit position
 `(addr & 0x3f) << 3`. The same phase bit is carried. The host store fires through the
-LSU store port. (Store stage 11 matches valign's `salign` drain at stage 11.) `[HIGH/OBSERVED]`
-
+LSU store port. (Store stage 11 matches valign's `salign` drain at stage 11.)
 The predicated store `SVNX8UT` packs each lane via `module__xdref_trunc_8_16` (byte
 truncate, 32×) and guards each lane by the `vbool` predicate — the same per-lane
-masking as the gather/select `_t` forms. `[HIGH/OBSERVED]`
-
-### 5.4 Byte layout / extension `[HIGH/OBSERVED layout; MED endianness]`
+masking as the gather/select `_t` forms.
+### 5.4 Byte layout / extension
 
 The 64-byte line is staged as 16 consecutive 32-bit words (`0x98..0xd4`, ascending);
 the funnel indexes `word = (shamt & 0x1f0) >> 5` then a cross-word join. Lane `k` of
@@ -432,8 +401,7 @@ carried by the upstream host-width fetch (`nx_MemDataIs16Bits` + the U/S decode 
 
 ## 6. The cas TIMING — latency, occupancy, faults
 
-### 6.1 Per-operand latency `[HIGH/OBSERVED]`
-
+### 6.1 Per-operand latency
 Read from the `mov $LAT,%esi` immediately before each def/use hook:
 
 | operand | LAT | meaning |
@@ -448,8 +416,7 @@ A load posts its destination vector at **LAT 10** — a dependent vector op stal
 the latency-aware bypass scoreboard until the loaded vector is forwardable. This is
 the vector load-use interlock; the scalar AR load-use is 4. `[HIGH/OBSERVED for the vec/AR/index LATs; CARRIED for the scalar-4 cross-check]`
 
-### 6.2 The stall chain `[HIGH/OBSERVED]`
-
+### 6.2 The stall chain
 `F0_F0_S0_LdSt_4_inst_IVP_LSNX16_I_stall` (`@0x11b21f0`) calls, in order:
 
 ```text
@@ -465,10 +432,8 @@ my_MS_DISPST_stall      ; multi-slot dispatch
 This is the same structural-hazard set the gather post and the generic LSU model use.
 The two LSU pipes are `nx_Load_0` / `nx_Load_1`. A store has no architectural result;
 it occupies the writeback buffer (`WB_{S,P,N}`) and retires at fiss stage 11, so a
-following store stalls on the WB port. `[HIGH/OBSERVED]`
-
-### 6.3 Address-space reach — the host ports `[HIGH/OBSERVED]`
-
+following store stalls on the WB port.
+### 6.3 Address-space reach — the host ports
 The LSU's host-facing surface (from `nm -D libcas-core.so`):
 
 * **Pipes/ports:** `nx_Load_{0,1}`, `nx_Store_0`, `nx_StoreAcc` (store-accumulate);
@@ -477,8 +442,7 @@ The LSU's host-facing surface (from `nm -D libcas-core.so`):
   = predicate); the width signal `nx_MemDataIs{8..512}Bits`.
 * **Fault ports:** `nx_LoadStore{CrossMemAcc, InvalidTCMAcc, WrongIramAcc, UnsupportedAtomicOp}`.
 
-### 6.4 The exception set `[HIGH/OBSERVED]`
-
+### 6.4 The exception set
 The cas exception table carries the full LSU exception roster:
 
 ```text
@@ -515,8 +479,7 @@ the unaligned wrapper layered on top. They share the unit:
 
 The layering is clean: **aligned LS/SS = a 64-byte line access tolerant of natural
 element alignment; VALIGN = the front-end that assembles a fully byte-misaligned vector
-from two such aligned loads + the funnel + the align register.** `[HIGH/OBSERVED]`
-
+from two such aligned loads + the funnel + the align register.**
 The **indexed** counterpart is orthogonal: this page is the non-indexed form (one base
 AR ± a scalar offset/index → one contiguous 64-byte line); [SuperGather](cas-supergather.md)
 is the indexed form (16 per-lane 32-bit offsets in a vector register, scattering to
@@ -539,7 +502,7 @@ are the two highest-value invariants to pin first.
 
 ## 9. Honesty / uncertainty ledger
 
-**HIGH / OBSERVED** (disassembled this pass):
+**HIGH / OBSERVED** (disassembled):
 
 * The 35-root `LV/SV/LS/SS/LSR` roster + the LSU slot map (`S0_LdSt`/`S1_Ld`); the
   scalar `L32I/L16/L8/S32/S16/S8` base-ISA ld/st.
@@ -571,7 +534,7 @@ are the two highest-value invariants to pin first.
 **LOW:**
 
 * The full per-mnemonic flag-bit map decoded by the shared `ld_st_semantic_stage1`
-  dispatcher — structurally a select-bit ladder, not enumerated field-by-field this pass.
+  dispatcher — structurally a select-bit ladder, not enumerated field-by-field.
 
 > **CORRECTION.** An early cross-reference put the count of LSU instruction-stage
 > functions at "30,789". That figure is a *filtered* LSU subset and is **not directly
@@ -580,4 +543,4 @@ are the two highest-value invariants to pin first.
 > LSU portion is a fraction of that obtained by an additional mnemonic filter. This
 > page therefore anchors on the two counts that *are* exactly reproducible — **119**
 > `nx_*_interface` callbacks and **864** `module__xdref_*` value functions — and quotes
-> the 35-root LSU roster rather than a single derived stage-function total. `[HIGH/OBSERVED — both re-counted from nm this pass]`
+> the 35-root LSU roster rather than a single derived stage-function total.

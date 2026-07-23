@@ -12,7 +12,7 @@ refine `recipqli`. It is the validation companion to the per-instruction ISA ref
 
 The headline this page delivers is a **wall NARROWING**. The [FW-42 wall](#7-the-fw-42-wall-and-its-narrowing)
 ("the seed coefficient bytes are not recoverable") was stated against the *literal source
-coefficients* of the seed ROM. This pass NARROWS it: both seed tables are now
+coefficients* of the seed ROM. The narrowing: both seed tables are now
 **PROVEN-BY-EXECUTION** — the shipped `.rodata` table is the validated truth, driven LIVE
 out of `libfiss-base.so` and reproduced bit-exactly across every one of the 128 buckets at
 **both** widths. What remains CARRIED is no longer "the whole table" — it is exactly **two
@@ -37,10 +37,10 @@ validated; the closed-form is INFERRED, and at those two boundaries the table wi
 | 3 | **RSQRT is a parity-ordered two-range table; the two-range closed-form matches 127/128.** The **one** divergence is the `[2,4)` half at `idx=13` (table `0xa5`=165, form `164`, exact float `164.499`) — the second half-ULP boundary. | `[HIGH/OBSERVED table; INFERRED form; CARRIED@hi13]` |
 | 4 | **2 half-ULP mispredictions total**, both at near-tie fractions; the `.rodata` table is the validated arbiter at both. | `[HIGH/OBSERVED]` |
 | 5 | **All eight first-iterate leaves + `mksadj`/`mkdadj` are bare-leaf drivable LIVE** (fp16 + fp32). Special-value algebra (`1/±0=±Inf`+DivByZero, `1/inf=+0`, `x<0→Invalid`/qNaN) reproduced. | `[HIGH/OBSERVED·exec]` |
-| 6 | **`recipqli` is the lone wall** — `call *0x38(%rax)` soft-float dispatch from `xstate`; SIGSEGV on NULL/zeroed, fork-isolation-proven this pass. Its value is reachable only via the heavy leg. | `[HIGH/OBSERVED·exec]` |
+| 6 | **`recipqli` is the lone wall** — `call *0x38(%rax)` soft-float dispatch from `xstate`; SIGSEGV on NULL/zeroed, fork-isolation-proven. Its value is reachable only via the heavy leg. | `[HIGH/OBSERVED·exec]` |
 | 7 | **Seed accuracy ≈ 7.0 / 7.5 bits, refine doubles per Newton step (8→16→32).** Live 50k-sample sweep + a live Newton-convergence demo on the seed. | `[HIGH/OBSERVED·exec]` |
 
-All addresses re-read with `nm`/`objdump`/`readelf` this pass; all value facts driven LIVE
+All addresses read with `nm`/`objdump`/`readelf`; all value facts driven LIVE
 in-process against `libfiss-base.so`; all table bytes read straight from `.rodata`
 (`VMA == file-offset`). Provenance: lawful interoperability RE of shipped artifacts.
 
@@ -50,7 +50,7 @@ in-process against `libfiss-base.so`; all table bytes read straight from `.rodat
 
 The seed slice is the set of `module__xdref_*` value leaves that compute a transcendental
 **first iterate** — a `~7`-bit table-indexed approximation that a downstream Newton (recip /
-rsqrt / sqrt) or QLI / `divn` (div) refine consumes. Enumerated this pass with
+rsqrt / sqrt) or QLI / `divn` (div) refine consumes. Enumerated with
 `nm -D --defined-only <abs>/libfiss-base.so | rg 'module__xdref_(recip\|rsqrt\|sqrt\|div\|nexp\|mksadj\|mkdadj)'`:
 
 | leaf | VMA | width | nargs · outs | role |
@@ -77,7 +77,6 @@ rsqrt / sqrt) or QLI / `divn` (div) refine consumes. Enumerated this pass with
 > has **only** `nexp01_32f_32f` (`nm` finds no `module__xdref_nexp0_32f_32f`). A reimplementer
 > mirroring the fp16 roster into fp32 invents a non-existent `nexp0n_2xf32` opcode — the same
 > negative control [B15 §1](../isa/ref/b15-sp-lookup.md) reports from the ISA side.
-> `[HIGH/OBSERVED]`
 
 > **GOTCHA — these are SEEDs, not the function.** `recip0(3.0)` returns the perturbed
 > `0x3eaa0000 = 0.33203…`, not `1/3 = 0.33333…`; `sqrt0(2.0)` returns `0x3f340000 = 0.703125`,
@@ -118,7 +117,7 @@ disassembly** — never assumed.
   ret
 ```
 
-The resulting ctypes shapes (all bound + driven LIVE this pass):
+The resulting ctypes shapes (all bound + driven LIVE):
 
 | leaf class | C signature (out-pointers from the store regs) |
 |---|---|
@@ -142,7 +141,7 @@ The resulting ctypes shapes (all bound + driven LIVE this pass):
 > **GOTCHA — `RTLD_GLOBAL` and a fork-isolated child.** Load with `mode=ctypes.RTLD_GLOBAL`
 > (the method-page rule — intra-library tail-calls else fault), and probe any **unconfirmed**
 > ABI shape inside `os.fork()` so a wrong out-pointer count costs a child, not the harness.
-> The `mkdadj` ABI was resolved this way (two segfaulting shapes, one clean). `[HIGH/OBSERVED]`
+> The `mkdadj` ABI was resolved this way (two segfaulting shapes, one clean).
 
 ---
 
@@ -158,13 +157,12 @@ The seeds are not polynomials; they are **128-entry `.rodata` ROM tables**, 4-by
 | `table__rsqrt_tab` ≡ `table__RSQRT_Data8` | `0x9551c0` ≡ `0x958dc0` | 128 × u32 | `rsqrt0`, `sqrt0` | **two parity ranges** (not monotone) |
 
 The fp16 leaves `lea` the `*_tab` alias; the fp32 leaves the `*_Data8` alias. A
-`struct.unpack` comparison this pass shows `recip_tab == RECIP_Data8` and
+`struct.unpack` comparison shows `recip_tab == RECIP_Data8` and
 `rsqrt_tab == RSQRT_Data8` — **byte-identical**: one ROM each, two symbol names.
-`[HIGH/OBSERVED]`
 
-### 3.1 Section layout — `.rodata` has no offset delta `[HIGH/OBSERVED]`
+### 3.1 Section layout — `.rodata` has no offset delta
 
-`objdump -h` this pass (the `0x200000` delta is the **writable** sections only — *not* the
+`objdump -h` (the `0x200000` delta is the **writable** sections only — *not* the
 seed ROMs):
 
 | section | VMA | file-off | Δ |
@@ -178,11 +176,11 @@ seed ROMs):
 > (`VMA == file-offset`), so `xxd -s 0x958fc0` reads `RECIP_Data8` directly. The `0x200000`
 > delta (gpsimd's, not libtpu's `0x400000`) applies only to `.data`/`.data.rel.ro`; applying
 > it to a `.rodata` table reads the wrong bytes. Confirm per-section before trusting any
-> address. `[HIGH/OBSERVED]`
+> address.
 
 ### 3.2 `RECIP_Data8` — the closed-form, and its one boundary miss
 
-The first / last bytes, read this pass:
+The first / last bytes:
 
 ```
 RECIP_Data8 (0x958fc0):  ff fd fb f9 f7 f5 f4 f2 f0 ee ed eb e9 e8 e6 e4 …
@@ -197,7 +195,7 @@ The recovered closed-form is the **bucket-midpoint reciprocal**:
 //   RECIP[0]=0xff (1/1.0⁺), RECIP[64]=0xaa (1/1.5), RECIP[127]=0x81 (1/2.0⁻).
 ```
 
-Verified against the `.rodata` bytes this pass: **127 / 128 exact**. The lone divergence:
+Verified against the `.rodata` bytes: **127 / 128 exact**. The lone divergence:
 
 ```
 i = 127:  table = 0x81 (129)    closed-form round(256/1.99609) = round(128.250) = 128    Δ = +1
@@ -227,7 +225,7 @@ two-range closed-form (hi-range first):
 // idx 64..127 (even-exp binade, x in [1,2)): round( 256 / sqrt(    1 + (j+0.5)/64    ) )   → 0xff … 0xb5
 ```
 
-Verified against the `.rodata` bytes this pass: **127 / 128 exact**. The lone divergence:
+Verified against the `.rodata` bytes: **127 / 128 exact**. The lone divergence:
 
 ```
 idx = 13 (hi/[2,4) half):  table = 0xa5 (165)    closed-form = 164    exact float = 164.4993    Δ = +1
@@ -276,7 +274,7 @@ mism = sum(1 for i in range(128)
 # -> mism == 0
 ```
 
-Driven this pass, **the vendor binary computing every value**:
+Driven live, **the vendor binary computing every value**:
 
 | certificate | result |
 |---|---|
@@ -394,7 +392,7 @@ For the seed family, the four legs agree completely on every drivable leaf:
 
 | leg | role | seed-family verdict |
 |---|---|---|
-| **(a) GX-SEM** | bit-precise RTL model of the table-index + exponent-frame | matches LIVE |
+| **(a) SEM** | bit-precise RTL model of the table-index + exponent-frame | matches LIVE |
 | **(a′) FISS-lift** | python lift of the leaf x86 body | matches LIVE byte-for-byte |
 | **(c) nki numpy** | reference simulator | **n/a** — the seed ops are not nki int/fp primitives (the seed LUT is a Q7-specific datapath); validated 3-way (a + a′ + d) |
 | **(d) libfiss LIVE** | the vendor binary itself | **the arbiter** — 0 mismatches vs the table, both widths |
@@ -406,7 +404,7 @@ it is the *analyst's recovered closed-form* (an INFERRED reconstruction of how t
 generated) that misses by one ULP at a near-tie. **The table is the validated arbiter at both
 boundaries.** Per the method-page policy, when the inferred model disagrees with the binary,
 the binary wins — here the binary's own ROM byte is truth, and the closed-form is flagged
-CARRIED at exactly those two entries. `[HIGH/OBSERVED]`
+CARRIED at exactly those two entries.
 
 ---
 
@@ -415,7 +413,7 @@ CARRIED at exactly those two entries. `[HIGH/OBSERVED]`
 ### 7.1 The narrowing (the headline)
 
 The Open-Questions Register entry **"FW-42 seed coefficient bytes — CARRIED"** previously
-held that the seed ROM's source coefficients are not recoverable from this corpus. This pass
+held that the seed ROM's source coefficients are not recoverable from this corpus. This page
 **NARROWS** that wall along a precise seam:
 
 * **PROVEN-BY-EXECUTION now (was CARRIED):** the entire seed-table *content* — all 128
@@ -437,7 +435,7 @@ remaining 2 are execution-validated against the ROM even though the closed-form 
 
 The single-pass QLI reciprocal refine `recipqli` is the lone leaf that is **not** bare-leaf
 drivable. It loads its segment LUTs inline but routes the value-producing fp multiply/FMA
-through the ISS soft-float dispatch object. Disassembled this pass at `0x87df20`:
+through the ISS soft-float dispatch object. Disassembled at `0x87df20`:
 
 ```asm
 ; module__xdref_recipqli_1_1_1_1_1_32f_32f  @0x87df20
@@ -454,7 +452,7 @@ through the ISS soft-float dispatch object. Disassembled this pass at `0x87df20`
   call   *0x38(%rax)           ; @0x87e5e9 — second dispatch (the refine multiply/FMA pair)
 ```
 
-A bare ctypes drive cannot populate that dispatch table. Probed **fork-isolated** this pass
+A bare ctypes drive cannot populate that dispatch table. Probed **fork-isolated**
 so the harness survives:
 
 ```
@@ -472,7 +470,7 @@ xstate = zeroed 0x4000 (slot 0x38 = NULL)  -> SIGSEGV (signal 11)
 > same body and inherit the same wall. `[HIGH/OBSERVED·exec]`
 
 > **CORRECTION — `recipqli` is the wall, NOT the seeds.** It is tempting to lump "the
-> transcendental family" behind one wall. This pass separates them cleanly: **all eight
+> transcendental family" behind one wall. This page separates them cleanly: **all eight
 > first-iterate seed leaves + `mksadj`/`mkdadj`, fp16 and fp32, are bare-leaf drivable and
 > bit-exactly validated against the `.rodata` ROM.** The wall is exactly one leaf — the QLI
 > *refine* `recipqli` — because it alone delegates arithmetic to the soft-float dispatch. The
@@ -481,53 +479,48 @@ xstate = zeroed 0x4000 (slot 0x38 = NULL)  -> SIGSEGV (signal 11)
 
 ---
 
-## 8. Adversarial self-verification — the five strongest claims, re-challenged
+## 8. Adversarial self-verification
 
-Each headline re-tested against the binary this pass; a claim survives only if a second
-independent witness agrees.
+Each headline is corroborated by a second independent witness.
 
-1. **The seed leaf reproduces the `.rodata` table bit-exactly, both widths.** *Challenge:*
-   could the match be my harness reading the wrong out-pointer, or coincidence? *Re-test:* the
-   seed pointer was pinned by the sanity `recip0(1.0)=0x3f7f0000` (≈1.0) **and** by the store
+1. **The seed leaf reproduces the `.rodata` table bit-exactly, both widths.** The
+   seed pointer is pinned by the sanity `recip0(1.0)=0x3f7f0000` (≈1.0) **and** by the store
    register in the disassembly (`recip0_1_1` → `*o2`); the full 128-bucket sweep gave 0
    mismatches at **both** fp16 (`m>>3`) and fp32 (`m>>16`); the table was read **independently**
    from `.rodata` via `struct.unpack`, never via the leaf; and `recip_tab == RECIP_Data8`
    (512-byte `struct` compare). Two independent reads (static byte + dynamic execution) agree
-   across all 128. **Survives.** `[HIGH/OBSERVED·exec]`
+   across all 128. `[HIGH/OBSERVED·exec]`
 
 2. **RECIP closed-form matches 127/128; the one miss (i=127) is a half-ULP boundary, table
-   is truth.** *Challenge:* maybe my closed-form is simply wrong, or i=127 indicates the form
-   is mis-derived? *Re-test:* the form `round(256/(1+(i+0.5)/128))` reproduces 127 entries
+   is truth.** The form `round(256/(1+(i+0.5)/128))` reproduces 127 entries
    exactly; at i=127 the exact float is `128.2505`, naive round `128`, table `0x81=129`. The
    exact value sits a quarter-ULP above the tie, so it is a genuine rounding-mode boundary, not
    a structural error — and the **table is validated by the LIVE leaf** independently of the
-   closed-form. The form explains 127 entries and the binary arbitrates the 128th. **Survives**
+   closed-form. The form explains 127 entries and the binary arbitrates the 128th
    (form INFERRED; i=127 CARRIED; table OBSERVED). `[HIGH/OBSERVED table]`
 
 3. **RSQRT is parity-ordered two-range, odd-binade-first; the one miss (hi idx=13) is a
-   half-ULP tie.** *Challenge:* could the two-range structure be an artifact, or the ordering
-   reversed? *Re-test:* a "lo-first" range assignment mispredicts **all 128** entries with
+   half-ULP tie.** A "lo-first" range assignment mispredicts **all 128** entries with
    deltas 70–75 (a total miss); the "hi-first" assignment mispredicts **1**. The `0x80→0xff`
    jump at index 64 is the binade boundary the parity LSB selects. At hi idx=13 the exact float
    is `164.4993` (fraction `0.4993` — an almost-exact tie); table `0xa5=165`, form `164`. The
-   LIVE `rsqrt0` reproduces the table over **both** halves with 0 mismatches. **Survives** (form
-   INFERRED; hi13 CARRIED; table OBSERVED·exec). `[HIGH/OBSERVED table]`
+   LIVE `rsqrt0` reproduces the table over **both** halves with 0 mismatches
+   (form INFERRED; hi13 CARRIED; table OBSERVED·exec). `[HIGH/OBSERVED table]`
 
 4. **The FW-42 wall NARROWS — table proven-by-execution, only lineage + 2 boundaries
-   carried.** *Challenge:* is this a real narrowing or a re-label? *Re-test:* before, the
+   carried.** Before, the
    table content was CARRIED behind FW-42; now all 256 seed bytes are read from `.rodata`
-   **and** reproduced by the LIVE leaf (0 mismatches, both widths) — that is a strict gain of
+   **and** reproduced by the LIVE leaf (0 mismatches, both widths) — a strict gain of
    ground (254/256 closed-form-explained, 256/256 execution-validated). What stays CARRIED is
    strictly smaller: the generator lineage and 2 boundary roundings. The narrowing is
-   *bounded and named*, not asserted. **Survives.** `[HIGH/OBSERVED·exec]`
+   *bounded and named*, not asserted. `[HIGH/OBSERVED·exec]`
 
-5. **`recipqli` is the lone wall; the seeds are not.** *Challenge:* could other seed leaves
-   also fault, or could `recipqli` be drivable with a different shape? *Re-test:* `objdump` of
+5. **`recipqli` is the lone wall; the seeds are not.** `objdump` of
    all eight seed leaves + `mksadj`/`mkdadj` shows **no** `call *(%rax)` from xstate — and all
    were driven LIVE without fault (fork-isolated for the unconfirmed `mkdadj` shape). `recipqli`
    alone carries `call *0x38(%rax)` (two sites, `%rax` from the saved `0x68(%rsp)` xstate) and
    SIGSEGVs on both NULL and zeroed xstate, fork-isolation-proven. One leaf walled, fifteen
-   drivable. **Survives.** `[HIGH/OBSERVED·exec]`
+   drivable. `[HIGH/OBSERVED·exec]`
 
 No claim here rests on a raw dump, an unnamed symbol, or a single uncorroborated witness: the
 seed-table reproduction carries a 128-bucket differential-execution certificate at **both**
@@ -539,7 +532,7 @@ float values, the wall is execution-proven by a fork-isolated SIGSEGV, and every
 
 ## 9. Confidence ledger
 
-**HIGH / OBSERVED (driven LIVE + `.rodata` read this pass):**
+**HIGH / OBSERVED (driven LIVE + `.rodata` read):**
 
 * `recip0`/`rsqrt0` seed byte `==` `{RECIP,RSQRT}_Data8[idx] & 0x7f`, bit-exact over 128
   buckets each, **fp16 and fp32**, 0 mismatches; the index extract (recip top-7 mantissa;
@@ -586,7 +579,7 @@ the single Cairo config.
 ## Cross-references
 
 * [The 4-Oracle Bit-Exact Differential Method](four-oracle-method.md) — the harness, the
-  GX-SEM / GX-FLIX / nki / libfiss-LIVE legs, the `RTLD_GLOBAL` + fork-isolation rules, and
+  SEM / FLIX / nki / libfiss-LIVE legs, the `RTLD_GLOBAL` + fork-isolation rules, and
   the model-disagreement policy this page applies.
 * [ISA Batch 14 — fp16 Transcendental Seeds (`hp_lookup`)](../isa/ref/b14-hp-lookup.md) — the
   per-instruction fp16 view: the roster, the `recip0(1.0)→0x3bf8`-in-`*o2` ABI, the encode
