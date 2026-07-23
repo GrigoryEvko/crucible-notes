@@ -39,9 +39,9 @@ For reimplementation, the contract is:
 
 `BarrierRanger` is the producer of the per-(instruction, engine) barrier-index band that the disjointness test consumes. The band `[first, second]` is the static stand-in for "which inter-barrier epoch the instruction executes in": `first` is the index of the **latest `CoreBarrier` it is guaranteed to have passed**, `second` is the index of the **earliest `CoreBarrier` it is guaranteed to reach**. Two instructions whose bands are disjoint are provably separated by at least one `CoreBarrier`. The analysis never simulates execution — it derives the band purely from reachability over a happens-before DAG.
 
-The object is essentially stateless. The ctor `BarrierRanger(logging::Logger&)` @ `0xedb80` copies only a `boost::log` composite logger into `+0..+48`; there are no working maps on the object. Every data structure the algorithm touches — the `nodeToBarrierRange` map, the `instBarrierRange` map, the per-engine `CoreBarrier`-node seed set, the worklist deque — is passed by reference or lives on the `InstGraph`. `BarrierRanger` is a thin, log-emitting analysis driver. (CONFIRMED — ctor body copies a Logger only; all `*PerEngine` functions take maps by reference.)
+The object is essentially stateless. The ctor `BarrierRanger(logging::Logger&)` @ `0xedb80` copies only a `boost::log` composite logger into `+0..+48`; there are no working maps on the object. Every data structure the algorithm touches — the `nodeToBarrierRange` map, the `instBarrierRange` map, the per-engine `CoreBarrier`-node seed set, the worklist deque — is passed by reference or lives on the `InstGraph`. `BarrierRanger` is a thin, log-emitting analysis driver: the ctor body copies a Logger and nothing else, and every `*PerEngine` function takes its maps by reference.
 
-> **CORRECTION (D-G08) —** an earlier survey (S2-05 §5.2) cited the `*PerEngine`/`update`/`init`/`print`/`save` functions at addresses `0x9xxxx` (`0x98d30`, `0x963c0`, `0x97540`, `0x98870`, `0x977e0`, `0x98b60`, `0x98a90`, `0x98270`). Those are **PLT stubs** (`jmp *GOT(%rip)`); e.g. `0x963c0` disassembles to `jmp *0x1f3be02(%rip)` → GOT `0x1fd21c8`. The real `.text` bodies are the un-dotted `_Z…` symbols: `init 0xf44e0`, `earliest 0xeed60`, `latest 0xee610`, `perEngine 0xf4b40`, `updStart 0xee2d0`, `updEnd 0xeea20`, `save 0xf0140`. The orchestrator `0xf08b0` and per-engine driver `0xf4b40` in that survey were correct. The same survey also had the band swapped: it is `[latest-preceding, earliest-following]`, **not** `[earliest-preceding, latest-following]`.
+> **GOTCHA — the `0x9xxxx` addresses for these functions are PLT stubs, not bodies.** `0x98d30`, `0x963c0`, `0x97540`, `0x98870`, `0x977e0`, `0x98b60`, `0x98a90`, `0x98270` all disassemble to `jmp *GOT(%rip)` — e.g. `0x963c0` is `jmp *0x1f3be02(%rip)` → GOT `0x1fd21c8`. The real `.text` bodies are the un-dotted `_Z…` symbols: `init 0xf44e0`, `earliest 0xeed60`, `latest 0xee610`, `perEngine 0xf4b40`, `updStart 0xee2d0`, `updEnd 0xeea20`, `save 0xf0140`. The orchestrator `0xf08b0` and per-engine driver `0xf4b40` are already the real bodies.
 
 ### Entry Point
 
@@ -273,7 +273,9 @@ function run(modules):
 
 The branch key is `getNeuronCoreId().has_value()`: `inputModulesHaveSymbolicShardIds` @ `0x1674f00` returns true iff the vector has exactly one element (`cmp $0x8,%rax` — one `unique_ptr` = 8 B) **and** `modules[0]->getNeuronCoreId()` has no value (`call getNeuronCoreId@plt; xor $0x1,%r8d`). A single module with no concrete core-id is still symbolic (pre-splitter); a multi-module vector, or a module that already carries a `NeuronCoreId`, is concretized.
 
-> **CORRECTION (D-G11) —** an earlier survey read the gate as a Module field `modules[0]+0x1A4 != 1`. The disasm shows `mov 0x28(%rsi),%rax; cmp [rax+0x1A4],1` where `rsi = this` and `this+0x28` is the stored `PassOptions*` (ctor `0x167b730`: `*((QWORD*)this+5) = a2`). The gate reads `PassOptions->lnc_size`, not a Module field. For `lnc_size == 1` (single-core, the default) the whole pass is skipped.
+For `lnc_size == 1` — single-core, the default — the whole pass is skipped.
+
+> **GOTCHA —** the `+0x1A4` in the gate is an offset into `PassOptions`, not into a `Module`. The disasm is `mov 0x28(%rsi),%rax; cmp [rax+0x1A4],1` with `rsi = this`, and `this+0x28` is the stored `PassOptions*` (ctor `0x167b730`: `*((QWORD*)this+5) = a2`). Reading it as `modules[0]+0x1A4` points at the wrong object.
 
 ### The 14 assertions
 

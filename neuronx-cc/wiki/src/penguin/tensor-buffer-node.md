@@ -128,18 +128,20 @@ ComputeValue (ir/Tensor)                 — abstract, no address
              └─ IdentityWeightTensor     — the 128×128 identity (matmul-transpose)
 ```
 
-> **CORRECTION (PEN-TB-1) —** there is no standalone `DRAM` class. An earlier reading named the off-chip type `DRAM`; the binary interns only `DRAM2DBlockTensor` (@ `0xc7550`) and `DRAM3DBlockTensor` (@ `0xc7530`), with partition-diag strings `"DRAM2DBlk partitions[%s]"` / `"DRAM3DBlk partitions[%s]"`. The off-chip space is realized by these two block-shaped DRAM tensor classes, not a single `DRAM`.
+The off-chip space is realized by two block-shaped DRAM tensor classes: the binary interns `DRAM2DBlockTensor` (@ `0xc7550`) and `DRAM3DBlockTensor` (@ `0xc7530`), with partition-diag strings `"DRAM2DBlk partitions[%s]"` / `"DRAM3DBlk partitions[%s]"`.
+
+> **GOTCHA —** there is no standalone `DRAM` class to look for; every off-chip tensor is one of the two block-shaped types above.
 
 The memory-space mapping is the central fact a reimplementer needs:
 
 | Subclass | Memory space | What distinguishes it | Confidence |
 |---|---|---|---|
-| `DRAM2DBlockTensor` / `DRAM3DBlockTensor` | Off-chip HBM/DRAM | The off-chip block-shaped types; what `NonLocal`-spilled values become. | CONFIRMED (class names @ `0xc7550`/`0xc7530`) |
-| `NeuronLocalTensor` | On-chip (SBUF **or** PSUM) | Common base; docstring (verbatim @ `0xc4ca0`) `"NeuronLocalTensor - Tonga specific tensor type on statebuffer or psumbuffer. For a NeuronLocalTensor, the dims that are higher than partition_dim are mapped to time, while the dims lower or equal to the partition_dim are mapped to space."` Holds the allocation API. | CONFIRMED (24 methods incl. `createAllocation`, `has_physical_address`) |
-| `NeuronSBTensor` | **SBUF** | State-buffer tensor; 2-D (partition × byte). Engine tag `TongaSB`. | CONFIRMED (4 methods: `__init__`, `attr_str`, `dim_size`, `serialize`) |
-| `NeuronPSUMTensor` | **PSUM** | Matmul-accumulator tensor; lives in fixed 2 KiB banks. Engine tag `TongaPSum`. | CONFIRMED (2 methods: `init_state`, `attr_str`) |
-| `NeuronBlockTensor` | On-chip, **partition/block-tiled** | The tiled form: explicit `npartitions`/`nblocks`, `partition_size`, `block_shape`, `tonga_shape`. | CONFIRMED (33 methods) |
-| `NeuronWeightTensor` / `IdentityWeightTensor` | SBUF → PE array | Weight stream into the systolic array; `set_split` / `split_axis` / `split_indices`. Identity = the 128×128 transpose helper. | CONFIRMED |
+| `DRAM2DBlockTensor` / `DRAM3DBlockTensor` | Off-chip HBM/DRAM | The off-chip block-shaped types; what `NonLocal`-spilled values become. | CERTAIN (class names @ `0xc7550`/`0xc7530`) |
+| `NeuronLocalTensor` | On-chip (SBUF **or** PSUM) | Common base; docstring (verbatim @ `0xc4ca0`) `"NeuronLocalTensor - Tonga specific tensor type on statebuffer or psumbuffer. For a NeuronLocalTensor, the dims that are higher than partition_dim are mapped to time, while the dims lower or equal to the partition_dim are mapped to space."` Holds the allocation API. | CERTAIN (24 methods incl. `createAllocation`, `has_physical_address`) |
+| `NeuronSBTensor` | **SBUF** | State-buffer tensor; 2-D (partition × byte). Engine tag `TongaSB`. | CERTAIN (4 methods: `__init__`, `attr_str`, `dim_size`, `serialize`) |
+| `NeuronPSUMTensor` | **PSUM** | Matmul-accumulator tensor; lives in fixed 2 KiB banks. Engine tag `TongaPSum`. | CERTAIN (2 methods: `init_state`, `attr_str`) |
+| `NeuronBlockTensor` | On-chip, **partition/block-tiled** | The tiled form: explicit `npartitions`/`nblocks`, `partition_size`, `block_shape`, `tonga_shape`. | CERTAIN (33 methods) |
+| `NeuronWeightTensor` / `IdentityWeightTensor` | SBUF → PE array | Weight stream into the systolic array; `set_split` / `split_axis` / `split_indices`. Identity = the 128×128 transpose helper. | CERTAIN |
 
 > **QUIRK — SBUF and PSUM are different address spaces, hence different classes.** A reimplementer coming from a flat-memory IR will want one `OnChipTensor` with a `space` field. The binary refuses: `NeuronSBTensor` and `NeuronPSUMTensor` are *siblings*, because their allocation tuples differ in arity (SBUF is `(start_partition, base_addr)`; PSUM is `(bank_id, start_partition, base_addr)` — the PSUM bank is a third coordinate SBUF does not have). The common behavior they *do* share (allocation lifecycle, `has_physical_address`, address linking) lives one level up in `NeuronLocalTensor`.
 
@@ -205,16 +207,16 @@ A `BufferAllocation` is the struct a `NeuronLocalTensor` holds once placed: it a
 
 | Class | Role | Confidence |
 |---|---|---|
-| `BufferAllocation` | Base — docstring `"BufferAllocation -- Represent the alloc…"`. The resolved physical address. | CONFIRMED |
-| `ArbitraryBufferAllocation` | A general (possibly non-rectangular) allocation; full method roster mirrors the base. | CONFIRMED (15 methods) |
-| `SymbolicBufferAllocation` | Address is still a free variable (pre-resolution); 3 methods. | CONFIRMED |
+| `BufferAllocation` | Base — docstring `"BufferAllocation -- Represent the alloc…"`. The resolved physical address. | CERTAIN |
+| `ArbitraryBufferAllocation` | A general (possibly non-rectangular) allocation; full method roster mirrors the base. | CERTAIN (15 methods) |
+| `SymbolicBufferAllocation` | Address is still a free variable (pre-resolution); 3 methods. | CERTAIN |
 
 ### Fields and serialization
 
 The base `BufferAllocation` interns these field/accessor names verbatim:
 
 ```c
-struct BufferAllocation {            // fields are Python __dict__ entries, names CONFIRMED
+struct BufferAllocation {            // fields are Python __dict__ entries; names interned
     bank_id;                         // which PSUM bank (PSUM only)
     block_addr;                      // byte address within the bank/partition
     // size accessors (computed):
@@ -270,17 +272,17 @@ The **space** is declared by the layout/`InferTongaTensor` stage (the subclass c
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims on this page, re-challenged against the binary:
+The five structural claims on this page and what pins each:
 
-1. **Abstract serialize `"{attr}{dtype} {shape} {name}{init}"`** — re-grepped the ir/Tensor string table (`0x8e1a`); the literal is present verbatim. **CONFIRMED.**
-2. **`TensorType` = `{Input,Output,Const,InternalIO,NonLocal}` + 7 composite masks + membership predicate** — all five primitives, all seven `…Or…` composites, and `TensorType.contains` (@ `0x9b8f0`) are interned verbatim in ir/Tensor. **CONFIRMED.** *Correction:* I originally claimed a `kind_shift` packer; re-grepping both modules returns **no** `kind_shift` string. That claim is **withdrawn** — the bit-packing exists (the composite masks prove it) but no symbol named `kind_shift` backs it, so this page does not name one.
-3. **`BufferAllocation` serialize `[{bnk_idx}, {block_addr}]{alloc_bnk_shape}{alloc_blk_shape}`** — the format string is at `0xc5c40` (ida) / `0xfd32` (disasm table) in TongaTensor.so; both `alloc_bnk_shape` and `alloc_blk_shape` tokens are independently interned. **CONFIRMED.**
-4. **The subclasses and their docstrings** — `NeuronLocalTensor`, `NeuronSBTensor`, `NeuronPSUMTensor`, `NeuronBlockTensor`, `NeuronWeightTensor`, `IdentityWeightTensor` all interned; the full `NeuronLocalTensor` docstring (@ `0xc4ca0`) — including the time/space dim-mapping — is binary-direct. *Correction:* there is **no** standalone `DRAM` class; the off-chip types are `DRAM2DBlockTensor` (@ `0xc7550`) and `DRAM3DBlockTensor` (@ `0xc7530`) — see CORRECTION (PEN-TB-1). **CONFIRMED** (corrected).
-5. **PSUM 3-tuple vs SBUF 2-tuple** — upgraded to **CONFIRMED**: the address-map docstring (@ `0xc3700`) states both tuples verbatim (`"…three-element tuple (bank_id, start_partition, base_addr)"` / `"…two-element tuple (start_partition, base_addr)"`). The `bank_id`/`block_addr`/`start_partition` fields and the `"NeuronPSUMTensor must be initialized to…"` diagnostic are independently interned.
+1. **Abstract serialize `"{attr}{dtype} {shape} {name}{init}"`** — the literal is present verbatim in the ir/Tensor string table (`0x8e1a`).
+2. **`TensorType` = `{Input,Output,Const,InternalIO,NonLocal}` + 7 composite masks + membership predicate** — all five primitives, all seven `…Or…` composites, and `TensorType.contains` (@ `0x9b8f0`) are interned verbatim in ir/Tensor. The composite masks imply bit-packing, but no `kind_shift` symbol exists in either module, so this page names no packer.
+3. **`BufferAllocation` serialize `[{bnk_idx}, {block_addr}]{alloc_bnk_shape}{alloc_blk_shape}`** — the format string is at `0xc5c40` (ida) / `0xfd32` (disasm table) in TongaTensor.so; both `alloc_bnk_shape` and `alloc_blk_shape` tokens are independently interned.
+4. **The subclasses and their docstrings** — `NeuronLocalTensor`, `NeuronSBTensor`, `NeuronPSUMTensor`, `NeuronBlockTensor`, `NeuronWeightTensor`, `IdentityWeightTensor` are all interned, and the full `NeuronLocalTensor` docstring (@ `0xc4ca0`), including the time/space dim-mapping, is binary-direct.
+5. **PSUM 3-tuple vs SBUF 2-tuple** — the address-map docstring (@ `0xc3700`) states both tuples verbatim (`"…three-element tuple (bank_id, start_partition, base_addr)"` / `"…two-element tuple (start_partition, base_addr)"`). The `bank_id`/`block_addr`/`start_partition` fields and the `"NeuronPSUMTensor must be initialized to…"` diagnostic are independently interned.
 
-No field meaning here was invented to fill a gap: the `__dict__`-resident fields are name-CONFIRMED with owner-class INFERRED only where a method roster does not pin them. The three NOT-FOUND items the verification swept up — standalone `DRAM`, standalone `name`/`addr`/`init` field strings (they appear only inside the serialize template), and `kind_shift` — are explicitly *not* claimed as interned symbols on this page.
+The `__dict__`-resident field names are interned; their owning class is [INFERRED] only where a method roster does not pin it. Three tokens a reader might expect are simply not present in these modules and are deliberately not claimed here: a standalone `DRAM` class, standalone `name`/`addr`/`init` field strings (they appear only inside the serialize template), and `kind_shift`.
 
 ---
 
