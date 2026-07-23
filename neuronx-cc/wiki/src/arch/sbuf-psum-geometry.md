@@ -8,7 +8,7 @@ Every on-chip address the backend computes — every SBUF partition offset, ever
 
 The geometry is **not** carried on the BIR `bir::EngineInfo` object. That object is an 8-byte `{EngineType, id}` handle with no size fields ([1.01](arch-object-model.md)); the numbers live one indirection deeper, in a static singleton object tree `Board → Device → Core` built once at library load. The `Core` holds six engine sub-objects, and two of them — `Statebuf` (SBUF) and `Psumbuf` (PSUM) — are pure geometry records. An allocator reads a field by calling `getArchModel(codename)` and walking `Board+0x8 → Device+0x10 → Core+0x{20,28} → field`. This page documents that walk, the per-generation immediates the per-arch constructors stamp into those records, and the one structural surprise: **Inferentia is a half-width part** — 64 in the engines' second dimension where gen2+ are uniformly 128.
 
-The numbers in this build are corroborated two ways. The constructor immediates are read directly off the `<Arch>Statebuf` / `<Arch>Psumbuf` ctor bodies (`InferentiaPsumbuf`, `SundaStatebuf`, …), and the field **names** come from a real C++ header shipped in the wheel, `data/include/hwm/ctm/ctm.hpp`, which declares `class Statebuf`, `class Psumbuf`, `class Core` with their member layout and doc comments. The two sources agree field-for-field, so the geometry here is CONFIRMED at the strongest available level: observed immediate plus named declaration.
+The numbers in this build are corroborated two ways. The constructor immediates are read directly off the `<Arch>Statebuf` / `<Arch>Psumbuf` ctor bodies (`InferentiaPsumbuf`, `SundaStatebuf`, …), and the field **names** come from a real C++ header shipped in the wheel, `data/include/hwm/ctm/ctm.hpp`, which declares `class Statebuf`, `class Psumbuf`, `class Core` with their member layout and doc comments. The two sources agree field-for-field, so every number here rests on both an observed immediate and a named declaration.
 
 For reimplementation, the contract is:
 
@@ -25,7 +25,7 @@ For reimplementation, the contract is:
 | **PSUM record** | `Psumbuf` — ctor `0x17341b0`; per-arch `…Psumbuf` @ `0x17346b0/0x1734aa0/0x1734e90/0x1735290` |
 | **SB_SIZE / partition** | 96 / 192 / 224 / 256 KiB (gen1/2/3/4); 128 partitions all gens |
 | **PSUM banks × size** | 4 / 8 / 8 / 8 banks × 2048 B; 64/128/128/128 partitions |
-| **Field-name source** | `data/include/hwm/ctm/ctm.hpp` (shipped header — names CONFIRMED) |
+| **Field-name source** | `data/include/hwm/ctm/ctm.hpp` (shipped header — the source of the field names) |
 | **SBUF read-chain** | `SB_Allocator` ctor @ `0xa97b82`–`0xa97bbd` (→ allocator+0x2b8) |
 | **PSUM read-chain** | `PSUM_Allocator` ctor @ `0xada120`–`0xada13b` (→ allocator+0x0) |
 
@@ -50,9 +50,9 @@ getArchModel(codename)           @0x17344c0   ── string-compare dispatch ove
        Core    @ +0x30 → dramSizeGb (HBM window — see 1.06)
 ```
 
-The four `Board` objects are selected by codename. `getArchModel` clusters ten device aliases onto four generations; `core_v5` (gen5, ArchLevel 50) has no `Board` and aborts with `assert("0 && Unknown architecture")` at `ctm.cpp:0x5F` — gen5 is a forward stub in this build. The clustering is CONFIRMED on both binaries (the `libBIR` side via [`getArchModel` @0x478f90](arch-object-model.md), the `libwalrus` side here):
+The four `Board` objects are selected by codename. `getArchModel` clusters ten device aliases onto four generations; `core_v5` (gen5, ArchLevel 50) has no `Board` and aborts with `assert("0 && Unknown architecture")` at `ctm.cpp:0x5F` — gen5 is a forward stub in this build. The clustering appears on both binaries (the `libBIR` side via [`getArchModel` @0x478f90](arch-object-model.md), the `libwalrus` side here):
 
-> **CORRECTION —** the alias count is **ten**, not eleven. The compare chain has exactly ten arms: `tonga`/`inf1`/`inferentia` (3) + `sunda`/`trainium`/`trn1`/`inf2` (4) + `cayman`/`gen3` (2) + `core_v4` (1) = **10**, as the table below enumerates. `core_v5` is *not* a compare arm (its literal sits past the `__assert_fail` string in `.rodata`).
+> **GOTCHA — there are ten aliases, and `core_v5` is not one of them.** The compare chain has exactly ten arms: `tonga`/`inf1`/`inferentia` (3) + `sunda`/`trainium`/`trn1`/`inf2` (4) + `cayman`/`gen3` (2) + `core_v4` (1). The `core_v5` literal sits *past* the `__assert_fail` string in `.rodata`, so grepping the region turns it up without it ever being compared.
 
 | Generation | ArchLevel | `<Arch>Core` ctor | Codename aliases |
 |---|---|---|---|
@@ -95,7 +95,7 @@ The geometry is a **baked compile-time constant per codename**, not device-confi
 
 ### Record layout
 
-The base constructor `Statebuf::Statebuf` (@`0x17341e0`) takes six arguments. The names are CONFIRMED from `ctm.hpp:129`'s `class Statebuf` declaration; the offsets are read off the constructor's store sequence:
+The base constructor `Statebuf::Statebuf` (@`0x17341e0`) takes six arguments. The names come from `ctm.hpp:129`'s `class Statebuf` declaration; the offsets are read off the constructor's store sequence:
 
 | Field | Offset | Type | ctm.hpp name | Meaning |
 |---|---|---|---|---|
@@ -106,7 +106,7 @@ The base constructor `Statebuf::Statebuf` (@`0x17341e0`) takes six arguments. Th
 | align | `+0x10` | `Align*` | `align` | alignment descriptor (correct / basicPerf / highPerf triple) |
 | reservedSize | `+0x18` | `uint32` | `reservedSize` | reserved-region size (default 16384; gen-specific 0x4000/0x4008) |
 
-> **CORRECTION (D-M12 → ctm.hpp) —** an earlier decode labeled `Statebuf+0xC` a "SBUF sub-bank granule" and `Statebuf+0x18` a "partition alignment quantum". The shipped `ctm.hpp` names them `midPartition` and `reservedSize` respectively, with `reservedSize` defaulting to 16384 in the declaration. The `0x40` (=64) at `+0xC` is `midPartition` (the partition-quadrant midpoint), and the `0x4000`/`0x4008` pushed argument is `reservedSize`.
+Two of these are easy to mistake for allocation granules. `+0xC` is `midPartition` — the partition-quadrant midpoint, `0x40` (=64) on every generation — not a sub-bank size. `+0x18` is `reservedSize`, the `0x4000`/`0x4008` value pushed by each subclass ctor, not a partition-alignment quantum; `ctm.hpp` gives it a default of 16384.
 
 ### Per-generation immediates
 
@@ -114,10 +114,10 @@ Each `<Arch>Statebuf` constructor sets up the six arguments inline and tail-call
 
 | Arch | SB_SIZE (`esi`, `+0x00`) | hex | SOC step (`edx`, `+0x04`) | partitions (`ecx`, `+0x08`) | midPartition (`r8d`, `+0x0C`) | reservedSize (push, `+0x18`) | Confidence |
 |---|---|---|---|---|---|---|---|
-| gen1 Inferentia | 96 KiB | `0x18000` | `0x20000` | `0x80` (128) | `0x40` (64) | `0x4000` | CONFIRMED |
-| gen2 Sunda | 192 KiB | `0x30000` | `0x40000` | `0x80` (128) | `0x40` (64) | `0x4000` | CONFIRMED |
-| gen3 Cayman | 224 KiB | `0x38000` | `0x40000` | `0x80` (128) | `0x40` (64) | `0x4008` | CONFIRMED |
-| gen4 CoreV4 | 256 KiB | `0x40000` | `0x40000` | `0x80` (128) | `0x40` (64) | `0x4008` | CONFIRMED |
+| gen1 Inferentia | 96 KiB | `0x18000` | `0x20000` | `0x80` (128) | `0x40` (64) | `0x4000` | CERTAIN |
+| gen2 Sunda | 192 KiB | `0x30000` | `0x40000` | `0x80` (128) | `0x40` (64) | `0x4000` | CERTAIN |
+| gen3 Cayman | 224 KiB | `0x38000` | `0x40000` | `0x80` (128) | `0x40` (64) | `0x4008` | CERTAIN |
+| gen4 CoreV4 | 256 KiB | `0x40000` | `0x40000` | `0x80` (128) | `0x40` (64) | `0x4008` | CERTAIN |
 
 The total SBUF capacity per generation is `SB_SIZE × 128 partitions`: 12 MiB (gen1), 24 MiB (gen2), 28 MiB (gen3), 32 MiB (gen4). A reimplementer rarely needs the total — the allocator's budget is **per partition**, because every engine accesses all 128 partitions in lockstep and a tensor's footprint is bounded by its largest per-partition slice.
 
@@ -129,12 +129,12 @@ The function map below ties the SBUF symbols to addresses. The `<Arch>Statebuf` 
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `Statebuf::Statebuf(uint,uint,uint,uint,Align&,uint)` | `0x17341e0` | base ctor — stores the six fields | CONFIRMED |
-| `InferentiaStatebuf::InferentiaStatebuf` | `0x17346d0` | gen1 immediates | CONFIRMED |
-| `SundaStatebuf::SundaStatebuf` | `0x1734ac0` | gen2 immediates | CONFIRMED |
-| `CaymanStatebuf::CaymanStatebuf` | `0x1734eb0` | gen3 immediates | CONFIRMED |
-| `CoreV4Statebuf::CoreV4Statebuf` | `0x17352b0` | gen4 immediates | CONFIRMED |
-| `SB_Allocator::SB_Allocator` (with-loop) | `0xa97750` | reads `Statebuf+0` → allocator+0x2b8 | CONFIRMED |
+| `Statebuf::Statebuf(uint,uint,uint,uint,Align&,uint)` | `0x17341e0` | base ctor — stores the six fields | CERTAIN |
+| `InferentiaStatebuf::InferentiaStatebuf` | `0x17346d0` | gen1 immediates | CERTAIN |
+| `SundaStatebuf::SundaStatebuf` | `0x1734ac0` | gen2 immediates | CERTAIN |
+| `CaymanStatebuf::CaymanStatebuf` | `0x1734eb0` | gen3 immediates | CERTAIN |
+| `CoreV4Statebuf::CoreV4Statebuf` | `0x17352b0` | gen4 immediates | CERTAIN |
+| `SB_Allocator::SB_Allocator` (with-loop) | `0xa97750` | reads `Statebuf+0` → allocator+0x2b8 | CERTAIN |
 
 ---
 
@@ -146,7 +146,7 @@ The function map below ties the SBUF symbols to addresses. The `<Arch>Statebuf` 
 
 ### Record layout
 
-The base constructor `Psumbuf::Psumbuf` (@`0x17341b0`) takes three arguments. Names are CONFIRMED from `ctm.hpp:111`'s `class Psumbuf`:
+The base constructor `Psumbuf::Psumbuf` (@`0x17341b0`) takes three arguments. Names come from `ctm.hpp:111`'s `class Psumbuf`:
 
 | Field | Offset | Type | ctm.hpp name | Meaning |
 |---|---|---|---|---|
@@ -164,14 +164,14 @@ Each `<Arch>Psumbuf` ctor is a **5-instruction thunk**: load the three args, tai
 
 | Arch | banks (`esi`, `+0x00`) | partitions (`edx`, `+0x04`) | bank size (`ecx`, `+0x08`) | per-partition PSUM window | Confidence |
 |---|---|---|---|---|---|
-| gen1 Inferentia | `0x04` (4) | `0x40` (64) | `0x800` (2048) | 8 KiB | CONFIRMED |
-| gen2 Sunda | `0x08` (8) | `0x80` (128) | `0x800` (2048) | 16 KiB | CONFIRMED |
-| gen3 Cayman | `0x08` (8) | `0x80` (128) | `0x800` (2048) | 16 KiB | CONFIRMED |
-| gen4 CoreV4 | `0x08` (8) | `0x80` (128) | `0x800` (2048) | 16 KiB | CONFIRMED |
+| gen1 Inferentia | `0x04` (4) | `0x40` (64) | `0x800` (2048) | 8 KiB | CERTAIN |
+| gen2 Sunda | `0x08` (8) | `0x80` (128) | `0x800` (2048) | 16 KiB | CERTAIN |
+| gen3 Cayman | `0x08` (8) | `0x80` (128) | `0x800` (2048) | 16 KiB | CERTAIN |
+| gen4 CoreV4 | `0x08` (8) | `0x80` (128) | `0x800` (2048) | 16 KiB | CERTAIN |
 
-> **NOTE — the previously-open bank count is now closed.** The PSUM allocator caches `numBanks` at its `this+0` from a `getArchModel` walk, and an earlier study of that allocator (D-K10) could only *infer* the value `= 8` from the 16 KiB PSUM window — the per-arch integer was "arch-table-resident, not a literal" in the colorer. The immediates above are that literal: read directly off the four `<Arch>Psumbuf` ctor bodies, `numBanks = {4, 8, 8, 8}` for gen1/2/3/4. **The bank count is CONFIRMED, no longer INFERRED.** Inferentia is the only 4-bank part; gen2+ are uniformly 8.
+> **NOTE — where the bank count actually lives.** The PSUM allocator caches `numBanks` at its `this+0` from a `getArchModel` walk, so the colorer never holds the integer as a literal and reading the allocator alone leaves the value implicit (recoverable only by dividing the 16 KiB PSUM window). The literal is in the four `<Arch>Psumbuf` ctor bodies quoted above: `numBanks = {4, 8, 8, 8}` for gen1/2/3/4. Inferentia is the only 4-bank part; gen2+ are uniformly 8.
 
-The bank **size** 2048 is corroborated three independent ways and is CONFIRMED: (1) the `Psumbuf+0x08` immediate above; (2) three per-arch getter bodies that each compile to a literal return —
+The bank **size** 2048 is corroborated three independent ways: (1) the `Psumbuf+0x08` immediate above; (2) three per-arch getter bodies that each compile to a literal return —
 
 ```asm
 ; TrainiumHwm::getPsumBankSize @0x1851900   (Gen3Hwm @0x1857cf0, CoreV4Hwm @0x185e570 identical)
@@ -201,16 +201,16 @@ The colorer then guards every tensor: if `numBanks < tensor.liveBanks`, it abort
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `Psumbuf::Psumbuf(uint,uint,uint)` | `0x17341b0` | base ctor — stores the three fields | CONFIRMED |
-| `InferentiaPsumbuf::InferentiaPsumbuf` | `0x17346b0` | gen1 immediates (4 banks, 64 parts) | CONFIRMED |
-| `SundaPsumbuf::SundaPsumbuf` | `0x1734aa0` | gen2 immediates (8 banks, 128 parts) | CONFIRMED |
-| `CaymanPsumbuf::CaymanPsumbuf` | `0x1734e90` | gen3 immediates (8 banks, 128 parts) | CONFIRMED |
-| `CoreV4Psumbuf::CoreV4Psumbuf` | `0x1735290` | gen4 immediates (8 banks, 128 parts) | CONFIRMED |
-| `TrainiumHwm::getPsumBankSize` | `0x1851900` | returns 2048 | CONFIRMED |
-| `Gen3Hwm::getPsumBankSize` | `0x1857cf0` | returns 2048 | CONFIRMED |
-| `CoreV4Hwm::getPsumBankSize` | `0x185e570` | returns 2048 | CONFIRMED |
-| `getPsumBankNum(MemoryLocation*)` | `0x1088bd0` | `ceil(bytes / 2048)` | CONFIRMED |
-| `PSUM_Allocator::PSUM_Allocator` (with-loop) | `0xad9970` | reads `Psumbuf+0` → allocator+0x0 | CONFIRMED |
+| `Psumbuf::Psumbuf(uint,uint,uint)` | `0x17341b0` | base ctor — stores the three fields | CERTAIN |
+| `InferentiaPsumbuf::InferentiaPsumbuf` | `0x17346b0` | gen1 immediates (4 banks, 64 parts) | CERTAIN |
+| `SundaPsumbuf::SundaPsumbuf` | `0x1734aa0` | gen2 immediates (8 banks, 128 parts) | CERTAIN |
+| `CaymanPsumbuf::CaymanPsumbuf` | `0x1734e90` | gen3 immediates (8 banks, 128 parts) | CERTAIN |
+| `CoreV4Psumbuf::CoreV4Psumbuf` | `0x1735290` | gen4 immediates (8 banks, 128 parts) | CERTAIN |
+| `TrainiumHwm::getPsumBankSize` | `0x1851900` | returns 2048 | CERTAIN |
+| `Gen3Hwm::getPsumBankSize` | `0x1857cf0` | returns 2048 | CERTAIN |
+| `CoreV4Hwm::getPsumBankSize` | `0x185e570` | returns 2048 | CERTAIN |
+| `getPsumBankNum(MemoryLocation*)` | `0x1088bd0` | `ceil(bytes / 2048)` | CERTAIN |
+| `PSUM_Allocator::PSUM_Allocator` (with-loop) | `0xad9970` | reads `Psumbuf+0` → allocator+0x0 | CERTAIN |
 
 ---
 
@@ -244,22 +244,22 @@ Across the four generations, gen2/3/4 are uniformly 128 in every "second dimensi
 
 | Geometry dimension | Record field | gen1 Inferentia | gen2/3/4 | Confidence |
 |---|---|---|---|---|
-| SBUF partitions | `Statebuf.numPartitions` | **128** | 128 | CONFIRMED |
-| PE systolic rows | `Pe.numRows` | **128** | 128 | CONFIRMED |
-| PE systolic columns | `Pe.numCols` | **64** | 128 | CONFIRMED |
-| PSUM partitions | `Psumbuf.numPartitions` | **64** | 128 | CONFIRMED |
-| PSUM banks | `Psumbuf.numBanks` | **4** | 8 | CONFIRMED |
-| Pool / Act channels | `Pool.numChannels` / `Act.numChannels` | **64** | 128 | CONFIRMED |
+| SBUF partitions | `Statebuf.numPartitions` | **128** | 128 | CERTAIN |
+| PE systolic rows | `Pe.numRows` | **128** | 128 | CERTAIN |
+| PE systolic columns | `Pe.numCols` | **64** | 128 | CERTAIN |
+| PSUM partitions | `Psumbuf.numPartitions` | **64** | 128 | CERTAIN |
+| PSUM banks | `Psumbuf.numBanks` | **4** | 8 | CERTAIN |
+| Pool / Act channels | `Pool.numChannels` / `Act.numChannels` | **64** | 128 | CERTAIN |
 
 The reading is that Inferentia's systolic array is a 128×64 PE grid (half the columns of gen2+'s 128×128), its PSUM is half the banks and half the partitions, and its pooling/activation engines process 64 channels. Only the SBUF stays full-width at 128 partitions. Every other generation is the uniform 128 a naive reimplementation would assume.
 
-> **CORRECTION (S2-08 → D-M12) —** the "128 partition" constant earlier studies attributed to a field at `EngineInfo+100` is *not* a `bir::EngineInfo` field — that object is the 8-byte `{EngineType, id}` handle with no geometry. The 128 is one of the `Core` sub-object geometry fields (`Statebuf+0x8`, `Psumbuf+0x4`, `Pe+0x4`, …), and on Inferentia several of those are 64, not 128. The geometry is keyed by `EngineType` *via the Core sub-object table*, not by an `EngineInfo`-indexed array.
+> **GOTCHA — the "128 partitions" constant is not an `EngineInfo` field.** `bir::EngineInfo` is an 8-byte `{EngineType, id}` handle carrying no geometry at all, so there is nothing at `EngineInfo+100` to read. The 128 lives in the `Core` sub-object geometry fields (`Statebuf+0x8`, `Psumbuf+0x4`, `Pe+0x4`, …), several of which are 64 rather than 128 on Inferentia. Geometry is keyed by `EngineType` *through the Core sub-object table*, never by an `EngineInfo`-indexed array.
 
 ---
 
 ## At-a-glance: the full geometry matrix
 
-The consolidated per-generation table. Every cell is CONFIRMED from a constructor immediate or a literal getter body, re-disassembled independently.
+The consolidated per-generation table. Every cell is read from a constructor immediate or a literal getter body.
 
 | Geometry | gen1 Inferentia | gen2 Sunda | gen3 Cayman | gen4 CoreV4 |
 |---|---|---|---|---|
