@@ -177,11 +177,13 @@ This is the central structural claim and it is provable directly from the bytes,
   → the SAME 12,706 byte positions differ in cpu1 and in cpu7 (verified set-equal)
 ```
 
-The differing byte is the **bits-21..28 byte** of a 32-bit absolute address — the byte that changes when you add `N·0x200000` to a `0x84xxxxxx` pointer (`0x200000` is a `1` in bit 21, i.e. `+0x20` in the third byte). The first differing byte is at file offset `0x1a`, which lies inside the ELF header's `e_entry` field `[24,28)` — confirming the entry rebase from the bytes themselves:
+The differing byte is the **third byte (bits 16–23)** of a 32-bit absolute address — the byte that changes when you add `N·0x200000` to a `0x84xxxxxx` pointer (`0x200000` is a `1` in bit 21, i.e. `+0x20` in the third byte, `0x200000 >> 16 = 0x20`). The first differing byte is at file offset `0x1a`, which lies inside the ELF header's `e_entry` field `[24,28)` — confirming the entry rebase from the bytes themselves:
 
 ```text
   e_entry  cpu0 = 0x8400cd94   →   cpu1 = 0x8420cd94   (Δ = 0x200000)
 ```
+
+The delta stays a clean `+N·0x20` in that one byte — **with no carry into the high (`0x84`) byte** — for every core through cpu7 *because the image is small*. Every relocated internal pointer targets an address in `[base, base+0xa03a0)` (the image span), so its third byte is at most `0xa03a0 >> 16 = 0x0a`. Adding `N·0x20` for `N ≤ 7` reaches at most `0x0a + 0xE0 = 0xEA < 0x100`, so the add never overflows the third byte and never propagates into the `0x84` byte. A larger image (third byte `≥ 0x80` at some pointer) *would* carry for cpu4–cpu7; here it provably cannot. Direct check of the enclosing 32-bit words confirms it: every one of the 12,706 differing bytes is the third byte of a `0x84xxxxxx` pointer whose full LE word rebases by exactly `N·0x200000`, and the cpu0 third-byte values at those positions span only `0x00..0x0a`.
 
 ### Step 2 — at 32-bit-word granularity, every diff is exactly a rebase
 
