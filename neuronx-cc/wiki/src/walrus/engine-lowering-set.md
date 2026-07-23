@@ -53,7 +53,7 @@ dve / ap* quartet.
 | **L28 `lower_act`** | `LowerAct::run(Module&)` @ `0x114e280` (shell) → `LowerPWPImpl` |
 | **L31 `lower_dve`** | `LowerDVE::run(Module&)` @ `0x1170b10` |
 | **L32 `lower_ap`** | `LowerAP::run(Module&)` @ `0x11ba970` → `convertSymAP` @ `0x11b7f80` |
-| **Engine crosswalk** | SP=6, Activation=2, DVE=5, AP=any (`EngineType`, D-D03) |
+| **Engine crosswalk** | SP=6, Activation=2, DVE=5, AP=any (`EngineType`) |
 | **Ordering spine** | `lower_ap`@L32 → `coloring_allocator_reg`@L33 → `codegen`@L40 (hard chain) |
 
 ## Where the four passes sit
@@ -80,7 +80,7 @@ L37  expand_all_engine_final_pre_codegen
 L40  codegen             [Generator/CoreV*Gen → 64-B TPB bundles]
 ```
 
-> **Structural fact (CONFIRMED).** Because L27/L28/L31/L32 all run **after** the L19
+> **NOTE —** because L27/L28/L31/L32 all run **after** the L19
 > per-engine split, every instruction they touch already carries a concrete
 > `EngineInfo`. That is why the passes are engine-specialised (sync→SP, act→ACT,
 > dve→DVE) rather than engine-selecting. And `lower_ap`@L32 sits **immediately before**
@@ -127,7 +127,7 @@ Each `Instruction` carries a `SyncInfo` (a `boost::optional`) read via
 
 ```c
 // SyncInfo = optional{ SmallVector<sync::Wait,1> on_wait;
-//                      SmallVector<sync::Update,1> on_update }   [D-E19]
+//                      SmallVector<sync::Update,1> on_update }
 struct sync::SyncRef { /* +0x08 */ u32 type;   // event=0 / semaphore=1
                        /* +0x0C */ u32 id; };   // allocated sema / event id
 struct sync::Wait   { /* +0x10 */ u32 mode;    // evt-set-clear / sem-ge-imm / sem-ge-reg
@@ -167,12 +167,12 @@ waits on the *same* semaphore, the higher `value` threshold subsumes the lower:
 a `sem >= 5` wait already implies `sem >= 3`, so the `sem >= 3` wait is dropped from the
 `SmallVector`.
 
-> **Binary confirmation (CONFIRMED).** Disassembling `elimDeadWait` (cp312 `0x11ae840`)
-> shows the exact shape: it calls `sync::SyncRef::getType` and `sync::SyncRef::getId`
-> (the group key), `sync::Wait::getMode`, walks an Rb-tree
-> (`std::_Rb_tree_increment`) keyed on that `SyncRef`, and performs **two**
-> `sync::Wait::getValue()` calls back-to-back at `0x11aec46` / `0x11aec52` — the
-> pairwise threshold compare. That is the value-dominance test on the binary.
+Disassembling `elimDeadWait` (cp312 `0x11ae840`)
+shows the exact shape: it calls `sync::SyncRef::getType` and `sync::SyncRef::getId`
+(the group key), `sync::Wait::getMode`, walks an Rb-tree
+(`std::_Rb_tree_increment`) keyed on that `SyncRef`, and performs **two**
+`sync::Wait::getValue()` calls back-to-back at `0x11aec46` / `0x11aec52` — the
+pairwise threshold compare. That is the value-dominance test on the binary.
 
 ### Rule (b) — DMA-queue FIFO order: `elimWaitByDMATriggerOrder` @ `0x11aee20`
 
@@ -181,13 +181,13 @@ block of that queue implicitly satisfies waits on earlier blocks of the *same* q
 the earlier waits are redundant and can be eliminated (possibly with a consolidated
 `sync::Update`).
 
-> **Binary confirmation (CONFIRMED).** `elimWaitByDMATriggerOrder` (cp312 `0x11aed80`)
-> calls `sync::Wait::getFrom()` (the producer), `InstDMABlock::classof` (is the producer
-> a DMA block), then `InstDMABlock::getDMAQueue()` and `InstDMABlock::getBlockId()`, and
-> builds a `DenseMap<const DMAQueue*, u32>` plus a
-> `SmallVector<pair<const DMAQueue*, std::map<u32 blockId, sync::Wait*>>>` — i.e. *per
-> queue*, an ordered map from block-id to the wait on it. Walking that map drops every
-> wait whose block-id is dominated by a later wait's block-id on the same queue.
+`elimWaitByDMATriggerOrder` (cp312 `0x11aed80`)
+calls `sync::Wait::getFrom()` (the producer), `InstDMABlock::classof` (is the producer
+a DMA block), then `InstDMABlock::getDMAQueue()` and `InstDMABlock::getBlockId()`, and
+builds a `DenseMap<const DMAQueue*, u32>` plus a
+`SmallVector<pair<const DMAQueue*, std::map<u32 blockId, sync::Wait*>>>` — i.e. *per
+queue*, an ordered map from block-id to the wait on it. Walking that map drops every
+wait whose block-id is dominated by a later wait's block-id on the same queue.
 
 **Net:** `lower_sync` is the SP-engine semaphore **peephole + relinker**. It exploits
 (a) threshold monotonicity and (b) per-queue DMA completion ordering to cut the wait set
@@ -206,14 +206,14 @@ the Activation/Scalar engine's programmable piecewise-polynomial LUT processor
 subject of Part 10 (`activation/`, planned); this page pins **only the shell and the
 handoff**, and does not re-derive the PWP machinery.
 
-> **Binary confirmation (CONFIRMED — shell).** Disassembling `LowerAct::run`
-> (cp312 `0x114e1e0`) shows it call the
-> `LowerPWPImpl::LowerPWPImpl(bir::Module&, PassOptions const&, logging::Logger&)`
-> constructor at `0x114e39f`, bracketed by `InstPrinter::visitInstruction` calls (the
-> `--debug` IR dumps). There is no per-instruction lowering logic in `LowerAct::run`
-> itself — it builds the impl and runs it.
+Disassembling `LowerAct::run`
+(cp312 `0x114e1e0`) shows it call the
+`LowerPWPImpl::LowerPWPImpl(bir::Module&, PassOptions const&, logging::Logger&)`
+constructor at `0x114e39f`, bracketed by `InstPrinter::visitInstruction` calls (the
+`--debug` IR dumps). There is no per-instruction lowering logic in `LowerAct::run`
+itself — it builds the impl and runs it.
 
-The downstream impl, for the record (addresses CONFIRMED via `nm`, semantics deferred to
+The downstream impl, for the record (addresses via `nm`, semantics deferred to
 Part 10): `LowerPWPImpl::visitInstruction` @ `0x1151110` dispatches on the opcode at
 `inst+0x58` over `IT 6` `LoadActFuncSet`, `IT 4` `Activation` (function selected by
 `ActivationFunctionType` @ `inst+0x90`), `IT 101` `ActivationReadAccumulator`, and the
@@ -257,13 +257,13 @@ IRVisitor<CoreV*Gen>::visit(I);                // stamp each DVE op into its bun
 `checkMissingOpcodes` verifies the chosen table's `ops` list is a superset (else it
 errors). The microcode itself comes from the shipped JSON tables.
 
-> **Binary confirmation (CONFIRMED — encoder dispatch).** `LowerDVE::run`
-> (cp312 `0x1170a70`) calls `fillAllDVEInfos` (twice), constructs `CoreV2Gen`
-> (`0x11710c6`), `CoreV4Gen` (`0x117169e`), and `CoreV3Gen` (`0x1171793`), and for each
-> calls `CoreV2GenImpl::enterModule` / `enterFunction` / `enterBasicBlock` followed by
-> `IRVisitor<CoreV2Gen|CoreV3Gen|CoreV4Gen>::visit(Instruction&)`. The three encoder
-> classes are dispatched by arch level — `lower_dve` is the only one of the four that
-> reaches all the way into the codegen-grade `Generator` encoders.
+`LowerDVE::run`
+(cp312 `0x1170a70`) calls `fillAllDVEInfos` (twice), constructs `CoreV2Gen`
+(`0x11710c6`), `CoreV4Gen` (`0x117169e`), and `CoreV3Gen` (`0x1171793`), and for each
+calls `CoreV2GenImpl::enterModule` / `enterFunction` / `enterBasicBlock` followed by
+`IRVisitor<CoreV2Gen|CoreV3Gen|CoreV4Gen>::visit(Instruction&)`. The three encoder
+classes are dispatched by arch level — `lower_dve` is the only one of the four that
+reaches all the way into the codegen-grade `Generator` encoders.
 
 ### The shipped per-gen profiles
 
@@ -274,7 +274,7 @@ errors). The microcode itself comes from the shipped JSON tables.
 covers. The named profiles are the *workload specialization* `findCoreDVETable` chooses
 between.
 
-> **Binary confirmation (CONFIRMED — profile counts, via `jq` on the shipped JSON).**
+Profile counts, read with `jq` over the shipped JSON:
 
 | Gen | Profiles (`name` : `len(ops)`) |
 |---|---|
@@ -287,7 +287,7 @@ selected `datapath_table.bin` is the microcode the `CoreV*Gen` visitor stamps in
 bundle, and `checkMissingOpcodes` is the guarantee the chosen profile can express every
 DVE op the module emits.
 
-> **Scope note (INFERRED boundary).** The internal byte layout of
+> **NOTE — scope boundary.** The internal byte layout of
 > `datapath_table.bin` / `control_table.bin` is *not* decoded here — this page
 > establishes the **selection** mechanism (`findCoreDVETable` + `checkMissingOpcodes` +
 > the per-gen JSON profiles), not the microcode contents.
@@ -304,7 +304,7 @@ regardless of which engine that op landed on.
 ### The AP class hierarchy it transforms
 
 ```c
-// bir::AccessPattern (base, kind 0) : public bir::Argument(+0) + SrcHandle(+0x48)   [D-E12]
+// bir::AccessPattern (base, kind 0) : public bir::Argument(+0) + SrcHandle(+0x48)
 //   ├ PhysicalAccessPattern   kind 1 "physical_ap"  0x1E0 B  (concrete strides + offset)
 //   ├ SymbolicAccessPattern   kind 2 "symbolic_ap"  0x1B8 B  (pelican::Expr step/num)
 //   └ RegisterAccessPattern   kind 3 "register_ap"  0x118 B  (register-offset, DYNAMIC)
@@ -373,17 +373,17 @@ regAP->setRegAPOffset(offReg);              // → wire key "reg_ap_offset"  (+0
 replace symAP operand with regAP;           // Instruction::insertArgument/removeArgument
 ```
 
-> **Binary confirmation (CONFIRMED — the entire algorithm).** Disassembling
-> `convertSymAP` (cp312 `0x11b7ee0`) shows the call sites in *exactly* this order:
-> `Argument::isLocationDRAM` (`0x11b7f54`); three `Function::addRegister` calls
-> minting the offset registers; `SymbolicAccessPattern::getTileAddrs` (`0x11b8727`) and
-> `getBlockAddrs` (`0x11b87a9`); `lowerAffineExpr` (`0x11b881f`, `0x11b8847`) lowering
-> each affine index; `addTensorLoad` (`0x11b8fd0`, `0x11b92a3`) for the indirect path;
-> `Argument::isLocationPSUM` (`0x11b934b`) / `isLocationSB` (`0x11b935b`) for the
-> SB/PSUM branch; then the result build — `RegisterAccessPattern::RegisterAccessPattern`
-> ctor (`0x11b95cd`), `setLocation` (`0x11b95f9`), `setRegLocation` (`0x11b9626`),
-> `setRegAPOffset` (`0x11b9797`), and `Function::addMemoryLocation` (`0x11b9978`).
-> Every step of §"geometry" is a real call in the body, in this sequence.
+Disassembling
+`convertSymAP` (cp312 `0x11b7ee0`) shows the call sites in *exactly* this order:
+`Argument::isLocationDRAM` (`0x11b7f54`); three `Function::addRegister` calls
+minting the offset registers; `SymbolicAccessPattern::getTileAddrs` (`0x11b8727`) and
+`getBlockAddrs` (`0x11b87a9`); `lowerAffineExpr` (`0x11b881f`, `0x11b8847`) lowering
+each affine index; `addTensorLoad` (`0x11b8fd0`, `0x11b92a3`) for the indirect path;
+`Argument::isLocationPSUM` (`0x11b934b`) / `isLocationSB` (`0x11b935b`) for the
+SB/PSUM branch; then the result build — `RegisterAccessPattern::RegisterAccessPattern`
+ctor (`0x11b95cd`), `setLocation` (`0x11b95f9`), `setRegLocation` (`0x11b9626`),
+`setRegAPOffset` (`0x11b9797`), and `Function::addMemoryLocation` (`0x11b9978`).
+Every step of §"geometry" is a real call in the body, in this sequence.
 
 ### What `lower_ap` computes vs what the codegen `CoreV*Gen` encoders compute
 
@@ -431,7 +431,7 @@ DIVISION OF LABOR
 They **meet at the `RegisterAccessPattern` kind-3 object**: `lower_ap` produces it,
 `assignStartAddr<ADDR4>` consumes it.
 
-> **Why `lower_ap` must precede reg-alloc (CONFIRMED ordering).** The registers
+> **NOTE — why `lower_ap` must precede reg-alloc.** The registers
 > `lower_ap` mints (`Function::addRegister`) are *virtual*. `coloring_allocator_reg`@L33
 > assigns them physical ids; codegen@L40's `assignStartAddr<ADDR4>` reads
 > `getRegId()` = the **colored** id. `lower_ap`@L32 → regalloc@L33 → codegen@L40 is
@@ -440,52 +440,50 @@ They **meet at the `RegisterAccessPattern` kind-3 object**: `lower_ap` produces 
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims on this page, re-checked against the binary, and the honest
-ceiling on each:
+The five structural claims on this page and what pins each:
 
-1. **`convertSymAP`'s full call sequence (§geometry) — CONFIRMED.** Every call site
+1. **`convertSymAP`'s full call sequence (§geometry).** Every call site
    (`isLocationDRAM` → `addRegister`×3 → `getTileAddrs`/`getBlockAddrs` →
    `lowerAffineExpr`×2 → `addTensorLoad`×2 → `isLocationPSUM`/`isLocationSB` →
    `RegisterAccessPattern` ctor → `setLocation` → `setRegLocation` → `setRegAPOffset` →
-   `addMemoryLocation`) is a real, ordered call in the cp312 body at `0x11b7ee0`. This
-   is the page's highest-value claim and it is byte-anchored end to end.
+   `addMemoryLocation`) is a real, ordered call in the cp312 body at `0x11b7ee0` —
+   byte-anchored end to end.
 
-2. **`lower_sync`'s two peephole rules — CONFIRMED.** `elimDeadWait` calls
+2. **`lower_sync`'s two peephole rules.** `elimDeadWait` calls
    `SyncRef::getType`/`getId` (group key) + an Rb-tree walk + **two** back-to-back
    `Wait::getValue()` (the pairwise threshold compare); `elimWaitByDMATriggerOrder`
    calls `Wait::getFrom` + `InstDMABlock::classof`/`getDMAQueue`/`getBlockId` and builds
    the per-queue `DenseMap<DMAQueue*,u32>` + `map<blockId, Wait*>`. Both shapes are in
    the binary.
 
-3. **`lower_act` is a shell over `LowerPWPImpl` — CONFIRMED.** `LowerAct::run` calls the
+3. **`lower_act` is a shell over `LowerPWPImpl`.** `LowerAct::run` calls the
    `LowerPWPImpl(Module&, PassOptions&, Logger&)` ctor and contains no per-inst lowering.
-   The PWP set-cover internals are deferred to Part 10 and are tagged there, not here.
+   The PWP set-cover internals are deferred to Part 10.
 
-4. **`lower_dve` drives `CoreV{2,3,4}Gen` after `findCoreDVETable`/`checkMissingOpcodes`
-   — CONFIRMED.** All three encoder ctors + their `enterModule`/`enterFunction`/
+4. **`lower_dve` drives `CoreV{2,3,4}Gen` after `findCoreDVETable`/`checkMissingOpcodes`.**
+   All three encoder ctors + their `enterModule`/`enterFunction`/
    `enterBasicBlock` + `IRVisitor<CoreV*Gen>::visit` are calls in `LowerDVE::run`, and
    the profile counts (gen2 5 tables 46/47/44/45/44, gen4 3 tables 59/59/43) match the
    shipped `dve_info.json` exactly under `jq`.
 
-5. **The ADDR4 kind-3 register-mode stamp — STRONG (cross-strand).** The `bit-31 (0x80)`
+5. **The ADDR4 kind-3 register-mode stamp** — a cross-strand claim. The `bit-31 (0x80)`
    register-mode + reg-id stamp in `assignStartAddr<ADDR4>` is a **codegen** (L40)
-   behavior verified in the ISA-encoding strand, not re-disassembled on this page;
+   behavior established in the ISA-encoding strand, not disassembled on this page;
    `lower_ap`'s half (producing the kind-3 `RegisterAccessPattern` with `regref` /
-   `reg_ap_offset`) is CONFIRMED here, and the two-sided "meet at the kind-3 object"
-   claim rests on the L32 producer being byte-anchored + the L40 consumer being
-   byte-anchored in its own strand. The *division of labor* statement is therefore
-   STRONG, not independently re-confirmed on this page.
+   `reg_ap_offset`) is byte-anchored here. The two-sided "meet at the kind-3 object"
+   statement therefore rests on the L32 producer anchored here plus the L40 consumer
+   anchored in its own strand.
 
-**Ceiling / what is NOT pinned here.** The `cmp ebx,0x13` arch guard's precise
-`ArchLevel → 0x13` mapping is INFERRED (the guard + `reportError` are CERTAIN; the exact
-sentinel level was not chased into `ArchLevel2string`). The DVE `datapath_table.bin`
-byte layout is out of scope (selection mechanism only). The PWP set-cover *cost model*
-(which set to spill when over budget) is Part 10 territory and tagged STRONG-not-CERTAIN
-there. The `value`/`mode` wire encodings of `sync::Wait`/`Update` are taken from the
-dependency-model strand; `lower_sync` reads `getMode`/`getValue` but the final SP
-sequencer byte emit is codegen@L40's.
+**What is not pinned here.** The `cmp ebx,0x13` arch guard's precise
+`ArchLevel → 0x13` mapping is [INFERRED] — the guard and its `reportError` are read
+directly, but the sentinel level was not chased into `ArchLevel2string`. The DVE
+`datapath_table.bin` byte layout is out of scope (selection mechanism only). The PWP
+set-cover *cost model* (which set to spill when over budget) is Part 10 territory. The
+`value`/`mode` wire encodings of `sync::Wait`/`Update` come from the dependency-model
+strand; `lower_sync` reads `getMode`/`getValue`, but the final SP sequencer byte emit
+belongs to codegen@L40.
 
 ---
 

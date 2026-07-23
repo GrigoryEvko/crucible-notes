@@ -1,6 +1,6 @@
 # Runtime Memory Reservation and Kernel Inlining — EvalAccelReservedLoc, NKI-via-JSON, BIR-via-Factory
 
-> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310; cp310/11/12 are byte-identical Cython rebuilds). Everything documented here lives in `neuronxcc/starfish/lib/libwalrus.so`. For `.text` (`0x62d660`+) and `.rodata` (`0x1c72000`+) the virtual address equals the file offset; `0x5e9020`–`0x62d650` is `.plt` thunks — every address cited is the real high-frame `.text` body, never the `0x5e…`/`0x60…` mirror thunk. Symbols beginning `bir::` (`Function::addMemoryLocationWithMemoryLocationSet`, `MemoryLocation::setAllocated`, `Module::removeFunction`, `Function::toJson`) are imported (`U`) from `libbir`. Other wheels differ — treat every address as version-pinned. Provenance: report D-H16.*
+> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310; cp310/11/12 are byte-identical Cython rebuilds). Everything documented here lives in `neuronxcc/starfish/lib/libwalrus.so`. For `.text` (`0x62d660`+) and `.rodata` (`0x1c72000`+) the virtual address equals the file offset; `0x5e9020`–`0x62d650` is `.plt` thunks — every address cited is the real high-frame `.text` body, never the `0x5e…`/`0x60…` mirror thunk. Symbols beginning `bir::` (`Function::addMemoryLocationWithMemoryLocationSet`, `MemoryLocation::setAllocated`, `Module::removeFunction`, `Function::toJson`) are imported (`U`) from `libbir`. Other wheels differ — treat every address as version-pinned.*
 
 ## Abstract
 
@@ -42,7 +42,7 @@ For reimplementation, the contract is:
 
 ### The single-Function (pre-linker) contract
 
-`run` opens by walking the module's intrusive `Function` list and counting entries, then asserts the count is exactly one (`STRONG` — the count loop is in the prologue; the comparison drives the error branch at decomp line 154):
+`run` opens by walking the module's intrusive `Function` list and counting entries, then asserts the count is exactly one. The count loop sits in the prologue and its comparison drives the error branch at decomp line 154:
 
 ```c
 // RuntimeMemoryReservation::run @0xb68040 (decomp lines ~143-154)
@@ -52,26 +52,26 @@ for (Function *f = funcList.begin(); f != funcList.end(); f = f->next)
 if (n != 1)
     bir::reportError(/*fatal=*/false,
         "this pass should run in pre-linker phase, which should have "
-        "only one Function per Module",        // .rodata, 88 chars (CONFIRMED string)
+        "only one Function per Module",        // .rodata, 88 chars
         srcloc);
 ```
 
-This pins the pass to the **pre-linker** phase: it must see the whole program as one function. (`CONFIRMED` — the 88-char string was reconstructed from the SSE-immediate stores; `reportError` appears at decomp line 154.)
+This pins the pass to the **pre-linker** phase: it must see the whole program as one function. The 88-char string is assembled from SSE-immediate stores, and `reportError` appears at decomp line 154.
 
 ### The arch-generation gate
 
 ```c
-// decomp line 174 (CONFIRMED)
+// decomp line 174
 if ( *(int *)(Module + 0xAC) > 29 )   // 0xAC=172, 29=0x1d
     { /* create the reservation */ }
 // else: no reservation is produced
 ```
 
-`Module + 0xAC` is the arch *generation* / index. Only generations `> 29` (`0x1d`) get a reservation. (`CONFIRMED` arithmetic — the literal `> 29` is in the decompiled body; that the field is the arch generation index is `INFERRED`, but it is the same field the rest of the backend reads as an arch selector.)
+`Module + 0xAC` is the arch *generation* / index. Only generations `> 29` (`0x1d`) get a reservation. The literal `> 29` is in the decompiled body; that the field is the arch generation index is [INFERRED], though it is the same field the rest of the backend reads as an arch selector.
 
 ### Computing the reserved size — two paths
 
-The reserved name string is built and compared against `"EvalAccelReservedLoc"`; the comparison result selects the size path. (`STRONG` — the compared literal resolves to the reserved-loc name; the exact predicate is `INFERRED`.)
+The reserved name string is built and compared against `"EvalAccelReservedLoc"`; the comparison result selects the size path. The compared literal resolves to the reserved-loc name; the exact predicate is [INFERRED].
 
 **Path 1 — arch-model SBUF capacity headroom** (`compare == 0`; decomp line 196):
 
@@ -83,15 +83,15 @@ cfgOffset    = *(u32*)( pass[0x60] + 0x1E4 );                  // 0x1E4 = 484 (d
 reservedSize = sbCapacity - cfgOffset;                          // store [rbp-0x200]
 ```
 
-The decompiled expression at line 196 is exactly `**(…getArchModel(…)+8)+0x10)+0x28) - *(…+484)` — capacity minus the config offset at `+0x1E4`. (`CONFIRMED` arithmetic.)
+The decompiled expression at line 196 is exactly `**(…getArchModel(…)+8)+0x10)+0x28) - *(…+484)` — capacity minus the config offset at `+0x1E4`.
 
 **Path 2 — pinned-SBUF high-water-mark scan** (`compare != 0`; decomp lines ~207-390): iterate `Function::allocs()` (a filtered/transformed range over the function's `MemoryLocationSet` intrusive list) and take the maximum aligned extent of every *pinned SBUF* location:
 
 ```c
-// decomp line 357: if ( *(_BYTE *)v48[31] && *(_DWORD *)v48[27] == 16 )  (CONFIRMED)
+// decomp line 357: if ( *(_BYTE *)v48[31] && *(_DWORD *)v48[27] == 16 )
 u64 hwm = 0;
 for (MemoryLocation &ml : fn.allocs()) {
-    bool pinned   = *(bool*)(*(u64*)(&ml + 0xF8));   // +0xF8  pinned flag    (D-E13)
+    bool pinned   = *(bool*)(*(u64*)(&ml + 0xF8));   // +0xF8  pinned flag
     int  memType  = *(int *)(*(u64*)(&ml + 0xD8));   // +0xD8  MemoryType ptr (SB==16)
     if (pinned && memType == 16) {                   // 16 == SB
         u64 addr = ml.getAddress();
@@ -103,12 +103,12 @@ for (MemoryLocation &ml : fn.allocs()) {
 reservedSize = hwm;
 ```
 
-The memory-taxonomy offsets (`+0xD8` `MemoryType`, `+0xF8` `pinned`, `+0x108` name/origin) are cross-checked against the BIR memory model in D-E13; `MemoryType == 16` is SBUF. (`CONFIRMED` offsets + enum; that `+0x108`-deref yields the byte size is `STRONG`.)
+The memory-taxonomy offsets (`+0xD8` `MemoryType`, `+0xF8` `pinned`, `+0x108` name/origin) are cross-checked against the BIR memory model; `MemoryType == 16` is SBUF. That the `+0x108` deref yields the byte size is [INFERRED].
 
 `aligned(n)` (`@0xb68020`) is a verbatim round-up-to-8:
 
 ```c
-// aligned @0xb68020 (CONFIRMED — full decompiled body)
+// aligned @0xb68020 — full decompiled body
 __int64 aligned(RuntimeMemoryReservation *this, __int64 n)
 { return (n & 7) ? (n + 8 - (n & 7)) : n; }
 ```
@@ -118,24 +118,24 @@ __int64 aligned(RuntimeMemoryReservation *this, __int64 n)
 The reserved extent is committed as a real `MemoryLocation` on the single function, then finalized with the `runtime_reserved` bit:
 
 ```c
-// decomp lines ~405-421 (CONFIRMED)
+// decomp lines ~405-421
 v19 = bir::Function::addMemoryLocationWithMemoryLocationSet(
           /*name=*/"EvalAccelReservedLoc",
           /*uint=*/ archModel[0x1E8],     // tensor-id / partition-count field
           /*…*/,
           /*allocated=*/ 1,
           /*…optionals=0…*/,
-          /*size=*/ reservedSize,         // [rbp-0x200] (CONFIRMED this arg)
+          /*size=*/ reservedSize,         // [rbp-0x200]
           /*…MemoryType/AddressSpace/Dtype…*/ );
 
 bir::MemoryLocation::setAllocated(v19, 1);                 // @0x60fe50
-*(u8*)(v19 + 579) = 1;                                     // +579 = runtime_reserved (D-E13)
+*(u8*)(v19 + 579) = 1;                                     // +579 = runtime_reserved
 bir::MemoryLocationSet::buildTensorId2MemLoc(*(v19 + 0x160));  // rebuild tensorId→memloc index
 ```
 
-So the reservation is recorded **twice over**: as an allocated `MemoryLocation` *and* by setting the per-location `runtime_reserved` flag at byte `+579`; the set's `tensorId → MemoryLocation` index is then rebuilt. The pushed-arg layout includes a literal `0x10`, consistent with an SBUF (`type 16`) `MemoryLocationSet` — matching the SB-only scan in path 2. (`CONFIRMED` that `+579 == runtime_reserved` per D-E13; the SBUF-kind of the recorded set is `STRONG`.)
+So the reservation is recorded **twice over**: as an allocated `MemoryLocation` *and* by setting the per-location `runtime_reserved` flag at byte `+579`; the set's `tensorId → MemoryLocation` index is then rebuilt. The pushed-arg layout includes a literal `0x10`, consistent with an SBUF (`type 16`) `MemoryLocationSet` — matching the SB-only scan in path 2. The SBUF kind of the recorded set is [INFERRED] from that argument layout.
 
-This pass writes no global `TotalRuntimeDramSize` counter — it produces one SBUF reservation. DRAM runtime accounting is the allocator's job (see [`dram-allocator`](dram-allocator.md), which is the DRAM-side counterpart). (`STRONG`.)
+This pass writes no global `TotalRuntimeDramSize` counter — it produces one SBUF reservation. DRAM runtime accounting is the allocator's job (see [`dram-allocator`](dram-allocator.md), which is the DRAM-side counterpart).
 
 ---
 
@@ -146,7 +146,7 @@ This pass writes no global `TotalRuntimeDramSize` counter — it produces one SB
 ### The driver and its dual-placement gate
 
 ```c
-// InlineNKIKernel::run @0xf028d0 (CONFIRMED — string + opcode tests)
+// InlineNKIKernel::run @0xf028d0
 sub_175AAF0(&path, "tensor_map.json", "");            // decomp line 235
 Module[0x69] = !bir::needNoTensorMap();               // +105: must a tensor map be emitted?
 if (Module[0x69]) loadJsonFile(&tensorMap, path);     // decomp line 259
@@ -175,7 +175,9 @@ for (Function &fn : moduleFns)
 if (Module[0x69]) bir::saveJsonFile();                // re-emit tensor_map.json (decomp 667)
 ```
 
-The **allocation-status consistency gate** is why this pass is scheduled twice (order 41 *and* 61). The pass's `bool` constructor argument is stored at `Module + 104`; each call-site carries a recorded alloc-status attribute (key-hash `0xA`). A kernel is expanded *here* only if its recorded status matches the current pass position; otherwise it defers to the other placement. One pass body, two schedule slots, selected per-kernel at run time. (`CONFIRMED` — the `!= 55` test at decomp 448, the "Skip lowering" string at 561-565, `removeFunction` at 659, `saveJsonFile` at 667.)
+The **allocation-status consistency gate** is why this pass is scheduled twice (order 41 *and* 61). The pass's `bool` constructor argument is stored at `Module + 104`; each call-site carries a recorded alloc-status attribute (key-hash `0xA`). A kernel is expanded *here* only if its recorded status matches the current pass position; otherwise it defers to the other placement. One pass body, two schedule slots, selected per-kernel at run time.
+
+*Anchors: the `!= 55` test at decomp 448, the "Skip lowering" string at 561-565, `removeFunction` at 659, `saveJsonFile` at 667.*
 
 ### `lowerKernelInst` — the JSON re-materialize and manual splice
 
@@ -192,7 +194,7 @@ nlohmann::adl_serializer<bir::Module,void>::to_json(…, tmp);   // decomp 604
 // …then parse j back into tmp to re-canonicalize.
 ```
 
-Because the NKI kernel originates from KLR-sourced codegen, it must be re-canonicalized through a JSON parse before it is safe to splice. The JSON loader on the parse side is documented in [`json-loader`](../bir/json-loader.md). (`CONFIRMED` — `toJson` and `adl_serializer<Module>::to_json` are at decomp 601/604.)
+Because the NKI kernel originates from KLR-sourced codegen, it must be re-canonicalized through a JSON parse before it is safe to splice. The JSON loader on the parse side is documented in [`json-loader`](../bir/json-loader.md). *Anchors: `toJson` and `adl_serializer<Module>::to_json` at decomp 601/604.*
 
 **(b) KLR cleanup passes on the temp module** (decomp 993 / 1051 / 1159):
 
@@ -203,7 +205,7 @@ neuronxcc::backend::ConstantPropagate::run(tmp);      // decomp 1159 — ctor ta
 // dtors run at function exit (decomp 754-756) — all three are in-pass stack objects.
 ```
 
-`Unroll` here is precisely what produces the fresh per-channel CC ops that `coalesce_multichannel_cc_ops` re-coalesces at order 42. (`CONFIRMED` — the three `::run` calls and their `~`-dtors are in the decompiled body.)
+`Unroll` here is precisely what produces the fresh per-channel CC ops that `coalesce_multichannel_cc_ops` re-coalesces at order 42. All three `::run` calls and their destructors appear in the decompiled body.
 
 **(c)–(h) callee fetch, operand binding, memloc rebase, clone/splice:**
 
@@ -214,7 +216,7 @@ callee = bir::Module::getFunctionByName(tmp, name);   // decomp 1198
 unordered_map<string,string> inputMap, outputMap;
 //   inputMap : over call-site INPUT AccessPattern list (inst[17] base, inst[17].cnt)
 //   outputMap: over call-site OUTPUT AP list           (inst[19] base, inst[20].cnt)
-//   keyed by callee param name → caller memloc name (the D-H01 FunctionArgumentMaps)
+//   keyed by callee param name → caller memloc name (the FunctionArgumentMaps)
 
 // (f) MEMLOC RE-CREATION + SB ADDRESS REBASE (decomp 1731-1832)
 for (MemoryLocationSet &set : callee.memlocSets()) {
@@ -245,7 +247,9 @@ for (Instruction &t : callee.insts()) {
 // (h) emit InstUnconditionalBranch "br_to_continuation" → caller continuation BB (+240)
 ```
 
-The SBUF rebase in stage (f) is the key bookkeeping: callee SB allocations are **re-based onto the call-site's output SB address**, and the `:`-prefix uniquification prevents name collisions when the same kernel is inlined more than once. The `>2 → "Unrecognized kernel source encountered."` guard (decomp 1798) validates the kernel-source kind tag (`inst[22]`). (`CONFIRMED` — `getFunctionByName` 1198, "Unrecognized kernel source" 1798, "adding unroll dep" 2269.)
+The SBUF rebase in stage (f) is the key bookkeeping: callee SB allocations are **re-based onto the call-site's output SB address**, and the `:`-prefix uniquification prevents name collisions when the same kernel is inlined more than once. The `>2 → "Unrecognized kernel source encountered."` guard (decomp 1798) validates the kernel-source kind tag (`inst[22]`).
+
+*Anchors: `getFunctionByName` at decomp 1198, "Unrecognized kernel source" at 1798, "adding unroll dep" at 2269.*
 
 ### `rewireMemlocs` — name-keyed operand rebind
 
@@ -255,18 +259,18 @@ For each operand (`PhysicalAccessPattern` or `RegisterAccess`) of a cloned instr
 - **Callee-internal location** → resolved by its `:`-uniquified name.
 - `rewireDynamicAPRegisters()` fixes dynamic access-pattern register references; the routine recurses into nested/compound instructions (self-call at decomp 1437).
 
-This is the concrete realization of the front-end's `FunctionArgumentMap` name-bindings (recorded by `createMappingFromNames` in [`codegen-helpers-kernel-provision`](../bir/codegen-helpers-kernel-provision.md)): caller arguments are matched to callee parameters **by name**, then every operand's `AccessPattern` is re-pointed at the caller's (re-based) `MemoryLocation`. (`CONFIRMED`.)
+This is the concrete realization of the front-end's `FunctionArgumentMap` name-bindings (recorded by `createMappingFromNames` in [`codegen-helpers-kernel-provision`](../bir/codegen-helpers-kernel-provision.md)): caller arguments are matched to callee parameters **by name**, then every operand's `AccessPattern` is re-pointed at the caller's (re-based) `MemoryLocation`.
 
 ---
 
 ## Part 3 — Inlining a BIR Kernel via Polymorphic Factory
 
-`InlineBIRKernel::run` (`@0xd86510`) handles `InstBIRKernel` (`IT == 54`) — an **already-BIR** named library template (attention / MLP / activation / normalization, the inventory in P016). It needs no JSON, no KLR cleanup. Instead it builds a polymorphic `BIRKernelWrapper` through a factory and drives the splice through the wrapper's virtual table.
+`InlineBIRKernel::run` (`@0xd86510`) handles `InstBIRKernel` (`IT == 54`) — an **already-BIR** named library template (attention / MLP / activation / normalization). It needs no JSON, no KLR cleanup. Instead it builds a polymorphic `BIRKernelWrapper` through a factory and drives the splice through the wrapper's virtual table.
 
 ### The driver
 
 ```c
-// InlineBIRKernel::run @0xd86510 (CONFIRMED)
+// InlineBIRKernel::run @0xd86510
 log("BIR SB coloring allocator is %s",                  // decomp 220-224
     Module[265] ? "on" : "off");                        // +265 = SB-coloring-ran flag
 
@@ -291,7 +295,7 @@ for (InstBIRKernel *inst : bks) {
 log("Lower BKs time (s): %f", …);                       // decomp 494
 ```
 
-(`CONFIRMED` — the `== 54` test at decomp 402, the "BIR SB coloring allocator is" / "Found InstBIRKernel" / "Scan BKs" / "Lower BKs" strings, the `createInstance` call at 525, and the four vtable calls at offsets `+24`/`+32`/`+16`/`+40` at decomp 527-535.)
+*Anchors: the `== 54` test at decomp 402; the "BIR SB coloring allocator is" / "Found InstBIRKernel" / "Scan BKs" / "Lower BKs" strings; the `createInstance` call at 525; the four vtable calls at offsets `+24`/`+32`/`+16`/`+40` at decomp 527-535.*
 
 ### The factory and wrapper
 
@@ -302,7 +306,7 @@ BIRKernelWrapper::BIRKernelWrapper(ptr, logger, inst, bb, posFlag);   // ctor @0
 return shared_wrap(ptr);   // returns a (shared-counted) derived wrapper; error → raise_kernel_exception
 ```
 
-The `bool` is the **same pass-position flag** as the NKI gate (pre- vs post-coloring). Observed members: `parseOpts` (`@0xd873f0`, parse the `InstBIRKernel` attribute options), `initAndVerifyShapes` (`@0xd87400`, validate operand shapes before expansion), `cleanup` (`@0xd8dbc0`). The wrapper carries an `ActFnType → bir::ActivationFunctionType` table (`.rodata` `@0x3e013a0`) and a `normTypeEnum2Name` table (`@0x3d751e0`) — confirming it expands *templated* BIR library kernels (activation / normalization / attention / MLP) into primitive BIR instructions in place. A `klr::ContentsKernelWrapper` shared-counted type with its own vtable also exists, i.e. there is a small wrapper class hierarchy. (`STRONG` that the wrapper performs the actual splice/bind through its virtual methods; the precise per-vtable-slot semantics — build/commit/result/cleanup — are `INFERRED` from the call order.)
+The `bool` is the **same pass-position flag** as the NKI gate (pre- vs post-coloring). Observed members: `parseOpts` (`@0xd873f0`, parse the `InstBIRKernel` attribute options), `initAndVerifyShapes` (`@0xd87400`, validate operand shapes before expansion), `cleanup` (`@0xd8dbc0`). The wrapper carries an `ActFnType → bir::ActivationFunctionType` table (`.rodata` `@0x3e013a0`) and a `normTypeEnum2Name` table (`@0x3d751e0`) — confirming it expands *templated* BIR library kernels (activation / normalization / attention / MLP) into primitive BIR instructions in place. A `klr::ContentsKernelWrapper` shared-counted type with its own vtable also exists, i.e. there is a small wrapper class hierarchy. The wrapper performs the actual splice and bind through its virtual methods; the per-slot semantics — build / commit / result / cleanup — are [INFERRED] from the call order, not from named slots.
 
 ### The contrast, in one table
 
@@ -320,7 +324,7 @@ The `bool` is the **same pass-position flag** as the NKI gate (pre- vs post-colo
 
 ## Placement and Cross-References
 
-All three passes are registered mod-parallel (`register_generator_runtime_memory_reservation__` `@0x3dff597`, `…inline_nki_kernel__` `@0x3e013e9`, `…inline_bir_kernel__` `@0x3e01380`). The order is: **39** reservation → 40 linear-scan allocator → **41** `inline_nki_kernel` → 42 `coalesce_multichannel_cc_ops` → … 46 `address_rotation_psum` → **48** `inline_bir_kernel` `[if enableBirKernel]` → … → **60** `inline_bir_kernel` `[!enableBirKernel earlier path]` → **61** `inline_nki_kernel` → 62 `coalesce_multichannel_cc_ops`. Both inline passes are scheduled by `BackendPassManager::addModParallelPassWithName<{InlineNKIKernel|InlineBIRKernel}, bool>(name, bool&&)`; the single `bool` ctor argument becomes the dual-placement selector consulted by the run-time consistency gate. (`CONFIRMED` order from the P-3-04 roster; gating `STRONG`.)
+All three passes are registered mod-parallel (`register_generator_runtime_memory_reservation__` `@0x3dff597`, `…inline_nki_kernel__` `@0x3e013e9`, `…inline_bir_kernel__` `@0x3e01380`). The order is: **39** reservation → 40 linear-scan allocator → **41** `inline_nki_kernel` → 42 `coalesce_multichannel_cc_ops` → … 46 `address_rotation_psum` → **48** `inline_bir_kernel` `[if enableBirKernel]` → … → **60** `inline_bir_kernel` `[!enableBirKernel earlier path]` → **61** `inline_nki_kernel` → 62 `coalesce_multichannel_cc_ops`. Both inline passes are scheduled by `BackendPassManager::addModParallelPassWithName<{InlineNKIKernel|InlineBIRKernel}, bool>(name, bool&&)`; the single `bool` ctor argument becomes the dual-placement selector consulted by the run-time consistency gate.
 
 The reservation carving SBUF before the colorers, and the two inline passes each followed by `coalesce_multichannel_cc_ops`, are the placement constraints to honour. See:
 
@@ -331,11 +335,12 @@ The reservation carving SBUF before the colorers, and the two inline passes each
 
 ---
 
-## Verification Ceiling
+## Evidence summary
 
-Re-verified against the decompiled and disassembled `libwalrus.so` sidecars (cp310 frame):
+Everything on this page is grounded in the decompiled and disassembled `libwalrus.so` sidecars (cp310 frame).
 
-- **CONFIRMED** — the reservation arithmetic (`==16` SB filter, `aligned` round-up-8 full body, `addMemoryLocationWithMemoryLocationSet` → `setAllocated` → `+579` → `buildTensorId2MemLoc`, `getArchModel … - *(…+484)`), the `> 29` arch gate (decomp line 174), the NKI `!= 55` opcode test, the alloc-status "Skip lowering" gate, the JSON round-trip (`Function::toJson` + `adl_serializer<Module>::to_json`), the three KLR cleanup `::run` calls, `removeFunction`/`saveJsonFile`, the BIR `== 54` test, the "BIR SB coloring allocator is" flag (`Module+265`), `createInstance`, and the four vtable calls at `+24`/`+32`/`+16`/`+40`.
-- **STRONG** — the size-path predicate keying on the reserved-loc name; the SBUF kind of the recorded `MemoryLocationSet`; that `+0x108`-deref is the byte size; that the BIR wrapper's virtual methods perform the actual splice/bind.
-- **INFERRED** — the semantics of `Module + 0xAC` as the arch *generation* index; the per-vtable-slot meaning (build/commit/result/cleanup) of the four BIR wrapper calls, deduced from call order, not from named slots.
-- No claim on this page is fabricated; every offset, opcode, and string above appears in the cited decompiled body or `.rodata`.
+Read directly off the binary: the reservation arithmetic (`==16` SB filter, the `aligned` round-up-8 body, `addMemoryLocationWithMemoryLocationSet` → `setAllocated` → `+579` → `buildTensorId2MemLoc`, `getArchModel … - *(…+484)`); the `> 29` arch gate (decomp line 174); the NKI `!= 55` opcode test; the alloc-status "Skip lowering" gate; the JSON round-trip (`Function::toJson` + `adl_serializer<Module>::to_json`); the three KLR cleanup `::run` calls; `removeFunction`/`saveJsonFile`; the BIR `== 54` test; the "BIR SB coloring allocator is" flag (`Module+265`); `createInstance`; and the four vtable calls at `+24`/`+32`/`+16`/`+40`.
+
+One inference step away: the size-path predicate keying on the reserved-loc name; the SBUF kind of the recorded `MemoryLocationSet`; that the `+0x108` deref is the byte size; that the BIR wrapper's virtual methods perform the actual splice and bind.
+
+Still open [INFERRED]: the semantics of `Module + 0xAC` as the arch *generation* index, and the per-slot meaning (build / commit / result / cleanup) of the four BIR wrapper vtable calls, which is deduced from call order rather than from named slots.

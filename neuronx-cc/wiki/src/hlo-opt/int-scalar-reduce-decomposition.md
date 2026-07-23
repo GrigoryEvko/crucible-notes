@@ -76,7 +76,9 @@ bool MatchesPattern(HloInstruction *I):
     return ((et - 4) & ~4) == 0                            // sub eax,4 / and eax,0FFFFFFFBh / setz  @0x1f77f3c
 ```
 
-The final mask is the subtle part. `IsIntegralType` passes *all* integer primitive types, but `(et-4) & ~4 == 0` is true only when `et-4 ∈ {0, 4}` — i.e. `et ∈ {S32 = 4, U32 = 8}`. So the broad integral gate is immediately narrowed: the pass fires only on **signed/unsigned 32-bit** scalar all-reduce-add. (CONFIRMED — `sub eax,4 / and eax,0FFFFFFFBh / setz al` @ `0x1f77f3c`.)
+The final mask is the subtle part. `IsIntegralType` passes *all* integer primitive types, but `(et-4) & ~4 == 0` is true only when `et-4 ∈ {0, 4}` — i.e. `et ∈ {S32 = 4, U32 = 8}`. So the broad integral gate is immediately narrowed: the pass fires only on **signed/unsigned 32-bit** scalar all-reduce-add.
+
+*Anchor: `sub eax,4 / and eax,0FFFFFFFBh / setz al` @ `0x1f77f3c`.*
 
 > **GOTCHA —** do not read the `IsIntegralType` call as the type gate. It is necessary but not sufficient; the `(et-4)&~4` mask is what actually decides. A reimplementation that accepts every integral type here will fire on `S8`/`S64`/`U8`/`U16`/`U64` all-reduces the real pass leaves untouched.
 
@@ -115,24 +117,26 @@ HloInstruction *Expand(HloInstruction *AR):
     return out                                                   // StatusOr<HloInstruction*>
 ```
 
-The cross-replica reduction is an explicit **unrolled `kAdd` tree** — there is no `MakeReduceHlo` in this body. Each gathered replica contributes a `[2]` chunk; the loop slices chunk `b..b+2` and folds it into the accumulator with `MakeBinaryHlo(kAdd, …)`. (CONFIRMED — three `MakeSliceHlo` call sites @ `0x1f78551`/`0x1f785d0`/`0x1f78696` and a `MakeBinaryHlo` @ `0x1f78605` inside the loop body.)
+The cross-replica reduction is an explicit **unrolled `kAdd` tree** — there is no `MakeReduceHlo` in this body. Each gathered replica contributes a `[2]` chunk; the loop slices chunk `b..b+2` and folds it into the accumulator with `MakeBinaryHlo(kAdd, …)`.
 
-> **QUIRK —** the `(*)` reshape from a 1-element scalar to `[2]` is not element-count-preserving in stock XLA. Combined with `MakeBroadcastHlo(rs, {} → [2])` and the trailing `slice[1:2]`, it reads as a **pad-to-even-payload idiom**: materialize the scalar as a 2-vector so the `all-gather` has an even per-replica payload, gather `2×G`, then keep one lane per replica. The graph topology (gather-`2G` → `G` strided `[2]`-slices → `kAdd` tree → reshape-to-scalar) is CONFIRMED.
+*Anchors: three `MakeSliceHlo` call sites @ `0x1f78551` / `0x1f785d0` / `0x1f78696`; the in-loop `MakeBinaryHlo` @ `0x1f78605`.*
 
-> **GOTCHA —** the precise *intra-pair lane semantics* are INFERRED (MEDIUM). Which of the two lanes in each gathered `[2]` carries the live value, and whether the final `MakeReshapeHlo` consumes the `kAdd` accumulator (`acc`) or the trailing `slice[1:2]` (`tail`), is ambiguous in the disassembly: the overlapping `StatusOr` stack slots (`var_560`/`var_570`/`var_580`) alias the operand of the closing reshape. Resolving it needs a live HLO dump of the pass output. Everything *above* the final reshape's operand choice is binary-true.
+> **QUIRK —** the `(*)` reshape from a 1-element scalar to `[2]` is not element-count-preserving in stock XLA. Combined with `MakeBroadcastHlo(rs, {} → [2])` and the trailing `slice[1:2]`, it reads as a **pad-to-even-payload idiom**: materialize the scalar as a 2-vector so the `all-gather` has an even per-replica payload, gather `2×G`, then keep one lane per replica. The graph topology — gather-`2G` → `G` strided `[2]`-slices → `kAdd` tree → reshape-to-scalar — is read directly off the call sequence.
+
+> **GOTCHA —** the precise *intra-pair lane semantics* are [INFERRED]. Which of the two lanes in each gathered `[2]` carries the live value, and whether the final `MakeReshapeHlo` consumes the `kAdd` accumulator (`acc`) or the trailing `slice[1:2]` (`tail`), is ambiguous in the disassembly: the overlapping `StatusOr` stack slots (`var_560`/`var_570`/`var_580`) alias the operand of the closing reshape. Resolving it needs a live HLO dump of the pass output. Everything *above* the final reshape's operand choice is binary-true.
 
 ### Function Map
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
-| `InstructionMatchesPattern` | `0x1f77eb0` | gate: opcode 7 + root kAdd + integral + scalar + `{S32,U32}` | CONFIRMED |
-| `ExpandInstruction` | `0x1f78230` | rewrite: reshape→broadcast→all-gather→slice→kAdd-tree→reshape | CONFIRMED (topology); MEDIUM (final-reshape operand) |
-| `ShapeUtil::MakeValidatedShape` | `0x97e13d0` | builds `[2]` and `[2*G]` shapes | CONFIRMED |
-| `HloInstruction::CreateAllGather` | `0x96680b0` | the type-agnostic transport replacing the int collective | CONFIRMED |
-| `MakeSliceHlo` | `0x90f1770` | carves per-replica `[2]` chunks | CONFIRMED |
-| `MakeBinaryHlo` | `0x90f2760` | `kAdd` fold in the tree | CONFIRMED |
-| `MakeReshapeHlo` | `0x90f0950` | scalar↔`[2]` reshapes | CONFIRMED |
-| `MakeBroadcastHlo` | `0x90f0890` | duplicate scalar to `[2]` | CONFIRMED |
+| `InstructionMatchesPattern` | `0x1f77eb0` | gate: opcode 7 + root kAdd + integral + scalar + `{S32,U32}` | CERTAIN |
+| `ExpandInstruction` | `0x1f78230` | rewrite: reshape→broadcast→all-gather→slice→kAdd-tree→reshape | CERTAIN (topology); MEDIUM (final-reshape operand) |
+| `ShapeUtil::MakeValidatedShape` | `0x97e13d0` | builds `[2]` and `[2*G]` shapes | CERTAIN |
+| `HloInstruction::CreateAllGather` | `0x96680b0` | the type-agnostic transport replacing the int collective | CERTAIN |
+| `MakeSliceHlo` | `0x90f1770` | carves per-replica `[2]` chunks | CERTAIN |
+| `MakeBinaryHlo` | `0x90f2760` | `kAdd` fold in the tree | CERTAIN |
+| `MakeReshapeHlo` | `0x90f0950` | scalar↔`[2]` reshapes | CERTAIN |
+| `MakeBroadcastHlo` | `0x90f0890` | duplicate scalar to `[2]` | CERTAIN |
 
 ---
 
@@ -198,9 +202,11 @@ HloInstruction *Expand(HloInstruction *R):
     return out
 ```
 
-The reshape target is exactly `[128, N/128]`: `0x80` is moved into the `dims[0]` slot and `(N+0x7F) sar 7` into `dims[1]`. This is the 128-partition SBUF tiling. The first `MakeReduceHlo` reduces **dim `{1}`** (the free axis) to `[128]`; the second reduces **dim `{0}`** (the partition axis) to a scalar. Both stages reuse the *same* reduction computation `Rc` (`r15`) and the *same* `init`, and both pass the original op's `OpMetadata*` (`R[+0x200]`). (CONFIRMED — two `MakeReduceHlo` call sites @ `0x1f7902f`/`0x1f790b3`; `mov var_2D0, 80h` @ `0x1f78f75`; `sar rax,7` @ `0x1f78f80`.)
+The reshape target is exactly `[128, N/128]`: `0x80` is moved into the `dims[0]` slot and `(N+0x7F) sar 7` into `dims[1]`. This is the 128-partition SBUF tiling. The first `MakeReduceHlo` reduces **dim `{1}`** (the free axis) to `[128]`; the second reduces **dim `{0}`** (the partition axis) to a scalar. Both stages reuse the *same* reduction computation `Rc` (`r15`) and the *same* `init`, and both pass the original op's `OpMetadata*` (`R[+0x200]`).
 
-> **QUIRK —** wedged between the two reduces is `MakeBinaryHlo(kMaximum, r1, r1)` — `mov esi, 0x43` @ `0x1f79057` (kMaximum, case "maximum" in `HloOpcodeString`) with both operands set to `r1` (`rcx = rdx`). `maximum(x, x) == x` is a pure identity on values; it changes nothing about the result. It is almost certainly a deliberate **anti-fusion sentinel** placed between the two stages so a later fusion / reduce-merge pass cannot collapse the two-stage partition reduce back into a single reduce — which would re-introduce the very shape the pass was built to avoid. (Opcode + self-operand CONFIRMED; barrier *intent* INFERRED, HIGH.)
+*Anchors: two `MakeReduceHlo` call sites @ `0x1f7902f` / `0x1f790b3`; `mov var_2D0, 80h` @ `0x1f78f75`; `sar rax,7` @ `0x1f78f80`.*
+
+> **QUIRK —** wedged between the two reduces is `MakeBinaryHlo(kMaximum, r1, r1)` — `mov esi, 0x43` @ `0x1f79057` (kMaximum, case "maximum" in `HloOpcodeString`) with both operands set to `r1` (`rcx = rdx`). `maximum(x, x) == x` is a pure identity on values; it changes nothing about the result. It is almost certainly a deliberate **anti-fusion sentinel** placed between the two stages so a later fusion / reduce-merge pass cannot collapse the two-stage partition reduce back into a single reduce — which would re-introduce the very shape the pass was built to avoid. The opcode and the self-operand are read off the call site; the barrier *intent* is [INFERRED] from topology — no string or comment in the binary states it.
 
 > **GOTCHA —** the `init` value is reused verbatim on *both* stages. For an idempotent identity element (e.g. `-inf` for `maximum`, `+inf` for `minimum`, `1` for `multiply`) this is correct; the two-stage reduce produces the same scalar as the original single reduce. A reimplementation that injects a fresh or stage-specific init will silently corrupt non-`Add` reductions whose identity is not the operand-neutral default.
 
@@ -208,13 +214,13 @@ The reshape target is exactly `[128, N/128]`: `0x80` is moved into the `dims[0]`
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
-| `InstructionMatchesPattern` | `0x1f78bd0` | gate: opcode 0x55 + integral + scalar + non-kAdd + rank-2 + `%128==0` | CONFIRMED |
-| `ExpandInstruction` | `0x1f78e80` | rewrite: reshape[128,N/128]→reduce(1)→max(self)→reduce(0)→reshape | CONFIRMED |
-| `ShapeUtil::MakeValidatedShape` | `0x97e13d0` | builds the `[128, N/128]` shape | CONFIRMED |
-| `MakeReshapeHlo` | `0x90f0950` | flatten and re-scalarize | CONFIRMED |
-| `MakeReduceHlo` | `0x90f0f60` | the two reduce stages (dims `{1}` then `{0}`) | CONFIRMED |
-| `MakeBinaryHlo` | `0x90f2760` | `kMaximum(self,self)` anti-fusion barrier | CONFIRMED (op); INFERRED (intent) |
-| `Shape::array_state` | `0x97d18e0` | rank check on operand(0) | CONFIRMED |
+| `InstructionMatchesPattern` | `0x1f78bd0` | gate: opcode 0x55 + integral + scalar + non-kAdd + rank-2 + `%128==0` | CERTAIN |
+| `ExpandInstruction` | `0x1f78e80` | rewrite: reshape[128,N/128]→reduce(1)→max(self)→reduce(0)→reshape | CERTAIN |
+| `ShapeUtil::MakeValidatedShape` | `0x97e13d0` | builds the `[128, N/128]` shape | CERTAIN |
+| `MakeReshapeHlo` | `0x90f0950` | flatten and re-scalarize | CERTAIN |
+| `MakeReduceHlo` | `0x90f0f60` | the two reduce stages (dims `{1}` then `{0}`) | CERTAIN |
+| `MakeBinaryHlo` | `0x90f2760` | `kMaximum(self,self)` anti-fusion barrier | CERTAIN (op); MEDIUM (intent) |
+| `Shape::array_state` | `0x97d18e0` | rank check on operand(0) | CERTAIN |
 
 ---
 
@@ -229,7 +235,9 @@ Both gates inline the same `primitive_util::IsIntegralType(element_type)` predic
 | range `elem-0x13` (≤ 0x0e) | `CSWTCH_335` @ `0x410bb0` | `CSWTCH_272` @ `0x410ca0` | same |
 | high path (elem > 0x21) | bitmask `0xFFFFFFFCFFFB7FFF` | bitmask `0xFFFFFFFCFFFB7FFF` | disasm |
 
-`CSWTCH_341`/`CSWTCH_278` are indexed `element_type − 6` and decode to the standard XLA "is this an integer primitive type" test (indices `0..3` = `U8/U16/U32/U64` = 1; floating types = 0). The `cmp eax,1` at the head of each classifier is the `PRED`-as-integral special case that jumps straight to the scalar-dimension check. (CONFIRMED — `cmp ds:CSWTCH_341[rdx],0` @ `0x1f77f1a`, `cmp ds:CSWTCH_278[rdx],0` @ `0x1f78c0a`.)
+`CSWTCH_341`/`CSWTCH_278` are indexed `element_type − 6` and decode to the standard XLA "is this an integer primitive type" test (indices `0..3` = `U8/U16/U32/U64` = 1; floating types = 0). The `cmp eax,1` at the head of each classifier is the `PRED`-as-integral special case that jumps straight to the scalar-dimension check.
+
+*Anchors: `cmp ds:CSWTCH_341[rdx],0` @ `0x1f77f1a`; `cmp ds:CSWTCH_278[rdx],0` @ `0x1f78c0a`.*
 
 The IntAllReduce path then *additionally* narrows to `{S32, U32}` via the `(et-4)&~4` mask (above); ScalarReduce accepts the full integral set the classifier passes.
 
@@ -265,17 +273,17 @@ DecomposeScalarReduce  (N = product(operand dims), N % 128 == 0):
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+The five structural claims and what pins each:
 
-1. **IntAllReduce gates `{S32, U32}`, not all integers.** Re-checked `0x1f77f3c`: `sub eax,4 / and eax,0FFFFFFFBh / setz al`. `et-4 ∈ {0,4} ⇒ et ∈ {4,8} = {S32,U32}`. **Holds — CONFIRMED.**
-2. **ScalarReduce excludes `Add` reductions.** Re-checked `0x1f78c45`: `cmp byte[rax+14h],1` on the reduction-comp root, branching to the reject path. `kAdd == 1`. **Holds — CONFIRMED.**
-3. **The 128-partition split is exactly `[128, N/128]`.** Re-checked `0x1f78f75`–`0x1f78f80`: `mov var_2D0, 80h` then `sar rax,7`. `0x80 = 128`, `sar …,7 = ÷128`. **Holds — CONFIRMED.**
-4. **The cross-replica sum is an unrolled `kAdd` tree, not a `MakeReduceHlo`.** Re-checked the IntAllReduce rewrite call list: `MakeSliceHlo` ×3 + `MakeBinaryHlo` inside the loop @ `0x1f78605`; no `MakeReduceHlo` symbol anywhere in `0x1f78230`'s body. **Holds — CONFIRMED.**
-5. **The `maximum(r1,r1)` is a true self-operand barrier.** Re-checked `0x1f79057`: `mov esi,0x43` (kMaximum) and the operand registers (`rcx = rdx = r1`) into `MakeBinaryHlo`. Opcode and self-operand **CONFIRMED**; the "anti-fusion sentinel" *purpose* is **INFERRED (HIGH)** — derived from topology, with no confirming string or comment in the binary.
+1. **IntAllReduce gates `{S32, U32}`, not all integers.** `0x1f77f3c`: `sub eax,4 / and eax,0FFFFFFFBh / setz al`. `et-4 ∈ {0,4} ⇒ et ∈ {4,8} = {S32,U32}`.
+2. **ScalarReduce excludes `Add` reductions.** `0x1f78c45`: `cmp byte[rax+14h],1` on the reduction-comp root, branching to the reject path. `kAdd == 1`.
+3. **The 128-partition split is exactly `[128, N/128]`.** `0x1f78f75`–`0x1f78f80`: `mov var_2D0, 80h` then `sar rax,7`. `0x80 = 128`, `sar …,7 = ÷128`.
+4. **The cross-replica sum is an unrolled `kAdd` tree, not a `MakeReduceHlo`.** The IntAllReduce rewrite's call list is `MakeSliceHlo` ×3 plus the in-loop `MakeBinaryHlo` @ `0x1f78605`; no `MakeReduceHlo` symbol appears anywhere in `0x1f78230`'s body.
+5. **The `maximum(r1,r1)` is a true self-operand barrier.** `0x1f79057`: `mov esi,0x43` (kMaximum) with both operand registers (`rcx = rdx = r1`) fed into `MakeBinaryHlo`. The "anti-fusion sentinel" *purpose* is [INFERRED] from topology — no string or comment in the binary states it.
 
-Residual tags: IntAllReduce intra-pair lane semantics and the final-reshape operand (acc vs tail) — **INFERRED (MEDIUM)**, ambiguous due to aliased `StatusOr` stack slots. `R[+0x200]` as the `OpMetadata*` block — **STRONG**, consistent with its use as the metadata arg to all three builders but not cross-validated against an independent struct map. No diagnostic/error strings are emitted by either rewrite; both `.cold` paths are pure unwind, so there is no `NCC_*` code for these passes.
+Open. IntAllReduce intra-pair lane semantics and the final-reshape operand (acc vs tail) are ambiguous because the `StatusOr` stack slots alias [INFERRED]. `R[+0x200]` as the `OpMetadata*` block is consistent with its use as the metadata argument to all three builders but is not cross-validated against an independent struct map. Neither rewrite emits a diagnostic or error string; both `.cold` paths are pure unwind, so there is no `NCC_*` code for these passes.
 
 ---
 
