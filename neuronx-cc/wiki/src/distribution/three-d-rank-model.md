@@ -1,6 +1,6 @@
 # The 3-D Rank Model and `getCCRankWorldSize` Reconciliation
 
-> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22 (cp310). `hlo-opt` symbols resolve in `neuronxcc/starfish/bin/hlo-opt` (`.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000); `hlo2penguin`, `libwalrus.so`, and the Cython `NeffInfo.so` symbols are tagged inline with their binary. Other builds differ; treat every address as version-pinned. Provenance D-AB07 (reconciliation), D-S02 (NEFF reader), D-F08/D-I11 (sim rank model).*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22 (cp310). `hlo-opt` symbols resolve in `neuronxcc/starfish/bin/hlo-opt` (`.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000); `hlo2penguin`, `libwalrus.so`, and the Cython `NeffInfo.so` symbols are tagged inline with their binary. Other builds differ; treat every address as version-pinned.*
 
 ## Abstract
 
@@ -29,13 +29,13 @@ For reimplementation, the contract is:
 | **Rank = core / N** | `NeuronCoresManager::getRankIdforCore` @ `0x272380` (birsim) **[NEURON]** |
 | **MPMD reject** | `>1` topology ⇒ `"… possible MPMD neff file"` (`getCCRankWorldSize`) |
 
-> **NOTE — provenance and scope.** The replica-group *representation* and the mesh→group flattening arithmetic are stock OpenXLA and belong to [13.7 (Mesh → Replica-Group Topology Math)](mesh-replica-group-math.md); this page does **not** re-derive them — it cross-refs them and covers only the 2-D↔3-D *rank reconciliation*. Where this page cites the iota math, `getCCRankWorldSize` algorithm, or LNC core model, it must agree with [13.7](mesh-replica-group-math.md), [12.3 NEFF JSON sidecars / `def.json` CCInfo](../formats/neff-json-sidecars.md), and [1.07 LNC memory model](../arch/lnc-memory-model.md) respectively; any discrepancy is flagged in place as a **CORRECTION** with byte evidence.
+> **NOTE — provenance and scope.** The replica-group *representation* and the mesh→group flattening arithmetic are stock OpenXLA and belong to [13.7 (Mesh → Replica-Group Topology Math)](mesh-replica-group-math.md); this page does **not** re-derive them — it cross-refs them and covers only the 2-D↔3-D *rank reconciliation*. Where this page cites the iota math, `getCCRankWorldSize` algorithm, or LNC core model, it must agree with [13.7](mesh-replica-group-math.md), [12.3 NEFF JSON sidecars / `def.json` CCInfo](../formats/neff-json-sidecars.md), and [1.07 LNC memory model](../arch/lnc-memory-model.md) respectively.
 
 ---
 
 ## 1. The Two Models, Side by Side
 
-> **Tag: XLA STOCK + NEURON envelope · CONFIRMED**
+*Provenance: the XLA side is stock upstream; the 3-D envelope is Neuron-authored.*
 
 A reimplementer's first task is to hold both shapes in mind simultaneously. They describe the *same physical fabric* with a different number of brackets.
 
@@ -62,15 +62,13 @@ At the HLO-op level there is exactly one topology per collective: all of an op's
 
 ## 2. The Dimensionality Map
 
-> **Tag: data shapes CONFIRMED; outer-axis semantics STRONG**
-
 The exact correspondence, axis by axis:
 
 | Neuron axis | Holds | XLA source | Confidence |
 |---|---|---|---|
-| **INNER** — rank size per CC | ranks in one comm | `num_devices_per_group` (a group's length) | CONFIRMED |
-| **MIDDLE** — groups per topology | independent comms in the op | `num_replica_groups` | CONFIRMED |
-| **OUTER** — unique CC topologies | distinct group geometries across the module | *no op-level source*; the de-duped set built by `writeCCInfo` | STRONG |
+| **INNER** — rank size per CC | ranks in one comm | `num_devices_per_group` (a group's length) | CERTAIN |
+| **MIDDLE** — groups per topology | independent comms in the op | `num_replica_groups` | CERTAIN |
+| **OUTER** — unique CC topologies | distinct group geometries across the module | *no op-level source*; the de-duped set built by `writeCCInfo` | HIGH |
 
 `num_replica_groups` and `num_devices_per_group` are read directly from the iota descriptor by `IotaReplicaGroupList::num_replica_groups()` @ `0x9622500` (returns `[this+0x10]`) and `num_devices_per_group()` @ `0x9622510` (returns `[this+0x18]`) — see [13.7 §2](mesh-replica-group-math.md#2-the-compact-strided-form--iotareplicagrouplist--iotatileassignment). After the lazy `ExpandIota` (13.7 §2), the same pair is the outer/inner length of the explicit `vector<ReplicaGroup>`.
 
@@ -87,13 +85,13 @@ for (group g : neuron_rg[0])
 //   neuron_rg[0][gi][ri]      == xla_rg[gi].replica_ids(ri)   (same device id, bit-for-bit, §3)
 ```
 
-> **VERDICT —** there is no genuine 2-D-vs-3-D mismatch in the supported flow. XLA's `(num_replica_groups, num_devices_per_group)` is exactly Neuron's `(middle, inner)` at the one topology XLA produces; the outer axis is a NEFF-level superset for MPMD/multi-distinct-CC neffs that stock single-program SPMD never emits. **[STRONG** — the data shapes are CONFIRMED identical (the `getCCRankWorldSize` docstring at [12.3](../formats/neff-json-sidecars.md) names the three axes verbatim); the "outer = distinct group shapes" reading is STRONG from the `writeCCInfo` de-dup plus the MPMD guards, not a single decisive instruction.**]**
+There is no genuine 2-D-vs-3-D mismatch in the supported flow. XLA's `(num_replica_groups, num_devices_per_group)` is exactly Neuron's `(middle, inner)` at the one topology XLA produces; the outer axis is a NEFF-level superset for MPMD / multi-distinct-CC NEFFs that stock single-program SPMD never emits. The data shapes are identical — the `getCCRankWorldSize` docstring at [12.3](../formats/neff-json-sidecars.md) names the three axes verbatim. The reading of the outer axis as "the set of distinct group shapes" follows from the `writeCCInfo` de-dup plus the MPMD guards rather than from any single decisive instruction.
 
 ---
 
 ## 3. The Rank Identity — Device ID = Core / numCoresPerLNC
 
-> **Tag: cross-binary (hlo-opt ids → birsim ranks) · CONFIRMED**
+*This section spans two binaries: the ids originate in `hlo-opt` and are consumed as ranks in the BIR simulator.*
 
 The innermost coordinate is a *rank*, and a rank is a device id on both sides. This is the crux of the reconciliation: the integers XLA writes into each group are the *same integers* the Neuron simulator scans for when it asks "is this core in this collective?".
 
@@ -149,7 +147,7 @@ Both take `replica_groups[0]` — the single topology — as their group source.
 
 ## 4. The MPMD Rejection — Why the Outer Axis Stays Length 1
 
-> **Tag: NEURON · CONFIRMED (strings + guards)**
+*Neuron-authored; grounded in the reject strings and the guards around them.*
 
 The 3-D envelope *could* carry more than one topology; the reader refuses to. `getCCRankWorldSize` @ `0x1ade0` (Cython `NeffInfo.so`, **NEURON**) walks the outer dim and rejects any NEFF where the topologies are not a single consistent shape. Its docstring names the axes verbatim (reproduced in [12.3 §5](../formats/neff-json-sidecars.md#5-getarchtype-and-getccrankworldsize--derived-accessors)):
 
@@ -181,7 +179,7 @@ function getCCRankWorldSize(self):
 
 The two reject paths — **`"Empty topology found at index {}, possible MPMD neff file …"`** (an empty inner topology) and **`"Inconsistent worker count across topologies: {} vs {}. Possible MPMD …"`** (topologies of different rank sizes) — are the mechanism by which the outer axis is constrained to one effective entry. A well-formed single-program SPMD NEFF has one topology of one consistent inner size; anything else is MPMD and is refused (the diagnostic suggests `--stopAfter=compile` as the workaround). The producer side never *emits* `>1` topology in this flow, but the reader enforces the contract defensively.
 
-The BIR simulator carries the same single-topology assumption from the other end: it asserts `replica_groups.size() == 1` and emits **`"Multiple LNCs are not supported yet"`** on the `ReduceScatter` / `SendRecv` paths (D-F08 §4.4). Both ends agree: one topology, one LNC, in the supported flow.
+The BIR simulator carries the same single-topology assumption from the other end: it asserts `replica_groups.size() == 1` and emits **`"Multiple LNCs are not supported yet"`** on the `ReduceScatter` / `SendRecv` paths. Both ends agree: one topology, one LNC, in the supported flow.
 
 > **GOTCHA —** a reimplementer who silently maxes or averages inconsistent topologies instead of rejecting them produces a NEFF that runs with the wrong world size and corrupts every collective. The contract is *refuse*, not *reconcile*. Reproduce the two FATALs verbatim.
 
@@ -189,7 +187,7 @@ The BIR simulator carries the same single-topology assumption from the other end
 
 ## 5. The Bridge Functions — Flatten, Discover, Read
 
-> **Tag: GetReplicaGroups STOCK · GetTpReplicaGroup/HasMatchingReplicaGroups NEURON · CONFIRMED**
+*Provenance: `GetReplicaGroups` is stock XLA; `GetTpReplicaGroup` and `HasMatchingReplicaGroups` are Neuron-authored.*
 
 Three functions carry a collective's groups from the XLA graph into the Neuron NEFF. They are not a pipeline of transforms — each consumes the *same* device ids — but they have different provenance, and a reimplementer must keep that straight.
 
@@ -239,7 +237,7 @@ The NEFF reader of §4 consumes the 3-D `replica_groups[topology][group][rank]` 
 
 ## 6. Worked Mapping — XLA Replica Group → `[topology][group][rank]`
 
-> **Tag: derived from §1–§3 · STRONG**
+*This worked example is composed from the mappings established in §1–§3; it is not itself read out of the binary.*
 
 Take the strided AllReduce from [13.7 §5](mesh-replica-group-math.md#5-worked-example--2-axis-mesh--allreduce-replica-groups): a 2×4 mesh (`data`=2, `model`=4, 8 devices) reducing over the `data` axis. The iota math there yields four groups of two, strided by 4 (cross-ref 13.7 for the `value_at` derivation; this page does not re-run it):
 
