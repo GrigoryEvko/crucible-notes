@@ -8,7 +8,7 @@ Two `hlo-opt` passes implement Neuron's **tensor-parallel collective-matmul** re
 
 Both passes are `xla::OpExpanderPass` subclasses, so each is driven by the shared `xla::OpExpanderPass::Run` @ `0x29f0bb0` (vtable slot vptr+0x18): `Run` walks every computation in post-order, calls the per-pass `InstructionMatchesPattern` (vtable slot vptr+0x40), and on a match calls `ExpandInstruction` (vtable slot vptr+0x48), splices the returned instruction in via `ReplaceAllUsesWith`, and DCEs the dead dot/all-gather chain. The pass objects are 0x30-byte and trivially constructed — the factory closures `…RegisterNeuronLoopedEinsumReplacer…::_M_invoke` @ `0x1e71810` / `…TokenReplacer…::_M_invoke` @ `0x1e71790` each `operator new(0x30)`, zero the body, and store the vptr. **There are no `cl::opt` thresholds and no constructor arguments**: every tuning knob is one of three `NEURON_COLLECTIVE_*` environment variables, read at match/expand time via `xla::hlo_utils::EnvVarSetToOne` / `ReadEnvVarAsInt`.
 
-The binary was archived with the IDA decompiler disabled for this TU, so the reconstruction is from raw `objdump -d -M intel` on the live ELF, the mangled symbol table (`nm`), the vtable byte dumps, and byte-exact rodata reads. The pass names, the custom-call target, all three env-var names, all four `backend_config` keys, every cited symbol address, and every vtable slot were re-verified against this binary; uncertainties (the SB-to-SB default-threshold constant, the exact N×D result-shape dim ordering) are tagged where they occur.
+The binary was archived with the IDA decompiler disabled for this translation unit, so the reconstruction rests on raw `objdump -d -M intel` over the live ELF, the mangled symbol table (`nm`), the vtable byte dumps, and byte-exact rodata reads. The pass names, the custom-call target, all three env-var names, all four `backend_config` keys, every cited symbol address and every vtable slot are read from those sources; the two genuinely open items — the SB-to-SB default-threshold constant and the exact N×D result-shape dim ordering — are flagged where they appear.
 
 For reimplementation, the contract is:
 
@@ -202,7 +202,7 @@ The opaque string is a flat comma-separated `key=value` list, assembled by `absl
 
 - **N×D gate.** `NEURON_COLLECTIVE_MATMUL_NXD` must be set to `1` (via `EnvVarSetToOne`) for the N×D path's all-gather-operand-count guard to apply (`> 5 ⇒ reject`). The N×D matcher (`MatchAllGatherInDotLhsNxD`) itself is always tried; the env var only adds the `>5`-operand block at `0x1fab0ee`.
 - **Aggressive fallback.** When neither `WeightInLHS` nor `WeightInRHS` holds for the N×D/RHS branch, the match falls back to `NEURON_COLLECTIVE_PERMUTE_AGGRESSIVE` (`EnvVarSetToOne` @ `0x1fab16b`) — an opt-in to fold even when the weight side could not be proven a parameter.
-- **All-gather-dimension rule.** `[ag+0x258]` is `all_gather_dimension()` (CONFIRMS the `+0x258` offset used by the AllGather passes; the naive `+0x260` label is wrong). The rule is: `dim > 1 ⇒ accept`; `dim ≤ 1 ⇒` require the gathered operand to be rank-3. This is `array_state() >> 1 == 3` at `0x1fab11e` (the `array_state` low bit is a flag; the rank is the high bits).
+- **All-gather-dimension rule.** `[ag+0x258]` is `all_gather_dimension()` — the same offset the other AllGather passes use, and not the `+0x260` an eyeball reading of the struct suggests. The rule is: `dim > 1 ⇒ accept`; `dim ≤ 1 ⇒` require the gathered operand to be rank-3. This is `array_state() >> 1 == 3` at `0x1fab11e` (the `array_state` low bit is a flag; the rank is the high bits).
 
 ---
 
@@ -299,29 +299,31 @@ namespace xla::hilo {
 
 Structure offsets used (verified at the cited call sites): `DotDimensionNumbers` — `[+0x10]`/`[+0x18]` = lhs_contracting size/data, `[+0x28]`/`[+0x30]` = rhs_contracting size/data (RepeatedField<int64>, 0x18-stride layout). `HloAllGatherInstruction` — `[+0x18]` = operand_count (the ≤5 gate), `[+0x258]` = all_gather_dimension. `ReplicaGroup` span stride = 0x18; replica_ids count at `[group+0x10]`. `HloInstruction` opcode = `byte [+0x14]`. `Shape::array_state()` packs rank in the high bits (`(state >> 1)` is the rank used by both passes' rank checks).
 
-> **CORRECTION (B24-vtable) —** the prior D-B24 report placed `InstructionMatchesPattern` at vtable offset vptr+0x28 and `ExpandInstruction` at vptr+0x30. The byte dump of `_ZTV…Replacer` @ `0x411d68` shows otherwise: with vptr = `0x411d78`, the slots are `name` @ vptr+0x10, `OpExpanderPass::Run` @ vptr+0x18 (`0x29f0bb0`), `InstructionMatchesPattern` @ **vptr+0x40** (`0x1fab000`), `ExpandInstruction` @ **vptr+0x48** (`0x1fab280`). The function→address mapping in that report was correct; the slot offsets between Run and the two overrides were off by the four intervening `HloPassInterface` slots (`0x1e7dc10`, `0x1e7c7b0`, `0x1e7c2d0`, `0x1e7c340`). The `…TokenReplacer` vtable @ `0x411dc8` (vptr `0x411dd8`) follows the identical layout, with IMP `0x1faaef0` and Expand `0x1faadd0` in the same slots.
+### The vtable layout
+
+The byte dump of `_ZTV…Replacer` @ `0x411d68` gives the slot assignment. With vptr = `0x411d78`: `name` sits at vptr+0x10, `OpExpanderPass::Run` at vptr+0x18 (`0x29f0bb0`), `InstructionMatchesPattern` at **vptr+0x40** (`0x1fab000`), and `ExpandInstruction` at **vptr+0x48** (`0x1fab280`). The `…TokenReplacer` vtable @ `0x411dc8` (vptr `0x411dd8`) follows the identical layout, with its IMP at `0x1faaef0` and Expand at `0x1faadd0` in the same slots.
+
+> **GOTCHA — four `HloPassInterface` slots sit between `Run` and the two overrides.** `InstructionMatchesPattern` and `ExpandInstruction` do *not* immediately follow `Run` in the vtable; the intervening slots hold `0x1e7dc10`, `0x1e7c7b0`, `0x1e7c2d0` and `0x1e7c340`. Counting forward from `Run` without accounting for them lands on vptr+0x28 / vptr+0x30 and dispatches into the wrong functions entirely.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+- **The three headline strings.** `rg -a -o` on the live ELF returns `neuron_looped_einsum_replacer`, `neuron_looped_einsum_token_replacer` and `AwsNeuronCollectiveMatmul`; `grep -bo` file offsets `389621` / `1993272` / `452804` map, via `+0x200000`, to VA `0x25f1f5` / `0x3e6a38` / `0x26e8c4`.
+- **The core function addresses.** `nm` resolves `…Replacer::ExpandInstruction` @ `0x1fab280`, `…::InstructionMatchesPattern` @ `0x1fab000`, `.cold` @ `0x1fab198`, `…TokenReplacer::ExpandInstruction` @ `0x1faadd0`, `…::InstructionMatchesPattern` @ `0x1faaef0`, both `name()` @ `0x1faadb0` / `0x1faadc0`, and both factory `_M_invoke` @ `0x1e71810` / `0x1e71790` — all from the demangled symbol table.
+- **The match sequence.** `objdump -d` of `0x1fab000` shows `cmp [rsi+0x14],0x2e`, `cmp [rax+0x28],1` and `cmp [rax+0x10],1`, then calls into `MatchAllGatherInDotLhsRS`/`Lhs`/`RhsRS`/`Rhs`/`LhsNxD` — the helper addresses on this page are read from those call targets — followed by `GetRootAllGather`, `EnvVarSetToOne`, `cmp [r12+0x18],5` and `cmp [r12+0x258],1`.
+- **The four `backend_config` keys.** `grep -bo` locates `rhs_contracting_dim=` at fileoff `325019` (VA `0x24f59b`), `,tp_degree=` at `405639` (VA `0x263087`), `,num_groups=` at `452791` (VA `0x26e8b7`), and `,use_sb_to_sb=` at `215257` (VA `0x2348d9`).
+- **The token pass's shape.** `objdump -d` of `0x1faaef0` shows `call EnvVarSetToOne` *before* any opcode test, then `cmp [r13+0x14],0x3a`, `cmp [rax+0x14],4` and the `shape()`/`array_state` rank read; `0x1faadd0` shows `mutable_operand(0)` then `mutable_operand(1)`, with `mov [r12],0` and `mov [r12+8],rax`.
 
-1. **Both pass names and the custom-call target are exactly these strings.** *Challenge:* did I copy them from the report, or read them? *Verified:* `rg -a -o` on the live ELF returns `neuron_looped_einsum_replacer`, `neuron_looped_einsum_token_replacer`, and `AwsNeuronCollectiveMatmul`; `grep -bo` file offsets `389621`/`1993272`/`452804` map (via `+0x200000`) to VA `0x25f1f5` / `0x3e6a38` / `0x26e8c4`, matching the cited VAs. **CONFIRMED.**
+## Limits of this reading
 
-2. **The six core function addresses are correct.** *Verified:* `nm` resolves `…Replacer::ExpandInstruction` @ `0x1fab280`, `…::InstructionMatchesPattern` @ `0x1fab000`, `.cold` @ `0x1fab198`, `…TokenReplacer::ExpandInstruction` @ `0x1faadd0`, `…::InstructionMatchesPattern` @ `0x1faaef0`, both `name()` @ `0x1faadb0`/`0x1faadc0`, and both factory `_M_invoke` @ `0x1e71810`/`0x1e71790` — all verbatim from the demangled symbol table. **CONFIRMED.**
+The IDA decompiler was disabled for this translation unit, so everything above comes from raw `objdump -d -M intel`, the mangled symbol table, vtable byte dumps and byte-exact rodata reads — there is no pseudocode. Three things are consequently short of exact:
 
-3. **The IMP recognizes kDot with single contracting dims and calls five named matchers + GetRootAllGather.** *Verified:* `objdump -d` of `0x1fab000` shows `cmp [rsi+0x14],0x2e`, `cmp [rax+0x28],1`, `cmp [rax+0x10],1`, then `call` to `MatchAllGatherInDotLhsRS/Lhs/RhsRS/Rhs/LhsNxD` (the symbols are named in the call targets), then `call GetRootAllGather`, `EnvVarSetToOne`, `cmp [r12+0x18],5`, `cmp [r12+0x258],1`. **CONFIRMED** — and the helper addresses are read from the actual call targets, not the report.
+- The **SB-to-SB default threshold** constant used when the env var is unset, and the bytes→MB factor: both live in `.data.rel.ro` and are [INFERRED] from the `…_IN_MB` naming plus the `cvtsi2sd` / `mulsd` / `comisd` sequence. Their role is clear; the numeric value was not byte-dumped.
+- The per-case **N×D result-shape dim ordering** built by `MakeValidatedShape` (loops `0x1fab450` / `0x1fab498`) was not exhaustively enumerated. It merges the gathered operand's dims, but pinning the order would need a worked HLO example.
+- The **wiring** of the four config values — RHS contracting axis, replica geometry, SB threshold — is traced from the `[d+0x30]`, `[grp+0x10]`, span-stride and `comisd` reads inside `ExpandInstruction`, but not single-stepped through `CatPieces`.
 
-4. **The four backend_config keys exist as written with these VAs.** *Verified:* `grep -bo` returns `rhs_contracting_dim=` @ fileoff `325019` (VA `0x24f59b`), `,tp_degree=` @ `405639` (VA `0x263087`), `,num_groups=` @ `452791` (VA `0x26e8b7`), `,use_sb_to_sb=` @ `215257` (VA `0x2348d9`). All four match. The values' provenance (RHS contracting axis, replica geometry, SB threshold) is **HIGH**, traced from the `[d+0x30]` / `[grp+0x10]` / span-stride / `comisd` reads in Expand but not exhaustively single-stepped through `CatPieces`. **CONFIRMED (strings) / HIGH (value wiring).**
-
-5. **The token pass returns the all-gather's operand(1) and is hard-gated on NEURON_COLLECTIVE_MATMUL_NXD.** *Verified:* `objdump -d` of `0x1faaef0` shows `call EnvVarSetToOne` *before* any opcode test, then `cmp [r13+0x14],0x3a`, `cmp [rax+0x14],4`, `shape()/array_state`. `objdump -d` of `0x1faadd0` shows `mutable_operand(0)` then `mutable_operand(1)`, `mov [r12],0` and `mov [r12+8],rax`. **CONFIRMED.**
-
-Residual INFERRED/uncertain items (not fabricated, flagged):
-
-- The SB-to-SB **default threshold** constant (used when the env var is unset) and the bytes→MB factor live in `.data.rel.ro` and were inferred from the `…_IN_MB` semantics plus the `cvtsi2sd / mulsd / comisd` sequence; role HIGH, exact value not byte-dumped. **INFERRED (value).**
-- The exact per-case **N×D result-shape dim ordering** built by `MakeValidatedShape` (loops `0x1fab450`/`0x1fab498`) was not exhaustively enumerated; it merges the gathered operand's dims, but a worked HLO example would be needed to pin the order. **MEDIUM.**
-- Run order versus registration order: #63/#64 are registered consecutively and #64's gate ties it to #63's N×D path, but the executed pipeline subset is driver-supplied and not traced here. **MEDIUM.**
+Registration order is also not run order: the two passes are registered consecutively and the token pass's env gate ties it to the N×D path, but the executed pipeline subset is driver-supplied and was not traced here.
 
 ---
 
