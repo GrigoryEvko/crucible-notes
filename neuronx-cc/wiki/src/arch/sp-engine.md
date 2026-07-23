@@ -32,7 +32,7 @@ Everything structured — `for`, `while`, `do-while` — is **fully lowered befo
 | **PC mechanism** | next-BB slot `InstVisitor+0xE10`; every terminator writes it, `visitBBHolderInControlFlow` @ `0x20f820` reads-and-nulls it |
 | **Affine env** | `InstVisitor+0xE18` `DenseMap<AffineIdx,long>` — induction/loop-variable values (`lea` @ `0x20fbf4`) |
 | **DMA cursor** | `InstVisitor+0xE60` `DenseMap` — queue round-robin fireCount (`lea` @ `0x2124a4`) |
-| **Register file** | named `bir::Register`, `numPhysicalRegs` ∈ {1,2}; `getRegId(i)`/`setNumPhysicalRegs(i)` (libBIR symbols); size = `HwmCore->MaxRegNumPerEngine` (per-arch HWM field) |
+| **Register file** | named `bir::Register`, `numPhysicalRegs` ∈ {1,2}; `getRegId(i)`/`setNumPhysicalRegs(i)` (libBIR symbols); size = `core.MaxRegNumPerEngine` = **62** (`Core+0x3c`, uniform across all four arch models) |
 | **Allocator** | `REG_Allocator` (`simplify`, `live_range`) — graph-coloring + spill; `ColoringAllocatorWithLoop`; standalone `coloring_allocator_with_loop` binary |
 
 ---
@@ -338,7 +338,7 @@ All wire register-id fields are **8-bit** (`< 256`). The register-file *size* is
 "info[i].address < ...MaxRegNumPerEngine && \"bad Register ID allocation\""
 ```
 
-> **SPECULATIVE — the exact register count.** `MaxRegNumPerEngine` is a per-arch HWM field; the bound is asserted but the literal integer was not isolated to a numeric in this extraction (the asserting bodies are thunked in this slice). The SP register file is finite and spillable but the exact count is unpinned — a value of **64** is a plausible figure to confirm against the HWM/arch-constant strand, not a measured one.
+The literal value is **`MaxRegNumPerEngine = 62`** (`0x3e`), and it is the **same for all four arch models** (Inferentia, Sunda/Trainium, Cayman, CoreV4). The value is reachable through the arch-model tables. `bir::Register::getRegId` (libBIR `0x3c3800`) bounds `RegId` against `getArchModel(arch).device.core.MaxRegNumPerEngine` — in the disassembly, `mov rax,[Board+0x8]` (the `Device`), `mov rax,[Device+0x10]` (the `Core`), `cmp [Core+0x3c],RegId` (`0x3c38f5..0x3c38ff`), so the field lives at `Core+0x3c`. `Core::Core(CoreParamSet const&)` (libBIR `0x478cf0`) fills it from the parameter set — `mov ecx,[ParamSet+0x74]; mov [Core+0x3c],ecx` (`0x478d95`). Each per-arch `Core` constructor in `neuronxcc/hwm/ctm.cpython-310-*.so` writes that parameter as an immediate `0x3e`: `mov DWORD PTR [rsp+0x74],0x3e` in `InferentiaCore` (`0x393a0`), `SundaCore` (`0x39790`), `CaymanCore` (`0x39b80`), and `CoreV4Core` (`0x39f80`). So the SP register file is 62 physical slots per engine, spillable, uniform across generations.
 
 ### 5.2 The Graph-Coloring Allocator with Spilling
 
@@ -387,7 +387,7 @@ The simulator (`birsim`) replays the result: the **next-BB slot** (PC) follow + 
 
 **Gaps:**
 
-- **G1 — `MaxRegNumPerEngine`.** The exact integer (a per-arch HWM field) is asserted but not isolated to a numeric here; 64 is a guess. The SP register file is finite and spillable; the count is unpinned — defer to the HWM/arch-constant strand.
+- **G1 — `MaxRegNumPerEngine` = 62 (pinned).** The bound is `Core+0x3c`, read by `getRegId` (`0x3c38ff`) and set by every per-arch `Core` ctor to the immediate `0x3e` = 62 (`hwm/ctm.so`: `InferentiaCore`/`SundaCore`/`CaymanCore`/`CoreV4Core`, `mov DWORD [rsp+0x74],0x3e`). Uniform across all four arch models; §5.1 carries the full chain. The register file is 62 physical slots per engine, spillable.
 - **G2 — `RegisterAlu` accumulate/reduce bits.** The BIR keys `is_64bit`/`dge_type`/`reduce_cmd`/`acc` exist and the bundle has the `+0x0D`/`+0x0E` mode bytes, but the full mapping of `acc`/`reduce_cmd` to bundle bytes is not exhaustively enumerated — only the 32-bit non-accumulate path is pinned. **INFERRED.**
 - **G3 — the 2-vs-3-operand form.** The encoder writes up to three `getArgument` reg-ids (`+0x11`/`+0x12`/`+0x13`); whether every op consumes 3 operands or some are 2-operand (`src2 = imm`) is not fully enumerated.
 - **G4 — runtime semaphore decode.** The runtime-side (libnrt) decode of the wait/inc/dec/set wire bytes is a separate strand and is not landed in this corpus; the compile-side encoding here is authoritative.
