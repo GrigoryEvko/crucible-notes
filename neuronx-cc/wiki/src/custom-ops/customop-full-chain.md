@@ -1,6 +1,6 @@
 # Custom-Op Full-Chain Reconciliation
 
-> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 carry the same backend `.text` at a fixed per-wheel VA delta). This page synthesizes the nine sibling pages of Part 11 into one end-to-end trace and resolves the points where two siblings phrased a shared byte differently. The producer/codegen side lives in `KernelBuilder.cpython-310…so` (UNSTRIPPED), `BirCodeGenLoop*.cpython-310…so`, and `neuronxcc/starfish/lib/libwalrus.so` + `libBIR.so`; the consumer side is the eight Tensilica Xtensa images `neuronxcc/data/custom_op/libbuiltincustomop_cpu{0..7}.stripped.so`. For `.text`/`.rodata` in the x86 backend objects, VMA == file offset; `.data` is `+0x400000`. Evidence anchors: **D-Q10** (chain reconciliation), **D-Q06** (the inline-BIR macro-kernel lowerers). Treat every address as version-pinned.*
+> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 carry the same backend `.text` at a fixed per-wheel VA delta). This page synthesizes the nine sibling pages of Part 11 into one end-to-end trace and resolves the points where two siblings phrased a shared byte differently. The producer/codegen side lives in `KernelBuilder.cpython-310…so` (UNSTRIPPED), `BirCodeGenLoop*.cpython-310…so`, and `neuronxcc/starfish/lib/libwalrus.so` + `libBIR.so`; the consumer side is the eight Tensilica Xtensa images `neuronxcc/data/custom_op/libbuiltincustomop_cpu{0..7}.stripped.so`. For `.text`/`.rodata` in the x86 backend objects, VMA == file offset; `.data` is `+0x400000`. Treat every address as version-pinned.*
 
 ## Abstract
 
@@ -42,14 +42,14 @@ The custom-op chain is a sequence of representations, each owned by a sibling pa
 The spine, as the ASCII control-flow a reimplementer would build to:
 
 ```text
-(a) NKI  nki.isa.builtin_custom_op                     [6.5.8]   CONFIRMED
+(a) NKI  nki.isa.builtin_custom_op                     [6.5.8]
       NeuronCodegen.builtin_custom_op @0xb8890
       identity = function_name str ("sort"/"topk"/user) + lib_file_name str
       operands = [s.tensor for s in srcs], [d.tensor for d in dsts]   (NKI view → IR tensor)
       tag = NONE (a Python emitter; builds an object)
         │  self.insert_raw(op)  @0x88be0
         ▼
-(b) penguin.ir.CustomOp  ("Wrapper class for XLA Custom Call", CustomOp.py:40)  CONFIRMED
+(b) penguin.ir.CustomOp  ("Wrapper class for XLA Custom Call", CustomOp.py:40)
       identity = .function_name + .lib_file_name + .is_builtin
                  + .ulib_to_ucode_version + .ulib_to_isa_version + shapes
       operands = .srcs / .dsts tensor lists
@@ -65,19 +65,19 @@ The spine, as the ASCII control-flow a reimplementer would build to:
                  operands = data0/data1 = two std::list<u32> (descriptors) │
                  lowered libwalrus-side (nki_klr_sim REFUSES kind 70)      │
         ▼──────────────── all converge ───────────────────────────────────▼
-(d) bir::InstCustomOp  (InstructionType 53)            [11.8]   CONFIRMED  ◄── CONFLUENCE
+(d) bir::InstCustomOp  (InstructionType 53)            [11.8]   ◄── CONFLUENCE
       identity = function_name + lib_file + is_builtin + srcs/dsts shapes
       operands = per-arg AccessPattern list (inst+0xA0..+0xA8) + output AP
       tag = IT53 (in-memory BIR node; bytes assigned in (e))
         │  CoreV2GenImpl::visitInstCustomOp @0x12613c0  — the ONLY emitter
         ▼
-(e) WIRE  CUSTOM_OP_HEADER 0x85 + (1+N)× CUSTOM_OP_PAYLOAD 0x86   [11.5/11.6]  CONFIRMED
+(e) WIRE  CUSTOM_OP_HEADER 0x85 + (1+N)× CUSTOM_OP_PAYLOAD 0x86   [11.5/11.6]
       identity = HEADER[0x0E] = CustomOpFunctionId (u8) — op-name now a 1-byte handle
       HEADER:  num_payloads u16 @+0x0C = N+2 ; FunctionId u8 @+0x0E ; num_arguments u8 @+0x0F
       PAYLOAD: present-flag 1 @+0x0F ; ADDR4 access pattern @+0x10..+0x3F (output first)
         │  runtime: FunctionId → ModuleArtifactInfo → (lib_file, function_name)
         ▼
-(f) Xtensa CPU leaf  libbuiltincustomop_cpuN.so       [11.1/11.2/11.3/11.4]  CONFIRMED
+(f) Xtensa CPU leaf  libbuiltincustomop_cpuN.so       [11.1/11.2/11.3/11.4]
       re-dispatch on function_name STRING → one of 4 *_compute fns
       args arrive as a typed isa_args TENSOR vector (get_types()[i] == _ARG_TYPE_TENSOR)
       tensors stage through DRAM window [0x80000, 0x90000); out = ONE [2,d0,d1] buffer
@@ -87,15 +87,15 @@ The spine, as the ASCII control-flow a reimplementer would build to:
 
 | Stage | Symbol / node | Address | Identity carrier | Confidence |
 |---|---|---|---|---|
-| (a) NKI emit | `NeuronCodegen.builtin_custom_op` | `0xb8890` | `function_name` + `lib_file_name` (str) | CONFIRMED |
-| (b) Penguin IR | `penguin.ir.CustomOp` | `CustomOp.py:40` | `.function_name` + `.is_builtin` + shapes | CONFIRMED |
-| (c1) beta3 generic | `BirCodeGenLoop.codegenCustomOp` (`_215`) | `0xc0840` | field copy `setOpFunctionName(...)` | CONFIRMED |
-| (c1) beta3 Sunda | `BirCodeGenLoop.codegenSundaCustomOp` (`_259`) | `0x652d0` | same fields + `addAP(isOutput)` | CONFIRMED |
-| (c1) GEN alloc | `BirCodeGenLoopGen.codegenSundaCustomOp` (`_69`) | `0x46d00` | `Opcode.CustomOp(debuginfo)` | CONFIRMED |
-| (c2) beta2 carrier | `klr::ExtendedInst` | (POD, `nki_klr_sim`) | raw `opcode:u32` (no name) | CONFIRMED |
-| (d) BIR node | `bir::InstCustomOp` ctor | `libBIR 0x1789b0` | function_name + is_builtin | CONFIRMED |
-| (e) emitter | `CoreV2GenImpl::visitInstCustomOp` | `libwalrus 0x12613c0` | FunctionId byte @ `+0x0E` | CONFIRMED |
-| (f) CPU leaf | `*_compute` family | Xtensa cpuN base + offset | function_name string redispatch | STRONG |
+| (a) NKI emit | `NeuronCodegen.builtin_custom_op` | `0xb8890` | `function_name` + `lib_file_name` (str) | CERTAIN |
+| (b) Penguin IR | `penguin.ir.CustomOp` | `CustomOp.py:40` | `.function_name` + `.is_builtin` + shapes | CERTAIN |
+| (c1) beta3 generic | `BirCodeGenLoop.codegenCustomOp` (`_215`) | `0xc0840` | field copy `setOpFunctionName(...)` | CERTAIN |
+| (c1) beta3 Sunda | `BirCodeGenLoop.codegenSundaCustomOp` (`_259`) | `0x652d0` | same fields + `addAP(isOutput)` | CERTAIN |
+| (c1) GEN alloc | `BirCodeGenLoopGen.codegenSundaCustomOp` (`_69`) | `0x46d00` | `Opcode.CustomOp(debuginfo)` | CERTAIN |
+| (c2) beta2 carrier | `klr::ExtendedInst` | (POD, `nki_klr_sim`) | raw `opcode:u32` (no name) | CERTAIN |
+| (d) BIR node | `bir::InstCustomOp` ctor | `libBIR 0x1789b0` | function_name + is_builtin | CERTAIN |
+| (e) emitter | `CoreV2GenImpl::visitInstCustomOp` | `libwalrus 0x12613c0` | FunctionId byte @ `+0x0E` | CERTAIN |
+| (f) CPU leaf | `*_compute` family | Xtensa cpuN base + offset | function_name string redispatch | HIGH |
 
 > **NOTE — the identity changes *kind* three times.** It is a **string** from (a) through (d); a **single byte** at (e); a **string again** at (f). The byte at (e) is not the string hashed — it is a dense index allocated by the registry ([§3](#3-the-resolution-path--function_name--functionid--so--compute)) and resolved back to the string by the runtime loader before the CPU sees it. A reimplementer who tries to carry the name on the wire, or to dispatch the CPU leaf on the byte, has mismodeled the seam.
 
@@ -116,7 +116,7 @@ The single most important structural fact of the chain: two independent producer
 ### Algorithm
 
 ```c
-// The confluence, as the dispatch a reimplementer builds.   D-Q10 §1/§2
+// The confluence, as the dispatch a reimplementer builds.
 bir::InstCustomOp *lower_custom_op(producer):
     if producer.is_penguin_node:                  // beta3 (live)
         method = (target_uarch >= Cayman)
@@ -155,7 +155,7 @@ The op-name string is registered, deduplicated, assigned a dense numeric handle,
 ### Algorithm
 
 ```c
-// The full id lifecycle.   D-Q10 §3   (CONFIRMED steps 1-3,5; STEP 4 STRONG)
+// The full id lifecycle.  Steps 1-3 and 5 are traced; STEP 4 is reconstructed.
 FunctionId resolve_and_stamp(module, function_name, lib_file_name):
     // STEP 1 — REGISTER  (encoder prologue ~0x1261e00, libwalrus)
     for line in getline(lib_spec):                     // multi-line lib spec
@@ -175,10 +175,10 @@ FunctionId resolve_and_stamp(module, function_name, lib_file_name):
     return fid;
 
 // ── RUNTIME (NEFF link / GPSIMD loader) ──
-// STEP 4 — id → .so   (STRONG; ModuleArtifactInfo round-trips id → (lib_file, fn))
+// STEP 4 — id → .so   (ModuleArtifactInfo round-trips id → (lib_file, fn))
 //   lib_file == libbuiltincustomop_cpu*  → load the 8 per-CPU images
 //   base(cpu_id) = 0x84000000 + cpu_id·0x200000
-// STEP 5 — .so → compute fn   (CONFIRMED names; the dispatch itself STRONG)
+// STEP 5 — .so → compute fn   (names read from the images; the dispatch reconstructed)
 //   Xtensa op prologue parses isa_args, then dispatches ON function_name STRING:
 char *select_compute(function_name, num_subtensors):
     if function_name == "sort":
@@ -193,32 +193,32 @@ char *select_compute(function_name, num_subtensors):
 
 | Step | Symbol | Address | Returns / writes | Confidence |
 |---|---|---|---|---|
-| register lib | `ModuleArtifactInfo::addCustomOpLibFile(s,s,s,b,h,h)` | `libBIR 0x39bb00` | `unordered_map` entry | CONFIRMED |
-| register fn | `ModuleArtifactInfo::addCustomOpFunction(s,s,j)` | `libBIR 0x39cee0` | binds `fn → FunctionId` | CONFIRMED |
-| allocate id | `ModuleArtifactInfo::allocateCustomOpFunctionId()` | `libBIR 0x39a690` | dense `uint32`, deduped | CONFIRMED |
-| stamp byte | (inline in `visitInstCustomOp`) | `0x12613c0` body | `HEADER[0x0E] = u8` | CONFIRMED |
-| CPU dispatch | `sort_*` / `partial_*_multicore_compute` | Xtensa cpuN | the leaf compute | STRONG |
+| register lib | `ModuleArtifactInfo::addCustomOpLibFile(s,s,s,b,h,h)` | `libBIR 0x39bb00` | `unordered_map` entry | CERTAIN |
+| register fn | `ModuleArtifactInfo::addCustomOpFunction(s,s,j)` | `libBIR 0x39cee0` | binds `fn → FunctionId` | CERTAIN |
+| allocate id | `ModuleArtifactInfo::allocateCustomOpFunctionId()` | `libBIR 0x39a690` | dense `uint32`, deduped | CERTAIN |
+| stamp byte | (inline in `visitInstCustomOp`) | `0x12613c0` body | `HEADER[0x0E] = u8` | CERTAIN |
+| CPU dispatch | `sort_*` / `partial_*_multicore_compute` | Xtensa cpuN | the leaf compute | HIGH |
 
 ### Considerations
 
-The numeric klr `opcode` (beta2) plays **no part** in selecting the `.so`: that selection is 100% the **string** `function_name` + `lib_file_name` via `ModuleArtifactInfo` (`nki_klr_sim` carries no op-name/lib map at all — a CONFIRMED negative). The `.so` selection is driven by the registered library name; the `*_compute` selection is driven by the registered function name re-read on the CPU side.
+The numeric klr `opcode` (beta2) plays **no part** in selecting the `.so`: that selection is 100% the **string** `function_name` + `lib_file_name` via `ModuleArtifactInfo`; `nki_klr_sim` carries no op-name/lib map at all. The `.so` selection is driven by the registered library name; the `*_compute` selection is driven by the registered function name re-read on the CPU side.
 
 > **GOTCHA — the kernel name and the `.so` are NOT on the wire.** The ISA stream is name-free. The `0x85` header carries only the numeric `CustomOpFunctionId` byte (`+0x0E`); the human-readable kernel/library name and the `libbuiltincustomop_cpu*` (or user `.so`) reference are registered separately into `ModuleArtifactInfo`, serialized into the NEFF metadata (`ucode_lib.json`), and resolved by the runtime loader against the FunctionId. A reimplementer who looks for the name in the instruction stream will not find it.
 
 ---
 
-## 4. The Reconciliations — where two siblings disagree
+## 4. Three Header Subtleties
 
 ### Purpose
 
-Two committed siblings, and one source report, phrase a shared byte differently. A synthesis page must pick the byte-pinned reading and carry the correction in place. This section resolves the two that bite a reimplementer.
+Three parts of the header layout are easy to get wrong from a casual read of the decompiler or the validator. This section pins each one and says what the wrong reading costs.
 
-### Reconciliation A — `num_payloads` is at `+0x0C` (a contiguous `[0x0C..0x10]` count-band)
+### A — `num_payloads` sits at `+0x0C`, in a contiguous `[0x0C..0x10]` count-band
 
-The wire-validators sibling ([11.6](customop-wire-validators.md)) and the source report D-Q10 §5 both place `num_payloads` as a `u16` in the header's `[0x0C..0x0F]` "count/id block" — and they are **right**. An earlier draft of [11.5](customop-wire-layout.md) pinned it at `+0x06` from a misread of the decompiler; that has been corrected. The byte-proven offset is `+0x0C`.
+`num_payloads` is a `u16` at byte offset `+0x0C`, inside the header's count/id block.
 
 ```c
-// CoreV2GenImpl::visitInstCustomOp @0x12613c0 — the header stamps.   D-Q08 / 11.5 §2
+// CoreV2GenImpl::visitInstCustomOp @0x12613c0 — the header stamps
 setupHeader(&hdr, /*opcode=*/0x85);                   // hdr[0]=0x85, hdr[1]=0x10 → word 0x1085
 customop_header_init(&hdr);                            // sub_122ED00 fills [0x04..0x0B] band
 set_u16(&hdr[0x0C],"instr.num_payloads", N ? N+2 : 1);// sub_123CA60 — dest lea [r13+0Ch] @0x1262f75
@@ -227,16 +227,17 @@ set_u8 (&hdr[0xF], "instr.num_arguments", N);          // sub_1247BF0 — dest l
 hdr[0x10] = 0;                                         // explicit zero; [0x11..0x3F] pxor-zero
 ```
 
-> **CORRECTION (D-Q08 / 11.5) — `num_payloads` at `+0x0C`, not `+0x06`; FunctionId at `+0x0E`, num_arguments at `+0x0F`.** An earlier reconciliation here adopted `+0x06`, citing the decompiler's `sub_123CA60((_WORD*)hdr + 6, …)`. That was the misread: `hdr` is typed `_WORD*` (u16), so `+ 6` is u16-pointer arithmetic = `6 × 2 = +0x0C bytes`, not a `+6`-byte offset. The encoder's store destination is `lea rdi,[r13+0Ch]` (machine bytes `49 8d 7d 0c`) @0x1262f75 (COLLECT-arm twin @0x1263201 stamps the same `[…+0Ch]`). The cross-check: `num_arguments` is stored via a genuine `_BYTE*` `+ 15` → `lea [r13+0Fh]` → byte `+0x0F` — same setter family, *different pointer type*, which is exactly what flipped only `num_payloads`. So 11.6's `[0x0C..0x0F]` count/id block and D-Q10's `[0x0C..0x0D]` were correct all along; `num_payloads`, `FunctionId`, and `num_arguments` form a contiguous `[0x0C..0x10]` count-band.
+The offset is pinned by the store destination in the encoder: `lea rdi,[r13+0Ch]` (machine bytes `49 8d 7d 0c`) @ `0x1262f75`, with the COLLECT-arm twin @ `0x1263201` stamping the same `[…+0Ch]`. `num_payloads`, `FunctionId` (`+0x0E`), and `num_arguments` (`+0x0F`) form one contiguous count-band running `[0x0C..0x10]`.
+
+> **GOTCHA — the decompiler's `+ 6` is u16-pointer arithmetic, not a byte offset.** `visitInstCustomOp`'s decompiled call reads `sub_123CA60((_WORD*)hdr + 6, …)`, which looks like offset `+0x06`. `hdr` is typed `_WORD*`, so `+ 6` means `6 × 2 = +0x0C` bytes. The neighbouring `num_arguments` store uses a genuine `_BYTE*` `+ 15` → `lea [r13+0Fh]` → byte `+0x0F`: same setter family, different pointer type, which is exactly why only `num_payloads` is misleading.
 
 > **NOTE — the count-band is clear of the header-init band.** `+0x0C` sits *past* the generic `[0x04..0x0B]` SyncInfo/header overlay that `customop_header_init` fills first. The count-band (`num_payloads` @ `+0x0C`, `FunctionId` @ `+0x0E`, `num_arguments` @ `+0x0F`, zero @ `+0x10`) does not overlap or overwrite that band — a reimplementer runs the shared header init, then stamps the count-band, with no ordering hazard.
 
-### Reconciliation B — FunctionId is `uint32` in the registry, `uint8` on the wire
+### B — FunctionId is `uint32` in the registry, `uint8` on the wire
 
-D-Q10 describes the wire handle as a `uint8` (`0..254`, `0xFF` = unset, `254` cap), stored at `CustomOpLibInfo+0x28`. The staging sibling ([11.7](findcustomopdata-staging.md)) describes `allocateCustomOpFunctionId` as returning a **monotonic `uint32`** and `addCustomOpFunction` taking a `uint32` id. Both are correct — they describe two ends of one truncation, confirmed by the demangled signature `addCustomOpFunction(...)…EEES6_j` (the trailing `j` = `unsigned int`).
+The same handle has two widths at two ends of one truncation. `allocateCustomOpFunctionId` returns a monotonic `uint32` and `addCustomOpFunction` takes a `uint32` id — the demangled signature `addCustomOpFunction(...)…EEES6_j` carries the trailing `j` for `unsigned int`. The wire slot, stored at `CustomOpLibInfo+0x28`, is a `uint8` spanning `0..254` with `0xFF` meaning unset.
 
 ```c
-// The width seam.   D-Q10 §3 / §5 ↔ 11.7
 uint32 id   = allocateCustomOpFunctionId();   // registry namespace: dense uint32, 0,1,2,…
 addCustomOpFunction(fn, lib, id);             // bound as uint32 (mangling …S6_j)
 // … but the wire slot is one byte:
@@ -246,9 +247,9 @@ HEADER[0x0E] = fid;                           // the 254 cap keeps it inside uin
 
 > **NOTE — the `254` cap is what keeps the truncation lossless.** The registry counts unique functions and `reportError`s past `0xFE`, so the dense `uint32` never exceeds the `uint8` wire slot. `0xFF` is reserved "unset". A reimplementer must enforce the cap *before* stamping, or the truncation silently aliases two ops to one FunctionId.
 
-### Reconciliation C — the scratch tri-field: validated, never emitted
+### C — the scratch tri-field: validated, never emitted
 
-The header validator ([11.6](customop-wire-validators.md)) gates a `{byte[0x10], dword[0x18], byte[0x1C]}` scratch triple under an *all-zero-or-all-nonzero* rule. This is a wire slot for an SBUF scratch reservation — but **this build's encoder never populates it**: `visitInstCustomOp` writes `byte[0x10] = 0` (decompile line 827) and zero-fills `[0x11..0x3F]`, so the validator's all-zero branch is always taken. The siblings are consistent: a validated-for-but-not-emitted slot. The SB scratchpad a custom op reserves is instead conveyed *structurally* as extra `MemoryLocation`s (tracked by `bir::isCCHavingSBScratchPad`), not through this header triple.
+The header validator ([11.6](customop-wire-validators.md)) gates a `{byte[0x10], dword[0x18], byte[0x1C]}` scratch triple under an *all-zero-or-all-nonzero* rule. This is a wire slot for an SBUF scratch reservation — but **this build's encoder never populates it**: `visitInstCustomOp` writes `byte[0x10] = 0` (decompile line 827) and zero-fills `[0x11..0x3F]`, so the validator's all-zero branch is always taken. It is a validated-for-but-not-emitted slot. The SB scratchpad a custom op reserves is instead conveyed *structurally* as extra `MemoryLocation`s (tracked by `bir::isCCHavingSBScratchPad`), not through this header triple.
 
 > **QUIRK — the scratch gate is all-zero-or-all-nonzero, not a range check.** A reimplementer validating the triple as a plain integer will wrongly accept a half-descriptor `{size, addr=0}`. The binary forbids exactly that: if *any* of the three subfields is nonzero, *all three* must be. Since this encoder emits all-zero, the non-zero branch is dead in this build — but a reimplemented encoder that wants to use the slot must honor the all-or-nothing rule.
 
@@ -286,20 +287,20 @@ emit_custom_op(inst, N):
 
 ### Encoding
 
-The header byte map (the live fields; everything else is reserved-zero or the scratch slot of [§4C](#reconciliation-c--the-scratch-tri-field-validated-never-emitted)):
+The header byte map (the live fields; everything else is reserved-zero or the scratch slot of [§4C](#c--the-scratch-tri-field-validated-never-emitted)):
 
 | Field | Offset | Width | Value | Confidence |
 |---|---|---|---|---|
-| opcode | `+0x00` | 1 | `0x85` (133) → word `0x1085` | CONFIRMED |
-| `inst_word_len` | `+0x01` | 1 | `0x10` | CONFIRMED |
-| `num_payloads` | `+0x0C` | 2 | `N + 2` (`set_u16`, `sub_123CA60`, dest `lea [r13+0Ch]`) | CONFIRMED |
-| `CustomOpFunctionId` | `+0x0E` | 1 | `uint8` (0..254, 0xFF unset) | CONFIRMED |
-| `num_arguments` | `+0x0F` | 1 | `N` (`set_u8`, `sub_1247BF0`) | CONFIRMED |
-| reserved | `+0x10` | 1 | `0` (explicit) | CONFIRMED |
+| opcode | `+0x00` | 1 | `0x85` (133) → word `0x1085` | CERTAIN |
+| `inst_word_len` | `+0x01` | 1 | `0x10` | CERTAIN |
+| `num_payloads` | `+0x0C` | 2 | `N + 2` (`set_u16`, `sub_123CA60`, dest `lea [r13+0Ch]`) | CERTAIN |
+| `CustomOpFunctionId` | `+0x0E` | 1 | `uint8` (0..254, 0xFF unset) | CERTAIN |
+| `num_arguments` | `+0x0F` | 1 | `N` (`set_u8`, `sub_1247BF0`) | CERTAIN |
+| reserved | `+0x10` | 1 | `0` (explicit) | CERTAIN |
 
 The payload carries one operand: a present-flag `1` at `+0x0F` and an **ADDR4-rooted access-pattern descriptor** at `[0x10..0x3F]` (the 48-byte packing is the `sub_1210900` packer's job; its internals are deferred to the access-pattern page). The output is **positional** — it is always payload 0 — not flagged by a discriminator byte. The `_259` codegen's `addAP(isOutput=...)` directional bind does **not** survive as a wire byte; it survives positionally (output emitted first) plus via `setSrcsShape`/`setDstsShape` metadata.
 
-> **GOTCHA — the `0x86` present-flag is a constant `1` on BOTH output and arg records.** An earlier reading treated `byte[0x0F]=1` as an "is-output" discriminator. It is not: it is a constant present-flag on every payload. Output-vs-arg is **positional** (output = first `0x86`). A decoder that keys output detection off `[0x0F]` will misclassify every record.
+> **GOTCHA — the `0x86` present-flag is a constant `1` on BOTH output and arg records.** `byte[0x0F]=1` reads like an "is-output" discriminator; it is a constant present-flag on every payload. Output-vs-arg is **positional** (output = first `0x86`). A decoder that keys output detection off `[0x0F]` will misclassify every record.
 
 ### Considerations
 
@@ -315,10 +316,10 @@ SORT/TOPK are *builtin* custom ops; a user op rides the identical chain. The onl
 
 ### The discriminator
 
-The builtin set — SORT/TOPK — ships **inside** the toolchain as the prebuilt Xtensa images `libbuiltincustomop_cpu{0..7}.stripped.so`, reached via `builtin_custom_op` with `lib_file_name = libbuiltincustomop_cpu*` (the literal is CONFIRMED in `penguin.ir.CustomOp.so @0x15090`) and `is_builtin = True`. The `is_builtin` flag threads the whole stack: `penguin.ir.CustomOp.set_is_builtin` → `codegenCustomOp` copies it via `inst_bir.set_is_builtin(inst.is_builtin)` → the BIR inst reads it via `getIsBuiltinEvalIfNeeded` (CONFIRMED `libBIR 0x176af0`).
+The builtin set — SORT/TOPK — ships **inside** the toolchain as the prebuilt Xtensa images `libbuiltincustomop_cpu{0..7}.stripped.so`, reached via `builtin_custom_op` with `lib_file_name = libbuiltincustomop_cpu*` (the literal sits in `penguin.ir.CustomOp.so @0x15090`) and `is_builtin = True`. The `is_builtin` flag threads the whole stack: `penguin.ir.CustomOp.set_is_builtin` → `codegenCustomOp` copies it via `inst_bir.set_is_builtin(inst.is_builtin)` → the BIR inst reads it via `getIsBuiltinEvalIfNeeded` (`libBIR 0x176af0`).
 
 ```c
-// The ONLY builtin-vs-user difference.   D-Q10 §4
+// The ONLY builtin-vs-user difference.
 bool is_builtin = (lib_file_name starts_with "libbuiltincustomop_cpu");
 // builtin:  lib_file_name = libbuiltincustomop_cpu*,  is_builtin = True
 // user:     lib_file_name = a user-supplied Xtensa .so, is_builtin = False
@@ -332,7 +333,7 @@ bool is_builtin = (lib_file_name starts_with "libbuiltincustomop_cpu");
 
 ### Considerations
 
-`is_builtin` most plausibly steers **where the loader finds the `.so`** (the bundled `data/custom_op/` dir for builtins vs the user-provided artifact for user ops) and/or version-compat handling. The flag is CONFIRMED through the whole stack; its exact runtime effect on `.so` location is INFERRED.
+`is_builtin` most plausibly steers **where the loader finds the `.so`** — the bundled `data/custom_op/` directory for builtins versus the user-provided artifact for user ops — and possibly version-compat handling. The flag itself is traced through the whole stack; its exact runtime effect on `.so` location is [INFERRED].
 
 > **NOTE — three unrelated "top-k" paths; do not conflate.** (1) The chain on *this* page: the CPU/GPSIMD bitonic SORT/TOPK in `libbuiltincustomop_cpu*`, reached by `builtin_custom_op` (full sort *or* partial top-K, `[2,d0,d1]` out). (2) The HLO `AwsNeuronTopK` → `legalize-topk` → `TopK_f32/f16/bf16` on the **DVE engine** (the framework-graph path) — disjoint, does **not** pass through `builtin_custom_op`. (3) The NKI device-side `rotational_topk`/`cascaded_max` on PE/DVE — a device kernel, **not** the Xtensa CPU lib. Only path (1) is the subject of Part 11.
 
@@ -342,12 +343,12 @@ bool is_builtin = (lib_file_name starts_with "libbuiltincustomop_cpu");
 
 ### Purpose
 
-A second, parallel family of "custom" kernels lowers through the `walrus/inline_bir_kernel` library compiled into `nki_klr_sim` (**D-Q06**). These are **not** GPSIMD-CPU custom ops — they expand a macro kernel-inst node into constituent BIR ops on the standard TPB engines — but they share the carrier vocabulary, so a reimplementer must know they exist and where they diverge from the `InstCustomOp` chain.
+A second, parallel family of "custom" kernels lowers through the `walrus/inline_bir_kernel` library compiled into `nki_klr_sim`. These are **not** GPSIMD-CPU custom ops — they expand a macro kernel-inst node into constituent BIR ops on the standard TPB engines — but they share the carrier vocabulary, so a reimplementer must know they exist and where they diverge from the `InstCustomOp` chain.
 
 ### Algorithm
 
 ```c
-// Per-class dispatch — NOT one global switch.   D-Q06 §1
+// Per-class dispatch — NOT one global switch.
 // Each backend <X>Kernel has its OWN lowerKernel() virtual (vtable slot).
 // The macro-kernel inst node carries a class identity + a "model" name string;
 // the class's lowerKernel() branches on that name to a concrete expander.
@@ -367,12 +368,12 @@ function lowerKernel(self, kernelInst):              // e.g. AttnFwdKernel::lowe
 
 | Class::method | Address | Role | Confidence |
 |---|---|---|---|
-| `AttnFwdKernel::lowerKernel` | `0x5d72a0` | name-string dispatch → prefill attention | CONFIRMED |
-| `FlashAttnFwdKernel::lowerFlashAttnFwdKernel` | `0x620ef0` | V2 online-softmax attention | CONFIRMED |
-| `MLPKernel::lowerKernel` | `0x5ae930` | CTE (prefill) vs TKG (decode) split | CONFIRMED |
-| `ExpertMLPsTKGKernel::lowerKernel` | `0x5ab880` | all-experts vs all-tokens MoE | CONFIRMED |
-| `RouterTopKKernel::lowerKernel` | `0x6e51d0` | MoE gating top-k (args 3, out 12) | CONFIRMED |
-| `RMSNormQuantizationKernel::lowerRMSNormQuantKernel` | `0x6c57e0` | fused RMSNorm + per-token quant | CONFIRMED |
+| `AttnFwdKernel::lowerKernel` | `0x5d72a0` | name-string dispatch → prefill attention | CERTAIN |
+| `FlashAttnFwdKernel::lowerFlashAttnFwdKernel` | `0x620ef0` | V2 online-softmax attention | CERTAIN |
+| `MLPKernel::lowerKernel` | `0x5ae930` | CTE (prefill) vs TKG (decode) split | CERTAIN |
+| `ExpertMLPsTKGKernel::lowerKernel` | `0x5ab880` | all-experts vs all-tokens MoE | CERTAIN |
+| `RouterTopKKernel::lowerKernel` | `0x6e51d0` | MoE gating top-k (args 3, out 12) | CERTAIN |
+| `RMSNormQuantizationKernel::lowerRMSNormQuantKernel` | `0x6c57e0` | fused RMSNorm + per-token quant | CERTAIN |
 
 ### Considerations
 
@@ -382,26 +383,26 @@ These lowerers carry **verbatim arg/output contracts** as `.rodata` assert strin
 
 ---
 
-## 8. The Honesty Map — confirmed, strong, inferred, open
+## 8. Evidence Anchors and Limits
 
-The spine and its byte maps are confirmed end-to-end; a handful of edges remain inferred. This ledger is the residual-uncertainty boundary for a reimplementer.
+The spine and its byte maps are pinned end-to-end; a handful of edges remain reconstructed. This table marks the residual-uncertainty boundary for a reimplementer.
 
 | Claim | Grade | Basis / gap |
 |---|---|---|
-| beta3 spine (a)→(f); the §1 table; convergence at IT53; single CoreV2 emitter | CONFIRMED | byte-verified symbols/offsets/strings |
-| `num_payloads = N+2` @ `+0x0C`; FunctionId @ `+0x0E`; num_arguments @ `+0x0F` | CONFIRMED | encoder bounded-setter stores (dest `lea [r13+0Ch]`/`[r13+0Fh]`) |
-| op-name → FunctionId → wire-byte; 254 cap; uint32→uint8 truncation | CONFIRMED | registry sigs + `+0x28` store |
-| `(lib_file_name, is_builtin)` as the sole builtin/user discriminator | CONFIRMED | flag traced through whole stack |
-| 9-dtype roster + reject path; 8-image rebase `0x84000000 + id·0x200000` | CONFIRMED | strings + `readelf`/`cmp` |
-| beta2 `ExtendedInst` → `InstCustomOp` bridge is libwalrus-side | STRONG | `InstNKIKLIRKernel` translate symbols present; body not traced |
-| runtime FunctionId → `.so` (STEP 4); isOutput → positional output | STRONG | `ModuleArtifactInfo` round-trip; positional reconcile |
-| `is_builtin`'s exact loader effect on `.so` location | INFERRED | flag confirmed; runtime effect deduced |
+| beta3 spine (a)→(f); the §1 table; convergence at IT53; single CoreV2 emitter | CERTAIN | byte-verified symbols/offsets/strings |
+| `num_payloads = N+2` @ `+0x0C`; FunctionId @ `+0x0E`; num_arguments @ `+0x0F` | CERTAIN | encoder bounded-setter stores (dest `lea [r13+0Ch]`/`[r13+0Fh]`) |
+| op-name → FunctionId → wire-byte; 254 cap; uint32→uint8 truncation | CERTAIN | registry sigs + `+0x28` store |
+| `(lib_file_name, is_builtin)` as the sole builtin/user discriminator | CERTAIN | flag traced through whole stack |
+| 9-dtype roster + reject path; 8-image rebase `0x84000000 + id·0x200000` | CERTAIN | strings + `readelf`/`cmp` |
+| beta2 `ExtendedInst` → `InstCustomOp` bridge is libwalrus-side | HIGH | `InstNKIKLIRKernel` translate symbols present; body not traced |
+| runtime FunctionId → `.so` (STEP 4); isOutput → positional output | HIGH | `ModuleArtifactInfo` round-trip; positional reconcile |
+| `is_builtin`'s exact loader effect on `.so` location | INFERRED | the flag is pinned; the runtime effect is deduced |
 | `data0`/`data1` klr descriptor semantics; whether any shipped op emits beta2 | OPEN | round-tripped only; producer is upstream of `nki_klr_sim` |
 | `SUNDA_APB_BASE` numeric; Xtensa instruction bodies (SIMD width, merge fan-in) | OPEN | no Xtensa disassembler; IDA decompiled = 0 — structure/string-only |
 
-> **NOTE — the CPU-leaf interior is structure-only.** There is no Xtensa disassembler in this extraction (host binutils has no Xtensa backend; IDA recovered 0 decompiled bodies from the cpuN images). Every claim about *what the Xtensa code does* — the `cpu_id` derivation, the merge orchestration, the window-mapped DMA, the SIMD comparator network — is INFERRED from `.rodata`/`.data` strings, the byte-for-byte diff across the eight images, and assert templates, never from observed instructions. The *layout* (headers, sizes, entry `0x8400cd94`, the rebase law) is CONFIRMED; the *logic* is INFERRED and tagged as such on the leaf pages.
+> **NOTE — the CPU-leaf interior is structure-only.** There is no Xtensa disassembler in this extraction (host binutils has no Xtensa backend; IDA recovered 0 decompiled bodies from the cpuN images). Every claim about *what the Xtensa code does* — the `cpu_id` derivation, the merge orchestration, the window-mapped DMA, the SIMD comparator network — is INFERRED from `.rodata`/`.data` strings, the byte-for-byte diff across the eight images, and assert templates, never from observed instructions. The *layout* — headers, sizes, entry `0x8400cd94`, the rebase law — is read directly; the *logic* is [INFERRED] and tagged as such on the leaf pages.
 
-> **NOTE — grounding provenance for the emitter-internal stores.** The `bir::InstCustomOp` class itself (ctor `@0x1789b0`, `getIsBuiltinEvalIfNeeded @0x176af0`, `createFromJson @0x179080`, `sameInst @0x17d870` in `libBIR`) and the registry signatures (`addCustomOpFunction(string,string,unsigned int)` — the `uint32` id of [§4B](#reconciliation-b--functionid-is-uint32-in-the-registry-uint8-on-the-wire) — and the 6-arg `addCustomOpLibFile(…,bool,uchar,uchar)`) are confirmed **directly** in the per-symbol sidecars. The emitter-internal facts — `CoreV2GenImpl::visitInstCustomOp @0x12613c0`, the `set_u16` store at byte `+0x0C` (decompiler `(_WORD*)hdr + 6`; dest `lea [r13+0Ch]`) / `set_u8` store at byte `+0x0F` (decompiler `(_BYTE*)hdr + 15`; dest `lea [r13+0Fh]`), and the `instr.num_payloads`/`instr.num_arguments` strings — are grounded in the **full `libwalrus.so` IDA database** that [11.5](customop-wire-layout.md)/[11.8](customop-codegen.md) cite, not in the partial per-symbol text-sidecar slice (which does not contain that emitter body). This page adopts those at the siblings' CONFIRMED grade and attributes them accordingly; a reimplementer re-verifying from a text-sidecar-only slice must open the `ida/` DB, since the emitter body is absent from the partial decompile dump (the two-VA-frame / partial-extraction artifact).
+> **GOTCHA — the emitter body is missing from the partial decompile dump.** The `bir::InstCustomOp` class (ctor `@0x1789b0`, `getIsBuiltinEvalIfNeeded @0x176af0`, `createFromJson @0x179080`, `sameInst @0x17d870` in `libBIR`) and the registry signatures — `addCustomOpFunction(string,string,unsigned int)`, the `uint32` id of [§4B](#b--functionid-is-uint32-in-the-registry-uint8-on-the-wire), and the 6-arg `addCustomOpLibFile(…,bool,uchar,uchar)` — all resolve in the per-symbol sidecars. The emitter-internal facts do not: `CoreV2GenImpl::visitInstCustomOp @0x12613c0`, the `set_u16` store at byte `+0x0C` and `set_u8` store at byte `+0x0F`, and the `instr.num_payloads`/`instr.num_arguments` strings live only in the full `libwalrus.so` IDA database that [11.5](customop-wire-layout.md) and [11.8](customop-codegen.md) cite. Re-verifying from a text-sidecar-only slice will come up empty; open the `ida/` DB instead.
 
 ---
 

@@ -52,7 +52,9 @@ __pyx_mdef_..._promote_type_5_is_floating         @ 0x21be0   (-> _is_floating  
 __pyx_mdef_..._promote_type_7_promote_float_int   @ 0x21bc0   (-> _promote_float_int 0xd5d0)
 ```
 
-The decompiled wrapper builds all three result rules (`_promote_floats` at C-line 439, `_promote_ints` at 448, `_promote_float_int` at 468) and stores the no-path error string into the closure cell `__pyx_v_no_implicit_promotion_error_message` (C-lines 431/437) so the sub-rules can raise it through the captured cell. **[CONFIRMED — closure cell + four mdef instantiations in `pw_5promote_type`]**
+The decompiled wrapper builds all three result rules (`_promote_floats` at C-line 439, `_promote_ints` at 448, `_promote_float_int` at 468) and stores the no-path error string into the closure cell `__pyx_v_no_implicit_promotion_error_message` (C-lines 431/437) so the sub-rules can raise it through the captured cell.
+
+*Anchors: the closure cell plus four mdef instantiations inside `pw_5promote_type`.*
 
 ### The 2×2 regime split
 
@@ -73,7 +75,7 @@ PyObject *promote_type(PyObject *t0, PyObject *t1) {
 }
 ```
 
-`_is_floating` (defined below) already folds in the `custom_dtypes` membership test, so the float regimes capture the Neuron custom floats that NumPy's `issubdtype(_, np.floating)` would miss. The `issubdtype(_, np.integer)` guard is used only on the both-non-float branch: `np.issubdtype(t0, np.integer)` at `0x1bbd6`/`integer`@`0x1bc29`, and `np.issubdtype(t1, np.integer)` at `0x1bd4d`/`0x1bda5`; if either is non-integral the formatter at `0x1bea5` raises. **[CONFIRMED — two `_is_floating` calls + three sub-rule call sites + the `issubdtype(integer)` guard feeding `unexpected_dtype`]**
+`_is_floating` (defined below) already folds in the `custom_dtypes` membership test, so the float regimes capture the Neuron custom floats that NumPy's `issubdtype(_, np.floating)` would miss. The `issubdtype(_, np.integer)` guard is used only on the both-non-float branch: `np.issubdtype(t0, np.integer)` at `0x1bbd6`/`integer`@`0x1bc29`, and `np.issubdtype(t1, np.integer)` at `0x1bd4d`/`0x1bda5`; if either is non-integral the formatter at `0x1bea5` raises.
 
 ### Error surface
 
@@ -83,7 +85,7 @@ PyObject *promote_type(PyObject *t0, PyObject *t1) {
 | `"unexpected dtype: "` | `0x1e3c0` | an operand is neither a recognised int nor float |
 | `"Cannot merge type!"` | `0x1e3a0` | the stricter `merge_type` sibling (see [§5](#5-sibling-predicates)) |
 
-All three strings are present verbatim in the binary string pool. **[CONFIRMED — `strings -t x` offsets above]**
+All three strings are present verbatim in the binary string pool at the offsets above.
 
 ---
 
@@ -102,7 +104,9 @@ if (t0 == float8_e8m0fnu) { ... }          // 0x17414: mov $0x2,%edx ; 0x1741f c
 if (t1 == float8_e8m0fnu) { ... }          // 0x17503: mov $0x2,%edx ; 0x1750e call RichCompare
 ```
 
-`float8_e8m0fnu` (E8M0: 8-bit, exponent-only, no sign, no mantissa, bias 127, `0xFF`=NaN) is the OCP-MX block-scale format. It carries the *exponent* of a per-block scale factor, not a value drawn from a numeric range, so it is meaningless to "widen" it against another float — there is no mantissa to preserve and no monotone position on a value lattice. The guard removes it from the widen path before the itemsize or ladder rules can mistakenly select it. The deeper justification — that the device-side `bir::CastToNewDType` decode of e8m0 is a *raw byte* load (no `2^(e−127)` scaling), with the actual power-of-two applied only in the MX matmul/dequant path — belongs to the [MX-microscaling page](mx-microscaling.md) (§9.8). **[CONFIRMED — two Py_EQ compares vs `float8_e8m0fnu` at function entry; mstate field +0x110]**
+`float8_e8m0fnu` (E8M0: 8-bit, exponent-only, no sign, no mantissa, bias 127, `0xFF`=NaN) is the OCP-MX block-scale format. It carries the *exponent* of a per-block scale factor, not a value drawn from a numeric range, so it is meaningless to "widen" it against another float — there is no mantissa to preserve and no monotone position on a value lattice. The guard removes it from the widen path before the itemsize or ladder rules can mistakenly select it. The deeper justification — that the device-side `bir::CastToNewDType` decode of e8m0 is a *raw byte* load (no `2^(e−127)` scaling), with the actual power-of-two applied only in the MX matmul/dequant path — belongs to the [MX-microscaling page](mx-microscaling.md) (§9.8).
+
+*Anchors: two Py_EQ compares against `float8_e8m0fnu` at function entry; mstate field `+0x110`.*
 
 > **QUIRK —** e8m0 is the one float-typed dtype that `_promote_floats` refuses to treat as a float. A reimplementer who folds it into the precedence ladder will produce wrong promotions for any op that mixes an MX-scale tensor with a real value tensor. Guard it first.
 
@@ -117,7 +121,7 @@ if (t0.itemsize > t1.itemsize) return t0;   // 0x176e9 mov $0x4,%edx  (Py_GT=4) 
 // equal itemsize -> fall through to the precedence ladder (§3.3)
 ```
 
-The op-codes are unambiguous: `Py_LT`=0 (zeroed `%edx` at `0x175e4`) and `Py_GT`=4 (`mov $0x4,%edx` at `0x176e9`). The wider type wins; ties fall through. **[CONFIRMED — Py_LT @ 0x175ec, Py_GT @ 0x176f4, matching the backing report]**
+The op-codes are unambiguous: `Py_LT`=0 (zeroed `%edx` at `0x175e4`) and `Py_GT`=4 (`mov $0x4,%edx` at `0x176e9`). The wider type wins; ties fall through.
 
 ### 3.3 The precedence ladder (equal itemsize)
 
@@ -136,7 +140,7 @@ The order was read off the binary from the IDA-resolved `.asm` listing of `_prom
 | 7 | `float8_e4m3fn` | `0x18034` | 1-byte FP8 (1-4-3, finite) |
 | 8 | `float8_e5m2` | `0x19a6d` | 1-byte FP8 (1-5-2) |
 
-> **VERIFICATION NOTE —** the decompiled (Hex-Rays) listing interleaves the two-operand symmetric branches, so its *textual* line order suggests `e4m3 > e5m2 > e4m3fn`. That is a decompiler artifact, not the evaluation order. The IDA disassembly is authoritative: the first-compare addresses (`e4m3`@`0x17eff`, `e4m3fn`@`0x18034`, `e5m2`@`0x19a6d`) give the true ladder **`… e4m3 > e4m3fn > e5m2`**, matching the backing RE report. *(Practical impact of the bottom rungs is narrow: all three FP8 formats are 1-byte, so the ladder only decides between two equal-itemsize FP8 operands.)*
+> **GOTCHA — the Hex-Rays listing gives the wrong FP8 order.** The decompiler interleaves the two-operand symmetric branches, so its *textual* line order reads `e4m3 > e5m2 > e4m3fn`. That is an artifact, not the evaluation order. The disassembly's first-compare addresses (`e4m3`@`0x17eff`, `e4m3fn`@`0x18034`, `e5m2`@`0x19a6d`) give the true ladder **`… e4m3 > e4m3fn > e5m2`**. *(The practical impact is narrow: all three FP8 formats are 1-byte, so these rungs only decide between two equal-itemsize FP8 operands.)*
 
 Reconstructed:
 
@@ -165,7 +169,7 @@ PyObject *_promote_floats(PyObject *t0, PyObject *t1) {
 }
 ```
 
-**[CONFIRMED ladder order (both decomp + disasm) and itemsize ops; the `np.dtype` wrap is CONFIRMED present, exact per-rung construct path STRONG]**
+The ladder order and the itemsize comparisons are read from the binary, as is the `np.dtype` wrap; which construct path each individual rung takes to build its result is [INFERRED].
 
 ---
 
@@ -195,7 +199,7 @@ PyObject *_promote_ints(PyObject *t0, PyObject *t1) {
 }
 ```
 
-Two facts are firmly grounded: the both-unsigned and both-signed cases each reduce to wider-itemsize-wins (with `>=`, so the *first* operand wins an exact tie), and the `float32` global is referenced **only** on the mixed-signedness branch — confirming the NumPy-style rule where a signed×unsigned pair that no integer type can represent exactly escapes to a float. The exact `(uintN, intM) → dtype` cells of the mixed ladder are inferred from the getattr targets (`uint64`/`uint32`/`int32`/`int16`) rather than each individually traced. **[CONFIRMED both-sign branches + float32-on-mixed-only; STRONG mixed-cell widths]**
+Two facts are firmly grounded: the both-unsigned and both-signed cases each reduce to wider-itemsize-wins (with `>=`, so the *first* operand wins an exact tie), and the `float32` global is referenced **only** on the mixed-signedness branch — confirming the NumPy-style rule where a signed×unsigned pair that no integer type can represent exactly escapes to a float. The exact `(uintN, intM) → dtype` cells of the mixed ladder are [INFERRED] from the getattr targets (`uint64`/`uint32`/`int32`/`int16`) rather than each individually traced.
 
 ---
 
@@ -211,7 +215,7 @@ PyObject *_promote_float_int(PyObject *t0, PyObject *t1) {
 }
 ```
 
-The body has exactly one call (to the `_is_floating` constprop) and a two-way arg passthrough: the float side always wins, with **no widening of the float to cover the int's range**. (Promoting `float16 × int64` yields `float16`, not a 64-bit float — a reimplementer who "widens to hold the int" will diverge here.) **[CONFIRMED — single `_is_floating` call + t0/t1 passthrough]**
+The body has exactly one call (to the `_is_floating` constprop) and a two-way arg passthrough: the float side always wins, with **no widening of the float to cover the int's range**. (Promoting `float16 × int64` yields `float16`, not a 64-bit float — a reimplementer who "widens to hold the int" will diverge here.)
 
 ### `_is_floating`
 
@@ -227,13 +231,13 @@ int _is_floating(PyObject *dt) {
 }
 ```
 
-**[CONFIRMED — `PySequence_Contains(custom_dtypes, dt)` then `np.issubdtype(dt, np.floating)`; the `custom_dtypes` set membership semantics are STRONG from the name + Contains call]**
+The call order — `PySequence_Contains(custom_dtypes, dt)` before `np.issubdtype(dt, np.floating)` — is read from the body; the set-membership semantics of `custom_dtypes` follow from the name plus the `Contains` call.
 
 ---
 
 ## 6. Sibling Predicates
 
-`penguin/dtypes.so` exports a family of related type predicates the legalization and inference passes call. These are grounded by name-ref sets, call shapes, and source line numbers read from the binary; argument semantics are STRONG unless noted.
+`penguin/dtypes.so` exports a family of related type predicates the legalization and inference passes call. These are grounded by name-ref sets, call shapes, and source line numbers read from the binary; the argument semantics are reconstructed from those unless noted.
 
 | Symbol | Addr | Src line | Behaviour |
 |---|---|---:|---|
@@ -242,7 +246,7 @@ int _is_floating(PyObject *dt) {
 | `is_int_bitcast(t0, t1)` | `0xf040` | 157 | True iff both are `numbers.Integral` **and** share `.itemsize` (C-lines 377/451 + 479/489) — a width-equal int reinterpret (`int32↔uint32`) is legal. |
 | `scalar_dtype(scalar)` | `0xfda0` | 137 | Maps a Python/NumPy scalar to its Neuron dtype: `bool`→`uint8` (C-lines 361/410); `np.floating`/`float`→`float64` (566/598/794); `np.integer`/`int`→`int64` with an `int32` fast-path (676/838/903). Returned as `np.dtype(...)`. |
 
-> **CORRECTION —** D-X05 §2 records `merge_type`'s failure as `ValueError("Cannot merge type!")`. The binary raises **`AssertionError`**: the decompiled `merge_type` calls `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_Cannot_merge_type, …)` at C-line 453. The message text is unchanged; only the exception class differs.
+> **GOTCHA — `merge_type` raises `AssertionError`, not `ValueError`.** The message `"Cannot merge type!"` reads like a value error, but the decompiled body calls `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_Cannot_merge_type, …)` at C-line 453. Code that catches `ValueError` around a merge will not catch this.
 
 The integer-width predicate family (`is_int32_dtypes`/`is_int64_dtypes` and their `has_*` collection forms) is documented with the [dtype catalog](dtype-catalog.md) (§9.1) since it concerns the dtype *set*, not the promotion lattice.
 
@@ -262,7 +266,9 @@ The integer-width predicate family (`is_int32_dtypes`/`is_int64_dtypes` and thei
 | `starfish/penguin/targets/transforms/LocalLegalizeType.so` | local type legalization |
 | `starfish/penguin/targets/transforms/LowerTranspose.so` | transpose lowering |
 
-`merge_type` / `can_merge_type` are imported by a broader set — `InferPSumTensor`, `LegalizeType`, `LocalLegalizeType`, `LowerTensorOp`, `MatMultCombine`, `TongaCpyElim`, `Tonga`, `TongaInstComb`, `LowerTranspose`, `KernelBuilder` — the type-inference and fusion passes. **[CONFIRMED — binary-safe `grep -la` of each symbol across the wheel's `*.so`]**
+`merge_type` / `can_merge_type` are imported by a broader set — `InferPSumTensor`, `LegalizeType`, `LocalLegalizeType`, `LowerTensorOp`, `MatMultCombine`, `TongaCpyElim`, `Tonga`, `TongaInstComb`, `LowerTranspose`, `KernelBuilder` — the type-inference and fusion passes.
+
+*Anchors: a binary-safe `grep -la` of each symbol across every `*.so` in the wheel.*
 
 Data flow for a binary op with operands `(a, b)`:
 
@@ -274,7 +280,7 @@ binary op (dtype a, dtype b)
        └─ at BIR level this lowers to bir::CastToNewDType
 ```
 
-An `*_x4` packed input is first laundered (`launder_x4_dtype`, see below) to its scalar element dtype so promotion reasons about the element, not the 4-lane container, then the `_x4` tag is restored on the result. **[STRONG — data-flow assembled from the import list + the façade's exported helper names]**
+An `*_x4` packed input is first laundered (`launder_x4_dtype`, see below) to its scalar element dtype so promotion reasons about the element, not the 4-lane container, then the `_x4` tag is restored on the result. This data flow is assembled from the import list plus the façade's exported helper names rather than traced end-to-end.
 
 ---
 
@@ -282,7 +288,7 @@ An `*_x4` packed input is first laundered (`launder_x4_dtype`, see below) to its
 
 The task scope names two modules. Only one — `penguin/dtypes.so` — contains the lattice. The second, `neuronxcc/starfish/support/dtype.cpython-310...so` (BuildID `sha1:6391eb2e…`, 107 336 bytes), is the home of the *conversion* surface (`static_cast_*`, the `_x4` helpers), and it is **a thin re-export façade, not an implementation**.
 
-Its module-init `__pyx_pymod_exec_dtype` @ `0x379a` performs one `from neuron_dtypes import (...)` and a run of `__Pyx_ImportFrom` (symbol @ `0x247d`) + dict re-exports. There are **zero** `CyFunction_New` / function-body definitions — every conversion name is `from neuron_dtypes import NAME`. The strings prove the surface (`static_cast_fp32_to_bfloat16`, `static_cast_fp32_to_float8_e8m0fnu`, `static_cast_fp32_to_float8_e4m3`, `static_cast_fp32_to_float4_e2m1fn_x4`, `launder_x4_dtype`, `get_x1_from_x4`, `is_x4_dtype`, …) but the module that *contains* the byte-twiddling — `neuron_dtypes`, the external AWS-Neuron custom-dtype C extension — **is not bundled in this wheel** (a grep of all 768 `*.so` for the module path `neuron_dtypes` resolves only to the two façades). **[CONFIRMED — `__Pyx_ImportFrom` + `neuron_dtypes` string in `support/dtype.so`; zero local function bodies]**
+Its module-init `__pyx_pymod_exec_dtype` @ `0x379a` performs one `from neuron_dtypes import (...)` and a run of `__Pyx_ImportFrom` (symbol @ `0x247d`) + dict re-exports. There are **zero** `CyFunction_New` / function-body definitions — every conversion name is `from neuron_dtypes import NAME`. The strings prove the surface (`static_cast_fp32_to_bfloat16`, `static_cast_fp32_to_float8_e8m0fnu`, `static_cast_fp32_to_float8_e4m3`, `static_cast_fp32_to_float4_e2m1fn_x4`, `launder_x4_dtype`, `get_x1_from_x4`, `is_x4_dtype`, …) but the module that *contains* the byte-twiddling — `neuron_dtypes`, the external AWS-Neuron custom-dtype C extension — **is not bundled in this wheel** (a grep of all 768 `*.so` for the module path `neuron_dtypes` resolves only to the two façades).
 
 Consequences for a reimplementer:
 
@@ -292,9 +298,9 @@ Consequences for a reimplementer:
 
 ---
 
-## 8. Grounding Ledger
+## 8. Evidence Anchors and Limits
 
-**CONFIRMED (disasm or exact in-binary string):**
+**Read from the disassembly or from an exact in-binary string:**
 
 - The four-closure structure of `promote_type` and its 2×2 regime split keyed on `_is_floating(t0)`/`_is_floating(t1)` (calls @ `0x1b5db`/`0x1b733`; sub-rule call sites @ `0x1b63a`/`0x1b793`/`0x1bae4`), with `np.issubdtype(_, np.integer)` (@ `0x1bbd6`/`0x1bd4d`) guarding the both-non-float branch and the `unexpected_dtype` raise (@ `0x1bea5`); dispatcher source line 41.
 - `_promote_floats`: the e8m0 guard (two Py_EQ vs `float8_e8m0fnu` at function entry, mstate +0x110), wider-itemsize-wins (Py_LT @ `0x175ec`, Py_GT @ `0x176f4`), and the precedence ladder **`float64 > float32r > float32 > bfloat16 > float16 > e4m3 > e4m3fn > e5m2`** — read from the IDA disassembly first-compare addresses (`e4m3`@`0x17eff`, `e4m3fn`@`0x18034`, `e5m2`@`0x19a6d`).
@@ -302,22 +308,20 @@ Consequences for a reimplementer:
 - `_promote_float_int`: single `_is_floating(t0)` call, float side wins, no widening.
 - `_is_floating = (dt in custom_dtypes) or np.issubdtype(dt, np.floating)`, membership tested first.
 - Error strings `"No available implicit dtype promotion path …"` (`0x1e1e0`), `"unexpected dtype: "` (`0x1e3c0`), `"Cannot merge type!"` (`0x1e3a0`).
-- `merge_type` raises `AssertionError` (not ValueError) — CORRECTION to backing report.
-- `support/dtype.so` is a pure `from neuron_dtypes import (…)` façade; `neuron_dtypes` absent from the wheel.
+- `merge_type` raises `AssertionError`, not `ValueError`.
+- `support/dtype.so` is a pure `from neuron_dtypes import (…)` façade; `neuron_dtypes` is absent from the wheel.
 - The `promote_type` / `merge_type` consumer import lists.
 
-**STRONG (name-set + call-shape grounded; exact body obscured by Cython refcount IR):**
+**Grounded by name-set and call shape, with the exact body obscured by Cython refcount IR:**
 
-- `custom_dtypes` set membership semantics.
-- The `_promote_ints` mixed-sign result-width table (the `float32` fallback is CONFIRMED; the individual `(uintN, intM) → dtype` cells are inferred from the ladder's getattr targets).
-- `merge_type` / `can_merge_type` / `is_int_bitcast` / `scalar_dtype` reconstructions.
+- `custom_dtypes` set-membership semantics.
+- The `_promote_ints` mixed-sign result-width table. The `float32` fallback is read from the binary; the individual `(uintN, intM) → dtype` cells are reasoned from the ladder's getattr targets.
+- The `merge_type` / `can_merge_type` / `is_int_bitcast` / `scalar_dtype` reconstructions.
 - `launder_x4_dtype` / `get_x1_from_x4` element-dtype semantics.
 
-**INFERRED / NOT RECOVERABLE HERE (body in external `neuron_dtypes`):**
+**Not recoverable from this wheel — the body lives in the external `neuron_dtypes`:**
 
 - The exact `static_cast_*` conversion bit-twiddling. Use `bir::CastToNewDType` for byte-exact device behaviour.
-- The OCP-MX e8m0 host encode/decode (`2^(e−127)`); the device path materialises e8m0 as a raw byte (the actual power-of-two is applied in the MX matmul/dequant path).
+- The OCP-MX e8m0 host encode/decode (`2^(e−127)`); the device path materialises e8m0 as a raw byte, and the power-of-two is applied in the MX matmul/dequant path.
 
-### Re-verification ceiling
-
-Everything in §2–§5 and the ladder in §3.3 was read off the binary directly (disassembly + IDA-resolved decompilation). The most consequential claim — the precedence ladder order — was resolved against the IDA disassembly's first-compare addresses after an initial decompiled-listing reading mis-ordered the two bottom FP8 rungs (the Hex-Rays output interleaves the symmetric two-operand branches); the disassembly is authoritative and gives `e4m3 > e4m3fn > e5m2`, consistent with the backing report. The ceiling is the `_promote_ints` mixed-sign cell table: the branch *targets* (`uint64`/`uint32`/`int32`/`int16`/`float32`) are confirmed, but which specific signed type each `(uintN, intM)` pair maps to is reasoned from the ladder shape, not individually executed. The conversion math is out of wheel entirely and is documented as such.
+The single remaining ceiling inside the lattice itself is that mixed-sign cell table: the branch *targets* (`uint64`/`uint32`/`int32`/`int16`/`float32`) are all read from the binary, but which specific signed type each `(uintN, intM)` pair lands on is reasoned from the ladder shape rather than traced pair by pair.

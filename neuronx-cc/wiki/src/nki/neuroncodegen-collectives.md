@@ -53,7 +53,7 @@ The Cython method table indexes each method as `NeuronCodegen_<idx><name>` (the 
 | 43 | `sync_program` | `0x930f0` | — | program-axis sync |
 | 32 | `post_process_spmd_grid` | `0x12e9e0` | — | SPMD grid setup |
 
-> **CORRECTION — backing-report line numbers were the `def` line, not the `pw` body.** The D-P04 report quoted `all_reduce_cc_raw` at KB.py:1472, `all_reduce_cc` at :1510, `insert_raw_cc` at :4758, `core_barrier` at :5842, `rank_id` at :5893, `sendrecv` at :4265, `sendrecv_cce` at :4302. `addr2line -e KernelBuilder.cpython-310-…so` on the `pw` entry points six lines later in each case (`:1478`, `:1516`, `:4764`, `:5848`, `:5899`, `:4271`, `:4308`). The ~6-line delta is the gap between the Python `def` line (where `_Pyx_TraceSetupAndCall` registers the name) and the first executable line of the inlined wrapper body (the DWARF line for `pw`'s entry). The table above uses the DWARF line. The methods, VAs, and indices are unchanged.
+> **GOTCHA — the line numbers here are DWARF `pw`-body lines, ~6 greater than the `def` line.** `addr2line` on a `pw` entry point lands on the first executable line of the inlined wrapper body, not on the Python `def` line where `_Pyx_TraceSetupAndCall` registers the name. For `all_reduce_cc_raw` the two readings are `:1478` (used here) versus `:1472`; the same ~6-line delta applies to `all_reduce_cc`, `insert_raw_cc`, `core_barrier`, `rank_id`, `sendrecv`, and `sendrecv_cce`. Cross-referencing against a source listing requires subtracting it.
 
 > **NOTE — `broadcast_partition` (idx 19/231) is *not* a collective.** The symbol table also carries `NeuronCodegen_231broadcast_partition` (`0xad480`) and its nested `build_broadcast_partition` (`0x1beaf0`). Despite the name, this is the SBUF partition-broadcast tile helper, not a cross-rank `BroadcastOp` emitter; it does not touch `insert_raw_cc`. The cross-rank broadcast is `broadcast_cc` / `broadcast_cc_raw` (idx 145/147).
 
@@ -103,7 +103,7 @@ A few details worth calling out for a reimplementer:
 - **`all_gather_cc_raw`'s `all_gather_dim`** becomes the BIR `cc_dim`, asserted downstream to be in `{0, 1}` (`Partition`/`Free`). No reduce-op is consumed. → `AllGather(4)`.
 - **`reduce_scatter_cc_raw`** is the one group collective carrying *both* a reduce-op and a dim (`reduce_scatter_dim`). → `ReduceScatter(3)`.
 - **`all_to_all_cc_raw`** carries **two** axes, `split_dimension` and `concat_dimension`. `CollectiveOp.so` asserts both are present — the verbatim strings `Illegal AlltoAll without split_dimension` and `Illegal AlltoAll without concat_dimension` are in that module. → `AllToAll(5)`.
-- **`broadcast_cc_raw`** is the odd one: it uses `broadcast_sizes` (the per-rank broadcast extents) in place of a single dim. There is **no** `Broadcast` value in the downstream `CollectiveKind` enum; the broadcast is realized as a `Permute`/`AllGather`-class CC plus the `broadcast_sizes` geometry, resolved in `CollectiveOp.so` lowering. *(STRONG — `BroadcastOp` and `broadcast_sizes` are confirmed; the exact downstream kind is resolved in a module not byte-walked here.)*
+- **`broadcast_cc_raw`** is the odd one: it uses `broadcast_sizes` (the per-rank broadcast extents) in place of a single dim. There is **no** `Broadcast` value in the downstream `CollectiveKind` enum; the broadcast is realized as a `Permute`/`AllGather`-class CC plus the `broadcast_sizes` geometry, resolved in `CollectiveOp.so` lowering. `BroadcastOp` and `broadcast_sizes` are both pinned; the exact downstream kind is [INFERRED], resolved in a module not byte-walked here.
 
 > **QUIRK — permute operands map through `_map_to_hbm_tensors`, the group reducers through `_map_to_nd_access`.** Both helpers exist as their own methods (`_map_to_hbm_tensors` idx 118/119, `_map_to_nd_access` idx 124/125). The permute path treats its operands as whole HBM tensors; the reducer/gather paths map to nd-access descriptors. A reimplementer who routes permute operands through the nd-access mapper will mis-shape the permute.
 
@@ -216,9 +216,9 @@ sendrecv_cce(self, dst, src, send_to_rank, recv_from_ranks, op,   // recv_from_r
 
 Both `recv_from_ranks` (plural — confirmed distinct from the singular `recv_from_rank` used by `sendrecv`) and the reduce `op` are present. `SendRecvCCEOp` is referenced as a name-constant in the binary.
 
-> **CORRECTION-ASSIST — `sendrecv_cce` is a *second* origin of `CollectiveKind = SendRecvCCE(1)`.** The KLR→BIR analysis found no `codegenSendRecvCCE` leaf and attributed the kind-1 origin solely to the collectives-to-CC HLO path. This NKI emitter is a second, independent origin: `NeuronCodegen.sendrecv_cce` mints `SendRecvCCEOp` directly, so kind 1 can enter the IR from the NKI front-end without ever passing through a klr `SendRecv` leaf. Both paths can mint kind 1.
+`sendrecv_cce` is a **second, independent origin** of `CollectiveKind = SendRecvCCE(1)`. There is no `codegenSendRecvCCE` leaf in the KLR→BIR path, which makes the collectives-to-CC HLO route look like the only source of kind 1. It is not: `NeuronCodegen.sendrecv_cce` mints `SendRecvCCEOp` directly, so kind 1 can enter the IR from the NKI front end without ever passing through a klr `SendRecv` leaf.
 
-> **GOTCHA — `SendRecvOp` / `SendRecvCCEOp` are not in `CollectiveOp.so`'s class roster.** Unlike the group Op classes (which are all named strings in `CollectiveOp.cpython-310-…so`), the `SendRecvOp` and `SendRecvCCEOp` *type* names appear only as construction-site name-constants inside `KernelBuilder.so` itself (3 refs each), not as standalone class strings in the penguin `CollectiveOp`/`Barrier`/`ir` modules scanned here. The backing report placed them in `Barrier.so`/`ir.so`; that could not be confirmed against the binary. Their definitions live in a sibling module not pinned on this page (tagged **INFERRED** for the exact home; the construction in `KernelBuilder.so` is **CONFIRMED**).
+> **GOTCHA — `SendRecvOp` / `SendRecvCCEOp` are not in `CollectiveOp.so`'s class roster.** Unlike the group Op classes (which are all named strings in `CollectiveOp.cpython-310-…so`), the `SendRecvOp` and `SendRecvCCEOp` *type* names appear only as construction-site name-constants inside `KernelBuilder.so` itself (3 refs each), not as standalone class strings in the penguin `CollectiveOp`/`Barrier`/`ir` modules. Their construction inside `KernelBuilder.so` is pinned; their class home is [INFERRED] to be a sibling module not identified on this page — it is demonstrably neither `CollectiveOp.so` nor `Barrier.so`.
 
 ## 6. SPMD and sync — `core_barrier`, `rank_id`, `sync_program`
 
@@ -246,7 +246,7 @@ core_barrier(self, wait_target, cores, engine, ...)
 
 Both error strings are verbatim in the binary. The `data` SBUF semaphore is bound as arg+output (read-modify-write), `cores` is the active-core id list, and `engine` selects the engine. The `program_barriers`/`program_axes` registered here are the front-end bookkeeping a later barrier-renumbering pass turns into the module-wide barrier index. CoreBarrier is gen3+/Trn2 (LNC) — the downstream verifier gates it on an arch level ≥ 30. `CoreBarrierOp` is confirmed as a string in `CollectiveOp.so` (see correction below). See [6.5.13](./bircodegen-collective.md) and [Part 13](../collectives/).
 
-> **CORRECTION — `CoreBarrierOp`'s class home is `CollectiveOp.so`, not `Barrier.so`.** The backing report listed `CoreBarrierOp` under `Barrier.so`. A content scan of the penguin `ir/` modules finds the `CoreBarrierOp` string only in `CollectiveOp.cpython-310-…so`; `Barrier.cpython-310-…so` carries the generic `Barrier` op, not `CoreBarrierOp`.
+> **GOTCHA — `CoreBarrierOp` lives in `CollectiveOp.so`, not `Barrier.so`.** The name suggests the barrier module, but a content scan of the penguin `ir/` modules finds the `CoreBarrierOp` string only in `CollectiveOp.cpython-310-…so`. `Barrier.cpython-310-…so` carries the generic `Barrier` op.
 
 ### `rank_id` (`0x11f6f0`, KB.py:5899) — materialize the global rank
 
@@ -265,11 +265,11 @@ The `rank_id can only support scalar mask` guard is verbatim. The emitter names 
 
 ### `rank resolver is ncc-side, not here`
 
-`NeuronCodegen` has **no** public in-group (TP) rank resolver in this method roster. The per-iteration rank resolver the ring kernels use — `collective_permute_implicit_current_processing_rank_id` — is exposed via the `ncc.*` API / a separate intrinsic and lowers to `InstGetCurProcessingRankID`, not through any `NeuronCodegen_<idx>` method here. *(STRONG — absence verified: no such symbol in the `NeuronCodegen_<idx>` table.)*
+`NeuronCodegen` has **no** public in-group (TP) rank resolver in this method roster. The per-iteration rank resolver the ring kernels use — `collective_permute_implicit_current_processing_rank_id` — is exposed via the `ncc.*` API / a separate intrinsic and lowers to `InstGetCurProcessingRankID`, not through any `NeuronCodegen_<idx>` method here. No such symbol appears in the `NeuronCodegen_<idx>` table.
 
 ### `sync_program` (`0x930f0`) — program-axis synchronization
 
-`sync_program` (idx 43) iterates `inactive_program_axes` through a generator (its closure scope is `__pyx_scope_struct_9_sync_program`) and emits barriers/fences to sync the SPMD program grid. It mints no Op class — it orchestrates barriers — and is the program-level (not per-CC) sync that brackets collective regions. *(STRONG — name refs and the closure scope confirmed; the exact barrier construction is the generator's and was not fully walked.)*
+`sync_program` (idx 43) iterates `inactive_program_axes` through a generator (its closure scope is `__pyx_scope_struct_9_sync_program`) and emits barriers/fences to sync the SPMD program grid. It mints no Op class — it orchestrates barriers — and is the program-level (not per-CC) sync that brackets collective regions. The name refs and the closure scope are pinned; the exact barrier construction happens inside the generator and is [INFERRED].
 
 ## 7. The CC sink and the post-processors
 
@@ -289,11 +289,11 @@ Both `has_collectives` and `insert_raw` are confirmed name-constants. `insert_ra
 
 ### `post_process_allreduce_result` (`0xde5c0`) — the AllReduce fixup
 
-The post-AllReduce finalizer iterates `reduce_axes` / `parallel_axes` (with an `async` flag and a loop-reduce dst) and inserts `Barrier` / `program_barriers` plus `translate_axis`. It barriers the (possibly async) all-reduce result across the parallel axes so consumers see the reduced value. Its guards are the verbatim AllReduce-axis errors `program_axes of all_reduce must be program_id! Consider use loop_reduce or reduce instead.` and `reduce_axes of all_reduce cannot be program_id!`. *(STRONG — refs + error strings.)*
+The post-AllReduce finalizer iterates `reduce_axes` / `parallel_axes` (with an `async` flag and a loop-reduce dst) and inserts `Barrier` / `program_barriers` plus `translate_axis`. It barriers the (possibly async) all-reduce result across the parallel axes so consumers see the reduced value. Its guards are the verbatim AllReduce-axis errors `program_axes of all_reduce must be program_id! Consider use loop_reduce or reduce instead.` and `reduce_axes of all_reduce cannot be program_id!`.
 
 ### `post_process_spmd_grid` (`0x12e9e0`, idx 32) — SPMD grid setup
 
-Not a collective per se: it builds the kernel scope / launch grid via `CompositeSPMDDim`, `track_axes`, interchange, and `program_ids` over the loopnest. It is the SPMD launch-grid post-processing the rank/barrier ops are defined against. *(STRONG — refs only.)*
+Not a collective per se: it builds the kernel scope / launch grid via `CompositeSPMDDim`, `track_axes`, interchange, and `program_ids` over the loopnest. It is the SPMD launch-grid post-processing the rank/barrier ops are defined against. Grounded in name refs only; the body is not walked.
 
 ## 8. The Op-class → BIR-kind bridge
 
@@ -316,16 +316,14 @@ Not a collective per se: it builds the kernel scope / launch grid via `Composite
 | `CoreBarrierOp` | `InstCoreBarrier` | SBUF sema + cores + engine |
 | `GetGlobalRankId` | `InstGetGlobalRankId` | dst_register + world_size |
 
-> **NOTE — the numeric kind is resolved downstream, not here.** This table's kind column is the *downstream* binding (where the number is written). The per-Op numeric `kind` constant lives in `CollectiveOp.so`'s ctors and was not byte-walked on this page; the kind **name pool** is confirmed present, and the Op→kind correspondence is cross-checked against the KLR→BIR codegen. The `BroadcastOp` row is the weakest: there is no `Broadcast` enum value, and its realization (a Permute/AllGather-class CC carrying `broadcast_sizes`) is resolved in `CollectiveOp.so` lowering (**STRONG/INFERRED**).
+> **NOTE — the numeric kind is resolved downstream, not here.** This table's kind column is the *downstream* binding (where the number is written). The per-Op numeric `kind` constant lives in `CollectiveOp.so`'s ctors and was not byte-walked on this page; the kind **name pool** is present, and the Op→kind correspondence is cross-checked against the KLR→BIR codegen. The `BroadcastOp` row is the weakest: there is no `Broadcast` enum value, and its realization — a Permute/AllGather-class CC carrying `broadcast_sizes`, resolved in `CollectiveOp.so` lowering — is [INFERRED].
 
-## 9. Adversarial self-verification
+## 9. Evidence Anchors and Limits
 
-The five strongest claims on this page, re-challenged against the binary:
-
-1. **The 24-method roster + VAs (§1).** Re-ran `nm` on `KernelBuilder.cpython-310-…so`: every `__pyx_pw_…NeuronCodegen_<idx><name>` and its VA match the table, including the three tiled permutes (139/141/143) the report under-listed. **CONFIRMED.**
-2. **The line numbers (§1).** `addr2line` on the `pw` entries returns lines six greater than the report's. Resolved in-place as a CORRECTION (def-line vs body-first-line); table uses the DWARF line. **CONFIRMED + corrected.**
-3. **The `*_cc_raw` → `<Kind>Op` → `insert_raw_cc` pattern, and `*_cc` → `gen_all_worker_group` delegation (§2–§3).** All Op-class names, the `validate_dma_qos`/`_map_to_nd_access`/`_map_to_hbm_tensors`/`insert_raw_cc`/`insert_raw`/`has_collectives` helpers, the dim kwargs, and `gen_all_worker_group`/`gen_all_collective_permute_config` are confirmed strings. The `_map_to_*` helpers carry a leading underscore (corrected from the report's `map_to_*`). **CONFIRMED.**
-4. **The tiled-permute three-way split (§4).** `src_tgt_pairs`, `channel_id`, `num_channels`, and the three Tiled Op classes are all confirmed strings; the three emitters are at the listed VAs. **CONFIRMED.**
-5. **Op-class homes and the CollectiveOp roster (§8).** Re-scanned the penguin `ir/` modules: the group Op classes and the kind name pool are in `CollectiveOp.so`; `CoreBarrierOp` is also in `CollectiveOp.so` (**not** `Barrier.so` — corrected); `GetGlobalRankId` is in `IRWriter.so`. `SendRecvOp`/`SendRecvCCEOp` appear only as construction-site name-constants in `KernelBuilder.so`, so their class home is left **INFERRED** with a GOTCHA. **CONFIRMED with two corrections.**
+- **The 24-method roster and its VAs (§1).** `nm` on `KernelBuilder.cpython-310-…so` returns every `__pyx_pw_…NeuronCodegen_<idx><name>` at the VA listed, including the three tiled permutes at indices 139/141/143.
+- **The line numbers (§1).** `addr2line` on the `pw` entries yields the DWARF body-first lines used in the table, six greater than the corresponding `def` lines.
+- **The `*_cc_raw` → `<Kind>Op` → `insert_raw_cc` pattern and the `*_cc` → `gen_all_worker_group` delegation (§2–§3).** All Op-class names, the `validate_dma_qos` / `_map_to_nd_access` / `_map_to_hbm_tensors` / `insert_raw_cc` / `insert_raw` / `has_collectives` helpers, the dim kwargs, and `gen_all_worker_group` / `gen_all_collective_permute_config` are present as strings. Note the leading underscore on the `_map_to_*` helpers.
+- **The tiled-permute three-way split (§4).** `src_tgt_pairs`, `channel_id`, `num_channels`, and the three Tiled Op classes are all present as strings, with the three emitters at the listed VAs.
+- **Op-class homes (§8).** A scan of the penguin `ir/` modules places the group Op classes and the kind name pool in `CollectiveOp.so`, `CoreBarrierOp` also in `CollectiveOp.so`, and `GetGlobalRankId` in `IRWriter.so`. `SendRecvOp` and `SendRecvCCEOp` appear only as construction-site name-constants in `KernelBuilder.so`, so their class home remains [INFERRED].
 
 **Anchors:** subject binary `KernelBuilder.cpython-310-x86_64-linux-gnu.so`; class home `CollectiveOp.cpython-310-…so`; rank-id serializer `IRWriter.cpython-310-…so`. VAs are cp310 image offsets of the `pw` bodies; KB.py lines are DWARF (`addr2line`). Op-class names, kwarg sets, and KB.py line numbers are build-invariant; the VAs are not.
