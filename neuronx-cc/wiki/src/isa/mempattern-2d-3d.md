@@ -367,7 +367,7 @@ Every offset the shared packer (`assignStaticPattern<TENSOR3D>`) writes matches 
 
 ## 9. Confidence ledger
 
-**CERTAIN** — full disasm of the v4 bodies, cross-checked:
+From a full disassembly of the v4 bodies, cross-checked:
 
 - `MEM_PATTERN2D/3D/4D` = byte-identical to `TENSOR2D/3D/4D` (12/16/20 B; shared "must have K bytes" asserts; no separate packer symbol; same vtbl slots `+0x28`/`+0x30`).
 - `mem3d_valid` / `mem2d_valid` / `mem4d_valid` full byte decode.
@@ -377,12 +377,12 @@ Every offset the shared packer (`assignStaticPattern<TENSOR3D>`) writes matches 
 - `INST_UNION` map: src `+0x10`, dst `MEM_PATTERN3D` `+0x30`, dst dtype byte `+0x23` (dense CoreV2/V3) / `+0x28` (MX CoreV4).
 - Encoder↔decoder byte agreement (2D/3D/4D, both ways).
 
-**HIGH:**
+**[INFERRED]** — cross-checked but not disassembled here:
 
 - v2/v3 `MEM_PATTERN` byte-identity — `core_v2::mem4d_valid` @ `0x127f660` and `core_v3::mem4d_valid` @ `0x136ee40` exist by symbol, but their bodies are not disassembled here; byte-identity follows from the arch-invariant encoder and the shared asserts.
 - `"nc"` = *no-convert* / bf16-aware naming — read off the `{4..7} ∪ {8..11}` dtype acceptance plus the bf16 PSUM-legality exception; there is no literal `"nc"` string.
 
-**MEDIUM:**
+**[INFERRED]** — not byte-pinned:
 
 - The exact bit decomposition of the bank *within* the `ADDR4` window (bits 26..28 carry part/bank overflow; the validator tests only the aggregate `0x1E000000`) — see [2.2](addr4.md).
 

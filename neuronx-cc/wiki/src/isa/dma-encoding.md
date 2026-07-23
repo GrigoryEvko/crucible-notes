@@ -152,7 +152,7 @@ Asserts: *"Vector-dynamic-offsets AP must exist"*, *"…location must be SB"*, *
 
 > **GOTCHA — the DGE-arm offsets are `_DWORD*` indices in the decompile, not byte offsets.** Hex-Rays renders these six stores against `v104`, which is the `_DWORD*` re-typing of the same 64-byte bundle base, so an index `+N` is byte `+0x4·N`. Resolved: idx-start `+1`/`+2` → `+0x04`/`+0x08`; bound-size low `+3`/`+4` → `+0x0C`/`+0x10`; bound-size upper `+14`/`+15` → `+0x38`/`+0x3C`. Taking those indices as byte offsets collapses all six into the header.
 
-The low/upper split lands the two 64-bit bounds as contiguous low halves (`+0x0C`/`+0x10`) and contiguous upper halves (`+0x38`/`+0x3C`) in the bundle tail. These rows are HIGH: the offsets follow from the consistent `_DWORD*` scaling plus the self-consistent lo/hi pairing, not from a re-disassembled store — the `generateDynamicDMA` body is not in the disassembled set here.
+The low/upper split lands the two 64-bit bounds as contiguous low halves (`+0x0C`/`+0x10`) and contiguous upper halves (`+0x38`/`+0x3C`) in the bundle tail. These rows are **[INFERRED]**: the offsets follow from the consistent `_DWORD*` scaling plus the self-consistent lo/hi pairing, not from a re-disassembled store — the `generateDynamicDMA` body is not in the disassembled set here.
 
 **(C) CCE / reduce compute-op byte** — `desc+3 = AluOpType2DGEComputeOp(I, I+0x178 reduce)` (`@0x120b9e0`): `0` (none) or `1` (add). Gated by `isDstReduceDGE(I,dstPAP)` (libBIR `0x312240`) when `IT==32 && arch<=49`. HARD-PINNED None/Add — `arch>=50` FATALs *"CoreV5 cannot support DGE with compute op yet"*.
 
@@ -301,7 +301,7 @@ Wire struct `NEURON_ISA_TPB_PSEUDO_DMA_REARM_STRUCT`. The bare "re-arm this queu
 
 > **The full `0xE7` field map lives on the DVE datamove page.** Although `IndirectCopy` is reached via this DMA chapter, its byte-for-byte wire bundle (`+0x0C` `index_addr.addr_immediate`, `+0x0F` bit-5 indirect marker, `+0x10` `data_addr.addr_immediate`, `+0x14` num_elem, `+0x20`/`+0x21` in/out dtype, `+0x22` active_channels, `+0x23` `src_num_elem_per_idx`, `+0x26` `src_buffer_size`, `+0x2C` dst `TENSOR4D` AP) is fully transcribed — with every store-site disassembled — in [2.17 DVE datamove encoding](dve-datamove-encoding.md) (§ IndirectCopy). It is not duplicated here; that page is the field-map authority for `0xE7`. (Wire struct `S4D4_IC`; the embedded `{index_addr, data_addr, num_elem}` descriptor with its bit-29/`0x20` marker is the same indirect-descriptor contract as [2.7](indirect-descriptors.md).)
 
-**`generateMoveShape` (op `0xB2` = 178) `@0x1213d00`** — the transpose shape-register descriptor, emitted twice by the DIRECT2D transpose sub-form. It encodes the 4-D shape the DGE engine uses to permute the access; the descriptor body mirrors the DIRECT2D step/num pairs against the shape register (HIGH).
+**`generateMoveShape` (op `0xB2` = 178) `@0x1213d00`** — the transpose shape-register descriptor, emitted twice by the DIRECT2D transpose sub-form. It encodes the 4-D shape the DGE engine uses to permute the access; the descriptor body mirrors the DIRECT2D step/num pairs against the shape register — **[INFERRED]**, by sibling cross-check rather than a disassembled store.
 
 ---
 

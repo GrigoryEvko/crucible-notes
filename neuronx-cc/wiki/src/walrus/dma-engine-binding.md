@@ -350,12 +350,12 @@ So 110 fixes the trigger engine, 123 fixes the HW-DGE descriptor-gen engine (and
 
 ## Gaps and Uncertainty
 
-- **`InstDMA+0x38` DMA-kind enum (LOW).** The `== 2` case (enabling the dedup-vs-`ValidEngines` search) is the only value exercised here; the full enum is not transcribed. Likely a copy/IO/CCE kind tag — a Strand-D follow-up on `+0x38`.
-- **`getWritersFromBB` / `getReadersFromBB` internals (MED).** The templated BB-local def/use scans that feed producer/consumer selection were not transcribed end-to-end. The *selection arithmetic* (latest-before / earliest-after by scheduled ID) is certain from the call sites; the scan helper internals are not.
-- **`unk_3E03CD8` force flag (LOW).** The global that force-enables `LimitIOQueues` regardless of `shouldLimitIOQueues` is likely an env/option byte; its origin is not pinned.
-- **`core_v5` `ValidEngines` contents (MED).** For arch ≥ 50 the vector is target-supplied (chip-parts / target-datamodel), not a `libwalrus` literal. The round-robin *behavior* is certain; the concrete per-gen engine set is config-driven and not enumerated here.
+- **`InstDMA+0x38` DMA-kind enum** — **[INFERRED]**. The `== 2` case (enabling the dedup-vs-`ValidEngines` search) is the only value exercised here; the full enum is not transcribed. Plausibly a copy/IO/CCE kind tag — a Strand-D follow-up on `+0x38`.
+- **`getWritersFromBB` / `getReadersFromBB` internals** — **[INFERRED]**. The templated BB-local def/use scans that feed producer/consumer selection were not transcribed end-to-end. The *selection arithmetic* (latest-before / earliest-after by scheduled ID) is read off the call sites; the scan helper internals are not.
+- **`unk_3E03CD8` force flag** — **[INFERRED]**. The global that force-enables `LimitIOQueues` regardless of `shouldLimitIOQueues` is plausibly an env/option byte; its origin is not pinned.
+- **`core_v5` `ValidEngines` contents** — **[INFERRED]**. For arch ≥ 50 the vector is target-supplied (chip-parts / target-datamodel), not a `libwalrus` literal. The round-robin *behavior* is read off the disassembly; the concrete per-gen engine set is config-driven and not enumerated here.
 
-Every address, offset, enum ordinal, and rodata byte cited at CERTAIN was read directly off `libwalrus.so` / `libBIR.so` (cp310) and cross-checked against a real instruction. The pass-110 selection policy (Load→CC, Save→producer; consumer arm dead), the pass-123 worker (DGEType gate, SP/Act-or-round-robin, PE reject, `size>=2` assert), the `[SP=6, Act=2]` injection, the DMA-family table, and the `isHWDGEDMAWithEngineSet` predicate are all CONFIRMED at the binary level.
+Every address, offset, enum ordinal, and rodata byte cited here was read directly off `libwalrus.so` / `libBIR.so` (cp310) and cross-checked against a real instruction. The pass-110 selection policy (Load→CC, Save→producer; consumer arm dead), the pass-123 worker (DGEType gate, SP/Act-or-round-robin, PE reject, `size>=2` assert), the `[SP=6, Act=2]` injection, the DMA-family table, and the `isHWDGEDMAWithEngineSet` predicate are all CONFIRMED at the binary level.
 
 ---
 

@@ -278,7 +278,7 @@ The const `0x0100` at `+0x0C` (`mov r9d,0x100 @0x1213f5e`) and flag `1` at `+0x0
 
 ## Evidence ledger
 
-**CERTAIN** — direct store, compare or opcode read byte-exact from the disassembly:
+Direct store, compare or opcode read byte-exact from the disassembly:
 - All 13 opcode bytes pinned: TT `add 0x51 @0x1235742`, GPSIMD `0x8A @0x1235e3e`/`0xC4`/`0xC5`; CopyPred `0x72 @0x125ecb7`, `0x99 @0x125ecc3`, `0xE8 @0x125fca8`, `0xEA @0x125ef1d`; TensorCopy `setne;add 0x46 @0x1237f9a`; Memset `0x49 @0x125b530`/`0x4D @0x125b379`; MoveShape `0xB2` + flag `0x1 @0x1213f64` + const `0x100 @0x1213f5e`.
 - TT field stores `+0x0C`/`+0x0D`/`+0x0E`/`+0x0F` (`@0x1235a40..0x1235abe`), three `TENSOR3D` lea slots.
 - SelectReduce `+0x18`/`+0x30` lea, `+0x24`/`+0x25`/`+0x26`/`+0x27`/`+0x28`/`+0x29`/`+0x2B`/`+0x2C` (`@0x125f944..0x125fb8d`); CopyPred/CastPred `+0x0C`/`+0x0D`/`+0x0F` + lea `+0x10`/`+0x20`/`+0x30` (`@0x125f3bc..0x125f448`); CopyPredScalar `+0x10`/`+0x20`/`+0x21`/`+0x22`/`+0x29`/`+0x2A`/`+0x2B`/`+0x30` (`@0x125fcf3..0x125fe61`).
@@ -286,9 +286,9 @@ The const `0x0100` at `+0x0C` (`mov r9d,0x100 @0x1213f5e`) and flag `1` at `+0x0
 - Negative results: zero `CoreV2` `visitInstSelect`/`CastPredicated`/`SelectReduce`/`TensorDequantize` symbols (`nm` sweep).
 - LUTs: `byte_1DF5760` and `qword_1DF59E0` dumped byte-exact from `.rodata`.
 
-**HIGH** — validator / pybind cross-reference: the wire struct tags `s3d3_tt`, `s3d3_copy`, `d3_cp`, `d3_memset`, `s_move` and the check names `s3d3_tt_dtype`/`s3d3_tt_valid_op`/`s3d3_tt_src_element_cnt_check`/`s3d3_tt_is_zero_s_copy_cast_predicated_opcode`/`s3d3_copy_pred_src0_dtype`/`s3d3_copy_cast_pred_src1_dst_dty`/`d3_cp_pred_scalar_reserved_zero`/`s_valid_select_reduce_dtypes`/`s_zero_accum_cmd`/`memset_opcode`/`move_opcode` are all present in the `.so` string table and name-matched to offsets; the `num_active_partitions` slot (TT `+0x0F`, predicated `+0x0F`/`+0x2A`/`+0x22`, Memset `+0x22`) = `firstAPPair.num` via `AP+80[8]`; the CoreV3 extended int32 band; the TensorDequantize/Select upstream-lowering rationale.
+Established by validator / pybind cross-reference: the wire struct tags `s3d3_tt`, `s3d3_copy`, `d3_cp`, `d3_memset`, `s_move` and the check names `s3d3_tt_dtype`/`s3d3_tt_valid_op`/`s3d3_tt_src_element_cnt_check`/`s3d3_tt_is_zero_s_copy_cast_predicated_opcode`/`s3d3_copy_pred_src0_dtype`/`s3d3_copy_cast_pred_src1_dst_dty`/`d3_cp_pred_scalar_reserved_zero`/`s_valid_select_reduce_dtypes`/`s_zero_accum_cmd`/`memset_opcode`/`move_opcode` are all present in the `.so` string table and name-matched to offsets; the `num_active_partitions` slot (TT `+0x0F`, predicated `+0x0F`/`+0x2A`/`+0x22`, Memset `+0x22`) = `firstAPPair.num` via `AP+80[8]`; the CoreV3 extended int32 band; the TensorDequantize/Select upstream-lowering rationale.
 
-**MEDIUM** — the `0xEA` SelectReduce `+0x24` bypass-vs-`+0x25` reduce-op semantic (the reduction-axis selection rides the AP, not a band field); the per-field pybind *member* names (vs the check-label names dumped) — they abut in the string table and are joined via the encoder's own device-keys + check-label prefixes, not a clean `def_readwrite` dump. The src AP slot in the SelectReduce 2-D band is register-packed (no direct `lea`); inferred as the third 2-D `assignAccess`.
+**[INFERRED]** — the `0xEA` SelectReduce `+0x24` bypass-vs-`+0x25` reduce-op semantic (the reduction-axis selection rides the AP, not a band field); the per-field pybind *member* names (vs the check-label names dumped) — they abut in the string table and are joined via the encoder's own device-keys + check-label prefixes, not a clean `def_readwrite` dump. The src AP slot in the SelectReduce 2-D band is register-packed (no direct `lea`); inferred as the third 2-D `assignAccess`.
 
 **OPEN / cross-ref:** sub-bit field widths *within* the `TENSORxD` descriptor interiors (handled by `assignAccess` / `setupSync*`, N-strand common code — see [2.4 TENSOR4D / MEM_PATTERN4D](tensor4d-mempattern4d.md)); the exact `TensorDequantize` (`0x7B`) emitter location upstream.
 

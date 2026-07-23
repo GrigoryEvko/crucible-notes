@@ -247,7 +247,7 @@ The **Max family** (`0x6C` / `0x6D` / `0x6E` / `0x6F`) has **no** separate CoreV
 
 ## Confidence ledger
 
-**CERTAIN** — direct store / cmp / seed, disassembled byte-exact:
+Direct store / cmp / seed, disassembled byte-exact:
 - Opcodes pinned by validator `cmp`: Max8 `0x6C` (`@0x13047fb`), MatchValueLoad `0x6D` (`@0x12bbdbe`), FindIndex8 `0x6E` (`@0x1306793`), MatchReplace8 `0x6F` (`@0x1316ca2`), `stream_shuffle` `0x69` (covered by `dbg_is_valid_stream_shuffle @0x13281a0`; field map in [2.17](dve-datamove-encoding.md)), NonzeroWithCount `0xF2` (`@0x13d8f05`).
 - Encoder/thunk addresses: `visitInstMax @0x1273120`, `visitInstMaxIndex @0x1254650`, `visitInstMatchReplace @0x1247020` (`xor %edx,%edx; jmp 0x61eff0`), `generateInstMatchReplaceWithOptionalMaxIndex @0x1244ab0`, `visitInstNonzeroWithCount @0x1355a30`, `visitInstMaxIndexAndMatchReplace @0x135b670` (`mov $0x1,%edx; call`), `visitInstStreamTranspose @0x1266df0` — all from `nm -DC`.
 - Max8 field stores `+0x20/+0x21/+0x22` (`@0x12754d0/ed/f1`), `+0x36/+0x3a`, dst `cmp $0x8` (`@0x12733a9`), src bounds `cmpl $0x7`/`$0x4000` (`@0x12733b2/bf`); COLLECT `movl $0x6c` (`@0x1273221`).
@@ -256,9 +256,9 @@ The **Max family** (`0x6C` / `0x6D` / `0x6E` / `0x6F`) has **no** separate CoreV
 - `stream_shuffle` (`0x69`) seed `movl $0x69` (`@0x1267459`); lane immediate `movups %xmm1,0x20(%r8)` (`@0x126828b`) / `movups %xmm0,0x30(%r8)` (`@0x126838a`).
 - NonzeroWithCount `+0xc/+0xd/+0xe/+0xf` (`@0x1355bd8/be9/c88/bf2`), `+0x20` idxOff (`@0x1355c1b`), `+0x24` reserved (`@0x1355c2c`), `+0x28` padVal (`@0x1355c53`).
 
-**HIGH** — validator / rodata-name xref. Wire-struct field names `s_max8_*`, `s_find_index8_dst_element_cnt`, `s_match_value_load_opcode`, `s_match_replace8_opcode`, `s_nonzero_with_count_opcode`, `d2_bn_ge8_src_element_cnt`, `d2_bn_zero_count`, `d4_mr_reserved_zero`, `d4_mr_le16k_src_*`, `d4_mr_same_src_dt`, `match_replace_dtype`, `d3_nonzero_with_count_reserved_z`, `container_nonzero_cardinality`, `count_element_co*`, `s_valid_nonzero_with_count_dtype` — all recovered as literal strings from `libwalrus.so` `.rodata`; the struct tags `NEURON_ISA_TPB_S4D2_BN_STRUCT` / `…_D4_MR_STRUCT` / `S4D4_MR` / `…_S3D3_NONZERO_WITH_COUNT_STRUCT` likewise. The sem/sync `+0x04` regions and `assignAccess` interiors are N-strand common code.
+Cross-checked against the validators and the rodata name tables. Wire-struct field names `s_max8_*`, `s_find_index8_dst_element_cnt`, `s_match_value_load_opcode`, `s_match_replace8_opcode`, `s_nonzero_with_count_opcode`, `d2_bn_ge8_src_element_cnt`, `d2_bn_zero_count`, `d4_mr_reserved_zero`, `d4_mr_le16k_src_*`, `d4_mr_same_src_dt`, `match_replace_dtype`, `d3_nonzero_with_count_reserved_z`, `container_nonzero_cardinality`, `count_element_co*`, `s_valid_nonzero_with_count_dtype` — all recovered as literal strings from `libwalrus.so` `.rodata`; the struct tags `NEURON_ISA_TPB_S4D2_BN_STRUCT` / `…_D4_MR_STRUCT` / `S4D4_MR` / `…_S3D3_NONZERO_WITH_COUNT_STRUCT` likewise. The sem/sync `+0x04` regions and `assignAccess` interiors are N-strand common code.
 
-**MEDIUM** — zero-init only. Reserved-zero pad bytes (`d2_bn_reserved_z`, `d4_mr_*` guards, NonzeroWithCount `+0x24`); the FindIndex8 `−1` index preset (simulator init, not a bundle field); `stream_shuffle` (`0x69`) `+0x08..+0x1F` sync/descriptor region.
+**[INFERRED]** from zero-init alone, with no direct store: reserved-zero pad bytes (`d2_bn_reserved_z`, `d4_mr_*` guards, NonzeroWithCount `+0x24`); the FindIndex8 `−1` index preset (simulator init, not a bundle field); `stream_shuffle` (`0x69`) `+0x08..+0x1F` sync/descriptor region.
 
 **OPEN / cross-ref:** the exact bit-width / packing of `container_nonzero_cardinality` + `count_element_co*` within the output `TENSOR3D` descriptor (they ride the dst AP dims — [2.4 TENSOR4D / MEM_PATTERN4D](tensor4d-mempattern4d.md)); the full StreamTranspose decomposition (which other bundles co-issue with the `0x69`) — see [2.17 DVE datamove encoding](dve-datamove-encoding.md); CoreV4 Max-family bodies (reuse CoreV2; dtype-LUT delta only).
 
