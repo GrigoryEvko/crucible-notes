@@ -17,7 +17,7 @@ every decompiled body), so the vtable-slot rule does not apply to them.
 
 > **Confidence tags.** `[OBS]` byte-exact from a shipped struct/enum, a
 > decompiled body, or the sample. `[INF]` reasoned from observed control/data
-> flow. `[CARR]` carried from a sibling page, re-grounded here.
+> flow. `[CARR]` carried from a sibling page.
 > `HIGH/MED/LOW` = confidence.
 
 ---
@@ -104,7 +104,7 @@ device-resolved `ib_addrs_one_eng`. On any error the driver calls
 relocation/trace aid, not required for execution.
 
 > **CORRECTION (vs prior notes).** `ib_fill_debug_info`'s body *is* recovered
-> this pass (`ib_fill_debug_info_impl @0x2f69d0`, a 30-line function;
+> (`ib_fill_debug_info_impl @0x2f69d0`, a 30-line function;
 > `ib_fill_debug_info @0x323c90` is a thunk to it). The field copy is therefore
 > `[OBS]`, not inferred — see §8.
 
@@ -322,7 +322,7 @@ single source slot is `PSEUDO_TRIGGER_COLLECTIVE` (opcode `0xC8`,
 output_tensor_id=4 num_elements=32 dtype=fp32 op=ADD group_id=0`"*).
 `translate_one_pseudo_instr_v2` expands it into the concrete TOP-SP collective
 micro-program (the `$S[10]` wait, the replica-group CC-DMA triggers, the
-`$S[22]++`-on-complete post-increment) — N>1 device slots — so this pass emits
+`$S[22]++`-on-complete post-increment) — N>1 device slots — so it emits
 one `INSERT(MAIN, count=N-1)`. The expansion factor N is queue/data-dependent and
 not present in the static `.bin`; only the `INSERT`/`DELETE` **structure** is
 `[OBS]`.
@@ -822,7 +822,7 @@ device PC  <->  NEFF IP (the .asm source line)
 - `itf_translate_function_call_instr` / `ipb_postprocess_instrs` internal branch
   encoding (the exact `add_br_rel` event/offset packing) is `[OBS]` at the call
   sites; the slot-level branch byte layout is documented in
-  [Sequencer Microcode](seq-microcode.md), not re-derived here. `[LOW]`
+  [Sequencer Microcode](seq-microcode.md), not derived here. `[LOW]`
 - The MODEL_SWITCH (`model_switch_offset`) range is built here, but its
   execution-side trigger (fast model reconfigure) is not exercised in the trace
   path. `[CARR]`

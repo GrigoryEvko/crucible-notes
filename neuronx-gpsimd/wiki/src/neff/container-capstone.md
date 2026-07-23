@@ -10,10 +10,10 @@ abstract spec) and the nine concrete lane pages, consolidating them and folding
 in the runtime load path, the host prelinker, and the compiler packager seam.
 
 Every fact is anchored to an address/offset/symbol/enum/opcode/string and tagged
-`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`. `CARRIED` claims are re-grounded
-against the binary in this pass; a claim that could not be re-pinned is flagged.
+`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`. `CARRIED` claims are grounded
+against the binary; a claim that could not be re-pinned is flagged.
 
-**Binaries of record (both re-verified this pass):**
+**Binaries of record:**
 
 | binary | role | path |
 |--------|------|------|
@@ -25,7 +25,7 @@ embedded in `libnrt.so`**: the 1024-B header at file offset `0xC07E20`, its gzip
 inner archive at `0xC08220`. `libnrt.so`'s `.text`/`.rodata`/`.data` are all
 `VMA == fileoffset` (zero delta), so every quoted libnrt offset is both.
 
-**Lane cross-links** (all re-read in full for this capstone):
+**Lane cross-links:**
 [`container-byte-format.md`](./container-byte-format.md) ·
 [`metaneff-io-abi.md`](./metaneff-io-abi.md) ·
 [`seq-microcode.md`](./seq-microcode.md) ·
@@ -40,9 +40,9 @@ Runtime path: [`../runtime/callgraph-spine.md`](../runtime/callgraph-spine.md),
 [`../runtime/libnrt-surface.md`](../runtime/libnrt-surface.md). Host prelinker:
 [`../runtime/prelinker-ucpl.md`](../runtime/prelinker-ucpl.md),
 [`../runtime/ucode-relocation-consumer.md`](../runtime/ucode-relocation-consumer.md).
-The compiler producer seam is Part-12; cite it as the inline path
-`compiler/neff-packager.md` (stub may not exist yet — not linked, to avoid a
-broken-link warning). The device ext-ISA the relocated kernel runs is the
+The compiler producer seam is Part-12, at the path
+`compiler/neff-packager.md` (kept as an inline path, not a link — that page is
+not present in this checkout). The device ext-ISA the relocated kernel runs is the
 device-ISA lane (`compiler/...` / images lane), out of scope here.
 
 ---
@@ -83,8 +83,8 @@ pool cores run (§3).
 > `7f 45 4c 46`, the UCPL `"UCPL "`, and a library-index slot marker `0x1095`.
 > `[HIGH·OBSERVED]`
 
-The load spine, byte-verified this pass (every address re-resolved from
-`libnrt.so` IDA `functions.json`, every caller edge confirmed):
+The load spine (every address resolved from
+`libnrt.so` IDA `functions.json`):
 
 ```
 nrt_load  →  nrt_load_util  →  kmgr_load_nn_nc  (callers of neff_parse @0xde4c4,0xde6ca)
@@ -106,7 +106,7 @@ nrt_load  →  nrt_load_util  →  kmgr_load_nn_nc  (callers of neff_parse @0xde
 
 ### 1.1 The 1024-byte `neff_header_t` (IDA ordinal 5896, size 1024)
 
-Offsets are exact; `[=…]` is the embedded-fixture byte, re-verified this pass by
+Offsets are exact; `[=…]` is the embedded-fixture byte, verified by
 `xxd -s 0xC07E20 -l 1024`. `[HIGH·OBSERVED]`
 
 | off | type | field | meaning | fixture |
@@ -165,7 +165,7 @@ authentication (§5.5) — and verified only when `nrt_load` passes the verify f
 > ustar signature `magic[6]="ustar "` + `version[2]=" \0"` at `+0x100`/`+0x106`,
 > GNU base-256 uid/gid (high bit `0x80`), and **zero** PAX/GNU-longname extension
 > records (no typeflag `x`/`g`/`L`/`K`). A reimplementer can emit plain GNU ustar.
-> `[HIGH·OBSERVED — concrete-carve §3; re-confirmed: ustar magic at tar+0x100]`
+> `[HIGH·OBSERVED — concrete-carve §3; ustar magic at tar+0x100]`
 
 ### 1.3 The tar walk — `neff_parse @0x4ca3f0` → `neff_t::files` `[HIGH·OBSERVED]`
 
@@ -193,9 +193,9 @@ later "load file X".
 
 > **CORRECTION — the skipped side-file suffix is `wavegraph-bin.json`, not
 > "checksum".** The 18-byte suffix compared at the skip site (string @`0x84986c`,
-> terminator `byte_84987E`) is literally `"wavegraph-bin.json"`. The DX-NEFF-10
-> backing report called this a generic `…checksum` skip; the binary names the
-> exact debug side-file. `[HIGH·OBSERVED — container-byte-format §3, re-grounded]`
+> terminator `byte_84987E`) is literally `"wavegraph-bin.json"`. An earlier reading
+> called this a generic `…checksum` skip; the binary names the
+> exact debug side-file. `[HIGH·OBSERVED — container-byte-format §3]`
 
 ### 1.4 The inner-tar member taxonomy (five section classes)
 
@@ -426,7 +426,7 @@ fixed order, then DMA-stages it to HBM as one `inst_block`:
 ## 2. The compression model — zlib-only, whole-archive `[HIGH·OBSERVED]`
 
 **One-line verdict: the runtime inflates NEFF payloads with zlib ONLY — DEFLATE
-via `inflate`, no zstd/lz4/brotli/lzma/bz2 path exists.** Re-grounded this pass by
+via `inflate`, no zstd/lz4/brotli/lzma/bz2 path exists.** Grounded by
 three independent checks.
 
 **Static inventory** (`nm libnrt.so`):
@@ -441,7 +441,7 @@ libarchive filters defined:  archive_read_support_filter_gzip @0x4d1f40  (and ON
                              no bzip2/xz/lzma/zstd/lz4 filter symbols)
 ```
 
-**The call edge** (each byte-verified this pass):
+**The call edge:**
 
 ```
 neff_parse @0x4ca3f0
@@ -464,7 +464,7 @@ never reached. So `pkg_version` is the runtime switch that **arms** (pkg2) or
 > RFC-1952 gzip stream (`1f 8b 08 00`, CM=8 DEFLATE, ISIZE @ stream-end). libarchive's
 > gzip filter strips the gzip framing and feeds the DEFLATE body to zlib `inflate`.
 > Confirmed on the fixture: `1f8b08` magic, CM=8, ISIZE=20480 == inflated length.
-> `[HIGH·OBSERVED — concrete-carve §2, re-confirmed this pass]`
+> `[HIGH·OBSERVED — concrete-carve §2]`
 
 > **GOTCHA — `liblzma`/`libbz2`/`libz.so` ship in the customop SDK but are NOT in
 > the runtime inflate path.** Standalone codec `.so`s under
@@ -478,7 +478,7 @@ never reached. So `pkg_version` is the runtime switch that **arms** (pkg2) or
 > integrity hash domain is `data[data_size]` = the raw gzip stream. Re-verified:
 > `md5(1709 compressed bytes) = 61b3cab2 4369b326 a2b3ee40 a744c746` == `header.hash[0..15]`;
 > `md5(20480 inflated tar bytes) = 0a677f86…` does **not** match. A writer must
-> MD5 the gzip output, not the tar input. `[HIGH·OBSERVED — re-confirmed this pass]`
+> MD5 the gzip output, not the tar input. `[HIGH·OBSERVED]`
 
 ---
 
@@ -507,7 +507,7 @@ engine `.bin` and this Q7 ELF are two different ISAs in the same NEFF model.
 
 ### 3.2 The device ELF shape (ground-truthed at `0x2EF7E0`) `[HIGH·OBSERVED]`
 
-`xxd -s 0x2EF7E0` re-verified this pass:
+`xxd -s 0x2EF7E0`:
 
 ```
 e_ident  7f 45 4c 46 / 01 01 01 00      ELFCLASS32, EI_DATA=1 (LSB)
@@ -516,7 +516,7 @@ e_entry  0x01005610                      e_phoff 0x34   e_phentsize 0x20   e_phn
                                          e_shoff 0x9CE8  e_shnum 0x23(35)  e_shstrndx 0x22
 ```
 
-Program headers (`Elf32_Phdr`, 32 B each), re-dumped this pass:
+Program headers (`Elf32_Phdr`, 32 B each):
 
 | Phdr | type | p_offset | p_vaddr | filesz | memsz | flags | align | region |
 |------|------|----------|---------|--------|-------|-------|-------|--------|
@@ -545,7 +545,7 @@ array; **(3)** `prelink_load_lib @0x9b5e70` copies CODE into a poison-filled
 `p_memsz` (overflow → `"Segment exceeds the size of the split region on device"`);
 **(4)** `prelink_relocate_lib @0x9b6160` walks the relocations.
 
-The `Elf32_Dyn` array decoded this pass (at VMA `0x03000000`, file-off `0x7500`):
+The `Elf32_Dyn` array (at VMA `0x03000000`, file-off `0x7500`):
 
 ```
 DT_INIT(12)=0x01000000  DT_FINI(13)=0x01006F10
@@ -560,7 +560,7 @@ DT_RELA(7)=0x030000C8   DT_RELASZ(8)=0x0B40      DT_RELAENT(9)=0x0C
 `{u32 r_offset; u32 r_info; u32 r_addend}`.
 
 `reloc_addr @0x9b6130` maps a link-VA to its staged address by the **segment
-delta** (decompiled this pass):
+delta**:
 
 ```c
 u32 reloc_addr(desc *d, int link_va) {
@@ -573,7 +573,7 @@ u32 reloc_addr(desc *d, int link_va) {
 ```
 
 The four relocation **types** (low byte of `r_info`), with the histogram
-re-classified this pass from the actual 240-entry table — **counts byte-exact**:
+classified from the actual 240-entry table — **counts byte-exact**:
 
 | type | name | count | apply path |
 |------|------|------:|------------|
@@ -589,7 +589,7 @@ slot's immediate via `.rodata` keep-masks; `"Unknown instruction format"` →
 status 12. The dispatch is an if/else chain (`prelink_relocate_lib` has no switch
 table); `"Unknown relocation type %d"` @`0x9b663d` is the fall-through.
 
-The type-5 apply (decompiled this pass) is **`*word = reloc_addr(*word +
+The type-5 apply is **`*word = reloc_addr(*word +
 r_addend)`** — it reads the existing 32-bit value at the site (`"Invalid load @
 0x%x"` on fault), adds the addend, rebases through the segment delta, and stores
 it back (`"Invalid store (0x%x) @ 0x%x"`). The aligned fast path is a direct
@@ -602,12 +602,12 @@ read/write; the unaligned path uses a 2-load/2-store split with merge masks
 > table). `r_info > 0xFF` (any non-zero symbol index) → `prelink_relocate_lib`
 > returns status 5. There is **no** dynamic-symbol lookup — a packaged ucode
 > library must be fully self-relative. "Resolution" is purely the segment-base
-> arithmetic in `reloc_addr`. `[HIGH·OBSERVED — re-confirmed: all 240 sym=0, all 30 type-5 sym=0/addend=0, targeting DATA VMA 0x02000xxx]`
+> arithmetic in `reloc_addr`. `[HIGH·OBSERVED — all 240 sym=0, all 30 type-5 sym=0/addend=0, targeting DATA VMA 0x02000xxx]`
 
 ### 3.4 The UCPL header + on-device install `[HIGH·OBSERVED]`
 
 On success `prelink @0x9b5d60` emits a `0x20`-byte UCPL descriptor (magic
-`0x204C504355` = `"UCPL "`, the qword little-endian `55 43 50 4C 20` — re-verified
+`0x204C504355` = `"UCPL "`, the qword little-endian `55 43 50 4C 20` — present
 both as the `.rodata` string pool `"UCPL "` and as a `constants_used` literal in
 `prelink`):
 
@@ -633,7 +633,7 @@ UCPL image to the device.
 **The device dispatch (POOL → Q7).** After relocation the POOL TPB-sequencer
 stream's compute opcodes are handed to a Q7 core; each core linear-scans its
 `kernel_info_table` — 17 rows of `{u8 0; u8 0; u8 spec; u8 opcode; u32 funcVA}`
-at VMA `0x02000380` (in the relocated DATA segment), dumped byte-exact this pass:
+at VMA `0x02000380` (in the relocated DATA segment), byte-exact:
 
 | idx | spec | opcode | mnemonic | funcVA |
 |----:|-----:|--------|----------|--------|
@@ -680,7 +680,7 @@ They share **nothing** but the word "relocation". §1.9 is the NEFF-side debug m
 ### 3.6 CORRECTION — type 5 is `R_XTENSA_RELATIVE`, not `R_XTENSA_32`
 
 > **CORRECTION.** The Part-8 host-prelinker page
-> `runtime/prelinker-ucpl.md` (#832/#816) and the DX-NEFF-10 backing report name
+> `runtime/prelinker-ucpl.md` (#832/#816) name
 > reloc type 5 **`R_XTENSA_32`**, deliberately standardizing on that label to
 > match the device-blob histogram. This capstone names it **`R_XTENSA_RELATIVE`**,
 > agreeing with the sibling consumer page
@@ -702,7 +702,7 @@ They share **nothing** but the word "relocation". §1.9 is the NEFF-side debug m
 > truth"; this capstone and #881 standardize on `R_XTENSA_RELATIVE` to match the
 > psABI value mapping and the symbol-less, read-then-rebase semantics. *These pages
 > are not edited here; the divergence is recorded as a NOTE only.*
-> `[CORRECTION·HIGH — re-grounded: 240 relocs sym=0, type-5 apply reads in-place word, psABI 5=RELATIVE]`
+> `[CORRECTION·HIGH — 240 relocs sym=0, type-5 apply reads in-place word, psABI 5=RELATIVE]`
 
 ---
 
@@ -770,7 +770,7 @@ if ((feature_bits & 0x7FFFFFFFF8000000) != 0)  →  code 10
      Features supported by this Neuron Runtime: 0x7FFFFFF."
 ```
 
-Exact arithmetic, re-grounded from `neff_parse`'s `constants_used` this pass:
+Exact arithmetic, from `neff_parse`'s `constants_used`:
 mask `0x7FFFFFFFF8000000` (= the literal `9223372036720558080`) = **bits 27..62**
 (the trapdoor); supported `0x7FFFFFF` (= `134217727`) = **bits 0..26** (what the
 runtime understands); `mask & supported = 0` (disjoint), `mask | supported` =
@@ -1002,7 +1002,7 @@ GNU-ustar packing, the §6 write checklist) is the Part-12 page, cited as
   shipped header).
 - `relocate_op`'s exact per-FLIX-slot immediate bit-map for each sub-format (the
   shift/mask constants are observed; each maps to a specific `ncore2gp` TIE slot
-  layout not re-derived field-by-field).
+  layout not derived field-by-field).
 - `numpy_load` handles only v1 npy headers (`u16 hlen`); v2/v3 large-weight headers
   unproven.
 - Whether any shipped Q7 image is ever big-endian (the byte-swap path exists; all

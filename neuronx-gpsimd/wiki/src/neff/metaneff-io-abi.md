@@ -134,9 +134,7 @@ contiguous bytes `+0x28`/`+0x29`/`+0x2a`:
 | 5 | `lazy_load` | bool | `0x28` | uint8 @ `+0x29` (41) | `setne 0x29(%rbx)` @0x484d59 |
 | 6 | `return_aliases` | bool | `0x30` | uint8 @ `+0x2a` (42) | `setne 0x2a(%rbx)` @0x484ce1 |
 
-> **CORRECTION (vs the source report's table).** The report lists fields 1–3 with
-> tentative `[INF — not exercised]` offsets and gives `return_aliases` (#6) **no**
-> offset. The `ModelConfig::_InternalParse` body resolves all three bools
+> **CORRECTION.** The `ModelConfig::_InternalParse` body resolves all three bools
 > precisely: `async_load=+0x28`, `lazy_load=+0x29`, **`return_aliases=+0x2a`
 > `[OBSERVED]`**. Fields 1–3 are int64 (tags `0x08`/`0x10`/`0x18`) and parsed but
 > have no observed *setter* in this binary (see §6).
@@ -508,8 +506,7 @@ classes (RTTI `_ZTIN6neuron5ModelE @0x5523a8`, `_ZTIN6neuron9SPMDModelE
   (§4.5) and re-collects outputs via `create_output_tensors` (§4.6). The
   `forward_v2_tuple<N>` arity-N wrappers handle fixed-output-count graphs.
 
-> **CORRECTION (vs the source report).** The report cites `forward_v2 @0x13f920`;
-> that address is the boxing/PLT thunk. The real
+> **CORRECTION.** The address `0x13f920` is the boxing/PLT thunk. The real
 > `neuron::forward_v2(vector<at::Tensor>, intrusive_ptr<Model>)` implementation is
 > at **`0x2893d0`** (`@0x178f80` is `forward_batch`). Use `0x2893d0` when
 > navigating the de-boxed call graph.

@@ -25,7 +25,7 @@ format, not Xtensa**; they are decoded from the header structs, *not* with the n
 `ncore2gp` `xtensa-elf-objdump` (which is for Vision-Q7 device code).
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
-`OBSERVED` = a byte/string/`STATIC_ASSERT` read this session; `INFERRED` = reasoned over
+`OBSERVED` = a byte/string/`STATIC_ASSERT`; `INFERRED` = reasoned over
 OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor. Crossed with
 `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**

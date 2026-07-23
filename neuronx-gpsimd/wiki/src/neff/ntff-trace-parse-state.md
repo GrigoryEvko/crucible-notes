@@ -23,7 +23,7 @@ VMA/file-offset delta on any section of interest here.
 > [../runtime/public-api-table.md](../runtime/public-api-table.md). The pending device
 > notification *producer* lives in `control/interrupt/device-host-notification.md`, the
 > host profiling→ntff gating in `control/security/profiling-trace-debug-gating.md`, and
-> the full host-struct census in `appendix/struct-host-runtime-layouts.md` (all in flight).
+> the full host-struct census in `appendix/struct-host-runtime-layouts.md`.
 
 ---
 
@@ -103,15 +103,15 @@ Serialize evidence (`objdump -d --start/--stop` over `0x48e4b0..0x48ef6c`):
 48eacc movb $0x32,(%rbx)  (single memcpy of ArenaString) ; f6  hint_
 ```
 
-> **CORRECTION (vs the DX-STRUCT-07 source report §1.1).** The source report's
-> field↔member assignment for `ntrace_event` was scrambled relative to the binary.
+> **CORRECTION.** An earlier field↔member assignment for `ntrace_event` was
+> scrambled relative to the binary.
 > The binary (serialize value-offset → `Impl_` member name) is authoritative and gives the
 > table above. Concretely: **f2 = `data_`** (not `type_`); **f4 = `nc_idx_`**, **f5 =
 > `event_type_`**, **f7 = `duration_`**, **f8 = `thread_id_`**, **f11 = `status_`**;
 > **f6 = `hint_`** (string, tag `0x32`) and **f12 = `attributes_`** (the `string→string`
-> map, tag `0x62`) — i.e. the report's f6/f12 are *swapped*; and **f13 = `phase_`** read
+> map, tag `0x62`) — i.e. an earlier reading's f6/f12 are *swapped*; and **f13 = `phase_`** read
 > as a sign-extended `int` **varint** (`movslq 0xa0(%rbp)`, tag `0x68`), **not** the
-> length-delimited f12 the report posited. `type_` is **not** serialized by this method in
+> length-delimited f12 an earlier reading posited. `type_` is **not** serialized by this method in
 > this build (no tag references obj `0x58`). The `attributes_` map entry uses the standard
 > `MapEntry` inner tags `0x0a` (key=f1 string) + `0x12` (value=f2 string), wrapped by the
 > outer `0x62`. `[OBS HIGH — serialize bytes + struct member offsets]`
@@ -124,7 +124,7 @@ Serialize evidence (`objdump -d --start/--stop` over `0x48e4b0..0x48ef6c`):
 |---|---|---|---|
 | 1 | `0x08` | `start_address_` (u64) | |
 | 2 | `0x10` | `nc_engine_type_` (int) | **POOL = 2 ⇒ a GPSIMD/Q7 instruction block** |
-| 3 | `0x1a` | `instructions_` (string) | raw Q7 bundle bytes → DX-ISA disassembler |
+| 3 | `0x1a` | `instructions_` (string) | raw Q7 bundle bytes → device-ISA disassembler |
 | 4 | `0x20` | `engine_index_` (u32) | |
 | 5 | `0x28` | `block_type_` (int) | NC=0 / DMA=1 / TOPSP=2 (§2.7) |
 | 6 | `0x30` | `function_section_` (bool) | |
@@ -326,7 +326,7 @@ Jump table bytes (`.rodata 0x8570c0`, decoded `target = 0x8570c0 + int32(entry)`
 > indistinguishable in the resulting trace record. The TOPSP family (6/7/8) re-uses the
 > `INSTRUCTION/EVENT/ERROR` trace types but stamps `block_type = TOPSP(2)`; only `DMA(4)`
 > produces `block_type = DMA(1)`. The full producer of these device notifications is
-> `control/interrupt/device-host-notification.md` (in flight).
+> `control/interrupt/device-host-notification.md`.
 
 ---
 
@@ -540,7 +540,7 @@ runtime, non-lib resolver) — members not expanded here.
   the `InternalWriteMessage($field,%edi)` tags exactly (§2.4).
 - **GPSIMD/Q7 anchors** in the trace tree: `engine_instruction_info.nc_engine_type_ == POOL(2)`
   (§2.2), `nc_timestamp_info.tpb_pool_` (f4, §2.5), and `subgraph_info.collectives_*`
-  (§2.5). The `engine_instruction_info.instructions_` (f3, tag `0x1a`) bytes feed the DX-ISA
+  (§2.5). The `engine_instruction_info.instructions_` (f3, tag `0x1a`) bytes feed the device-ISA
   disassembler. `nc_engine_type` enum: `PE=0 ACT=1 POOL=2 DVE=3 SP=4`.
 - **Packet-type ↔ oneof** consistency: `collectives_packet_type {SEMA_UPDATE_RECV(2),
   SEMA_UPDATE_SEND(3)}` ↔ the `sema_update` oneof arm (field 4); `NET_IDX_UPDATE(4)` ↔ the

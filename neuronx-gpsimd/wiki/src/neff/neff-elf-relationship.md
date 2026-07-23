@@ -21,7 +21,7 @@
 provenance `OBSERVED` (bytes/struct/string read from a shipped artifact — the
 carved device blob via the native `ncore2gp` `xtensa-elf-readelf`, or host
 `readelf`/`nm`/`xxd`/`grep` on `libnrtucode_internal.so`), `INFERRED` (reasoned
-from observed bytes / decompiled control flow), `CARRIED` (re-grounded from a
+from observed bytes / decompiled control flow), `CARRIED` (from a
 sibling page). v2/v3/v4 (CAYMAN/MARIANA/MARIANA_PLUS) facts are byte-grounded;
 v5 (MAVERICK) is header-OBSERVED only and called out where it appears.
 
@@ -86,7 +86,7 @@ is the device-resident end of the I/O ABI; the NEFF var table is the host end.
 002ef810: 2300 2200 ...                             #.".
 ```
 
-Decoded, and re-confirmed field-by-field by the native `ncore2gp`
+Decoded, and confirmed field-by-field by the native `ncore2gp`
 `xtensa-elf-readelf -h` on the carved blob:
 
 | `Ehdr` field | bytes | value |
@@ -146,7 +146,7 @@ ELF-magic scan 1:1. `[HIGH × OBSERVED]`
 
 Each `EXTISA_N` is paired with an `EXTISA_N_JSON_get.data` manifest blob at the
 `.rodata` offset immediately preceding the next SO (e.g.
-`CAYMAN_…_EXTISA_0_JSON_get.data @0x2F9A40`). This pass, those four shipped JSON
+`CAYMAN_…_EXTISA_0_JSON_get.data @0x2F9A40`). Those four shipped JSON
 companions read as a **placeholder stub** — `xxd @0x2F9A40` = the 32 bytes
 `{"dummy_message": "hello world"}`, immediately followed by the next ELF magic at
 `0x2F9A60`. The per-lib opcode manifest is *not* baked into the resident set; the
@@ -336,7 +336,7 @@ The `0x70000000`-class tags are the Tensilica DT_XTENSA_* PI-reloc extension
 pointers; here the table is fully expressed via `DT_RELA`, so the LOPROC pointer
 indexes the GOT/aux at `0x3000C08+`. `[HIGH × OBSERVED]`
 
-> **CORRECTION vs the DX-NEFF-09 source draft (`.dynamic` entry list).** That draft
+> **CORRECTION vs an earlier draft (`.dynamic` entry list).** That draft
 > listed a third LOPROC tag `0x70000002 = 0` and omitted `DT_SYMENT` and
 > `DT_DEBUG`. Native `readelf -dW` shows **15** entries: `DT_SYMENT (11) = 16` and
 > `DT_DEBUG (21) = 0` are present; only `0x70000000` and `0x70000001` LOPROC tags
@@ -492,7 +492,7 @@ then `dram_buf`, broadcast to all 8 Q7 pool cores. The strings
 the available buffer on device"` (both present in the host lib) gate this.
 `[strings + magic OBSERVED; field layout CARRIED #832]`
 
-> **CORRECTION vs the DX-NEFF-09 source draft (UCPL fields).** An earlier sketch
+> **CORRECTION (UCPL fields).** An earlier sketch
 > labeled `+0x0C` "code_sz_align" and `+0x14` "data_load_va". The byte-exact,
 > instruction-anchored layout (#832 §3.6, disassembled from `prelink
 > @0x9b5e16..0x9b5e5b`) is the one above: `+0x0C` is `data_seg_off =
