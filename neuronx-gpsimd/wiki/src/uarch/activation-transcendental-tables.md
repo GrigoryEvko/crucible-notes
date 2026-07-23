@@ -48,9 +48,9 @@ content provenance. They meet only at the algebra layer (a transcendental realis
 | 6 | **The host-content wall is one-sided and precise.** Engine A content is resident & recovered; Engine B `{d0..d3,x0}` cubics + PROFILE config words are host-loaded via `0x23 ACTIVATION_TABLE_LOAD` and never in the image. | `[HIGH/OBSERVED]` |
 | 7 | **Device round-trip bit-exact** — `ivp_recip0nxf16`/`ivp_rsqrt0nxf16`/`recip0.s`/`recipqli.s` assemble+disassemble byte-for-byte under `XTENSA_CORE=ncore2gp`. | `[HIGH/OBSERVED]` |
 
-All addresses re-verified this pass with `readelf -SW`, `nm`, `xxd`, `objdump`; all value facts
-driven live in-process against `libfiss-base.so`; all struct facts compile-verified against the
-shipped headers. Provenance: lawful interoperability RE of shipped artifacts; every fact reads as
+All addresses are verified with `readelf -SW`, `nm`, `xxd`, `objdump`; all value facts are
+driven live in-process against `libfiss-base.so`; all struct facts are compile-verified against
+the shipped headers. Provenance: lawful interoperability RE of shipped artifacts; every fact reads as
 derived from the binary, the `.rodata` bytes, the disassembly, the shipped C header, and the
 device-native assembler.
 
@@ -68,7 +68,7 @@ those pages — this section re-grounds them at the table level, it does not re-
 
 The tables live in `libfiss-base.so`
 (`extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/libfiss-base.so`, `not stripped`). The
-relevant sections, from `readelf -SW` this pass:
+relevant sections, from `readelf -SW`:
 
 | section | Address (VMA) | Off (file) | Δ | flags |
 |---|---|---|---|---|
@@ -81,11 +81,11 @@ relevant sections, from `readelf -SW` this pass:
 > All 8 seed/QLI tables are in `.rodata` (`0x88ff00`–`0x959200`), where **VMA == file-offset**, so
 > `xxd -s <VMA>` reads them directly with no delta. The `0x200000` (not libtpu's `0x400000`) delta
 > applies only to the writable sections; a reimplementer reading these read-only ROM tables subtracts
-> nothing. Confirm per-section with `readelf -SW` before trusting any address. `[HIGH/OBSERVED]`
+> nothing. Confirm per-section with `readelf -SW` before trusting any address.
 
-### 1.2 The two seed tables — symbols, addresses, format `[HIGH/OBSERVED]`
+### 1.2 The two seed tables — symbols, addresses, format
 
-`nm libfiss-base.so` resolves all 8 table symbols at the cited addresses (re-read this pass), every
+`nm libfiss-base.so` resolves all 8 table symbols at the cited addresses, every
 one an `r` (read-only) symbol inside `.rodata`:
 
 | symbol | VMA | entries | stride | role |
@@ -100,7 +100,7 @@ one an `r` (read-only) symbol inside `.rodata`:
 | `table__RECIP_Data8` | `0x958fc0` | 128 | 4 B (u32) | `1/x` seed ROM |
 
 **Physical form.** Each seed table is **128 entries, 4-byte stride, 8-bit seed in the low byte, upper
-3 bytes zero** (the `Data8` name = 8-bit data widened to u32). Read straight from `.rodata` this pass:
+3 bytes zero** (the `Data8` name = 8-bit data widened to u32). Read straight from `.rodata`:
 
 ```
 RECIP_Data8 (0x958fc0):  ff 00 00 00  fd 00 00 00  fb 00 00 00  f9 00 00 00  …  (low-byte = ff fd fb f9…)
@@ -109,18 +109,18 @@ RSQRT_Data8 (0x958dc0):  b4 00 00 00  b3 00 00 00  b2 00 00 00  b0 00 00 00  …
                          … entry 62=81, 63=80 | 64=ff, 65=fd …  → … b8 b7 b6 b5  (entries 124..127)
 ```
 
-> **QUIRK — two symbols name the same bytes (`recip_tab` ≡ `RECIP_Data8`).** A 512-byte `cmp` this
-> pass returned **IDENTICAL** for both `recip_tab`(`0x9553c0`) vs `RECIP_Data8`(`0x958fc0`) and
+> **QUIRK — two symbols name the same bytes (`recip_tab` ≡ `RECIP_Data8`).** A 512-byte `cmp`
+> returns **IDENTICAL** for both `recip_tab`(`0x9553c0`) vs `RECIP_Data8`(`0x958fc0`) and
 > `rsqrt_tab`(`0x9551c0`) vs `RSQRT_Data8`(`0x958dc0`). The fp16 leaves `lea` the `*_tab` name, the
 > fp32 leaves the `*_Data8` name — **one ROM each**, two aliases. Cite `*_Data8` as the canonical seed
-> source. `[HIGH/OBSERVED]`
+> source.
 
 **`RECIP_Data8` construction** (re-derived; the value matches the bytes 127/128 exact, 128/128 ±1):
 
 ```c
 // RECIP_Data8[i] == round( 256 / (1 + (i + 0.5)/128) ),  i = 0..127   (bucket midpoint, x in [1,2))
 //   monotone-decreasing 0xff → 0x81; the 8-bit reciprocal of the bucket centre, the seed mantissa byte.
-//   RECIP[0]=0xff (≈1/1.0), RECIP[64]=0xaa (≈1/1.5), RECIP[127]=0x81 (≈1/2.0).   [HIGH/OBSERVED]
+//   RECIP[0]=0xff (≈1/1.0), RECIP[64]=0xaa (≈1/1.5), RECIP[127]=0x81 (≈1/2.0).
 ```
 
 **`RSQRT_Data8` construction** — a **two-range table split by EXPONENT PARITY, odd-half first**:
@@ -130,7 +130,7 @@ RSQRT_Data8 (0x958dc0):  b4 00 00 00  b3 00 00 00  b2 00 00 00  b0 00 00 00  …
 //   == round( 256 / sqrt( 2*(1 + (i+0.5)/64) ) )    // 0xb4 … 0x80   (63/64 exact, 64/64 ±1)
 // hi64  RSQRT_Data8[64+j], j in [0,64): EVEN-exponent binade, x in [1,2)
 //   == round( 256 / sqrt(    1 + (j+0.5)/64   ) )    // 0xff … 0xb5   (64/64 exact)
-// The 0x80→0xff jump at index 64 is the binade boundary, NOT a table error.   [HIGH/OBSERVED]
+// The 0x80→0xff jump at index 64 is the binade boundary, NOT a table error.
 ```
 
 ### 1.3 The index bits — the lookup key `[HIGH/OBSERVED·exec]`
@@ -152,7 +152,7 @@ fp16: seed_mant = (tab & 0x7f) << 3   // 8-bit byte at the mantissa top of a 10-
 fp32: seed_mant = (tab & 0x7f) << 16  // … of a 23-bit field
 ```
 
-Verified live this pass over all 128 buckets, both widths:
+Verified live over all 128 buckets, both widths:
 
 ```
 fp16 recip0:  idx=(m>>3)&0x7f         → seed hi-byte == RECIP_Data8[idx]&0x7f   0 mismatches / 1024 mantissas
@@ -164,25 +164,25 @@ fp32 rsqrt0:  idx=((e&1)<<6)|(m>>17)  → seed hi-byte == RSQRT_Data8[idx]&0x7f 
 **Segment selection.** The seed engine is a **single-segment-per-half LUT** — the only "segment"
 choice is the rsqrt exponent-parity half (2 ranges); reciprocal is one 128-entry monotone run. The
 multi-segment piecewise structure lives in the QLI refine (§1.5) and the ACT PWP (§2), **not** the
-seed table. `[HIGH/OBSERVED]`
+seed table.
 
 > **GOTCHA — these are SEEDs, not transcendentals; even an exact reciprocal carries the seed error.**
 > Driven live: `recip0(2.0) = 0x3eff0000 = 0.498047`, **not** `0.5`, even though `1/2` is exactly
 > representable. It reads bit-exact as `RECIP_Data8[0]&0x7f = 0x7f` placed in the mantissa with the
 > reflected exponent — a perturbed `0.5`, not a rounding bug. Full-range fp32 max relative error,
-> 50,000-sample live sweep this pass: **`recip0` = 0.00781 = 2⁻⁷·⁰⁰ (7.0 bits)**, **`rsqrt0` =
+> 50,000-sample live sweep: **`recip0` = 0.00781 = 2⁻⁷·⁰⁰ (7.0 bits)**, **`rsqrt0` =
 > 0.00545 = 2⁻⁷·⁵² (7.5 bits)** — exactly the resolution a 128×8-bit table delivers, matching
 > [B15 §6](../isa/ref/b15-sp-lookup.md). A reimplementer treating a seed op as the function is wrong
 > by ~1 part in 128 on **every** input, including powers of two. `[HIGH/OBSERVED·exec]`
 
-### 1.4 The seed ops + the lookup-unit HW `[HIGH/OBSERVED]`
+### 1.4 The seed ops + the lookup-unit HW
 
 The seed/lookup ops are the **`ivpep_sem_hp_lookup`** (fp16, 30 ops) + **`ivpep_sem_sp_lookup`**
 (fp32, 29 ops) groups — **one multiplexed `S3_ALU`-class lookup datapath** across six slots
 `{F0,F1,F2,F3,F7,N0}`, the opcode-selector immediate indexing the mux. `libcas-core.so` (the cycle
 model, `not stripped`, 179,079 symbols, **no DWARF**) names the family directly: 38
 `ivpep_sem_hp_lookup_*` symbols, 38 `ivpep_sem_sp_lookup_*`, and a single shared
-`bbn_sem_vec_sprecip_rsqrt_opcode` pipeline of **16 stages** (`stage0..stage15`, counted this pass) —
+`bbn_sem_vec_sprecip_rsqrt_opcode` pipeline of **16 stages** (`stage0..stage15`) —
 recip and rsqrt are **one 16-deep datapath** multiplexed by the opcode selector. The seed ROM is
 mirrored in the simulator as `CONST_TBL_RECIP_Data8_0` @`0x17bd580` and `CONST_TBL_RSQRT_Data8_0`
 @`0x17bd340`.
@@ -201,7 +201,7 @@ The seed roster (per-op output frame; structure HIGH/OBSERVED, the kernel-on-top
 > ROM as `recip0`); `sqrt0` `lea`s `table__RSQRT_Data8` (the same as `rsqrt0`). The four
 > reciprocal-class seeds cost **two** 512-byte ROMs, not four. Driven live: `div0(1.0)==div0(4.0)`
 > (same mantissa & parity), `sqrt0(1.0)==sqrt0(4.0)` — the parity-domain collision the shared ROM
-> produces. `nexp01` references **no** table (pure bit manipulation). `[HIGH/OBSERVED·exec]`
+> produces. `nexp01` references **no** table (pure bit manipulation).
 
 **Timing** (the lookup-unit pipe, [B14 §6](../isa/ref/b14-hp-lookup.md)): the lookup unit is one cycle
 deeper than the integer vec ALU — `vr USE@10 → vt DEF@12` = **2-cycle result latency**; IEEE flags
@@ -209,13 +209,13 @@ trail @13/14, the imprecise-err surface @15, `CPENABLE` (cp1 gate) sampled @3. T
 Invalid/DivZero Enable and write the sticky FSR flags (recip/rsqrt `x==0 → +Inf + DivZeroFlag`;
 `x<0 → Invalid`). Special inputs, driven live: `recip0(+0)=+inf`, `recip0(-0)=-inf`,
 `recip0(+inf)=+0`, `recip0(NaN)=quiet-NaN`, `rsqrt0(-1.0)=NaN`, `rsqrt0(+0)=+inf`; denormals are
-**not** flushed (a `bsr`-normalize path indexes them). `[HIGH/OBSERVED·exec]`
+**not** flushed (a `bsr`-normalize path indexes them).
 
 ### 1.5 The QLI refine — the seed → full-precision step `[HIGH/OBSERVED seg-extract; —/CARRIED interior]`
 
 The reciprocal seed (~7 bits) is taken to full fp32 (~24 bits) by a **single QLI
 (quadratic-interpolation) step — NOT a Newton loop**. The refine leaf
-`module__xdref_recipqli_1_1_1_1_1_32f_32f` @`0x87df20`, disassembled verbatim this pass:
+`module__xdref_recipqli_1_1_1_1_1_32f_32f` @`0x87df20`, disassembled verbatim:
 
 ```c
 // recipqli — the single-pass quadratic-interpolation refine of the reciprocal seed.
@@ -227,17 +227,16 @@ m23 = (x >> 0x17) & 0x7fffff;      // 87df44: shr $0x17,%esi ; 87df54: and $0x7f
 //   y_full  = quadratic_interp(seed, A, gx)          // one quadratic pass: error is CUBED, 8b → ~24b
 ```
 
-The refine references **all four** QLI LUTs by `lea` (re-read this pass): `lut2_A` @`0x958ac0`,
+The refine references **all four** QLI LUTs by `lea`: `lut2_A` @`0x958ac0`,
 `lut1_A` @`0x958bc0`, `lut2_gx` @`0x9587c0`, `lut1_gx` @`0x9588c0`. The two LUTs are the two segments
 of the piecewise refine: **lut1 (128× {i32 A, u32 gx 28-bit}) + lut2 (64× {i32 A, u32 gx 28-bit})**.
 The header/ISA exposes exactly two refine sub-stages — `IVP_RECIPQLIN_2XF32_0` / `_1` (the segment
-split, confirmed in `libcas-core.so` this pass), **not** an iterated Newton loop. `recipqli.s`
-round-trips bit-exact on the device (§5). `[HIGH/OBSERVED]` on the seg extract + the LUT addresses +
-the substage split.
+split, confirmed in `libcas-core.so`), **not** an iterated Newton loop. `recipqli.s`
+round-trips bit-exact on the device (§5).
 
 > **WALL (FW-42) — the QLI refine POLYNOMIAL INTERIOR is CARRIED.** The 6-bit segment extract, the
-> four LUT addresses and sizes, and the substage split are **OBSERVED** (disassembled / read this
-> pass). What is **CARRIED** is the exact `{A, gx}` coefficient algebra — the precise quadratic the
+> four LUT addresses and sizes, and the substage split are **OBSERVED**.
+> What is **CARRIED** is the exact `{A, gx}` coefficient algebra — the precise quadratic the
 > hardware evaluates between the segment read and the writeback — and the device-interior reduction.
 > The `libfiss-base` leaf is the functional reference model, but the refine math is not stated here as
 > freshly-derived fact; it is the [B17](../isa/ref/b15-sp-lookup.md)/B24 refine concern, tagged
@@ -247,7 +246,7 @@ the substage split.
 > **NEGATIVE — there is NO rsqrt QLI table / no `RSQRTQLI` intrinsic.** Only the reciprocal path has
 > QLI LUTs. `rsqrt`/`sqrt` refine via the generic fp-FMA **Newton** step
 > `y_{n+1} = y_n·(1.5 − 0.5·x·y_n²)`, 1–2 iterations from the 8-bit seed (the
-> `bbn_sem_vec_sprecip_rsqrt` block). `[HIGH/OBSERVED]`
+> `bbn_sem_vec_sprecip_rsqrt` block).
 
 > **NOTE — why QLI for recip but Newton for rsqrt (the engine-design fact).** A quadratic interpolant
 > **cubes** the error per pass (8 bits → ~24 in one step), so the reciprocal needs one refine op + the
@@ -263,7 +262,7 @@ the substage split.
 The activation engine is a **separate four-table SoC-block machine**. The format is a
 **piecewise-CUBIC** (PWP = Piece-Wise Polynomial) function approximator, **not** a linear
 breakpoint/slope/intercept PWL. Source: `arch-headers/<gen>/tpb_activation_entries.h`, read verbatim
-and compile-verified this pass across all 5 gens.
+and compile-verified across all 5 gens.
 
 ### 2.1 The four tables — sizes + roles `[HIGH/OBSERVED]`
 
@@ -289,7 +288,7 @@ Matches `(opcode, func_id)` to SELECT the PROFILE/CONTROL/BUCKET slot. Region 0x
 per-engine PROF_CAM profiler (16 B, no `func_id`) — see §4.
 
 **PROFILE** — `aws_hal_stpb_act_profile_entry_t` (128 B, dense to bit ~754). The per-function PWL
-config (field groups read verbatim this pass):
+config (field groups read verbatim):
 
 * **dtype**: `bias_dtype_sel:4`, `scale_dtype_sel:4`.
 * **PWL approx / region-split**: `pwl_bypass:1` (@32), `symmetry_opt_en:2`,
@@ -338,7 +337,7 @@ coordinate). `PROFILE.exponent_offset` biases the exponent before the extract.
 > **QUIRK — the CONTROL header's `// 16 bytes` comment is stale; the struct stride is 32 B.** The
 > comment block reads "Control Table Entry / 16 bytes", but the `unused2[7]` tail makes the real
 > stride 32 B (4 B used + 28 B unused). Compile-verified `sizeof = 32`. A reimplementer must walk
-> CONTROL at a **32-byte** stride, not 16. `[HIGH/OBSERVED]`
+> CONTROL at a **32-byte** stride, not 16.
 
 **BUCKET** — `aws_hal_stpb_act_bucket_entry_t` (32 B), read verbatim — **the per-segment CUBIC
 polynomial**:
@@ -354,7 +353,7 @@ uint32_t unused[3]; // 20..31
 
 Offsets `d0@0, d1@4, d2@8, d3@12, x0@16` — compile-verified all 5 gens. The BUCKET region is a
 **shared pool** indexed per-function via `CONTROL.act_tbl_base`; cayman `ACT_BUCKET_TABLE` = 0x10000
-(64 KiB) / 32 B = **2048 buckets** (+ a 512 KiB `LOCAL_STORAGE` shadow = 16384). `[HIGH/OBSERVED]`
+(64 KiB) / 32 B = **2048 buckets** (+ a 512 KiB `LOCAL_STORAGE` shadow = 16384).
 
 ### 2.2 The PWP evaluation — the per-segment math `[HIGH format / INFERRED-HIGH eval]`
 
@@ -366,7 +365,7 @@ func(x) ≈ d0 + d1·t + d2·t² + d3·t³     // degree-≤3 polynomial PER seg
 
 A linear PWL would carry `{d0=intercept, d1=slope, x0=breakpoint}` only; the `d2`/`d3` quadratic/cubic
 terms are **real and compile-verified present** at offsets 8/12. The exact HW Horner/Estrin schedule
-is silicon. `[HIGH/OBSERVED]` struct; `[INFERRED-HIGH]` cubic eval from the 4-coeff+breakpoint shape.
+is silicon. `[INFERRED-HIGH]` cubic eval from the 4-coeff+breakpoint shape.
 
 ### 2.3 The end-to-end lookup pipeline (Engine B)
 
@@ -384,9 +383,9 @@ in_value(fp)
 The instruction's scale/bias (or the PROFILE fused const) is the affine applied PRE the function.
 `[HIGH/OBSERVED]` for the table roles; `[MED/INFERRED]` for the exact HW micro-sequence.
 
-### 2.4 The ACT opcode quad + the ACTIVATE2 (0x25) apply/fusion `[HIGH/OBSERVED]`
+### 2.4 The ACT opcode quad + the ACTIVATE2 (0x25) apply/fusion
 
-The ACT family opcodes, read directly from `aws_neuron_isa_tpb_common.h` this pass:
+The ACT family opcodes, read directly from `aws_neuron_isa_tpb_common.h`:
 
 | opcode | enum | struct | role |
 |---|---|---|---|
@@ -397,7 +396,7 @@ The ACT family opcodes, read directly from `aws_neuron_isa_tpb_common.h` this pa
 | `0x25` | `ACTIVATE2` | `S2D2_AC` | fused act + dual-ALU + reduce, 2D `[v4+]` |
 | `0x26` | `ACTIVATE_MULTIPASS` | `S1S2D2_AM` | act + prev-pass 1D accumulator, 2D `[v5]` |
 
-The `S2D2_AC` (0x25) fields, read verbatim this pass (`activation_func @35`, `reduce_cmd @26`):
+The `S2D2_AC` (0x25) fields, read verbatim (`activation_func @35`, `reduce_cmd @26`):
 
 | off | field | type | note |
 |---|---|---|---|
@@ -410,7 +409,7 @@ The `S2D2_AC` (0x25) fields, read verbatim this pass (`activation_func @35`, `re
 | **35** | **`activation_func`** | **`u8`** | **INDEX into the loaded PWP table** |
 | 36/40/44 | `imm0`/`imm1`/`relu_param` | `IMM_VAL_INST_FIELD` | relu_param = parametric-ReLU slope |
 
-`op0`/`op1`/`reduce_op` draw from the `ALU_OP` table (read this pass): `BYPASS=0x00, ADD=0x04,
+`op0`/`op1`/`reduce_op` draw from the `ALU_OP` table: `BYPASS=0x00, ADD=0x04,
 SUBTRACT=0x05, MULT=0x06, DIVIDE=0x07, MAX=0x08, MIN=0x09, RE_LU=0x22, SQUARE=0x23` — so
 `op0=MULT, op1=ADD` ⇒ the classic affine `scale·x + bias`. The fused 2D pass:
 
@@ -428,7 +427,7 @@ INSTALLED by `0x23 ACTIVATION_TABLE_LOAD`, the DMA that stages the host coeffici
 On cayman/mariana (v3/v4) the four tables are an ACT-engine block (`TPB_n_ACT_{PROFILE_CAM,
 PROFILE_TABLE, BUCKET_TABLE, CONTROL_TABLE}` + `LOCAL_STORAGE` shadows). On **maverick (v5) there is
 NO ACT engine block**; the PWP SRAM physically MOVED into the DVE block. From
-`maverick/vpc-mirror/arch-regs/src/address_map/TPB_DVE.json`, read this pass:
+`maverick/vpc-mirror/arch-regs/src/address_map/TPB_DVE.json`:
 
 | block | AddressOffset | size | note |
 |---|---|---|---|
@@ -440,7 +439,7 @@ NO ACT engine block**; the PWP SRAM physically MOVED into the DVE block. From
 
 So the v5 fold is a **real hardware-region migration**: the DVE engine HOSTS the activation PWL
 datapath, not just its schedule. The PWP table FORMAT is byte-identical across the fold (sha
-`8f6f5f49…` cayman..maverick). `[HIGH/OBSERVED]`
+`8f6f5f49…` cayman..maverick).
 
 ---
 
@@ -465,10 +464,10 @@ The wall is between Engine B's table CONTENT and everything else. It is **one-si
   bias/scale consts).
 
 > **NOTE — `activation_func @35` is a RAW uint8 index; there is NO ISA-named activation enum.** A grep
-> of all arch-isa headers this pass found **0** hits for `gelu`/`sigmoid`/`silu`/`swish`/`softplus` as
+> of all arch-isa headers finds **0** hits for `gelu`/`sigmoid`/`silu`/`swish`/`softplus` as
 > an activation enum (the only stray hit is `tonga/intc_axim.go` — an unrelated AXI-interconnect Go
 > file, not an activation). The only RELU is the `ALU_OP RE_LU=0x22` + the `relu_param` immediate. The
-> host KRT loads the functions as PWP TABLE DATA via `0x23` and selects by index. `[HIGH/OBSERVED]`
+> host KRT loads the functions as PWP TABLE DATA via `0x23` and selects by index.
 
 **Why the wall is where it is.** Engine A's seed LUT is a FIXED arithmetic primitive (`1/x`, `1/√x` —
 the same for every model, hence baked); Engine B's PWP is a PROGRAMMABLE function approximator (any
@@ -510,7 +509,7 @@ B:  fp ─►[CONTROL bitfield extract, +act_tbl_base, +exponent_offset]─► B
 
 ## 5. Device round-trip — the seed + refine ops `[HIGH/OBSERVED]`
 
-Assembled+disassembled bit-exact this pass with `XTENSA_CORE=ncore2gp`
+Assembled+disassembled bit-exact with `XTENSA_CORE=ncore2gp`
 (`tools/XtensaTools/bin/xtensa-elf-{as,objdump}`):
 
 ```text
@@ -521,15 +520,15 @@ recipqli.s      v17,v18 →  32505818f052452f   { nop; nop; nop; recipqli.s     
 ```
 
 All four match the cited bytes byte-for-byte. The opcode-selector immediates at `F1_S3_ALU` (read from
-the `Opcode_ivp_<mnem>_Slot_f1_s3_alu_encode` thunks in `libisa-core.so` this pass): `recip0n_2xf32 =
+the `Opcode_ivp_<mnem>_Slot_f1_s3_alu_encode` thunks in `libisa-core.so`): `recip0n_2xf32 =
 0x26348306`, `rsqrt0n_2xf32 = 0x26350106`, `div0n_2xf32 = 0x26338306`, `nexp01n_2xf32 = 0x26348106` —
-identical to [B15 §2](../isa/ref/b15-sp-lookup.md). `[HIGH/OBSERVED]`
+identical to [B15 §2](../isa/ref/b15-sp-lookup.md).
 
 ---
 
 ## 6. Per-gen evolution `[HIGH/OBSERVED]`
 
-The PWP table format (`tpb_activation_entries.h`), sha256 + compile-verify all 5 gens this pass:
+The PWP table format (`tpb_activation_entries.h`), sha256 + compile-verify all 5 gens:
 
 | gen | sha256 (16) | CAM/PROFILE/CONTROL/BUCKET | delta vs cayman |
 |---|---|---|---|
@@ -542,7 +541,7 @@ The PWP table format (`tpb_activation_entries.h`), sha256 + compile-verify all 5
 So the sunda→cayman PWP step is a **minor config-bit growth** (FMA-bypass + batchnorm-accum-read) + a
 **CAM mask byte-order swap**; the core PWL machine (CONTROL extract + BUCKET cubic + the
 region/symmetry config) is unchanged v2→v5. The activation datapath home: **ACT-engine v2–v4 → DVE
-block v5**. `[HIGH/OBSERVED]`
+block v5**.
 
 > **NOTE — `PROF_CAM`/`PROFILE_TABLE` is the per-engine PROFILER, NOT the activation PWL.** Every NX
 > engine (PE/DVE/POOL/ACT) ships a `PROFILE_CAM`/`PROFILE_TABLE` pair — the HW-decode instruction
@@ -550,7 +549,7 @@ block v5**. `[HIGH/OBSERVED]`
 > different stride (16 B vs 32 B), different density (sparse vs the 128 B dense PROFILE). The BUCKET +
 > CONTROL tables exist ONLY where the activation datapath lives (ACT v2–v4, DVE v5). The
 > `0xe4 ConvLutLoad` LUT is a **third, unrelated** table (a PE-array 4-bit input data-converter).
-> Three distinct table machines; do not conflate. `[HIGH/OBSERVED]`
+> Three distinct table machines; do not conflate.
 
 ---
 
@@ -582,7 +581,7 @@ Engine A's seed ops are `S3_ALU` lookup ops whose refine (QLI/Newton) uses the F
 PROFILE affine (`scale·x+bias`) + the cubic Horner multiply-adds use the same FMA/round HW + the FCR
 RoundMode + the FSR sticky flags. The 'N' (no-imprecise) FMA forms (MADDN/MULAN/DIVN) are the
 un-flagged fast path the seed REFINE loop uses — so the Q7 RECIP0→QLI/Newton chain runs on the no-flag
-FMA variant, the ACT affine runs flagged. `[HIGH/OBSERVED]` op-class subset.
+FMA variant, the ACT affine runs flagged.
 
 The seed-table and the bucket-table are the two ENDS of one design spectrum: a fixed
 8-bit-resolution single-segment seed (cheap, universal, refined by iteration) at one end; a
@@ -594,7 +593,7 @@ seed up to full precision. GPSIMD ships **all three** table classes. `[INFERRED-
 
 ## 8. Adversarial self-verification — the five strongest claims, re-challenged
 
-Each headline claim re-tested against the binary + the live fiss oracle this pass; a claim survives
+Each headline claim is re-tested against the binary + the live fiss oracle; a claim survives
 only if a second independent witness agrees.
 
 1. **The seed-table FORMAT/offsets are as stated (`RECIP_Data8` @`0x958fc0`, 128×u32, 8-bit low
@@ -602,7 +601,7 @@ only if a second independent witness agrees.
    places `.rodata` at VMA==file-off `0x88ff00`; `nm` resolves `table__RECIP_Data8` @`0x958fc0` (`r`
    flag, inside `.rodata`); `xxd -s 0x958fc0` reads `ff 00 00 00 fd 00 00 00 …` — 4-byte stride, seed
    in low byte, top 3 bytes zero, monotone `0xff→0x81`. Cross-witness: `recip_tab` @`0x9553c0` is
-   byte-identical over 512 B (`cmp`). **Survives.** `[HIGH/OBSERVED]`
+   byte-identical over 512 B (`cmp`). **Survives.**
 
 2. **The index-bit extraction (recip = top 7 mantissa bits; rsqrt = top 6 + exp parity).**
    *Challenge:* maybe rsqrt also uses 7 bits, or the parity half is an artifact? *Re-test:* driven
@@ -610,7 +609,6 @@ only if a second independent witness agrees.
    `[(m>>3)]&0x7f` over all 1024 fp16 mantissas, **0 mismatches**; `rsqrt0` seed byte ==
    `RSQRT_Data8[((e&1)<<6)|(m>>17)]&0x7f` over **both** binade halves, 0 mismatches — `rsqrt0(2.0)`
    (even) and `rsqrt0(4.0)` (odd) read *different* table halves (`0xb4` vs `0xff`). **Survives.**
-   `[HIGH/OBSERVED·exec]`
 
 3. **The QLI refine is a single quadratic pass with a 6-bit segment index, off a second pair of
    LUTs.** *Challenge:* could it be an iterated Newton loop, or could the seg index be wrong?
@@ -618,13 +616,13 @@ only if a second independent witness agrees.
    `seg=(x>>25)&0x3f`) and `cmp $0x3f` (clamp), with `lea` to all four `fp_recip_qli_lut{1,2}_{A,gx}`;
    `libcas-core.so` carries exactly two substages `IVP_RECIPQLIN_2XF32_0`/`_1` (a segment split, not
    `stage0..N` iteration). The refine *interior* coefficient algebra is flagged CARRIED (FW-42), not
-   asserted. **Survives** (seg-extract OBSERVED; interior CARRIED). `[HIGH/OBSERVED]`
+   asserted. **Survives** (seg-extract OBSERVED; interior CARRIED).
 
 4. **The ACT PWP BUCKET is a cubic, not a linear PWL; the quad is 32/128/32/32 B.** *Challenge:* maybe
    `d2`/`d3` are reserved padding, or the sizes drift across gens? *Re-test:* the header reads
    `float d0,d1,d2,d3,x0` at offsets 0/4/8/12/16 with a 3-word tail; `gcc offsetof` confirms
    `d2@8, d3@12` are real float coeffs; `sizeof` = 32/128/32/32 compile-verified on cayman, maverick,
-   AND sunda. A linear PWL would carry `{d0,d1,x0}` only. **Survives.** `[HIGH/OBSERVED]`
+   AND sunda. A linear PWL would carry `{d0,d1,x0}` only. **Survives.**
 
 5. **The host-content boundary — `activation_func @35` is a raw index; the cubic CONTENT is never in
    the image.** *Challenge:* could a named activation enum or resident coefficients exist somewhere?
@@ -632,7 +630,7 @@ only if a second independent witness agrees.
    a grep for `gelu/sigmoid/silu/swish/softplus` across all arch-isa headers returns 0 activation-enum
    hits (only an unrelated `tonga/intc_axim.go`); the install path is `0x23 ACTIVATION_TABLE_LOAD` (a
    DMA). The seed LUT content IS resident (read byte-exact above); the PWP content is not. The wall is
-   between Engine B's content (out) and everything else (in). **Survives.** `[HIGH/OBSERVED]`
+   between Engine B's content (out) and everything else (in). **Survives.**
 
 No claim here rests on a raw dump, an unnamed symbol, or a single uncorroborated witness; every seed
 value carries a differential-execution certificate against the shipped leaf and the re-derived
@@ -643,7 +641,7 @@ and the device assembler, and the PWP format is compile-verified across all 5 ge
 
 ## 9. Confidence ledger
 
-**HIGH / OBSERVED (read / disassembled / round-tripped / driven live this pass):**
+**HIGH / OBSERVED (read / disassembled / round-tripped / driven live):**
 
 * The 8 Q7 seed/QLI table symbols at the cited addresses (all `.rodata`, VMA==file-off), the
   `recip_tab`≡`RECIP_Data8` / `rsqrt_tab`≡`RSQRT_Data8` 512-byte identity, the RECIP monotone `0xff→0x81`
@@ -662,7 +660,7 @@ and the device assembler, and the PWP format is compile-verified across all 5 ge
 * The ACT opcodes `0x21–0x26` + `RECIPROCAL=0x48` + `EXPONENTIAL=0x30` from `common.h`; the `S2D2_AC`
   field order (`activation_func@35`); the `ALU_OP` table; the absence of a named activation enum.
 * The maverick DVE fold (`ACT_CONTROL_TABLE`/`PWP_CONTROL_TABLE`/`PWP_BUCKETS_TABLE` inside `TPB_DVE`
-  at `0xA0000`/`0xB0000`/`0xC0000`) read this pass.
+  at `0xA0000`/`0xB0000`/`0xC0000`).
 * The device round-trip (`ivp_recip0nxf16`/`ivp_rsqrt0nxf16`/`recip0.s`/`recipqli.s`, bytes match) +
   the F1 opcode selectors; the `bbn_sem_vec_sprecip_rsqrt` 16-stage pipeline; the `CONST_TBL_*` mirrors.
 

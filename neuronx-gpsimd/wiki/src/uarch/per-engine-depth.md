@@ -32,8 +32,8 @@ from, is four independently-OBSERVED layers:
 | **L4 — the RTL-generated CSR JSON** | the PE↔SEQ handshake surface; the ACT→DVE HW-region map; the QoS/remapper/NSM/PMU schema | the shipped `csrs/` + `arch-regs` JSON / address maps |
 
 Tags per claim: `[HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED]`. `OBSERVED` = a symbol / byte / opcode /
-compile-verified struct / CSR-JSON field read **this pass**; `INFERRED` = reasoned over OBSERVED;
-`CARRIED` = re-used at a cited backing report's confidence. All prose reads as derived from
+compile-verified struct / CSR-JSON field read directly; `INFERRED` = reasoned over OBSERVED;
+`CARRIED` = re-used at a prior carve's confidence. All prose reads as derived from
 shipped-binary + shipped-public-header + device-disassembler static analysis (lawful interoperability
 reverse engineering, DMCA 17 U.S.C. 1201(f)). Binary + header paths under
 `extracted/aws-neuronx-gpsimd-customop-lib_…/…/custom_op/c10/` and
@@ -88,15 +88,12 @@ bypassed / disabled) posture.
 | **TPB_SP** | 4 | per-core sync executor | `0xa0/0xa6/0xb0/0xb3` | `S: Event_Semaphore` / `S: NOTIFY` |
 | **TOP_SP** | 5 | collective sequencer | (same SEQ build) | `engine_idx=%u` runtime identity |
 
-`[HIGH/OBSERVED engine enum + the per-engine opcode block; the "one SEQ chassis" identity HIGH/OBSERVED
-from the shared reset/boot/globstruct + the runtime engine-idx string.]`
-
 ---
 
 ## 1. The PE-array micro-op roster — byte-exact opcodes
 
 `[HIGH/OBSERVED]` The PE compute opcodes come from the `NEURON_ISA_TPB_OPCODE` enum
-(`aws_neuron_isa_tpb_common.h`, lines pinned this pass) — the `// Y` tag is the header's own
+(`aws_neuron_isa_tpb_common.h`) — the `// Y` tag is the header's own
 "tested/maintained" annotation:
 
 | opcode | enum (`NEURON_ISA_TPB_OPCODE_…`) | line | operand struct | role |
@@ -114,17 +111,15 @@ from the shared reset/boot/globstruct + the runtime engine-idx string.]`
 | `0xe4` | `CONV_LUT_LOAD` | 310 | `S2_CONVLUT` | 4-bit input-converter LUT load `[v4+]` |
 
 The opcode↔struct binding is **triple-confirmed**: (i) the ISA enum (above); (ii) the
-`struct2opcode` map in `instruction_mapping.json` (read with `jq` this pass) —
+`struct2opcode` map in `instruction_mapping.json` —
 `S3_LW_STRUCT → LDWEIGHTS`, `S3D3_MM_STRUCT → MATMUL`, `S2S1D2_PE_SEED_STRUCT → PE_MANAGE_SEED`,
 `SMX1_LW_STRUCT → LDWEIGHTS_MX`, `SMX1D3_MM_STRUCT → MATMUL_MX`; (iii) the firmware DEBUG handler
 self-name strings (`S: Ldweights` / `S: Matmul` / `S: PeManageSeed(LOAD)` / `S: PeManageSeed(SAVE)` /
 `S: LdweightsMX` / `XS: MatmulMX` / `S: ConvLutLoad`) and the byte-decoded dispatch chain (§2).
-`[HIGH/OBSERVED enum + JSON + strings]`
 
-### 1.1 Per-gen handler presence `[HIGH/OBSERVED]`
+### 1.1 Per-gen handler presence
 
-The handler subset GROWS across the generations — read from the carved PE DEBUG-DRAM `S:` self-names
-([backing GX-ENG-01](#cross-references)):
+The handler subset GROWS across the generations — read from the carved PE DEBUG-DRAM `S:` self-names:
 
 | gen | PE handler set | notes |
 |---|---|---|
@@ -142,12 +137,11 @@ The handler subset GROWS across the generations — read from the carved PE DEBU
 
 ## 2. The PE dispatch — byte-decoded opcode compare-chain
 
-`[HIGH/OBSERVED dispatch chain; MED interiors]` The MARIANA PE DEBUG IRAM dispatch site is a
+The MARIANA PE DEBUG IRAM dispatch site is a
 **raw-opcode segmented compare-chain** — the PE compares the raw opcode byte (no `addi`-normalisation),
-each opcode routing to a distinct dispatch stub in the `0x2b8x..0x2bc7` cluster. Carved from the
+each opcode routing to a distinct dispatch stub in the `0x2b8x..0x2bc7` cluster. From the
 `MARIANA_NX_PE_DEBUG_IRAM_get.data` blob at `.rodata` file-offset `0x42c520`, the dispatch site
-(IRAM `+0x2934`) decoded with the shipped `ncore2gp` `xtensa-elf-objdump` — the `66 X2 02` BNEI
-encodings confirm the chain byte-for-byte:
+(IRAM `+0x2934`) — the `66 X2 02` BNEI encodings confirm the chain byte-for-byte:
 
 ```text
 2934:  l32i.n a2,[a1+16]            ; a2 = opcode word
@@ -187,17 +181,16 @@ weight bus, [B04 §3](../isa/ref/b04-mac-integer.md)). The maverick `S3_LW_STRUC
 > field (it produces no PSUM output), its tail is shifted one byte earlier than `Matmul`'s:
 > `S3_LW.flags`@**38** / `perf_mode`@**39** vs `S3D3_MM.flags`@**39** / `perf_mode`@**40**. A
 > reimplementer must NOT reuse one struct's offset table for the other — both are 64 B but the
-> `tile_size`/`tile_sel`/`flags`/`perf_mode` tail sits at different offsets. `[HIGH/OBSERVED —
-> compile-verified both structs this pass.]`
+> `tile_size`/`tile_sel`/`flags`/`perf_mode` tail sits at different offsets (compile-verified).
 
-### 3.2 `Matmul` (0x02, `S3D3_MM_STRUCT`) — stream, MAC, accumulate `[HIGH/OBSERVED]`
+### 3.2 `Matmul` (0x02, `S3D3_MM_STRUCT`) — stream, MAC, accumulate
 
 `Matmul` streams the **moving** activation tile through the loaded array; each PE cell
 multiply-accumulates; partial sums accumulate down the columns into PSUM, computing
 `dst = stationary.T @ moving`. **Internal accumulation = FP32** (the PSUM banks); the `dst` dtype is
 FP32 (all gens) or BF16 (v4+).
 
-The maverick `S3D3_MM_STRUCT` field layout (compile-verified `gcc offsetof` this pass — the comment
+The maverick `S3D3_MM_STRUCT` field layout (compile-verified `gcc offsetof` — the comment
 column is the header's own byte-offset annotation):
 
 ```c
@@ -218,7 +211,7 @@ typedef struct NEURON_ISA_TPB_S3D3_MM_STRUCT {
 }; // sizeof == 64
 ```
 
-### 3.3 The PSUM accumulate group + zero-region `[HIGH/OBSERVED]`
+### 3.3 The PSUM accumulate group + zero-region
 
 The accumulate group is the `MATMUL_FLAGS.accumulate_flag` plus the
 `MATMUL_PSUM_ACCUMULATE_FLAGS` enum (`common.h:1335-1349`), with the derived modes pinned as
@@ -251,10 +244,10 @@ same count `PeManageSeed` manages (§4): one stochastic-rounding seed per accumu
 The PSUM SBUF/PSUM region geometry is the [SBUF/PSUM bank model](../dma/sbuf-psum-banks.md)
 (forward, Part 9). `[HIGH/OBSERVED enums; CARRIED region]`
 
-### 3.4 The inner MAC — the IVP widening family `[HIGH/OBSERVED]`
+### 3.4 The inner MAC — the IVP widening family
 
 On the GPSIMD/int-quantized path the PE engine carries the full **IVP widening-MAC** datapath
-(re-read from the PE PERF IRAM census). The `*XR8`/`*XR16` suffix = the XR reduce-register **weight**
+(from the PE PERF IRAM census). The `*XR8`/`*XR16` suffix = the XR reduce-register **weight**
 broadcast loaded by `Ldweights`; the other factor = the **moving activation** lane. The densest cores
 (observed counts in parentheses):
 
@@ -270,7 +263,7 @@ broadcast loaded by `Ldweights`; the other factor = the **moving activation** la
 The **integer** accumulator is the 4-entry **1536-bit `wvec` regfile** (i8→24 / i16→48 / i32→96 per
 lane, wrapping mod-`2^acc_w`, no saturate — see [datapath §3](simd-datapath.md)); the **TensorE float**
 accumulator is the FP32 PSUM banks. The MAC family is gen-stable v4→v5 (the Maverick PE PERF IRAM
-carries the same `ivp_mul4t*`/`mulpa*`/`dmulq*` set). `[HIGH/OBSERVED census]`
+carries the same `ivp_mul4t*`/`mulpa*`/`dmulq*` set).
 
 ```c
 // ---------------------------------------------------------------------------
@@ -315,7 +308,7 @@ static void pe_matmul_group(const s3_lw_t   *lw,       // Ldweights descriptor
 
 ## 4. `PeManageSeed` (0x08) — the PSUM stochastic-rounding seeds
 
-`[HIGH/OBSERVED]` `PeManageSeed` has its **own** 64-byte operand struct
+`PeManageSeed` has its **own** 64-byte operand struct
 (`S2S1D2_PE_SEED_STRUCT`, compile-verified) and manages the **PSUM fp32→bf16 stochastic-rounding RNG
 seed state** — *not* a "PE-array per-cell PRNG". The struct (offsets from the header byte-comments,
 compile-verified):
@@ -340,22 +333,21 @@ The header verbatim: **NeuronCore-v4 has 2048 seeds per PSUM, each 32-bit** (eac
 partitions 0–15 (128/partition); `SaveSeed` shape is **128×16** in PSUM partitions 0–127 (16/partition)
 — a **transpose is required** between save and reload. The `2048`-per-PSUM count is exactly the
 `MATMUL_ZERO_REGION_SIZE2048` "one physical bank" figure (§3.3): one seed per fp32 accumulator cell.
-`[HIGH/OBSERVED struct + header semantics]`
 
 The `mode` enum is `NONE=0, LOAD_SEED=1, SAVE_SEED=2` (`PE_SEED_MODE`, `common.h:1288-1292`). The
 seed rides the weight/matmul ports: the handler loads the **identity** matrix as the stationary
 weight (`PeManageSeed : micro-op : LdWeight`) then runs a **transposing** Matmul
 (`PeManageSeed : micro-op : Matmul : is_load=%d`) to move the 2048 seeds between SBUF and PSUM. The
 same `seed_mode` field also rides `S3D3_MM.flags` and `S3_LW.flags` (the `MATMUL_FLAGS`/
-`LD_WEIGHT_FLAGS` bitfields, `common.h:1380-1394`: `seed_mode : 2`). `[HIGH/OBSERVED]`
+`LD_WEIGHT_FLAGS` bitfields, `common.h:1380-1394`: `seed_mode : 2`).
 
 > **CORRECTION — the `s2s1d2_pe_seed.h` PROSE COMMENT is off-by-one; the ENUM is authoritative.** The
 > struct header's comment block reads "LoadSeed (value of **0**)" and "SaveSeed (value of **1**)", but
-> the actual `NEURON_ISA_TPB_PE_SEED_MODE` enum (read this pass at `common.h:1288`) is
+> the actual `NEURON_ISA_TPB_PE_SEED_MODE` enum (`common.h:1288`) is
 > `NONE=0, LOAD_SEED=1, SAVE_SEED=2`. The enum is the wire contract; the prose comment is **stale**. A
 > reimplementer must encode **LoadSeed=1, SaveSeed=2, None=0** (the enum), not the comment's 0/1. The
 > firmware DEBUG strings `S: PeManageSeed(LOAD)` / `S: PeManageSeed(SAVE)` are the two non-`None`
-> modes; the polarity is now pinned to the enum. `[HIGH/OBSERVED — enum vs comment diff this pass.]`
+> modes; the polarity is now pinned to the enum.
 
 > **QUIRK — `PeManageSeed`'s in-array LdWeight/Matmul is the IDENTITY-matrix transport, not the matmul
 > arithmetic.** The thing pushed through the array is the `identity_mem_pattern` 16×16 identity tensor
@@ -363,13 +355,13 @@ same `seed_mode` field also rides `S3D3_MM.flags` and `S3_LW.flags` (the `MATMUL
 > SBUF (`src_seed_mem_pattern`, 16×128) and PSUM (`dst_seed_mem_pattern`, 128×16). The validity
 > contract (`s3d3_mm_check_valid_load_seed_fields`) pins the micro-op shape: tile `{r64, c256}`, src a
 > single element of value 1, `in_dtype` FP32, `fp32_mode` High, `xpose_mode` Enabled, `num_active_rows`
-> 1, `num_active_cols` 0. `[HIGH/OBSERVED struct + validity; in-array routing INFERRED-HIGH.]`
+> 1, `num_active_cols` 0. `[HIGH/OBSERVED struct; INFERRED routing]`
 
 ---
 
 ## 5. The MX (microscaling) matmul datapath
 
-`[HIGH/OBSERVED]` The MX path has **two mechanisms, per gen**:
+The MX path has **two mechanisms, per gen**:
 
 * **v4 (MARIANA / MARIANA_PLUS): SEPARATE ops.** `LdweightsMX` (0x09, `SMX1_LW_STRUCT`) +
   `MatmulMX` (0x0A, `SMX1D3_MM_STRUCT`). The operand is an `MXMEM_PATTERN1D` carrying its **own**
@@ -385,12 +377,12 @@ same `seed_mode` field also rides `S3D3_MM.flags` and `S3_LW.flags` (the `MATMUL
   (`common.h:1396-1404`): `QUAD_ROW`(0x1) / `OCT_ROW`(0x4) + INTERLEAVE/TILED variants — the
   4×/8×-pumped MX matmul perf modes.
 
-The DTYPE ordinals (read this pass, `common.h`): normal matmul `in_dtype ∈ {BFLOAT16=0x6, FP16=0x7,
+The DTYPE ordinals (`common.h`): normal matmul `in_dtype ∈ {BFLOAT16=0x6, FP16=0x7,
 FP32=0xA, FP8_EXP2=0x11(e2m5), FP8_EXP3=0xD(e3m4), FP8_EXP4=0xE(e4m3), FP8_EXP5=0xF(e5m2)}`;
 MX `in_dtype ∈ {FP8_E4M3, FP8_E5M2, FP4_E2M1}` with the OCP-MX power-of-two scale `SFP8_E8=0x13`
 (`FP8_S0E8M0`). The `fp32_mode` (`PE_FP32MODE`, `common.h:1281-1286`) is `None=0/Low=1/High=2/Low_High=3`
 — the TF32-vs-FP32 mantissa select (FP32 input requires Low or High; `Low_High` is a two-pass full-FP32
-split-mantissa accumulate). `[HIGH/OBSERVED struct + validity selector + DTYPE/enum ordinals]`
+split-mantissa accumulate).
 
 > **NOTE — the MX block-scale TAP is `[MED/INFERRED]`.** That the per-block E8M0 scale is applied **in
 > the MAC datapath** (the IVP `mul*`/`dmulq*` family carries the packed-register scale operand) is
@@ -402,7 +394,7 @@ split-mantissa accumulate). `[HIGH/OBSERVED struct + validity selector + DTYPE/e
 
 ## 6. The PE↔SEQ handshake — the `arr_seq` CSR block
 
-`[HIGH/OBSERVED — CSR-JSON field names read verbatim this pass]` Two CSR surfaces sequence the array
+`[HIGH/OBSERVED]` Two CSR surfaces sequence the array
 (the field names below are byte-exact from `tpb_arr_seq_top_host_visible.json` and
 `tpb_arr_seq_cluster_host_visible.json`):
 
@@ -425,7 +417,7 @@ The host window is **96% telemetry** — three per-tile perf banks and a tiny co
 > accumulate reg, no dtype reg, no array-dimension-select reg in the host CSR window — those are carried
 > by the **micro-op descriptors** (this firmware's `S3_LW`/`S3D3_MM` structs), not host CSRs. The
 > descriptor format is in the instruction stream; only the queue policy + the per-tile telemetry are
-> host-visible. `[HIGH/OBSERVED CSR negative.]`
+> host-visible.
 
 ### 6.2 The cluster sequencer (`tpb_arr_seq_cluster`) — the matmul sequencing bits
 
@@ -446,10 +438,9 @@ verbatim from the cluster JSON):
 weights/activations from SBUF and writes partials to PSUM; **completion** is signalled by the matmul-done
 on the SBUF response (`matmul_done_last` selects last-vs-first); dependency checking between in-flight
 micro-ops is the queue's job (`disable_dependency_check` serialises). The descriptor format is
-in-stream, NOT host CSRs. `[HIGH/OBSERVED CSR names; end-to-end flow INFERRED-HIGH from the CSR
-semantics + the structs.]`
+in-stream, NOT host CSRs. `[HIGH/OBSERVED CSR names; INFERRED flow]`
 
-### 6.3 Per-gen struct + array evolution `[HIGH/OBSERVED]`
+### 6.3 Per-gen struct + array evolution
 
 | field group | CAYMAN (v3) | MARIANA (v4) | MAVERICK (v5) |
 |---|---|---|---|
@@ -462,7 +453,7 @@ semantics + the structs.]`
 The `c256` double-pump is pinned by the `TILE_COL_SIZE` enum (`common.h:1318-1321`: `C128=7`=2⁷,
 `C256=8`=2⁸) and the MM validity ("c256 → the upper dim of dst must have a size of 2, to hold MM output
 from both PE col 0-127 and PE col 128-255"). So the **Maverick PE array is 256 columns**, run as two
-128-col halves. `[HIGH/OBSERVED struct + enum diffs, compile-verified per gen.]` The per-`(gen×PE)`
+128-col halves (struct + enum diffs compile-verified per gen). The per-`(gen×PE)`
 carve bytes are the forward image pages [cayman-pe](../images/cayman-pe.md) /
 [mariana-pe](../images/mariana-pe.md) / [maverick-pe](../images/maverick-pe.md) (Part 6).
 
@@ -479,7 +470,7 @@ the exact 5-way intersection of PE/ACT/POOL/DVE/SP (pure SYNC/CONTROL, **zero** 
 identical boot trampoline `const16 a0,0x90; jx → enter_run @0x90`, the identical `.globstruct` magic
 `0x6099cb34`, the same `start_ctrl`/`run_state` RUNNING=1/PAUSED=2 FSM).
 
-### 7.1 The sync-primitive ops — ISA opcodes, not synthesised MMIO `[HIGH/OBSERVED]`
+### 7.1 The sync-primitive ops — ISA opcodes, not synthesised MMIO
 
 SP's sync handlers are **shared SEQ ISA opcodes** (present on all engines; SP is the engine whose
 *entire* set is these). The opcodes (`common.h`) + operand structs (compile-verified `sizeof == 64`):
@@ -502,33 +493,31 @@ SP's sync handlers are **shared SEQ ISA opcodes** (present on all engines; SP is
 UPDATES `semaphore[update_idx]` per `update_mode` (e.g. `SEM_INC_READ=0x3`, `SEM_DEC_READ=0x4`,
 `SEM_ADD_IMM_READ=0x5`, the `_COMPLETE` twins `0x13`/`0x14`/`0x15`). `CTRL_ES` adds a `setter_signature`
 (@12) and a second `events_extended` (12 B @32) for the two-stage wait/update. **This is the primitive
-the collective barriers lower into.** `[HIGH/OBSERVED struct + WAIT/UPDATE enums.]`
+the collective barriers lower into.**
 
 > **NOTE — `WAIT_MODE_UNORDERED=0xfe`.** Beyond the SEM_{EQ,LT,LE,GT,GE}_{IMM,REG} compares, the
 > `WAIT_MODE` enum (`common.h`) ships an `UNORDERED=0xfe` mode: the instruction waits on **no**
 > condition and is not required to wait for prior-instruction wait conditions either (use when a direct
 > semaphore read / watcher already proved it can run). It is "often faster than `None`" because it
 > avoids hardware synchronisation through the semaphore block. A reimplementer sequencing independent
-> sync ops should expose this. `[HIGH/OBSERVED.]`
+> sync ops should expose this.
 
 **`POLL_SEM` (0xb3, `CTRL_POLL_SEM_STRUCT`)** — the TOP_SP accelerator, **named verbatim in the shipped
-header** (`aws_neuron_isa_tpb_ctrl_poll_sem.h:21-22`, read this pass): *"a specialized semi-custom
+header** (`aws_neuron_isa_tpb_ctrl_poll_sem.h:21-22`): *"a specialized semi-custom
 operation to help Neuron accelerate polling semaphores on **TOP_SP**."* It does `n_read` (≤16)
 consecutive u32 reads from `addr`, folds an ALU-op (Min) over them, and — if nonzero — writes `n_read`
 copies of the result to `res_writeback_addr`, leaving the result in GPR `result`. The header's own
 example: `n_read=6, op=Min, *addr=[8,3,5,4,4,10]` ⇒ `result=3`, `*res_writeback_addr=[3,3,3,3,3,3]` —
 i.e. the all-reduce "select the minimum of N semaphores and decrement them all by that amount". Struct
 fields (compile-verified): `n_read`@12, `result`@13 (`REG_NUM`), `op`@14 (`ALU_OP`), `addr`@16
-(`NEURON_ADDR`, 8 B), `res_writeback_addr`@24. `[HIGH/OBSERVED struct + the verbatim TOP_SP attribution
-— the single strongest tie of a sync OP to TOP_SP.]`
+(`NEURON_ADDR`, 8 B), `res_writeback_addr`@24 — the single strongest tie of a sync OP to TOP_SP.
 
 **`NOTIFY` (0xa6, `CTRL_NO_STRUCT`)** — emits a notification record (the per-engine SP EVT_SEM notif
 type 0x17) and optionally an interrupt (the DEBUG strings `S: sending notification` /
 `S: sending interrupt`). `CTRL_NO_STRUCT` also backs `ACTIVATION_TABLE_LOAD` / `NOP` / `HALT` /
 `DRAIN` / `INSTRUCTION_FLUSH` (the `struct2opcode` map binds all six to `CTRL_NO_STRUCT`).
-`[HIGH/OBSERVED struct2opcode]`
 
-### 7.2 The barriers — no dedicated handler (pre-lowered) `[HIGH/OBSERVED]`
+### 7.2 The barriers — no dedicated handler (pre-lowered)
 
 `CORE_BARRIER`(0xd8) / `SYNC_BARRIER`(0xd5) / `DMA_BARRIER`(0xc3) are **PSEUDO** opcodes — the header
 (`common.h:275`) is explicit: *"Pseudo instructions are generated by compiler and translated into
@@ -537,8 +526,7 @@ non-pseudo HW instructions by NRT … upper three bits of the opcode equal `0b11
 The host/compiler (NRT) lowers them into concrete `Event_Semaphore`(0xa0) arrive/wait + `POLL_SEM`(0xb3)
 HW ops **before** the stream reaches the SP sequencer; the SP dispatch table carries **no**
 0xd8/0xd5/0xc3 row. So the SP's barrier participation IS its `Event_Semaphore`/`POLL_SEM` execution
-against the EVT_SEM array — there is no "Barrier" kernel. `[HIGH/OBSERVED — pseudo-opcode classification
-+ table absence.]`
+against the EVT_SEM array — there is no "Barrier" kernel.
 
 ### 7.3 TOP_SP + the collective-lowering execution `[HIGH structure / INFERRED on-core]`
 
@@ -559,10 +547,10 @@ build self-identifies as whichever SP slot it loads into. The three-way collecti
 The CCL barrier-lane → firmware-op mapping is pinned at the op level: `SemaphoreWrite`/arrive →
 `Event_Semaphore`(0xa0) `update_mode SEM_INC/SET`; barrier wait → `Event_Semaphore`(0xa0)
 `wait_mode SEM_GE` + `POLL_SEM`(0xb3) Min-fold; `CORE/SYNC/DMA barrier` → pre-lowered, no firmware
-handler. `[HIGH/OBSERVED at the op-struct level; the on-NX-core `cc_op` WALK SCHEDULE is the firmware
-boundary — INFERRED, no shipped LX/NX collective-schedule disassembler.]`
+handler. The on-NX-core `cc_op` walk schedule is the firmware boundary — INFERRED, since no LX/NX
+collective-schedule disassembler ships.
 
-### 7.4 Per-gen SP evolution `[HIGH/OBSERVED]`
+### 7.4 Per-gen SP evolution
 
 The SP firmware is **byte-stable across the Cayman class** (CAYMAN/MARIANA/MARIANA_PLUS — same
 algorithm/encoding, relocated only). The sync-handler set GROWS over the gens (dispatch table walked,
@@ -572,25 +560,25 @@ fall to Bad-Opcode); **MARIANA** adds `SB2SB`(0x33e6) + `RangeClear`; **MARIANA_
 trampoline. **MAVERICK** relocates SP code from IRAM to **SRAM** (the IRAM getter returns size 0; the
 SP body lives in `MAVERICK_NX_SP_PERF_SRAM`). **SUNDA** is the older gen, RELEASE-only, at a different
 CSR aperture (`0x00100000` window vs `0x04000000`). The per-`(gen×SP)` carve bytes are the forward image
-pages ([cayman-sp](../images/cayman-sp.md) etc., Part 6). `[HIGH/OBSERVED dispatch tables + carve.]`
+pages ([cayman-sp](../images/cayman-sp.md) etc., Part 6).
 
 > **HW-vs-FW boundary (SP).** The 256-event/256-semaphore array, the atomic inc/dec read-modify-write,
 > the GE/Min compare, and the cross-die routing are **HARDWARE** (the EVT_SEM unit + the ISA-op
 > execution). The firmware does NOT compute semaphore arithmetic; it **issues** the ops (which the HW
 > EVT_SEM block performs) and **spin-polls** the HW status (the wait worker) until the wait condition is
-> met, parking in PAUSE (`run_state=2`) on a long wait. `[HIGH structure.]`
+> met, parking in PAUSE (`run_state=2`) on a long wait.
 
 ---
 
 ## 8. The ACT activation-PWL quad + the MAVERICK ACT→DVE fold
 
-`[HIGH/OBSERVED]` The ACT engine (idx 1) runs the **activation-PWL apply** path. This section keeps the
+The ACT engine (idx 1) runs the **activation-PWL apply** path. This section keeps the
 framing **identical** to the [Activation + Transcendental Table Engine](activation-transcendental-tables.md)
 page — that page is the *table-HW* view (Engine B), this is the *per-engine micro-op + fold* view.
 
 ### 8.1 The ACT opcode quad + the two support ops `[HIGH/OBSERVED]`
 
-Read from `common.h` + `struct2opcode` (`jq`, this pass):
+Read from `common.h` + `struct2opcode`:
 
 | opcode | enum | struct | role |
 |---:|---|---|---|
@@ -601,7 +589,7 @@ Read from `common.h` + `struct2opcode` (`jq`, this pass):
 | `0x25` | `ACTIVATE2` | `S2D2_AC` | fused act + dual-ALU + reduce, 2D `[v4+]` |
 | `0x26` | `ACTIVATE_MULTIPASS` | `S1S2D2_AM` | act + prev-pass 1D accumulator, 2D `[v5]` |
 
-### 8.2 The PWP table format (Engine B, recap) `[HIGH/OBSERVED]`
+### 8.2 The PWP table format (Engine B, recap)
 
 The activation table is a **piecewise-CUBIC** (PWP = Piece-Wise Polynomial) machine, **not** a linear
 breakpoint/slope/intercept PWL — four tables, compile-verified `sizeof` **32/128/32/32** B across all 5
@@ -624,10 +612,9 @@ The `activation_func` field is a **raw uint8 index** into the loaded PWP table �
 ISA-named activation enum; the host loads relu/gelu/sigmoid/tanh/exp/… as PWP table DATA via
 `0x23 ACTIVATION_TABLE_LOAD`, and that per-function coefficient CONTENT is **out-of-corpus** (the
 host-supplied-content wall). For the full table-HW treatment + the cross-gen sha / SUNDA delta, see the
-[table-engine page §2](activation-transcendental-tables.md). `[HIGH/OBSERVED format; LOW/not-claimed
-content.]`
+[table-engine page §2](activation-transcendental-tables.md). `[HIGH/OBSERVED format; LOW content]`
 
-### 8.3 The `Activate2` (0x25, `S2D2_AC`) apply/fusion path `[HIGH/OBSERVED struct; MED order]`
+### 8.3 The `Activate2` (0x25, `S2D2_AC`) apply/fusion path
 
 `S2D2_AC` (compile-verified `sizeof == 64`; `activation_func`@35, `reduce_cmd`@26) carries a dual
 TensorScalar ALU pair (`op0`@29, `op1`@30, drawing from the general `ALU_OP` table) + 3 immediates
@@ -654,16 +641,16 @@ DIVIDE=0x07, MAX=0x08, MIN=0x09, RE_LU=0x22, SQUARE=0x23`. The `REDUCE_CMD` enum
 > **NOTE — `0x26 ACTIVATE_MULTIPASS` is fully IMAGE-DORMANT.** "Multipass" appears **0** times in the
 > firmware; "Activate2" appears exactly **2** (`RS: Activate2`, both in the MARIANA(_plus) ACT band).
 > `0x26` is spec-present (enum + `S1S2D2_AM` struct + validator: `prev_pass_mem_pattern` TENSOR1D@40,
-> SBUF-only) but has **no** firmware handler and is emitted by no shipped kernel. `[HIGH/OBSERVED string
-> counts; MED "compiler-but-unused" reading.]`
+> SBUF-only) but has **no** firmware handler and is emitted by no shipped kernel.
+> `[HIGH/OBSERVED counts; MED reading]`
 
 ### 8.4 The MAVERICK ACT→DVE fold — a HW-region migration `[HIGH/OBSERVED region; INFERRED interior]`
 
 On **cayman/mariana (v3/v4)** the activation PWL tables are an **ACT-engine** block
 (`TPB_n_ACT_{PROFILE_CAM, PROFILE_TABLE, BUCKET_TABLE, CONTROL_TABLE}` + `LOCAL_STORAGE` shadows). On
 **MAVERICK (v5) there is NO ACT engine block at all** — the PWL SRAM physically MIGRATED into the
-**TPB_DVE** block. From `maverick/vpc-mirror/arch-regs/.../TPB_DVE.json` (read this pass; keep this
-table identical to the [table-engine page §2.5](activation-transcendental-tables.md)):
+**TPB_DVE** block. From `maverick/vpc-mirror/arch-regs/.../TPB_DVE.json` (this table is identical to
+the [table-engine page §2.5](activation-transcendental-tables.md)):
 
 | block | AddressOffset | size | note |
 |---|---|---|---|
@@ -680,8 +667,7 @@ ACTIVATE2` (which the MARIANA DVE PROF did not), and the read-accumulator is re-
 `DveReadAccumulator`(0x9b). The PWP table FORMAT is byte-identical across the fold (sha `8f6f5f49…`
 cayman..maverick). The per-`(gen×ACT/DVE)` carve bytes are the forward image pages
 [maverick-act](../images/maverick-act.md) (the fold) / [maverick-dve](../images/maverick-dve.md)
-(absorbs ACT) (Part 6). `[HIGH/OBSERVED region migration; the v5 PWP eval micro-sequence INFERRED — the
-Maverick-interior WALL.]`
+(absorbs ACT) (Part 6). `[HIGH/OBSERVED region; v5 interior INFERRED — WALL]`
 
 ---
 
@@ -701,7 +687,7 @@ left at their reset (transparent / bypassed / disabled) posture by every in-corp
 | **NSM** (AXI mon) | **NOBODY** in-corpus | n/a (boots bypassed) | left at reset (`bypass.enable=1` ⇒ monitor off); armed by out-of-corpus mgmt-core boot FW |
 | **QoS PMU** (`qos_pmu`) | **NOBODY** in-corpus | n/a (boots disabled) | left at reset (`event_select=0` ⇒ all 8 counters off); debug tooling (out-of-corpus) would arm |
 
-### 9.1 The REMAPPER — host-programmed per memory-region `[HIGH/OBSERVED]`
+### 9.1 The REMAPPER — host-programmed per memory-region
 
 `libnrt.so` (host runtime, DWARF) carries the named CAM-entry writer
 `aws_hal_sprot_config_remap_entry_internal_{mariana@0x466130, sunda@0x46cbe0}` (+ the
@@ -715,9 +701,9 @@ region that needs a logical→physical scratchpad remap, NOT at boot and NOT per
 
 > **NEGATIVE — neither the device NX FW, NCFW, nor the DKMS driver programs the remapper.** The device
 > `libnrtucode.a` has 0 remap/sprot/qos tokens; `libncfw.so` 0; the DKMS driver has only a comment. The
-> REMAPPER CAM is host-runtime-programmed **exclusively**. `[HIGH/OBSERVED across all four corpora.]`
+> REMAPPER CAM is host-runtime-programmed **exclusively** (checked across all four corpora).
 
-### 9.2 The QoS shaper is left at reset; the UDMA AxQOS is what the host DOES program `[HIGH/OBSERVED]`
+### 9.2 The QoS shaper is left at reset; the UDMA AxQOS is what the host DOES program
 
 No in-corpus writer touches `qos_prot`'s shaper fields (chicken / outstanding-txn limits / the 15 LFSR
 stallers / fairness). It boots `chicken=1` (transparent — all shaping disabled) and stays so. What the
@@ -726,8 +712,7 @@ host **does** program is the **in-engine UDMA AxQOS** sideband — a *different*
 UDMA AWQOS/ARQOS shift fields, called at **BOOT** (`tdrv_init@0x26a310`) and **per-collective**
 (`set_collectives_dma_queues_props@0x22c9e0`, passing the literal priority `0x3`). So the "outstanding-txn
 limit" lives in `qos_prot` and is **never** programmed in-corpus; the "priority" IS set, but as the
-engine AxQOS at boot+per-collective, not as `qos_prot` fairness. `[HIGH/OBSERVED callgraph edges + the
-0x3 value.]`
+engine AxQOS at boot+per-collective, not as `qos_prot` fairness.
 
 ### 9.3 NSM + PMU — consumer/debug only `[HIGH absence; consumer flow CARRIED]`
 
@@ -738,13 +723,13 @@ recovery** writes (`reset_staging_fifo` drain, `cfg_clear`) by the Q7/management
 **arming** writes by the out-of-corpus secure boot FW — neither ships. **QoS PMU** has no in-corpus
 writer; it boots DISABLED (`event_select=0`). The runtime's `nrt_sys_trace_*` targets a separate SW
 event RING (host-RAM), not the qos_pmu AXI-beat PMU CSRs; the hardware PMU is left to out-of-corpus
-debug tooling. `[HIGH/OBSERVED absence; NSM consumer flow CARRIED from the interrupt cause tables.]`
+debug tooling.
 
 ---
 
 ## 10. Adversarial self-verification — the five strongest claims, re-challenged
 
-Each headline claim re-tested against the binary / header / JSON this pass; a claim survives only if a
+Each headline claim is re-tested against the binary / header / JSON; a claim survives only if a
 second independent witness agrees.
 
 1. **The PE micro-op sequence + opcodes (`Ldweights 0x01` … `MatmulMX 0x0A`, `ConvLutLoad 0xe4`).**
@@ -753,7 +738,7 @@ second independent witness agrees.
    CONV_LUT_LOAD=0xe4` byte-exact; the `struct2opcode` JSON independently binds `S3_LW_STRUCT→LDWEIGHTS`,
    `S3D3_MM_STRUCT→MATMUL`, `S2S1D2_PE_SEED_STRUCT→PE_MANAGE_SEED`, `SMX1_LW→LDWEIGHTS_MX`,
    `SMX1D3_MM→MATMUL_MX`; the MARIANA PE dispatch chain byte-decodes `bnei a2,1/2/3/6/7/8 + movi a3,9/10`
-   to the same set; the DEBUG strings name them. **Triple-witnessed. Survives.** `[HIGH/OBSERVED]`
+   to the same set; the DEBUG strings name them. **Triple-witnessed. Survives.**
 
 2. **The `arr_seq` PE↔SEQ handshake (3 per-tile perf banks + the cluster `matmul_done_last`
    completion).** *Challenge:* are the field names real or paraphrased? *Re-test:* `rg` of
@@ -761,14 +746,14 @@ second independent witness agrees.
    `fifo_size_sel`, `bypass_peregwrite_instr`, `disable_dependency_check`, `perf_cntr_cfg`, `cntr_en`,
    `cntr_rst` verbatim; `tpb_arr_seq_cluster_host_visible.json` returns `matmul_done_last`,
    `enable_wl_last_active_col`, `flush_p2f_fifos`, `en_inter_instr_dly`, `inter_instr_dly_cnt`,
-   `p2fifo_af`, `array_stagger`. **All present verbatim. Survives.** `[HIGH/OBSERVED]`
+   `p2fifo_af`, `array_stagger`. **All present verbatim. Survives.**
 
 3. **The SP/TOP_SP sync ops (`Event_Semaphore 0xa0`, `POLL_SEM 0xb3` = the TOP_SP Min-fold).**
    *Challenge:* could `POLL_SEM` be a generic poll, not TOP_SP-specific? *Re-test:* the opcodes are in
    the enum (`EVENT_SEMAPHORE=0xa0`, `NOTIFY=0xa6`, `EVENT_SEMAPHORE_RANGE_CLEAR=0xb0`, `POLL_SEM=0xb3`);
    the `ctrl_poll_sem.h` header comment reads *"accelerate polling semaphores on TOP_SP"* verbatim with
    the `[8,3,5,4,4,10]→3` Min-fold example; the barrier pseudo-opcodes `0xc3/0xd5/0xd8` carry the
-   `0b110`-upper-bits pseudo classification. **Survives** (verbatim TOP_SP attribution). `[HIGH/OBSERVED]`
+   `0b110`-upper-bits pseudo classification. **Survives** (verbatim TOP_SP attribution).
 
 4. **The ACT PWL quad (cubic BUCKET) + the Maverick ACT→DVE HW-region fold.** *Challenge:* could `d2`/`d3`
    be padding, or the fold be only a schedule change? *Re-test:* `tpb_activation_entries.h` reads
@@ -776,15 +761,13 @@ second independent witness agrees.
    `sizeof` 32/128/32/32 compile-verified all gens; the maverick `TPB_DVE.json` carries
    `ACT_CONTROL_TABLE`@0xA0000 + `PWP_CONTROL_TABLE`@0xB0000 + `PWP_BUCKETS_TABLE`@0xC0000 **inside** the
    DVE block with **no** ACT engine block on v5 — a physical SRAM migration, not a schedule. **Survives.**
-   `[HIGH/OBSERVED]`
 
 5. **The CSR programmers (REMAPPER = host per-region; QoS/NSM/PMU = unprogrammed).** *Challenge:* could a
    device-FW or NCFW writer exist that the sweep missed? *Re-test:* `libnrt.so` carries the named
    `aws_hal_sprot_config_remap_entry_internal_<gen>` writer (`base+0x130..0x144` 6-word CAM window) +
    the `use_sprot` mem-ref-staging trigger; the cross-corpus negative is 0 sprot/qos/nsm tokens in
    `libnrtucode.a`, 0 in `libncfw.so`, DKMS comment-only; `qos_prot`/NSM/PMU boot
-   `chicken=1`/`bypass=1`/`event_select=0` with no in-corpus clear. **Survives.** `[HIGH/OBSERVED
-   presence + cross-corpus absence]`
+   `chicken=1`/`bypass=1`/`event_select=0` with no in-corpus clear. **Survives.**
 
 No claim here rests on an unnamed symbol or a single uncorroborated witness: every opcode is enum +
 JSON + (where carved) dispatch-chain + DEBUG-string witnessed; every struct is compile-verified; every
@@ -795,7 +778,7 @@ flagged `[MED]`/`[INFERRED]`, never asserted as freshly-decoded fact.
 
 ## 11. Confidence ledger
 
-**HIGH / OBSERVED (read / compile-verified / disassembled / CSR-JSON-read this pass):**
+**HIGH / OBSERVED (read / compile-verified / disassembled / CSR-JSON-read):**
 
 * The PE opcode roster byte-exact (`LDWEIGHTS=0x01 … MATMUL_MX=0x0A, CONV_LUT_LOAD=0xe4`) from the ISA
   enum + the `struct2opcode` JSON + the MARIANA PE dispatch chain + the DEBUG handler strings.

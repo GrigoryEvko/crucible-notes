@@ -12,11 +12,11 @@ semaphore notification, dispatches a `cc_op` collective program through a small 
 and drives the per-step DMA-reprogram + semaphore rendezvous — while the *data* moves on the
 SDMA/POOL data plane it sequences but never executes.
 
-The page's reason to exist is a **correction**. Every earlier non-DX pass that pointed the
+The page's reason to exist is a **correction**. Every earlier reading that pointed the
 *only shipped* disassembler config (`ncore2gp` = Vision-Q7) at the NCFW firmware measured a
 "**~26–28% FLIX**" content and one sibling (P-3-225) even pinned a "genuine 8-byte FLIX
 bundle, op0=e→3 slots / op0=f→2 slots, four-way proof." **That FLIX is a decode artifact.**
-This page debunks it *empirically this session* — by crafting a blob of two leader bytes and
+This page debunks it *empirically* — by crafting a blob of two leader bytes and
 watching the `ncore2gp` objdump greedily eat them as 16-/8-byte Vision SIMD bundles — and
 gives the correct **scalar-LX length rule** (`op0 ∈ {e,f}` ⇒ treat as a 3-byte resync width,
 **not** a FLIX bundle marker; resync at `retw.n`). The honest wall is then stated plainly:
@@ -26,7 +26,7 @@ NCFW-interior instruction-mix percentage is a decode artifact, not a real FLIX l
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
 `OBSERVED` = a byte / string / config field / disassembler output read from a shipped
-artifact **this session**; `CARRIED` = OBSERVED in a cited prior analysis report and reused
+artifact present here; `CARRIED` = OBSERVED in prior analysis and reused
 at its original confidence (one inheritance step from the binary — flagged because the NCFW
 firmware images themselves are **not in this checkout**); `INFERRED` = reasoned over those.
 Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but real),
@@ -35,14 +35,13 @@ Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but 
 
 > **GOTCHA — provenance split, read this first.** The NCFW *device firmware* (`libncfw.so`
 > and the four IRAM/DRAM images it carries) is **not present in this corpus checkout**. What
-> *is* present and re-verified **OBSERVED this session**: (a) the `ncore2gp` Xtensa config
+> *is* present and **OBSERVED** here: (a) the `ncore2gp` Xtensa config
 > headers and the whole co-shipped `XtensaTools`/`ncore2gp` tree, (b) the native
 > `xtensa-elf-objdump` and its FLIX mis-decode reproduced on a crafted blob, (c) the
 > config-inventory negative. Every *firmware-byte* fact (the `0x24` handler bytes, the
 > dispatch anchors, the helper-bank decodes, the IRAM/DRAM SHAs and sizes, the host
-> `get_image` selector) is **CARRIED** from the named sibling carve reports that *did* have
-> the binary in their checkout. The distinction is tagged on every claim below; it is the
-> difference between "I re-ran this" and "I trust the cited carve."
+> `get_image` selector) is **CARRIED** from sibling carve work that *did* have
+> the binary in its checkout. The distinction is tagged on every claim below.
 
 ---
 
@@ -87,7 +86,7 @@ device NCFW firmware as **raw, non-ELF** Xtensa IRAM(code)+DRAM(data) memory ima
 `.rodata` — one IRAM+DRAM pair per generation, plus a `u32 *_size` word per blob. There is
 no ELF header and no embedded load-address header: the host DMAs each image to the device
 IRAM/DRAM base, and the base is implied by the selector contract, not carried in the blob.
-The carved inventory `[HIGH/CARRIED — SX-NCFW-01 §1]`:
+The carved inventory `[HIGH/CARRIED]`:
 
 | gen | codename | kind | file-off in `.so` | size (B / hex) | IRAM sha256 (carved) |
 |---|---|---|---|---|---|
@@ -100,7 +99,7 @@ The carved inventory `[HIGH/CARRIED — SX-NCFW-01 §1]`:
 | v4+ | MARIANA_PLUS | IRAM | `0x08ccc0` | 19488 / `0x4c20` | `abc4d4521dd857ab…` |
 | v4+ | MARIANA_PLUS | DRAM | `0x087ea0` | 19968 / `0x4e00` | `1c3ac5f445865844…` *(byte-identical to MARIANA DRAM)* |
 
-Two structural facts fall straight out of the table `[HIGH/CARRIED — SX-NCFW-01 §1]`:
+Two structural facts fall straight out of the table:
 **MARIANA and MARIANA_PLUS share a byte-identical DRAM** (same sha256 `1c3ac5f4…`) and a
 *code-only* IRAM delta (the v4→v4+ images diverge at byte 4497) — i.e. M+ is a feature-flag
 refresh, not new silicon. And **SUNDA's IRAM is ~2.2× larger** than the others — it is the
@@ -111,12 +110,12 @@ vectors: v2/v3 lead with `06 76 …` / `86 77 …`; v4/v4+ with `06 7d …` / `8
 > stride: `0x05`=v2 SUNDA (coretype 6), `0x0c`=v3 CAYMAN (13), `0x14`=v4 MARIANA (21),
 > `0x1c`=v4+ MARIANA_PLUS (29), `0x24`*=v5 MAVERICK (37, *arch_id INFERRED). This is the
 > same axis [the IRAM-image page](../collectives/ncfw/ncfw-iram-images.md) keys on.
-> `[HIGH/CARRIED — SX-NCFW-19, SX-NCFW-01 §0]`
+> `[HIGH/CARRIED]`
 
 ### 1.2 The host selector `libncfw_get_image(arch_id)` — and the MAVERICK-absent proof
 
 The image is chosen by `libncfw_get_image` (`.text 0x1179`, fully disassembled in the carve)
-via a `cmpl` ladder on `arch_id` `[HIGH/CARRIED — SX-NCFW-01 §2, SX-NCFW-19 §C]`:
+via a `cmpl` ladder on `arch_id` `[HIGH/CARRIED]`:
 
 ```c
 // out = struct { void *iram; u64 iram_size; void *dram; u64 dram_size; }
@@ -138,54 +137,53 @@ int libncfw_get_image(uint32_t arch_id, struct img *out) {
 > `ctx_log` symbol census — exactly **four** codename symbols
 > (`{sunda,cayman,mariana,mariana_plus}_ncfw_ctx_log`) and **zero** `maverick`/`v5` — and by
 > `libnrtucode.so` likewise omitting coretype-37. The NCFW management core, like GPSIMD
-> itself, tops out at MARIANA_PLUS. `[HIGH/CARRIED — SX-NCFW-01 §3, SX-NCFW-19 §63]`
+> itself, tops out at MARIANA_PLUS. `[HIGH/CARRIED]`
 
 ### 1.3 The only shipped Xtensa config is `ncore2gp` — the Vision-Q7 datapath core, **not** NCFW
 
-This is the root cause of every prior FLIX mis-read, and it is **OBSERVED this session**. The
+This is the root cause of every prior FLIX mis-read `[HIGH/OBSERVED]`. The
 co-shipped Cadence `XtensaTools` registers exactly **one** Xtensa core, and its `core-isa.h`
-describes the *Vision-Q7 datapath* core, not a scalar control core. Read this session from
+describes the *Vision-Q7 datapath* core, not a scalar control core. Read from
 `extracted/…/tools/ncore2gp/xtensa-elf/arch/include/xtensa/config/core-isa.h`:
 
 | Knob | Value | `core-isa.h` line | What it means |
 |---|---|---|---|
-| `XCHAL_HAVE_VISION` | **1** | `:206` | Vision SIMD datapath present `[HIGH/OBSERVED]` |
-| `XCHAL_VISION_TYPE` | **7** (Q7) | `:208` | Vision **Q7** `[HIGH/OBSERVED]` |
-| `XCHAL_VISION_SIMD16` | **32** | `:207` | 512-bit SIMD lane width `[HIGH/OBSERVED]` |
-| `XCHAL_MAX_INSTRUCTION_SIZE` | **32** | `:53` | up to 256-bit FLIX bundles `[HIGH/OBSERVED]` |
-| `XCHAL_INST_FETCH_WIDTH` | **32** | `:228` | 256-bit instruction fetch `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_FLIX3` | **0** | `:202` | (the *3-way* FLIX flag is off; Vision carries its own FLIX) `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_MAC16` | **0** | `:95` | no MAC16 `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_MUL16` | **1** | `:63` | `MUL16S/U` present `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_MUL32` | **1** | `:64` | `MULL` present `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_WINDOWED` | **1** | `:50` | windowed AR file `[HIGH/OBSERVED]` |
-| `XCHAL_NUM_AREGS` | **64** | `:51` | 64 physical AR (16-reg logical window) `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_DENSITY` | **1** | `:55` | 16-bit code density `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_LOOPS` | **1** | `:56` | zero-overhead loops `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_L32R` | **1** | `:67` | `L32R` literal loads `[HIGH/OBSERVED]` |
-| `XCHAL_HAVE_CONST16` | **1** | `:69` | `CONST16` `[HIGH/OBSERVED]` |
-| `XCHAL_HW_VERSION_NAME` | **"NX1.1.4"** | `:260` | the GPSIMD HW rev `[HIGH/OBSERVED]` |
+| `XCHAL_HAVE_VISION` | **1** | `:206` | Vision SIMD datapath present |
+| `XCHAL_VISION_TYPE` | **7** (Q7) | `:208` | Vision **Q7** |
+| `XCHAL_VISION_SIMD16` | **32** | `:207` | 512-bit SIMD lane width |
+| `XCHAL_MAX_INSTRUCTION_SIZE` | **32** | `:53` | up to 256-bit FLIX bundles |
+| `XCHAL_INST_FETCH_WIDTH` | **32** | `:228` | 256-bit instruction fetch |
+| `XCHAL_HAVE_FLIX3` | **0** | `:202` | (the *3-way* FLIX flag is off; Vision carries its own FLIX) |
+| `XCHAL_HAVE_MAC16` | **0** | `:95` | no MAC16 |
+| `XCHAL_HAVE_MUL16` | **1** | `:63` | `MUL16S/U` present |
+| `XCHAL_HAVE_MUL32` | **1** | `:64` | `MULL` present |
+| `XCHAL_HAVE_WINDOWED` | **1** | `:50` | windowed AR file |
+| `XCHAL_NUM_AREGS` | **64** | `:51` | 64 physical AR (16-reg logical window) |
+| `XCHAL_HAVE_DENSITY` | **1** | `:55` | 16-bit code density |
+| `XCHAL_HAVE_LOOPS` | **1** | `:56` | zero-overhead loops |
+| `XCHAL_HAVE_L32R` | **1** | `:67` | `L32R` literal loads |
+| `XCHAL_HAVE_CONST16` | **1** | `:69` | `CONST16` |
+| `XCHAL_HW_VERSION_NAME` | **"NX1.1.4"** | `:260` | the GPSIMD HW rev |
 
 The `ivp_*` SIMD opcodes on vector regs `v0..v31` this config defines are **impossible on a
 scalar control core**. This config is the source of the mis-decode: its FLIX format-length
 table makes `op0=0xe` a 16-byte (5-slot Vision) bundle and `op0=0xf` an 8-byte bundle.
 
-**The config-inventory negative — OBSERVED this session, `--no-ignore` over the whole tools
-tree:**
+**The config-inventory negative** (`--no-ignore` over the whole tools tree) `[HIGH/OBSERVED]`:
 
-| Inventory item | Count in corpus | How verified this session |
+| Inventory item | Count in corpus | How verified |
 |---|---|---|
-| `core-isa.h` files | **1** (the `ncore2gp` one above) | `fd -i core-isa.h extracted/` ⇒ exactly one path `[HIGH/OBSERVED]` |
-| registered Xtensa cores | **1** (`ncore2gp`) | `xtensa-elf-objdump` with no `XTENSA_CORE` ⇒ *"no Xtensa core registered as the default"*; only `ncore2gp` resolves `[HIGH/OBSERVED]` |
-| `.flix` files | **0** | `fd -e flix extracted/` ⇒ empty `[HIGH/OBSERVED]` |
-| `.tie` files | **5** (all generic SDK) | `TIE/lib/TIE/library.tie` + xocl Tests `imap_v{p1,p6,q7,q8}.tie` — none is a registered NCFW core `[HIGH/OBSERVED]` |
+| `core-isa.h` files | **1** (the `ncore2gp` one above) | `fd -i core-isa.h extracted/` ⇒ exactly one path |
+| registered Xtensa cores | **1** (`ncore2gp`) | `xtensa-elf-objdump` with no `XTENSA_CORE` ⇒ *"no Xtensa core registered as the default"*; only `ncore2gp` resolves |
+| `.flix` files | **0** | `fd -e flix extracted/` ⇒ empty |
+| `.tie` files | **5** (all generic SDK) | `TIE/lib/TIE/library.tie` + xocl Tests `imap_v{p1,p6,q7,q8}.tie` — none is a registered NCFW core |
 
 The objdump self-reports *"BFD … (GNU Binutils) 2.34.20200201 Xtensa Tools 14.09"*. So there
 is **genuinely no NCFW (LX management) core configuration anywhere in the corpus** — no
 params, no `core-isa.h`, no `.tie`/`.flix`/`libisa` for it. The five `.tie` files are generic
 XtensaTools SDK library/test artifacts (the four `imap_v*.tie` are Vision-OpenCL examples);
 `objdump` still lists only `ncore2gp` regardless of them. *This is the irreducible cause of
-the decode limit (§5).* `[HIGH/OBSERVED this session; matches SX-NCFW-01 §4a / SX-NCFW-17 §5]`
+the decode limit (§5).*
 
 > **GOTCHA — `fd -e tie extracted/` lies.** `fd -e tie extracted/` returns *nothing* because
 > `fd` reads `extracted/` as a **pattern**, not a path; the correct form is
@@ -193,13 +191,13 @@ the decode limit (§5).* `[HIGH/OBSERVED this session; matches SX-NCFW-01 §4a /
 > "zero `.tie` files!" reading is an `fd` arg-order trap, not a corpus fact. The genuine
 > negatives are *zero `.flix`* and *one `core-isa.h`*. (See §9 divergence note 1.)
 
-### 1.4 The FLIX mis-decode, demonstrated empirically **this session** (the debunk)
+### 1.4 The FLIX mis-decode, demonstrated empirically (the debunk)
 
-Rather than only assert the artifact, a blob was **crafted and disassembled this session** at
-`/tmp/…/craft.bin`: a clean `entry a1,32` (bytes `36 41 00`), an `op0=0x0e` leader byte, an
+Rather than only assert the artifact, a blob was **crafted and disassembled**:
+a clean `entry a1,32` (bytes `36 41 00`), an `op0=0x0e` leader byte, an
 `op0=0x0f` leader byte, then `retw.n` (`1d f0`), with zero padding so the FLIX decoder can
 consume whole bundles. Run with `XTENSA_CORE=ncore2gp xtensa-elf-objdump -D -b binary
--m xtensa` — **verbatim output this session**:
+-m xtensa` — **verbatim output**:
 
 ```
 00000000 <.data>:
@@ -216,13 +214,13 @@ consume whole bundles. Run with `XTENSA_CORE=ncore2gp xtensa-elf-objdump -D -b b
 The `op0=0xe` byte is **greedily consumed as a 16-byte 5-slot Vision SIMD bundle** — a
 512-bit vector multiply right after a function prologue, useless to a DMA/collective control
 core — and `op0=0xf` as an 8-byte bundle. **This is the entire mechanism of the "~26–28%
-FLIX."** `[HIGH/OBSERVED this session]`
+FLIX."** `[HIGH/OBSERVED]`
 
-Apply the **scalar-LX length rule** to the *same bytes* (a small length walker, written and
-run this session, encoding `op0 0..7 ⇒ 3B core`, `op0 8..d ⇒ 2B density`, `op0 e/f ⇒ 3B
+Apply the **scalar-LX length rule** to the *same bytes* (a small length walker encoding
+`op0 0..7 ⇒ 3B core`, `op0 8..d ⇒ 2B density`, `op0 e/f ⇒ 3B
 resync`): the `e` leader is consumed in **3 bytes**, the stream re-converges across the
 padding, and the `1d f0` lands at `0x1b` as a real **2-byte density `retw.n`** boundary — the
-exact resync behaviour the prior carve reports measured. `[HIGH/OBSERVED this session]`
+exact resync behaviour the prior carves measured.
 
 > **CORRECTION — "genuine 8-byte FLIX, op0=e→3 slots / op0=f→2 slots" (P-3-225) is REFUTED.**
 > P-3-225 read the NCFW image under a *radare2* 8-byte stepping (`op0=e`/`op0=f` both 8 B),
@@ -234,23 +232,22 @@ exact resync behaviour the prior carve reports measured. `[HIGH/OBSERVED this se
 > read is a desync that *coincidentally* re-lands on some boundaries; and the SRs are all
 > standard Xtensa-LX registry entries (§3.3). The scalar `(e3,f3)` rule **wins** the global
 > `retw.n` resync decisively over both the `ncore2gp` (`e16,f8`) and the radare2 (`e8,f8`)
-> readings (§1.5). `[HIGH — empirical demo this pass + CARRIED SX-NCFW-17 §2, GX-FLIX-05 §1]`
+> readings (§1.5). `[HIGH — empirical demo + CARRIED]`
 
 ### 1.5 Why this is a *real* scalar-LX core — the four-way proof
 
 Four independent lines establish the core *positively* as scalar-LX (each byte-decoded over
-the carved blobs in the cited sources; the retw.n resync table reproduced *byte-for-byte this
-session* by an independent decoder per GX-FLIX-05 §1.2):
+the carved blobs; the `retw.n` resync table reproduced *byte-for-byte* by an independent
+decoder):
 
 **(a) Width profile.** The only cleanly-decoded instructions are *exclusively* 2-byte and
 3-byte (v3: 2B 32% / 3B 68%) — the textbook Xtensa-LX profile (24-bit core ops `op0 0..7` +
 16-bit density `op0 8..d`). A genuine FLIX core's body is dominated by wide bundles; NCFW's is
 not. The only "8/16-byte instructions" are the `ncore2gp` Vision mis-decodes.
-`[HIGH/CARRIED — SX-NCFW-17 §2.1]`
 
 **(b) Boundary resync.** Sweep each IRAM from offset 0, count how many genuine `retw.n`
 (`1d f0`) land as an instruction start under three width rules. The scalar `(e3,f3)` rule wins
-for v3/v4/v4+ `[HIGH/CARRIED — SX-NCFW-17 §2.3 = GX-FLIX-05 §1.2, reproduced byte-for-byte]`:
+for v3/v4/v4+ `[HIGH/CARRIED — reproduced byte-for-byte]`:
 
 | gen | scalar (e3,f3) | `ncore2gp` (e16,f8) | radare2 (e8,f8) |
 |---|---|---|---|
@@ -263,16 +260,16 @@ for v3/v4/v4+ `[HIGH/CARRIED — SX-NCFW-17 §2.3 = GX-FLIX-05 §1.2, reproduced
 > under the scalar rule — but only 37 anchors exist in the 2.2×-larger monolith, so it is
 > small-sample noisy. v2 shares the *identical* reset prologue, `0x24` window handler, and SR
 > set as v3, so it is the **same core**; the v2 number is a counting artifact of its
-> monolithic codegen, not a different ISA. `[HIGH/CARRIED — SX-NCFW-17 §2.3/§7]`
+> monolithic codegen, not a different ISA. `[HIGH/CARRIED]`
 
 **(c) `e/f`-leader follow-byte.** The `op0=e/f` "leader" bytes are dominantly *followed* by
 scalar call/return opcode bytes (`05` = the CALLN `op0`; `1d` = the low byte of `1d f0
 retw.n`). In a genuine Vision FLIX bundle, byte0–1 carry the format/slot-select bits and
 would **not** be dominated by scalar call/retw opcodes — this is the fingerprint of a scalar
-mis-sync (the `e/f` byte is an operand/tail byte). `[HIGH/CARRIED — SX-NCFW-17 §2.4]`
+mis-sync (the `e/f` byte is an operand/tail byte).
 
 **(d) Special-register set.** Every decoded `wsr`/`rsr` names a **standard Xtensa-LX SR**
-only — no TIE/coprocessor SRs (full table §3.3). `[HIGH/CARRIED — SX-NCFW-17 §3.2]`
+only — no TIE/coprocessor SRs (full table §3.3).
 
 **Conclusion:** NCFW is a scalar Xtensa-LX control core. There is no NCFW FLIX format because
 there is no NCFW datapath to feed one.
@@ -286,7 +283,7 @@ there is no NCFW datapath to feed one.
 IRAM is laid out vectors-first: off `0x0` = `j reset_body`, off `0x6` = `j window/exc
 vector`, and off `0x24` = the canonical **WindowOverflow8 / WindowUnderflow8** spill/fill
 handler. Decoded by the scalar length rule (`op0 0..7` = 3-byte core ops; the windowed
-`l32e`/`s32e` are `op0=0` RRR forms) `[HIGH/CARRIED — SX-NCFW-17 §3.1, SX-NCFW-19]`:
+`l32e`/`s32e` are `op0=0` RRR forms) `[HIGH/CARRIED]`:
 
 ```
 0x24: l32e a8 ,a1,-64      0x3c: s32e a8 ,a1,-52
@@ -302,7 +299,6 @@ logical window over a 64-entry physical AR file, `XCHAL_NUM_AREGS=64`) with hard
 window-overflow/underflow exceptions. The handler bytes at `0x24` are **byte-identical** across
 SUNDA / CAYMAN / MARIANA / MARIANA_PLUS — the single hardest proof that all four images are
 the *same* scalar-LX core, and the per-generation ISA-stability ground truth.
-`[HIGH/CARRIED — SX-NCFW-17 §3.1, SX-NCFW-19]`
 
 Annotated reconstruction of the spill half (windowed-exception store of the live window):
 
@@ -338,14 +334,14 @@ under the scalar rule (§3, §4). But the `e/f = 3-byte` rule is a **statistical
 heuristic, not an exact per-instruction length**: the `op0=e/f` bytes are overwhelmingly
 operand/immediate bytes of scalar 2-/3-byte instructions, not leaders.
 
-> **GOTCHA — `op0=e` is not uniformly 3 bytes at the instruction level.** GX-FLIX-05 §1.5
-> observed, between the verified `entry a1,80` @`0x3bb0` (3 B → `0x3bb3`) and the verified
-> `extui a9,a2,8,7` @`0x3bb5`, *exactly two* bytes (`5e 10`) — so the op at `0x3bb3`
+> **GOTCHA — `op0=e` is not uniformly 3 bytes at the instruction level.** Between the verified
+> `entry a1,80` @`0x3bb0` (3 B → `0x3bb3`) and the verified
+> `extui a9,a2,8,7` @`0x3bb5` sit *exactly two* bytes (`5e 10`) — so the op at `0x3bb3`
 > (`op0=0xe`) is consumed in **2 bytes** on that path. The `e/f=3B` rule **wins** the *global*
 > `retw.n` resync because 3 is the modal scalar width, but for any single dense body it will
 > still lock onto operand bytes as false leaders. Treat `op0=e/f` as "do not anchor here"
 > (operand), not as a fixed 3-byte op. The exact `e/f` leader ops **cannot be named** without
-> NCFW's own TIE config (none ships). `[HIGH/CARRIED — GX-FLIX-05 §1.5]`
+> NCFW's own TIE config (none ships). `[HIGH/CARRIED]`
 
 ---
 
@@ -353,7 +349,7 @@ operand/immediate bytes of scalar 2-/3-byte instructions, not leaders.
 
 ### 3.1 The windowed ABI (XEA2)
 
-NCFW uses the standard Xtensa **windowed** ABI `[HIGH/CARRIED — SX-NCFW-17 §4.1, GX-FLIX-05 §3.1]`:
+NCFW uses the standard Xtensa **windowed** ABI `[HIGH/CARRIED]`:
 
 - **Prologue** `entry a1,N` rotates `WINDOWBASE` and reserves an `N`-byte frame on `a1` (SP).
   Frame sizes observed (v3 histogram): `N ∈ {32×40, 48×10, 64×3, 80×2, 96×2}`.
@@ -378,15 +374,15 @@ This is the **same windowed ABI shape** the Q7 datapath core uses (`entry`/`retw
 base ops decode under either config and only the nonexistent NCFW FLIX layer mis-decodes. The
 difference is the datapath: NCFW is scalar control; Q7 is Vision. See
 [The XEA2/windowed ABI on the Q7 side](boot-reset.md) for the datapath core's `entry`/window
-priming. `[HIGH/CARRIED — SX-NCFW-17 §4.1]`
+priming.
 
 ### 3.2 Memory model — L32R literal pools, `memw`-fenced CSR access, MPU + stack limit
 
 - **L32R literal pools.** 436–503 `L32R` literal loads per gen pull 32-bit constants from a
   pool. Some literals point off-image (`0xfffeXXXX`) = an off-image mask-ROM region the
   static IRAM *references but does not contain*; the concrete `soc_addr` integers the thunks
-  load live there and in the runtime-populated DRAM, not in the static image. `[HIGH/CARRIED
-  for the L32R count — DX-HW-12 §3.2; LOW on the off-image integers]`
+  load live there and in the runtime-populated DRAM, not in the static image.
+  `[HIGH/CARRIED count; LOW off-image integers]`
 
   Annotated L32R literal-pool addressing (PC-relative load of a 32-bit constant):
 
@@ -406,12 +402,11 @@ priming. `[HIGH/CARRIED — SX-NCFW-17 §4.1]`
   bracketed by `memw` (the ordering barrier) — confirmed at the instruction level in the
   helper bank (§4.2). The image's **one** `extw` (full barrier) is in the idle loop; **one**
   `waiti 15` per image. Per-gen barrier census: `memw` 47/47/47 (v3/v4/v4+) vs **405** in v2
-  (the monolith fences far more); `extw` 1 and `waiti15` 1 in *every* image. `[HIGH/CARRIED —
-  GX-FLIX-05 §3.5]`
+  (the monolith fences far more); `extw` 1 and `waiti15` 1 in *every* image.
 
 ### 3.3 The special-register set — standard Xtensa-LX only (no TIE)
 
-Every decoded `wsr`/`rsr` names a standard Xtensa-LX SR `[HIGH/CARRIED — SX-NCFW-17 §3.2]`:
+Every decoded `wsr`/`rsr` names a standard Xtensa-LX SR `[HIGH/CARRIED]`:
 
 | SR# | name | role |
 |---|---|---|
@@ -436,7 +431,7 @@ Every decoded `wsr`/`rsr` names a standard Xtensa-LX SR `[HIGH/CARRIED — SX-NC
 > standard Xtensa SR-registry numbers (and `ncore2gp` itself names them as such). The
 > `MPUENB` (MPU) + `ISL` (stack limit) + `VECBASE` (relocatable vectors) + up-to-7 INTLEVEL
 > profile is that of a **small privileged management/control core**, not a DSP datapath —
-> reinforcing the scalar-LX verdict. `[HIGH/CARRIED — SX-NCFW-17 §3.2; role char. MED/INFERRED]`
+> reinforcing the scalar-LX verdict. `[HIGH/CARRIED; role char. MED/INFERRED]`
 
 ### 3.4 ISA family / extensions
 
@@ -449,7 +444,7 @@ Every decoded `wsr`/`rsr` names a standard Xtensa-LX SR `[HIGH/CARRIED — SX-NC
 true option vector): `MUL16` (`mul16s/u`), `MUL32` (`mull`), booleans (`andb`/`orb`/`xorb`),
 `SEXT`, `CLAMPS`, `MIN`/`MAX`, `NSAU`, `depbits`. **Absent:** `MAC16` (`ncore2gp` itself has
 `MAC16=0`). The narrower option vector cannot be *proven* in NCFW's silicon without NCFW's own
-params — UNKNOWN at the config level. `[CARRIED — SX-NCFW-17 §4.2 caveat]`
+params — UNKNOWN at the config level. `[CARRIED]`
 
 ---
 
@@ -462,7 +457,7 @@ case-body interior.
 ### 4.1 The dispatch spine (the recoverable control skeleton)
 
 The control skeleton decodes cleanly under the scalar rule, byte-confirmed against the carved
-v3 image `[HIGH/CARRIED — SX-NCFW-03, GX-FLIX-05 §2; anchors byte-exact]`:
+v3 image `[HIGH/CARRIED — anchors byte-exact]`:
 
 - **IDLE.** A tiny function whose body is `entry; extw; …; waiti 15; j <back>` — park at max
   INTLEVEL, wake on a notification. `waiti 15` occurs **exactly once** per image (v3 @`0x4b6c`,
@@ -498,14 +493,14 @@ v3 image `[HIGH/CARRIED — SX-NCFW-03, GX-FLIX-05 §2; anchors byte-exact]`:
 > **QUIRK — v2/SUNDA has no dispatch table.** SUNDA is *structurally different*: **no
 > `DRAM+0xB0` table**, a monolithic loop (23 funcs vs v3's 57) — the older 2.2×-larger body.
 > Its (A) vector still exists (`{0x1bb3,…}`) but the algo dispatch is inlined, not
-> table-driven. `[HIGH/CARRIED — SX-NCFW-03 §6/§7]`
+> table-driven. `[HIGH/CARRIED]`
 
 ### 4.2 The leaf primitives the algorithms compose (the rendezvous substrate)
 
 The region `0x3100..0x36f0` is a **bank of ~41 tiny windowed helper functions** (41
 `entry a1,N` prologues, 32 `retw.n`) that the case bodies *call*, and it decodes **cleanly**
 under the scalar-LX rule. It is the semaphore-primitive library — the device side of the
-collective's `PollSem`/`DmaTrigger` lowering `[HIGH/CARRIED — GX-FLIX-05 §3]`:
+collective's `PollSem`/`DmaTrigger` lowering `[HIGH/CARRIED]`:
 
 **WAIT (spin-poll)** — `memw; l32i.n aV,[a10+0]; <cond-branch back to the memw>`. Load the CSR
 at the pointer in `a10`, compare to the target, spin until released. Byte-exact (v3):
@@ -533,19 +528,18 @@ semaphore CSR. **Five** genuine fenced CSR-write signals (v3 @`0x3113`/`0x31c7`/
 > primitives (`memw; s32i*`)." Classifying every `memw`-fenced `s32i.n` by its **base
 > register** shows only **5** target a CSR (`[a!=a1]`); the other **6** target the stack frame
 > (`[a1]`) and are the spill halves of the §atomic-snapshot quads, *not* signals.
-> `[HIGH/CARRIED — GX-FLIX-05 §3.3]`
+> `[HIGH/CARRIED]`
 
 **ATOMIC SNAPSHOT** — three byte-identical quads (v3 @`0x3684`/`0x36ac`/`0x36d4`):
 `memw; l32i.n a2,[a10+0]; memw; s32i.n a2,[a1+12]; memw; l32i.n a3,[a10+4]; memw; s32i.n
 a3,[a1+8]` — a fully-fenced read of two adjacent CSR words (a 64-bit semaphore/counter pair)
-into the local frame. `[HIGH/CARRIED — GX-FLIX-05 §3.4; "64-bit pair" INFERRED-STRONG]`
+into the local frame. `[HIGH/CARRIED; "64-bit pair" INFERRED-STRONG]`
 
 ### 4.3 How NCFW drives the data plane (the role, without over-claiming)
 
 Per the collective lane, the host runtime never posts a wire opcode: it **builds** the `cc_op`
 collective program (the load-time `SELECT → COMPOSE → EMIT` rewrite), DMAs it onto the core,
-and rings a doorbell. The NCFW core then, per algorithm step `[CARRIED — DX-DMA-03 §4/§5/§7,
-GX-FLIX-05 §5; the per-step *schedule* stays MED]`:
+and rings a doorbell. The NCFW core then, per algorithm step `[CARRIED; per-step schedule MED]`:
 
 1. **Allocates** DMA engines from the static `dma_alloc_bitmap` into a runtime
    `dma_engines_bitmap`;
@@ -575,7 +569,7 @@ executed on-device by composing exactly the three §4.2 leaf primitives around t
 | MAVERICK (v5) | `0xBF` + `gen`/`start` unchanged, but d2d transport re-IPs to native UCIe (vs CAYMAN's PCIe-derived `io_d2d`); sync fabric widens | **no NCFW image ships** — the collective is driven differently |
 
 Tier: `SUNDA ⊂ {CAYMAN ≡ MARIANA ≡ MARIANA_PLUS} ⊂ MAVERICK` (transport/sync re-model).
-`[HIGH/CARRIED — DX-DMA-03 §7.4]`
+`[HIGH/CARRIED]`
 
 ### 4.5 The NCFW ↔ TOP_SP relationship — stated carefully
 
@@ -587,7 +581,7 @@ Tier: `SUNDA ⊂ {CAYMAN ≡ MARIANA ≡ MARIANA_PLUS} ⊂ MAVERICK` (transport/
 > separate scalar-LX core **image**, one per generation, `get_image(arch_id)`-selected, whose
 > per-TOP_SP context carries the `cc_op` program. Whether that core is physically the TOP_SP
 > NX core in a separate firmware mode, or an adjacent dedicated management core, **cannot be
-> settled from the shipped artifacts**. `[INFERRED/MED — SX-CCL-14]`
+> settled from the shipped artifacts**. `[INFERRED/MED]`
 
 ---
 
@@ -626,8 +620,7 @@ v3/v4/v4+):
 > rendezvous primitives.* The only genuine limit is the **missing NCFW disassembler config**,
 > which leaves the per-step case-body *schedule* MED and the `e/f` leader ops *un-nameable*. Any
 > "X% FLIX" figure measured by pointing `ncore2gp` at NCFW is a **decode artifact**, not a real
-> VLIW layer. Do not budget a FLIX issue port for this core. `[HIGH — §1.4 empirical + CARRIED
-> SX-NCFW-17 §6, GX-FLIX-05 §4/§7]`
+> VLIW layer. Do not budget a FLIX issue port for this core. `[HIGH — §1.4 empirical + CARRIED]`
 
 ---
 
@@ -637,7 +630,7 @@ TONGA (V1, the pre-unified Trn1/Inf1-era part) has no coretype/arch_id/runtime p
 unified stack and no GPSIMD Vision-Q7 POOL engine — GPSIMD is a v2+ feature. Consistently,
 `libncfw` ships **no TONGA NCFW image**: the `get_image` ladder (§1.2) compares only
 `{0x05, 0x0c, 0x14, 0x1c}`. The NCFW collective-firmware management core, like GPSIMD itself,
-is a **v2+ (SUNDA-onward)** construct. `[HIGH/CARRIED — DX-GEN-06]`
+is a **v2+ (SUNDA-onward)** construct. `[HIGH/CARRIED]`
 
 ---
 
@@ -693,29 +686,29 @@ To rebuild a Vision-Q7-compatible GPSIMD engine, the NCFW core obligates you to:
 
 ## 9. Verification ledger
 
-| # | claim | how grounded **this session** | verdict |
+| # | claim | how grounded | verdict |
 |---|---|---|---|
 | 1 | NCFW is a **scalar Xtensa-LX** core, distinct from the Q7 datapath core | `ncore2gp core-isa.h` is unambiguously the *Vision-Q7* config (`VISION=1`/`TYPE=7`/`SIMD16=32`/`MAC16=0`, lines `:206/:208/:207/:95`); the config-negative ⇒ no NCFW config ships; the firmware body is 2/3-byte only | **HIGH/OBSERVED** (config) + **HIGH/CARRIED** (body width) |
-| 2 | The "~26–28% FLIX" is a **decode artifact**, not a VLIW layer | crafted `op0=e/f` blob → `ncore2gp` objdump emits a 16-byte 5-slot `ivp_*` Vision bundle + an 8-byte bundle **this session**; scalar rule reconverges to `retw.n` on the same bytes | **HIGH/OBSERVED** (empirical demo) |
-| 3 | `WindowOverflow8` handler at IRAM `0x24`, byte-identical across 4 gens | `l32e`/`s32e a8..a15` decoded by the scalar length rule; byte-identical SUNDA/CAYMAN/MARIANA/MARIANA_PLUS | **HIGH/CARRIED** (SX-NCFW-17 §3.1; libncfw not in this checkout) |
-| 4 | Windowed XEA2 ABI (`entry`/`retw.n`/`call8`/`call0`, frames `{32..96}`, +8 rotation) + standard-LX SR set, no TIE | census `call8` 290/314, `call0` 202/149, `entry` 64/71, `retw.n` 102/105; SR table all standard registry | **HIGH/CARRIED** (SX-NCFW-17 §4.1/§3.2) |
-| 5 | Collective-control role: dispatch spine + sema primitives + `0xBF` SB2SB handoff; NCFW sequences, does not move data | dispatch read `const16 0xB0; addx4; l32i.n` byte-exact; 10 WAIT / 5 SIGNAL / 3 snapshot helpers; SB2SB `0xBF` data plane | **HIGH/CARRIED** (GX-FLIX-05 §2/§3, DX-DMA-03 §7.4); TOP_SP co-residence **MED/INFERRED** |
-| 6 | Config-inventory negative: 1 `core-isa.h`, 0 `.flix`, only `ncore2gp` registers | `fd`/`objdump` over `extracted/` this session | **HIGH/OBSERVED** |
-| 7 | MAVERICK (v5) ships no NCFW image | `get_image` ladder has no `cmp 0x24`; 4 `ctx_log` codename symbols, zero v5 | **HIGH/CARRIED** (SX-NCFW-01 §3) |
+| 2 | The "~26–28% FLIX" is a **decode artifact**, not a VLIW layer | crafted `op0=e/f` blob → `ncore2gp` objdump emits a 16-byte 5-slot `ivp_*` Vision bundle + an 8-byte bundle; scalar rule reconverges to `retw.n` on the same bytes | **HIGH/OBSERVED** (empirical demo) |
+| 3 | `WindowOverflow8` handler at IRAM `0x24`, byte-identical across 4 gens | `l32e`/`s32e a8..a15` decoded by the scalar length rule; byte-identical SUNDA/CAYMAN/MARIANA/MARIANA_PLUS | **HIGH/CARRIED** (libncfw not in this checkout) |
+| 4 | Windowed XEA2 ABI (`entry`/`retw.n`/`call8`/`call0`, frames `{32..96}`, +8 rotation) + standard-LX SR set, no TIE | census `call8` 290/314, `call0` 202/149, `entry` 64/71, `retw.n` 102/105; SR table all standard registry | **HIGH/CARRIED** |
+| 5 | Collective-control role: dispatch spine + sema primitives + `0xBF` SB2SB handoff; NCFW sequences, does not move data | dispatch read `const16 0xB0; addx4; l32i.n` byte-exact; 10 WAIT / 5 SIGNAL / 3 snapshot helpers; SB2SB `0xBF` data plane | **HIGH/CARRIED**; TOP_SP co-residence **MED/INFERRED** |
+| 6 | Config-inventory negative: 1 `core-isa.h`, 0 `.flix`, only `ncore2gp` registers | `fd`/`objdump` over `extracted/` | **HIGH/OBSERVED** |
+| 7 | MAVERICK (v5) ships no NCFW image | `get_image` ladder has no `cmp 0x24`; 4 `ctx_log` codename symbols, zero v5 | **HIGH/CARRIED** |
 
 ### Corrections and divergences recorded on this page
 
-1. **`.tie` inventory — checkout-local divergence.** DX-HW-12 §1.2 cited "**5** `.tie` files
-   (generic SDK)"; my first `fd -e tie extracted/` returned **zero** — but that was an `fd`
+1. **`.tie` inventory — checkout-local divergence.** A prior count cited "**5** `.tie` files
+   (generic SDK)"; an initial `fd -e tie extracted/` returned **zero** — but that was an `fd`
    arg-order trap (`extracted/` parsed as a *pattern*). The correct `fd -e tie . extracted/`
-   confirms the **5** files (`library.tie` + the 4 `imap_v*.tie`), matching DX-HW-12. The
+   confirms the **5** files (`library.tie` + the 4 `imap_v*.tie`), matching that count. The
    genuine config-negatives are *one* `core-isa.h` and *zero* `.flix` (§1.3 GOTCHA).
-2. **IRAM/DRAM file offsets.** DX-HW-12 §1.1's trailing-comment paraphrase mixed IRAM/DRAM
-   offsets (`0x6a120/0x74a20/0x79840`); §1.1 here uses **SX-NCFW-01 §1's precise table**
+2. **IRAM/DRAM file offsets.** A prior trailing-comment paraphrase mixed IRAM/DRAM
+   offsets (`0x6a120/0x74a20/0x79840`); §1.1 here uses the **precise carve table**
    (`0x06a140` SUNDA IRAM, `0x079860` CAYMAN IRAM, …) as primary.
 3. **SIGNAL primitive count: 11 → 5.** An earlier partial over-counted by treating
    frame-spill `s32i.n a*,[a1]` as signals; base-register classification yields **5** genuine
-   CSR-write signals (§4.2 CORRECTION, GX-FLIX-05 §3.3).
+   CSR-write signals (§4.2 CORRECTION).
 4. **P-3-225 "genuine 8-byte FLIX" + "TIE control SRs" — REFUTED.** The `op0=e/f` bytes are
    scalar operands (not bundle leaders); the SRs `MEMCTL/MS/ISL/ISB/MPUENB` are standard
    Xtensa-LX registry entries, not TIE (§1.4, §3.3 CORRECTIONs).
