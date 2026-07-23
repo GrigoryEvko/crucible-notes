@@ -9,8 +9,8 @@
 > that only on one packager version. The other four are *linked-but-unreached* or
 > *not even linked*.
 >
-> Every verdict below is a **claim + the exact piped command + its count**, re-run
-> against the binary while authoring this page. The payoff for a reimplementer is
+> Every verdict below is a **claim + the exact piped command + its count**, run
+> against the binary. The payoff for a reimplementer is
 > spelled out once, up front: **a GPSIMD host can SAFELY OMIT libcrypto, libssl,
 > libsqlite3, liblzma and libbz2 and keep only a decompress-only zlib.** Nothing on
 > the `nrt_load` path will miss them.
@@ -26,8 +26,8 @@ sha256 956382de73f4cced5d9a0dc040ca82843fb37aef00d5bf2241f343ff02cd59a6
 carries .symtab + .debug_info — symbol names below are REAL, not inferred.
 ```
 
-`BuildID` and byte size were re-read while writing this page (`readelf -n` /
-`ls -l`); both match. `[HIGH × OBSERVED]`
+`BuildID` and byte size were read with `readelf -n` / `ls -l`; both match. The page
+default is `[HIGH × OBSERVED]`; claims that depart from it carry an explicit tag.
 
 See [The libnrt Surface Map (GPSIMD lens)](libnrt-surface.md) for the host link
 graph this page cuts down, and the package bibliography page (*Bibliography of
@@ -36,7 +36,7 @@ the two packages that supply the binaries here.
 
 ---
 
-## 0. The three cuts on one screen `[HIGH × OBSERVED]`
+## 0. The three cuts on one screen
 
 | # | Library family | Verdict (GPSIMD load path) | Mechanism of the negative |
 |---|---|---|---|
@@ -65,7 +65,7 @@ inflate is live, and only on Surface A.
 
 ---
 
-## 1. Cut #1 — libcrypto / libssl: the load path exercises NO cryptography `[HIGH × OBSERVED]`
+## 1. Cut #1 — libcrypto / libssl: the load path exercises NO cryptography
 
 **Claim.** No attestation, no signature verification, no certificate check runs at
 NEFF load. `libnrt.so` is not linked against OpenSSL at all; the customop SDK's
@@ -73,7 +73,7 @@ OpenSSL is consumed only by OpenSSL itself.
 
 ### 1.1 The DT_NEEDED set has no crypto edge
 
-The complete dynamic-dependency set of the host runtime — re-run for this page:
+The complete dynamic-dependency set of the host runtime:
 
 ```text
 $ readelf -d libnrt.so.2.31.24.0 | rg 'NEEDED|SONAME|RUNPATH'
@@ -112,15 +112,15 @@ false-positives are removed:
 $ nm libnrt.so.2.31.24.0 | rg -c '\bEVP_[A-Za-z]|\bSSL_[A-Za-z]|\bX509_|\bECDSA_|\bRSA_sign|\bRSA_verify|\bHMAC_[A-Za-z]|\bd2i_|\bPEM_'  -> 0
 ```
 
-> **CORRECTION (grep precision, against DX-RT-16 §4).** A *naïve* scan
+> **CORRECTION — grep precision.** A *naïve* scan
 > `nm … | rg -c 'EVP_|RSA_|ECDSA|X509|HMAC_'` returns **19** matches on this binary,
 > not 0 — but every one of the 19 is a **C++ mangled-name false positive**: the
 > Itanium substitution token `…RSA_PSA_E…` inside `absl::btree_iterator<…
 > basic_string…>` and `protobuf` `ExtensionSet` symbols, plus `nrt_config_parse`.
 > There is **no** real OpenSSL routine. The word-boundary scan above
-> (`\bEVP_[A-Za-z]` etc.) is the correct query and returns 0. DX-RT-16's "symbol
-> search empty" verdict is right; this records the exact grep that proves it
-> without the substring noise. `[HIGH × OBSERVED]`
+> (`\bEVP_[A-Za-z]` etc.) is the correct query and returns 0. The "symbol search
+> empty" verdict is right; this records the exact grep that proves it without the
+> substring noise.
 
 ### 1.3 No dlopen escape hatch into crypto
 
@@ -144,7 +144,7 @@ sqlite, no codec** target. The dlopen surface is mechanism-complete and negative
 ### 1.4 The only hashing is a private, unkeyed MD5/SHA-256 — integrity, not authenticity
 
 `libnrt` carries a hand-rolled (not OpenSSL EVP) MD5 + SHA-256, defined as local
-`t` symbols at the exact addresses below (re-read for this page):
+`t` symbols at the exact addresses below:
 
 ```text
 $ nm libnrt.so.2.31.24.0 | rg -w 'sha256_transform|sha256_init|sha256_update|sha256_final|MD5_Init|MD5_Update|MD5_Final|MD5_hash_str'
@@ -179,7 +179,7 @@ $ strings libnrt.so.2.31.24.0 | rg -ci 'RSA_verify|ECDSA_verify|EVP_DigestVerify
 > which are mangled-name false positives (`…_S_copy_chars…S7_`, protobuf
 > `ExtensionSet…S7_`). The narrow token scan above (real verify/attest/boot
 > primitives) returns 0. No measured/secure boot, no TPM/Nitro/SEV-SNP attestation
-> string exists. `[HIGH × OBSERVED]`
+> string exists.
 
 ### 1.5 Surface B — the customop SDK OpenSSL is self-referential
 
@@ -212,11 +212,11 @@ trust operation. This is the import-edge + call-graph corroboration of the
 "no cryptographic root of trust" finding tracked by the *Firmware Trust Chain +
 Threat Model* page (`control/security/trust-chain-threat-model.md`). A reimplementer
 can **omit libcrypto and libssl entirely** and reimplement only the private
-MD5/SHA-256 (or skip even that, behind the same verify flag). `[HIGH × OBSERVED]`
+MD5/SHA-256 (or skip even that, behind the same verify flag).
 
 ---
 
-## 2. Cut #2 — codecs: zlib-only inflate, statically vendored `[HIGH × OBSERVED]`
+## 2. Cut #2 — codecs: zlib-only inflate, statically vendored
 
 **Claim.** The runtime inflates NEFF payloads with **zlib only**. liblzma and
 libbz2 are absent in every sense. A *decompress-only* zlib 1.3.1 is statically
@@ -323,12 +323,11 @@ static ssize_t gzip_filter_read(struct archive_read_filter *self,
 `gzip_filter_read`. There is no `uncompress`/`gz*` high-level wrapper; libarchive
 reaches the raw `inflate` API directly. So zlib has a **single consumer**
 (`gzip_filter_read`), and that filter has a **single registrant** (`neff_parse`,
-§2.4). `[HIGH × OBSERVED]`
+§2.4).
 
 ### 2.4 The inflate path is reached from `nrt_load` — only on `pkg_version==2`
 
-Every edge below is a concrete `call <target>` re-read from the binary while
-authoring this page:
+Every edge below is a concrete `call <target>` read from the binary:
 
 ```text
  nrt_load @0xa9fe0  (T, public NRT_2.0.0 API)
@@ -339,8 +338,7 @@ authoring this page:
 ```
 
 `neff_parse` has **exactly these two callers** in the whole binary, both inside
-`kmgr_load_nn_nc`. Inside `neff_parse` (`0x4ca3f0`), the libarchive driver sequence
-(re-read for this page):
+`kmgr_load_nn_nc`. Inside `neff_parse` (`0x4ca3f0`), the libarchive driver sequence:
 
 ```text
  0x4ca58b  call archive_read_new
@@ -401,18 +399,18 @@ banners both present — distinct from the inflate-only static copy inside `libn
 plus `liblzma.so.5.4.1` and `libbz2.so.1.0.8`. Their consumer graph is empty:
 **nothing** in the customop tree DT_NEEDEDs liblzma, libbz2 or `libz.so`; the
 device-runtime wrappers `libnrtucode{,_internal}.so` have no codec NEEDED entry.
-They are transitive host-toolchain build deps (their codec internals are DX-IDA-14's
-remit).
+They are transitive host-toolchain build deps; their codec internals are out of
+scope here.
 
 **Verdict.** The runtime NEFF codec set is exactly `{ zlib-inflate 1.3.1 }`,
 wrapped by a tar+gzip-only libarchive, reached on `pkg_version==2` only. A
 reimplementer **keeps a decompress-only zlib (inflate side) and omits liblzma,
 libbz2, and the deflate/compress half of zlib** — none is on the load path.
-`[HIGH × OBSERVED]`
+
 
 ---
 
-## 3. Cut #3 — libsqlite3: ZERO importers, linked-but-unreached `[HIGH × OBSERVED]`
+## 3. Cut #3 — libsqlite3: ZERO importers, linked-but-unreached
 
 **Claim.** No `sqlite3_*` importer exists from the GPSIMD runtime path — host or
 device. The runtime opens no DB, prepares no statement, runs no query. The bundled
@@ -428,7 +426,7 @@ $ nm        libnrt.so.2.31.24.0 | rg -ci 'sqlite3_'                -> 0   (nothi
 The import-graph artifact agrees: the 613-entry `native_imports.json` list has
 **0** `sqlite`-substring names (§4). `libnrt` neither imports nor defines a single
 sqlite symbol, and `libsqlite3` is **not** in its DT_NEEDED set (the nine-entry
-TIER-1 list, §1.1). `[HIGH × OBSERVED]`
+TIER-1 list, §1.1).
 
 ### 3.2 No sqlite import edge — device-runtime wrappers (customop SDK)
 
@@ -444,7 +442,7 @@ the complete UND set is ~18 glibc symbols + 3 toolchain weak symbols + two
 `SUNDA_Q7_POOL_RELEASE_EXTISA_0_{JSON,SO}_get` device ISA-pool getters. **Zero**
 `sqlite3_*` imports, **zero** dlopen/dlsym primitive, **zero** `"sqlite"`/`".db"`
 string. The negative is mechanism-complete: static link, dynamic link, and
-dlopen-by-name are all excluded. `[HIGH × OBSERVED]`
+dlopen-by-name are all excluded.
 
 ### 3.3 What `libsqlite3` actually is, and why nothing reaches it
 
@@ -463,8 +461,8 @@ sqlite is not even pulled into the on-device custom-op image. Even `libc10.a`
 itself has 0 sqlite call sites; the only `sqlite3_open/exec/prepare` *name* hits in
 the whole tree are the **definitions inside `libsqlite3` itself**.
 
-> **NOTE — scope-correction carried from DX-RT-18.** The DX-RT-18 brief named the
-> sqlite subject as "libnrt.so (122 MB, debug_info)", but that binary lives in the
+> **NOTE — scope correction.** The sqlite subject is elsewhere named as
+> "libnrt.so (122 MB, debug_info)", but that binary lives in the
 > *runtime-lib* package, not the customop SDK corpus where the sqlite SDK ships;
 > and the cited "debug_info" actually belongs to **`libsqlite3.so`**, the only
 > c10/lib payload carrying `.debug_*` sections. Both reachability halves —
@@ -476,11 +474,11 @@ the whole tree are the **definitions inside `libsqlite3` itself**.
 **linked-but-unreached. No runtime DB on the GPSIMD path.** sqlite contributes
 zero to runtime behaviour: no cache DB, no manifest DB, no host or device DB on the
 execution path. It is a PyTorch build-SDK passenger. A reimplementer **omits
-libsqlite3 entirely.** `[HIGH × OBSERVED]`
+libsqlite3 entirely.**
 
 ---
 
-## 4. The import graph as a single cross-cut `[HIGH × OBSERVED]`
+## 4. The import graph as a single cross-cut
 
 All three negatives fall out of one artifact in one pass — the libnrt
 `native_imports.json` (the `.dynsym` UND table, 613 entries):
@@ -497,20 +495,20 @@ $ python3 -c "import json,re; d=json.load(open('<libnrt>_native_imports.json'));
 `GLIBC_*`/`GLIBCXX_*`/`CXXABI_*`/`GCC_*` C/C++ runtime symbol. This single query is
 the import-graph proof for all three cuts simultaneously, and it agrees byte-for-byte
 with the `nm -D --undefined-only` counts in §§1–3 (the JSON *is* `readelf -Ws` of
-the same `.dynsym`). `[HIGH × OBSERVED]`
+the same `.dynsym`).
 
 ---
 
 ## 5. Adversarial self-verification
 
-The five strongest claims on this page, each re-challenged against the binary:
+The five strongest claims on this page, each anchored in the binary:
 
 | # | Claim | Challenge | Result |
 |---|---|---|---|
 | 1 | **No crypto on the load path.** | "Substring scan `EVP_\|RSA_\|SHA\|X509` returns 19 symtab hits — is that real crypto?" | **Survives.** All 19 are C++ mangled-name false positives (`…RSA_PSA_E…` in `absl`/`protobuf`/`basic_string`); the word-boundary scan `\bEVP_[A-Za-z]\|\bX509_\|\bECDSA_\|\bRSA_verify` returns **0**, and there is no crypto NEEDED/dynsym/dlopen edge. CORRECTION recorded (§1.2). |
 | 2 | **zlib-only inflate; lzma/bz2 absent.** | "Is some codec reached statically or via a non-gzip filter?" | **Survives.** `nm \| rg -ci 'lzma_'`=0, `'BZ2_'`=0; only `archive_read_support_filter_gzip` is registered; inflate's single caller is `gzip_filter_read@0x4d1c04`. Decompress-only (`deflate\|compress2\|gz*`=0). |
 | 3 | **ZERO sqlite importers.** | "Does any binary in either package import `sqlite3_*`?" | **Survives.** `nm -D … \| rg -c 'sqlite3_'`=0 on `libnrt` and `libnrtucode{,_internal}`; the only `sqlite3_*` *name* hits anywhere are the definitions inside `libsqlite3` itself; no consumer NEEDEDs it. |
-| 4 | **The inflate call site is `gzip_filter_read:0x4d1c04`, reached from `nrt_load`.** | "Re-disassemble the range; is `0x4d1c04` really `call <inflate@0x502260>`, and is the chain to `nrt_load` real?" | **Survives.** Ranged `objdump` shows `4d1c04: call 502260 <inflate>` (and `4d1b9c inflateInit2_`, `4d1c33 inflateEnd`); chain `nrt_load@0xa9fe0 →(0xaa0a2) nrt_load_util →(0xa9b62) kmgr_load_nn_nc →(0xde4c4/0xde6ca) neff_parse →(0x4ca5a5) support_filter_gzip` all re-read byte-exact. |
+| 4 | **The inflate call site is `gzip_filter_read:0x4d1c04`, reached from `nrt_load`.** | "Re-disassemble the range; is `0x4d1c04` really `call <inflate@0x502260>`, and is the chain to `nrt_load` real?" | **Survives.** Ranged `objdump` shows `4d1c04: call 502260 <inflate>` (and `4d1b9c inflateInit2_`, `4d1c33 inflateEnd`); chain `nrt_load@0xa9fe0 →(0xaa0a2) nrt_load_util →(0xa9b62) kmgr_load_nn_nc →(0xde4c4/0xde6ca) neff_parse →(0x4ca5a5) support_filter_gzip` all read byte-exact. |
 | 5 | **DT_NEEDED = 9 C/C++ runtime libs, no crypto/sqlite/codec.** | "Re-read `readelf -d`; is the set really crypto/sqlite/codec-free?" | **Survives.** Nine NEEDED (`libgcc_s/libutil/librt/libpthread/libdl/libstdc++/libm/libc/ld-linux`), SONAME `libnrt.so.1`, RUNPATH `/opt/aws/neuron/lib`. No `libcrypto/libssl/libsqlite3/libz/liblzma/libbz2/libarchive`. |
 
 Two grep-precision **CORRECTIONs** are embedded in §1.2 and §1.4: the loose
@@ -519,7 +517,7 @@ real OpenSSL routines; the word-boundary queries confirm the clean negative.
 
 ---
 
-## 6. The reimplementer's takeaway `[HIGH × OBSERVED]`
+## 6. The reimplementer's takeaway
 
 A GPSIMD host that reimplements the `nrt_load → … → neff_parse` NEFF-staging path
 needs, from this entire family of general-purpose libraries, **only a
@@ -552,7 +550,7 @@ customop-lib packages).
   `HIGH × OBSERVED` — each rests on three independent negatives (DT_NEEDED,
   `.dynsym` UND, defined symtab) plus the import-graph JSON, all agreeing.
 - **`nrt_load → … → neff_parse → gzip_filter_read → inflate` chain:** `HIGH ×
-  OBSERVED` — every edge is a concrete `call <target>` re-read from the binary; the
+  OBSERVED` — every edge is a concrete `call <target>` read from the binary; the
   two `neff_parse` callers and inflate's single caller were enumerated by ranged
   disassembly.
 - **Lazy-pull ordering** (filter inert until the gzip member is sniffed) and the

@@ -16,7 +16,7 @@ sibling — this page only ties them together and cites where the bytes prove th
 - **Narrative / per-node semantics** → [runtime/runtime-synthesis.md](runtime-synthesis.md)
 - **Per-export signatures + addresses** → [runtime/public-api-table.md](public-api-table.md)
 - **Patch-table format consumed by `relocate_op`** → [runtime/ucode-relocation-consumer.md](ucode-relocation-consumer.md)
-- **Descriptor handoff (the tail of the kickoff branch)** → page `runtime/host-device-descriptor-handoff.md` (forward reference; stub at time of writing)
+- **Descriptor handoff (the tail of the kickoff branch)** → [runtime/host-device-descriptor-handoff.md](host-device-descriptor-handoff.md)
 - **Worked custom-op end-to-end trace** → [../orientation/customop-end-to-end.md](../orientation/customop-end-to-end.md)
 
 ---
@@ -24,10 +24,10 @@ sibling — this page only ties them together and cites where the bytes prove th
 ## Method, scope, and tag legend
 
 The spine is driven from the per-object **callgraph sidecar** (the who-calls-whom
-edge list), and **every critical edge is then re-confirmed** by a bounded
+edge list), and **every critical edge is confirmed** by a bounded
 `objdump -d --start-address=… --stop-address=…` at the actual call site in the
-shipped binary. Edges marked OBSERVED below have the call-site bytes shown or were
-byte-verified this pass.
+shipped binary. Edges marked OBSERVED below have the call-site bytes shown or are
+byte-verified against it.
 
 Primary artifact (host runtime): **`libnrt.so.2.31.24.0`** — x86-64 ELF,
 `122,956,336` bytes, `BuildID[sha1]=8bb57aba…`, git `0b044f4ce`, **not stripped**
@@ -46,9 +46,9 @@ edges are the authoritative edge source for that object.
 | **HIGH** | The caller demonstrably reaches the callee (direct `call <imm>` to the symbol). |
 | **MED** | Reached through PLT/GOT, a string-resolved `dlopen`, or one inferred thread/dlopen hop. |
 | **LOW** | Edge reasoned only across two other edges; no single trace. |
-| **OBSERVED** | Edge read from a shipped artifact this pass — call-site `objdump` of `libnrt.so` (VA==file-offset `.text`) or the IDA callgraph.json of `libnrtucode_internal.so`. |
+| **OBSERVED** | Edge read from a shipped artifact — call-site `objdump` of `libnrt.so` (VA==file-offset `.text`) or the IDA callgraph.json of `libnrtucode_internal.so`. |
 | **INFERRED** | Edge reasoned across two OBSERVED edges, or across a `dlopen` / function-pointer boundary; not single-traced. |
-| **CARRIED** | Edge taken from a sibling report whose grounding this page re-confirms (none remain un-reconfirmed here). |
+| **CARRIED** | Edge taken from a sibling page whose grounding this page re-confirms (none remain un-reconfirmed here). |
 
 > **NOTE — the spine is the union of two object models.** Edges in §1–§2 and §4–§6
 > live in **L-HOST `libnrt.so`** and are confirmed by direct x86-64 `call`
@@ -530,9 +530,9 @@ ndl_nc_semaphore_increment  -> [Vision-Q7 POOL engine runs the staged ucode].
 ## §9 — Adversarial self-verification
 
 The five spine edges most likely to be wrong (file-local symbol, PLT-mediated,
-function-pointer terminus, multi-call dedup) were re-challenged against the binary:
+function-pointer terminus, multi-call dedup) are challenged against the binary:
 
-| # | Edge | Risk | Re-challenge result |
+| # | Edge | Risk | Result |
 |---|---|---|---|
 | 1 | `tpb_xu_schedule_exec@0xe8040 → tpb_xu_schedule_request@0xe7540` | callee is `_ZL` file-local — could be a same-name export | **HOLDS.** `e810b: e8 30 f4 ff ff  call e7540 <_ZL23tpb_xu_schedule_request…>` — the call resolves to the local symbol, no export confusion. |
 | 2 | `nrt_execute@0x91de0 → nrt_execute_repeat@0x91650` | could be a direct call; risk of citing the wrong target | **HOLDS, with caveat.** It is `call 3c890 <nrt_execute_repeat@plt>`; the PLT stub `jmp *0xbcab9a(%rip)` lands on the exported body `0x91650`. Recorded as PLT-mediated (GOTCHA in §5). |
@@ -540,7 +540,7 @@ function-pointer terminus, multi-call dedup) were re-challenged against the bina
 | 4 | `tdrv_sync_get_inference_start@0x30a5c0 → kernel driver` | claimed as the host-spine terminus | **HOLDS as INFERRED.** Direct calls are only to `tdrv_arch_ops_init@0x308e80` / `ensure_arch_ops_initialized@0x308e50`; the driver hop runs through the arch_ops fn-ptr table — correctly tagged MED·INFERRED, spine ends here. |
 | 5 | `kbl_model_add@0x3058e0 → ucode_stage_libs@0x310ea0` | the "silent install" edge, deep in a `0xb5b`-byte body | **HOLDS.** `3062d8: e8 c3 ab 00 00  call 310ea0 <ucode_stage_libs>`. |
 
-No edge failed re-challenge. The PLT mediation on edge #2 is the only refinement and
+No edge fails the challenge. The PLT mediation on edge #2 is the only refinement and
 is surfaced as a GOTCHA so a reimplementer does not look for a direct `call 91650`.
 
 **Address agreement with siblings:** every spine address here matches the committed
@@ -560,7 +560,7 @@ the spine, the narrative, and the API table agree on names and addresses.
   [runtime/public-api-table.md](public-api-table.md)
 - **Format of the patch entry consumed by `relocate_op`** (§3) →
   [runtime/ucode-relocation-consumer.md](ucode-relocation-consumer.md)
-- **Byte layout + doorbell of `dma_ring_copy_descriptors`** (§6 tail) → page
-  `runtime/host-device-descriptor-handoff.md` (forward reference; stub at time of writing)
+- **Byte layout + doorbell of `dma_ring_copy_descriptors`** (§6 tail) →
+  [runtime/host-device-descriptor-handoff.md](host-device-descriptor-handoff.md)
 - **Worked Vision-Q7 custom-op trace** that this spine dispatches →
   [../orientation/customop-end-to-end.md](../orientation/customop-end-to-end.md)

@@ -18,7 +18,8 @@
 `9cbf78c6f59cdb5839f155fdb2113bbe51e585fd`. Addresses are VAs; `.text`/`.rodata`
 have VMA == file offset (`.bss@0x9bb560` is `NOBITS`, no file content). All
 figures below come from stock `objdump -d` / `nm` / `nm -D` / `readelf` piped to
-`rg`, never from a decompile (which inflates symbol-hit counts).
+`rg`, never from a decompile (which inflates symbol-hit counts). The page default
+is `[HIGH · OBSERVED]`; claims that depart from it carry an explicit tag.
 
 ---
 
@@ -34,7 +35,7 @@ multiple threads still arrives at a correct net count; it imposes **no ordering*
 on the objects themselves, because there is no shared mutable structure to
 order.
 
-`[HIGH · OBSERVED]` — every clause is byte-pinned in §2–§3.
+Every clause is byte-pinned in §2–§3.
 
 ---
 
@@ -75,8 +76,6 @@ $ nm libnrtucode_internal.so | rg -i 'objcount'
 00000000009bb564 b objcount
 ```
 
-`[HIGH · OBSERVED]`
-
 ### 2b. ZERO compare-and-swap / xadd
 
 ```text
@@ -86,7 +85,7 @@ $ objdump -d libnrtucode_internal.so | rg -c 'cmpxchg|xadd' || echo 0
 
 No `lock cmpxchg`, no `xadd`, no `lock xchg`-on-shared-mem used as a spinlock.
 There is no lock-free CAS loop, no spinlock back-off, no ticket lock anywhere in
-`.text`. `[HIGH · OBSERVED]`
+`.text`.
 
 ### 2c. ZERO pthread linkage
 
@@ -113,8 +112,6 @@ The **only** `DT_NEEDED` is `libc.so.6`. No `libpthread`, no `libstdc++`, no
 > (no output)
 > ```
 
-`[HIGH · OBSERVED]`
-
 ### 2d. ZERO thread-local storage
 
 ```text
@@ -127,7 +124,7 @@ $ objdump -d libnrtucode_internal.so | rg -c '%fs:' || echo 0
 No `.tdata`/`.tbss` sections, no `%fs:` accesses (and no `%gs:` either — verified
 separately, `0`). Crucially, there is **no `%fs:0x28` stack canary** — this TU
 was built without `-fstack-protector`, which independently confirms the absence
-of any TLS slot. `[HIGH · OBSERVED]`
+of any TLS slot.
 
 ### 2e. ZERO memory fences
 
@@ -138,7 +135,7 @@ $ objdump -d libnrtucode_internal.so | rg -c 'mfence|lfence|sfence' || echo 0
 
 No `mfence`/`lfence`/`sfence`, and no `pause` spin-wait hint (verified
 separately, `0`). The library issues no explicit memory-ordering barrier of any
-kind. `[HIGH · OBSERVED]`
+kind.
 
 ### 2f. ZERO thread creation
 
@@ -150,7 +147,7 @@ $ nm -D libnrtucode_internal.so | rg -c 'pthread_create|thread|clone' || echo 0
 The library never spawns a thread, never `clone()`s, never `fork()`s. It also
 never yields, sleeps, or polls a host fd (no `sched_yield`/`nanosleep`/`usleep`/
 `poll`/`select`/`epoll` import) and installs no signal handler (no `sigaction`/
-`signal`). `[HIGH · OBSERVED]`
+`signal`).
 
 > **NOTE.** The weak `_ITM_register/deregisterTMCloneTable` and `__gmon_start__`
 > references are GCC's transactional-memory clone-table and profiling stubs
@@ -216,7 +213,6 @@ or list. Granularity is one lock-free word shared by all three object classes
 > function takes *no* argument — its body is literally `lock incl objcount; ret`.
 > The apparent "argument" is a stale register the decompiler attributed to the
 > call. Verify against the 8-byte disassembly above, not the C output.
-> `[HIGH · OBSERVED]`
 
 ### 3b. Setup — load-time constructor, atomic store-zero + atexit wiring
 
@@ -246,7 +242,7 @@ $ readelf -r libnrtucode_internal.so | rg '9b0250|9b1780'
 0000009b8ce0  …  R_X86_64_RELATIVE   9b1780   # nrtucode_objcount_setup
 ```
 
-So `objcount_setup` runs automatically on `.so` load. `[HIGH · OBSERVED]`
+So `objcount_setup` runs automatically on `.so` load.
 
 ### 3c. Check — the atexit diagnostic (the *why* of the atomic)
 
@@ -278,7 +274,7 @@ $ strings -t x libnrtucode_internal.so | rg -i 'leaked|double-freed'
 double-free** (`destroy` ran more often than `create`). This is purely a
 hygiene / QA tripwire: it **never aborts and never blocks** — it only prints. The
 atomicity exists so that a multi-threaded host arrives at a correct net count and
-a trustworthy leak verdict. `[HIGH · OBSERVED]`
+a trustworthy leak verdict.
 
 ---
 
@@ -308,7 +304,6 @@ calls `inc()` **only when both succeed** — on the inner `malloc` failing it
 allocation, table, or list is serialized — create/destroy are plain `malloc`/
 `free` with an atomic counter bump. The object model these calls populate is
 documented in [The nrtucode Object Model Graph](object-model-graph.md).
-`[HIGH · OBSERVED]`
 
 ---
 
@@ -316,8 +311,7 @@ documented in [The nrtucode Object Model Graph](object-model-graph.md).
 
 The substantive host-side concurrency is one library *down* the stack, in the
 big NRT driver `libnrt.so`. That binary **does** link pthread and **does** hold
-mutexes — the polar opposite of the codec layer. Re-grounded this session against
-the locatable driver
+mutexes — the polar opposite of the codec layer. Grounded against the driver
 (`neuronx-runtime/extracted/…/libnrt.so.2.31.24.0`):
 
 ```text
@@ -366,8 +360,7 @@ The device side guarantees correctness **structurally** — each Q7 core owns it
 DRAM region and they never share writable state; cores join via a host-driven
 **DRAIN** plus a **completion semaphore**, with **no host lock participating**.
 That device sync/event/notification path is documented in
-`../control/interrupt/device-host-notification.md` (the Device→Host
-interrupt / notification path + sync/events).
+[the Device→Host interrupt / notification path](../control/interrupt/device-host-notification.md).
 
 **Synthesis.** The host nrtucode layer builds isolated library/context objects
 (lock-free, leak-counted), hands the prepared image to `libnrt`, and `libnrt`

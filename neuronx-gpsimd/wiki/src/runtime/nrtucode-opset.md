@@ -26,7 +26,8 @@ opset functions, cross-checked against the shipped private header.
 > from the shipped host library with stock `objdump` / `nm` / `readelf` and a small
 > Python `.rodata` reader. Recovered symbol names, format strings, and the shipped
 > header are binary-derived artifacts and are cited as such. Addresses are the
-> **internal twin** (`libnrtucode_internal.so`) unless tagged *stripped*.
+> **internal twin** (`libnrtucode_internal.so`) unless tagged *stripped*. The page
+> default is *[HIGH/OBSERVED]*; claims that depart from it carry an explicit tag.
 
 ---
 
@@ -37,13 +38,13 @@ opset functions, cross-checked against the shipped private header.
 | Shipped runtime (authoritative) | `libnrtucode.so` (stripped) | `extracted/…/c10/lib/libnrtucode.so` |
 | Symbol twin (names) | `libnrtucode_internal.so` (**10,276,288 B**, not stripped) | same dir |
 | Static archive | `libnrtucode.a` → `nrtucode_opset.c.o` | same dir |
-| BuildID (internal) | `9cbf78c6f59cdb5839f155fdb2113bbe51e585fd` | `file` *[HIGH/OBSERVED]* |
-| `.rodata` | VMA `0x46b0` = file off `0x46b0` → **Δ = 0** | `readelf -SW` *[HIGH/OBSERVED]* |
-| `.text` | VMA `0x9b01a0`, file off `0x9af1a0` → **Δ = 0x1000** | `readelf -SW` *[HIGH/OBSERVED]* |
-| `.data.rel.ro` | VMA `0x9b8cf0`, file off `0x9b6cf0` → **Δ = 0x2000** | `readelf -SW` *[HIGH/OBSERVED]* |
-| `.data` | VMA `0x9ba4a8`, file off `0x9b74a8` → **Δ = 0x3000** | `readelf -SW` *[HIGH/OBSERVED]* |
-| `_ZTV` vtable count | **0** (`nm … \| rg -c '_ZTV'` → 0) | *[HIGH/OBSERVED]* |
-| `__FILE__` token | `"nrtucode_opset.c"` @ `.rodata` file-off `0x9c076a` | Python `.rodata` reader *[HIGH/OBSERVED]* |
+| BuildID (internal) | `9cbf78c6f59cdb5839f155fdb2113bbe51e585fd` | `file` |
+| `.rodata` | VMA `0x46b0` = file off `0x46b0` → **Δ = 0** | `readelf -SW` |
+| `.text` | VMA `0x9b01a0`, file off `0x9af1a0` → **Δ = 0x1000** | `readelf -SW` |
+| `.data.rel.ro` | VMA `0x9b8cf0`, file off `0x9b6cf0` → **Δ = 0x2000** | `readelf -SW` |
+| `.data` | VMA `0x9ba4a8`, file off `0x9b74a8` → **Δ = 0x3000** | `readelf -SW` |
+| `_ZTV` vtable count | **0** (`nm … \| rg -c '_ZTV'` → 0) | |
+| `__FILE__` token | `"nrtucode_opset.c"` @ `.rodata` file-off `0x9c076a` | Python `.rodata` reader |
 
 > **GOTCHA — no `_ZTV`, no `+0x10` rule.** This library ships **zero** C++ vtables.
 > Every function-pointer / slot table here is a plain C array: slot *N* is
@@ -57,7 +58,7 @@ opset functions, cross-checked against the shipped private header.
 in `.dynsym`. **No internal call site references any of the nine** in either library
 (`objdump -d | rg -c 'call.*nrtucode_opset_…'` = 0 for all nine) — the opset is a
 **pure exported API** consumed by the external NRT runtime / NEFF loader, never by
-`libnrtucode` itself. *[HIGH/OBSERVED]*
+`libnrtucode` itself.
 
 | Internal `@` | Stripped `@` | ELF size | Symbol |
 | --- | --- | --- | --- |
@@ -71,7 +72,7 @@ in `.dynsym`. **No internal call site references any of the nine** in either lib
 | `0x9b28f0` | `0x30ad80` | **30 B** | `nrtucode_opset_private_has_specialization` |
 | `0x9b2910` | `0x30ada0` | — | `nrtucode_opset_set_friendly_name` |
 
-ELF `FUNC` sizes (`readelf -sW`) match the disassembled extents exactly. *[HIGH/OBSERVED]*
+ELF `FUNC` sizes (`readelf -sW`) match the disassembled extents exactly.
 
 ---
 
@@ -101,22 +102,22 @@ the `context → core → memhandle → ll → opset` graph.
 A single `malloc(0x830)` builds the whole object; there is **no** secondary
 allocation in `create` (the per-opcode bitmaps are allocated lazily by
 `add_instruction`). The `0x800` `memset` length over 256 slots fixes the slot record
-size: **`0x800 / 256 = 8` bytes per slot** — a raw C pointer. *[HIGH/OBSERVED]*
+size: **`0x800 / 256 = 8` bytes per slot** — a raw C pointer.
 
-| Off | Size | Type | Field | Purpose | Conf |
-| --- | --- | --- | --- | --- | --- |
-| `0x000` | 8 | `nrtucode_context_t*` | `context` | Owning context (create arg1). Read by every method only to reach the logger. `mov %rbx,(%rax)` @`0x9b24f1`. | HIGH OBS |
-| `0x008` | `0x800` | `uint8_t* [256]` | `opcode_slot[256]` | **The 256-slot array.** One 8-byte pointer per opcode `0..255`, addressed `*(opset + 8 + op*8)`. NULL = absent; non-NULL = a `calloc(1,0x100)` 256-byte spec bitmap. `memset(opset+8,0,0x800)` @`0x9b2504` zeroes it in `create`. | HIGH OBS |
-| `0x808` | `0x28` | `char[0x28]` | `friendly_name` | 40-byte inline name buffer. `create` `snprintf`s the default `"nrtucode_opset_t@%p"` (≤ `0x21`=33 B); `set_friendly_name` overwrites (`strncpy 0x20` + forced NUL @`+0x828`). The `"%s"` in every log line. | HIGH OBS |
-| | | | | **Total = `0x830` = 8 + 256·8 + 0x28.** | |
+| Off | Size | Type | Field | Purpose |
+| --- | --- | --- | --- | --- |
+| `0x000` | 8 | `nrtucode_context_t*` | `context` | Owning context (create arg1). Read by every method only to reach the logger. `mov %rbx,(%rax)` @`0x9b24f1`. |
+| `0x008` | `0x800` | `uint8_t* [256]` | `opcode_slot[256]` | **The 256-slot array.** One 8-byte pointer per opcode `0..255`, addressed `*(opset + 8 + op*8)`. NULL = absent; non-NULL = a `calloc(1,0x100)` 256-byte spec bitmap. `memset(opset+8,0,0x800)` @`0x9b2504` zeroes it in `create`. |
+| `0x808` | `0x28` | `char[0x28]` | `friendly_name` | 40-byte inline name buffer. `create` `snprintf`s the default `"nrtucode_opset_t@%p"` (≤ `0x21`=33 B); `set_friendly_name` overwrites (`strncpy 0x20` + forced NUL @`+0x828`). The `"%s"` in every log line. |
+| | | | | **Total = `0x830` = 8 + 256·8 + 0x28.** |
 
 The only struct-tail accesses anywhere in the nine functions are `+0x808`
 (`friendly_name` base) and `+0x828` (the forced NUL in `set_friendly_name`) — there
-are **no hidden fields**, **no count field**, **no handler pointers**. *[HIGH/OBSERVED]*
+are **no hidden fields**, **no count field**, **no handler pointers**.
 
 The **slot record is 8 bytes: a single `uint8_t*`.** It is *not* a `{handler, count,
 flags}` struct. The presence semantics live entirely in (a) whether the pointer is
-NULL and (b) the bytes of the bitmap it points at. *[HIGH/OBSERVED]*
+NULL and (b) the bytes of the bitmap it points at.
 
 ```c
 typedef struct nrtucode_opset_t {        /* sizeof = 0x830 (2096 B) */
@@ -130,7 +131,7 @@ typedef struct nrtucode_opset_t {        /* sizeof = 0x830 (2096 B) */
    spec_present[s] = 1 iff (op,s) registered. Only opcode 0xF0 ever sets s>0. */
 ```
 
-> **CORRECTION (vs `object-model-graph.md`).** The committed object-model-graph page
+> **CORRECTION (vs `object-model-graph.md`).** The object-model-graph page
 > types `friendly_name` as **`char[0x21]`** with a separate **`0x07` tail pad** at
 > `+0x829`. The byte evidence makes the field **`char[0x28]` (40 B)** spanning
 > `+0x808 .. +0x830` with **no separate pad**: `set_friendly_name` writes the forced
@@ -138,11 +139,11 @@ typedef struct nrtucode_opset_t {        /* sizeof = 0x830 (2096 B) */
 > buffer therefore runs to the end of the struct. The `0x21` figure is the
 > **default-name `snprintf` cap** (`mov $0x21,%esi` @`0x9b251a`), not the field size.
 > The whole `0x808 .. 0x830` range is the name buffer; `0x830 = 8 + 0x800 + 0x28`
-> exactly. *[HIGH/OBSERVED]*
+> exactly.
 
 > **NOTE — `malloc`, not `calloc`, for the struct.** `create` `memset`s only the
 > `0x800` slot array; the `0x28` name tail is left undefined by `malloc` and then
-> `snprintf`'d before return, so it is defined on every return path. *[OBSERVED]*
+> `snprintf`'d before return, so it is defined on every return path.
 
 ---
 
@@ -181,12 +182,12 @@ int nrtucode_opset_create(nrtucode_context_t *context, nrtucode_opset_t **op_set
 
 - **NULL args are FATAL** (`fprintf(stderr, "nrtucode: invalid API usage in \`%s\`:
   \`%s\` is null\n", …)` @`0x5469`, then `abort`) — the same idiom as the context
-  lifecycle functions and `add`/`destroy`. *[HIGH/OBSERVED]*
+  lifecycle functions and `add`/`destroy`.
 - **Severity `4`** is the trace/debug tier; every opset bookkeeping line
   (Initialized / Destroyed / added / renamed) uses it. Only the byte `4` is OBSERVED;
   the tier *name* is inferred from message content. *[OBSERVED byte / INFERRED name]*
 - **No device touch.** `create` is host-RAM only — `malloc` + `memset` + `snprintf`
-  + a log call. It never touches a core, a memhandle, or device memory. *[HIGH/OBSERVED]*
+  + a log call. It never touches a core, a memhandle, or device memory.
 
 ---
 
@@ -208,7 +209,7 @@ The instruction descriptor is read at **exactly two byte offsets and no others**
 
 The public `nrtucode.h` documents this arg as a *"64-byte instruction data"* pointer,
 so both byte `0x00` and byte `0x0c` are safely in range. Everything else in the NEFF
-instruction word is **opaque** to the opset. *[HIGH/OBSERVED]*
+instruction word is **opaque** to the opset.
 
 Byte-exact body (internal `0x9b2660`, 294 B; instruction-identical across the stripped
 `.so`, internal `.so`, and the `nrtucode_opset.c.o` archive object):
@@ -255,7 +256,7 @@ zero-initialized spec bitmap and stores the pointer into `slot[opcode]`
 store happens **before** the NULL-check of `calloc`'s result — harmless: on failure
 the slot just holds NULL again and the function returns 5 (the opcode stays "absent").
 `calloc` (not `malloc`+`memset`) is what zeroes the bitmap, so every spec starts
-"not present". *[HIGH/OBSERVED]*
+"not present".
 
 ### 4b. The non-`0xF0` path sets *no* bitmap byte
 
@@ -265,7 +266,6 @@ sole presence signal**; the calloc'd bitmap stays entirely zero. Both non-`0xF0`
 edges (`jne @0x9b26df -> 0x9b2691 ret`, and the existing-non-`0xF0` no-jump
 `@0x9b268f -> 0x9b2691 ret`) reach the return without any `movb` into the bitmap. The
 only `movb $1` in the whole function (`@0x9b26f0`) is inside the `0xF0`-gated block.
-*[HIGH/OBSERVED — decisive]*
 
 > **NOTE.** A 256-byte bitmap is therefore *allocated* for every registered opcode but
 > *used* only for `0xF0`. The spec dimension is structurally present for all opcodes
@@ -298,20 +298,20 @@ host; device facts cited]*
 > **QUIRK — `instr[0x0c]` ≠ the device key offset.** The host reads spec from the NEFF
 > descriptor at `+0x0c`; the device `kernel_info_table` stores spec at *its* record
 > `+0x02` (8-byte rows). Same logical "spec" value, unrelated byte positions —
-> different structures. Do not conflate. *[HIGH/OBSERVED]*
+> different structures. Do not conflate.
 
 ### 4d. Validation, idempotency, return codes
 
-| Check | Behavior | Conf |
-| --- | --- | --- |
-| `op_set == NULL` | abort (FATAL) | HIGH OBS |
-| `instruction_data == NULL` | abort (FATAL) | HIGH OBS |
-| opcode range | **none** — `movzbl` uint8 indexes a 256-wide array, can't overflow | HIGH OBS |
-| spec range | **none** — uint8 indexes a 256-byte bitmap | HIGH OBS |
-| `{0,1,2,3,4,7}` spec set | **not enforced** host-side | HIGH OBS |
-| duplicate opcode | idempotent no-op, rc 0 (no calloc, no log) | HIGH OBS |
-| duplicate `(0xF0,spec)` | idempotent re-set (rewrites 1 over 1), rc 0, `jne` skips the log | HIGH OBS |
-| `calloc` failure | rc **5** — the only error return | HIGH OBS |
+| Check | Behavior |
+| --- | --- |
+| `op_set == NULL` | abort (FATAL) |
+| `instruction_data == NULL` | abort (FATAL) |
+| opcode range | **none** — `movzbl` uint8 indexes a 256-wide array, can't overflow |
+| spec range | **none** — uint8 indexes a 256-byte bitmap |
+| `{0,1,2,3,4,7}` spec set | **not enforced** host-side |
+| duplicate opcode | idempotent no-op, rc 0 (no calloc, no log) |
+| duplicate `(0xF0,spec)` | idempotent re-set (rewrites 1 over 1), rc 0, `jne` skips the log |
+| `calloc` failure | rc **5** — the only error return |
 
 The opset is a **trusting presence recorder**: it validates the two pointers, then
 records whatever opcode/spec bytes the caller hands it. Any opcode/spec *legality*
@@ -330,7 +330,7 @@ on `op_set == NULL`** (no abort, no log) — the *defensive* tier, opposite to
 `create`/`add`/`destroy`. Range safety is **structural**: uint8 args index 256-wide
 structures, so no bounds check exists or is needed. The shipped private header
 (`nrtucode_private.h`) pins every signature, return type, the `const` qualifier, and
-the documented semantics — and the binary agrees on every point. *[HIGH/OBSERVED]*
+the documented semantics — and the binary agrees on every point.
 
 > **Header ground truth** (`nrtucode_private.h`, verbatim): `size_t get_num_opcodes`,
 > `size_t get_num_specializations(…, uint8_t opcode)` (*"or 0 if opcode doesn't
@@ -350,7 +350,7 @@ bool has_opcode(const nrtucode_opset_t *op_set /*rdi*/, uint8_t opcode /*esi*/);
   9b28e3  xor eax,eax ; ret                 ; NULL op_set -> false
 ```
 `return op_set ? (opcode_slot[opcode] != NULL) : false;` — works **uniformly** for
-every opcode (no `0xF0` special-case). *[HIGH/OBSERVED]*
+every opcode (no `0xF0` special-case).
 
 ### 5b. `has_specialization` (`0x9b28f0`, 30 B) — the bitmap byte
 
@@ -366,13 +366,13 @@ bool has_specialization(const nrtucode_opset_t *op_set /*rdi*/,
   9b290b  xor eax,eax ; ret                 ; NULL op_set OR absent opcode -> 0
 ```
 `slot = op_set ? opcode_slot[opcode] : NULL; return slot ? slot[spec] : 0;`. The
-NULL-slot guard prevents a NULL-bitmap deref. *[HIGH/OBSERVED]*
+NULL-slot guard prevents a NULL-bitmap deref.
 
 > **The decisive cross-confirmation.** For any **present, non-`0xF0`** opcode,
 > `slot != NULL` but the bitmap is all-zero (§4b), so `has_specialization` returns 0
 > for *every* spec — **even though `has_opcode == 1`**. This is achieved **without any
 > opcode guard**; it falls out of the populate invariant. For `0xF0` it returns the
-> recorded `0/1`. *[HIGH/OBSERVED]*
+> recorded `0/1`.
 
 ### 5c. `get_num_specializations` (`0x9b2850`, 113 B) — byte-sum popcount
 
@@ -409,16 +409,16 @@ size_t get_num_opcodes(const nrtucode_opset_t *op_set /*rdi*/);
 `if (!op_set) return 0; size_t n=0; for (i=0;i<256;++i) n += (opcode_slot[i] != NULL);
 return n;` — a **live SSE2 popcount of non-NULL slots = number of distinct primary
 opcodes registered**, **not** a stored counter. The `cmp rax,0x100` bound re-confirms
-the **256-slot array**. *[HIGH/OBSERVED]*
+the **256-slot array**.
 
 ### 5e. Query semantics summary
 
-| Function | `op_set==NULL` | absent opcode | mutates? | Conf |
-| --- | --- | --- | --- | --- |
-| `has_opcode` | `0` | `0` (cmp) | no | HIGH OBS |
-| `has_specialization` | `0` | `0` (NULL-slot guard) | no | HIGH OBS |
-| `get_num_specializations` | `0` | `0` (header: *"or 0"*) | no | HIGH OBS |
-| `get_num_opcodes` | `0` | n/a (scans 256) | no | HIGH OBS |
+| Function | `op_set==NULL` | absent opcode | mutates? |
+| --- | --- | --- | --- |
+| `has_opcode` | `0` | `0` (cmp) | no |
+| `has_specialization` | `0` | `0` (NULL-slot guard) | no |
+| `get_num_specializations` | `0` | `0` (header: *"or 0"*) | no |
+| `get_num_opcodes` | `0` | n/a (scans 256) | no |
 
 ```c
 /* reimplementation-grade — matches the shipped header exactly */
@@ -445,13 +445,13 @@ bool    nrtucode_opset_private_has_specialization(const nrtucode_opset_t *s, uin
 %s"` (`@0x50c0`, sev 4); then the loop `for (r14 = 1; r14 < 0x101; ++r14) { p =
 *(opset + r14*8); if (p) free(p); }` (`@0x9b2600..0x9b2615`) frees every non-NULL spec
 bitmap (`opset+0x8 .. opset+0x800` = `opcode_slot[0..255]`), then `free(opset)`
-(`@0x9b261f`). Context is caller-owned and untouched. *[HIGH/OBSERVED]*
+(`@0x9b261f`). Context is caller-owned and untouched.
 
 **`nrtucode_opset_set_friendly_name`** (`0x9b2910`) — log `"%s renamed %s"`
 (`@0x51be`, sev 4); `strncpy(opset+0x808, name, 0x20)` (`@0x9b2949`); forced NUL at
 `opset+0x828` (`movb $0x0,0x828(%r14)` @`0x9b294e`). Truncates to 31 chars + NUL. This
 `+0x828` write is the evidence that `friendly_name` is `char[0x28]`, not `char[0x21]`
-(§2 CORRECTION). *[HIGH/OBSERVED]*
+(§2 CORRECTION).
 
 **`nrtucode_opset_get_library_index`** (`0x9b1950`) — opcode→microcode-library
 resolver; aborts on NULL `op_set`/`lib_index`. Does an SSE2 non-NULL-slot popcount; if
@@ -467,7 +467,7 @@ lives in [opcode-to-lib-resolver](opcode-to-lib-resolver.md)
 > tighter `≤29` bound makes bit 37 unreachable, so the **authoritative shipped set is
 > `{6,13,21,29}`**; bit 37 (a later-generation slot) exists only in the dev/internal
 > build — the same stripped-vs-internal divergence seen in the `ll_create` coretype
-> table. *[HIGH/OBSERVED — both masks read directly]*
+> table.
 
 ---
 
@@ -493,7 +493,7 @@ No internal caller pins the order; the lifecycle is **inferred** from the export
 and shipped headers:
 
 1. `nrtucode_context_create(...)` → `context` (the owner).
-2. `nrtucode_opset_create(context, &op_set)` — `malloc 0x830`, slots zeroed. *[OBSERVED]*
+2. `nrtucode_opset_create(context, &op_set)` — `malloc 0x830`, slots zeroed.
 3. **for each** extended-ISA instruction parsed from the NEFF:
    `nrtucode_opset_add_instruction(op_set, instr)` — marks `instr[0]` (+ `instr[0x0c]`
    for `0xF0`). Per-instruction; the function consumes exactly one record. *[per-instruction OBSERVED; order INFERRED]*
@@ -526,7 +526,7 @@ device IRAM load.
 
 ## 9. Adversarial self-verification
 
-The five strongest claims, re-challenged against the binary:
+The five strongest claims, each anchored in the binary:
 
 1. **Struct = `0x830`, 256 slots, 8-byte slot record.** `mov $0x830,%edi` @`0x9b24df`
    (malloc); `mov $0x800,%edx` @`0x9b24fa` (memset over `opset+8`). `0x800 / 256 = 8`

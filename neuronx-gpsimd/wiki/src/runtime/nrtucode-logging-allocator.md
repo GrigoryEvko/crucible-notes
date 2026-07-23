@@ -10,7 +10,9 @@ the two host x86-64 libraries:
 | `libnrtucode.so` | `3,208,440 B` | `abf4e088…50f38` | stripped | the production ship lib |
 
 Every address below is an **internal-twin VMA** unless tagged `STRIPPED`.
-Section model of the internal twin (`readelf -SW`), confirmed this session:
+The page default is `[HIGH · OBSERVED]`; claims that depart from it carry an
+explicit tag.
+Section model of the internal twin (`readelf -SW`):
 
 ```text
 .rodata        VMA 0x000046b0 == fileoff 0x046b0   (Δ = 0  → a .rodata RVA reads directly with `dd skip=RVA`)
@@ -22,7 +24,7 @@ Section model of the internal twin (`readelf -SW`), confirmed this session:
 > **NOTE.** The whole `.bss` is **16 bytes** (`{completed.0, objcount, xtlib_globals}`).
 > That single fact is the strongest structural proof that the "leak-tracking
 > allocator" is **not** a per-allocation tracking table — there is nowhere to
-> put one. `[HIGH · OBSERVED]`
+> put one.
 
 The codec layer is two unrelated subsystems that the survey names together:
 a **logging path** (a formatter/sink plus a device-log-ring drain) and a
@@ -32,7 +34,7 @@ full here.
 > **CORRECTION (premise).** There is **no** `malloc`/`free`-wrapping debug
 > allocator with a ptr/size/callsite/tag table. The "leak tracker" is a single
 > global `int` (`objcount`) of *live high-level handles* with an `atexit` hook.
-> No table, no hash map, no callsite capture. Detailed below in §7. `[HIGH · OBSERVED]`
+> No table, no hash map, no callsite capture. Detailed below in §7.
 
 ---
 
@@ -62,7 +64,7 @@ $ nm -D libnrtucode.so | rg 'enable_logs|disable_logs|set_max_loglevel|print_log
 | `0x9b0e00` | `0x3092e0` | `nrtucode_core_print_logs` | export `T` | **ring drain** |
 
 The two `context_*` formatters are internal helpers, not exported. The five
-`core_*` methods are the public log-control API. `[HIGH · OBSERVED]`
+`core_*` methods are the public log-control API.
 
 > **NOTE.** The library does **not** itself write to `stdout` or a file. It
 > *formats* a line and pushes it to a caller-supplied sink (a vtable callback).
@@ -90,7 +92,7 @@ struct rw_impl_vtbl {
 
 ### 2a. `nrtucode_context_vlog` @ `0x9b04b0`
 
-Disassembled byte-exact this session:
+Disassembled byte-exact:
 
 ```text
 9b04c3: 48 8b 07          mov  rax,[rdi]          ; rax = ctx->rw_impl  (ctx[+0x00])
@@ -135,13 +137,12 @@ void nrtucode_context_vlog(nrtucode_context_t* ctx, uint32_t sev,
 > first argument it passes is `r14 = ctx`, **not** `rw_impl`. Since
 > `ctx[0] == rw_impl`, the callback can reach either, but a reimplementation
 > must pass the **context handle** to `log_emit`, not the rw_impl handle.
-> `[HIGH · OBSERVED — register trace 9b051a `mov rdi,r14`.]`
 
 > **QUIRK — the scratch grows but never shrinks, and is gated by a `0x3fff`
 > cap.** A line longer than `0x3fff` bytes is `vsnprintf`-truncated to the
 > current buffer and **never** triggers a grow (the `ja` at `0x9b04ee` skips
 > the realloc). The scratch is a 512-byte `malloc` at `context_create`
-> (`0x9b02f3 malloc(0x200)`) that ratchets upward up to the cap. `[HIGH · OBSERVED]`
+> (`0x9b02f3 malloc(0x200)`) that ratchets upward up to the cap.
 
 ### 2b. `nrtucode_context_log` @ `0x9b0540` — the variadic front-end
 
@@ -150,7 +151,7 @@ register-save area, the `movabs rax,0x3000000018` header at `0x9b05b5`
 encoding `{gp_offset=0x18, fp_offset=0x30}`) and then runs an **inlined copy**
 of the exact same gate → `vsnprintf` → grow → `log_emit` pipeline as `2a`
 (`0x9b05c3..0x9b0622`). It is the entry point every internal diagnostic and
-`print_logs` (§5) calls. `[HIGH · OBSERVED]`
+`print_logs` (§5) calls.
 
 ---
 
@@ -190,7 +191,7 @@ messages.
 ## 4. The `nrtucode_core_t` log state + the device control block
 
 The core handle is `malloc(0x70)` (`0x9b067a`). Its log-relevant fields
-(cross-anchored to the core struct survey, re-confirmed here):
+(cross-anchored to the core struct survey):
 
 | Off | Field | Meaning |
 | --- | --- | --- |
@@ -205,7 +206,7 @@ The core handle is `malloc(0x70)` (`0x9b067a`). Its log-relevant fields
 The `friendly_name` default is written by `core_create`:
 `snprintf(name, 0x21, "nrtucode_core_t@%p", core)` (fmt `0x50ad`). The NRT
 runtime renames it via `set_friendly_name` (`"%s renamed %s"`, `0x51be`) to
-identify the engine. `[HIGH · OBSERVED]`
+identify the engine.
 
 The **device control block** at `dram_base`, reconstructed from the
 `rw_impl->read`/`write` offsets used by enable/disable/set_max/print:
@@ -265,8 +266,6 @@ int enable_logs(nrtucode_core_t* c, uint32_t size) {
 > `device_malloc`'d through the *memhandle* vtable (`ctx[+0x08]`, slot `+0x00`);
 > the **descriptor** is published through the *rw_impl* vtable (`ctx[+0x00]`,
 > slot `+0x08`) as three CSR writes. The host heap is never touched here.
-> `[HIGH · OBSERVED — `call [rax]` for device_malloc, `call [rax+0x20]` for
-> device_addr, three `call [rax+0x08]` for the descriptor writes.]`
 
 ### 5b. `set_max_loglevel` @ `0x9b0d70`
 
@@ -278,7 +277,7 @@ int enable_logs(nrtucode_core_t* c, uint32_t size) {
 
 Writes the device max level. The **device firmware** is what compares each
 line's severity byte against this register and decides whether to emit it into
-the ring. `[HIGH · OBSERVED]`
+the ring.
 
 ### 5c. `disable_logs` @ `0x9b0830`
 
@@ -286,7 +285,7 @@ Gates on `boot_state==1`; if `core[+0x38]==0` (no ring) it only reads back
 `dram_base+0x14` and returns. Otherwise it **clears the descriptor**
 (`write 0` to `dram_base+0x08` 8B and `+0x04` 4B), **`device_free`s** the ring
 (memhandle slot `+0x08`, `call [r8+0x8]` on `core[+0x38]`), and zeroes
-`core[+0x38]`. `[HIGH · OBSERVED]`
+`core[+0x38]`.
 
 ### 5d. `print_logs` @ `0x9b0e00` — **the ring drain**
 
@@ -327,13 +326,13 @@ int nrtucode_core_print_logs(nrtucode_core_t* c) {
 > `0x9b0f90`). The host re-emits each as `"<friendly_name>: <message>"` at the
 > record's own severity. The `head` read uses the **small-IO `rw_impl->read`**
 > (slot `+0x00`); the **body** uses the **bulk `memhandle->read`**
-> (slot `+0x10`) — two different vtables. `[HIGH · OBSERVED]`
+> (slot `+0x10`) — two different vtables.
 
 ---
 
 ## 6. Reconciliation with the device producer (`'S:'`/`'P%i:'` + `pool_stdio`)
 
-The committed
+The
 [SEQ Error Handler](../firmware/seq/error-handler.md) and
 [File-IO Manager](../firmware/kernels/file-io-manager.md) pages establish the
 **device** side of this channel. The reconciliation, made explicit:
@@ -364,14 +363,14 @@ The committed
 
   There is **no** `'S:'`/`'P%i:'` literal anywhere in `libnrtucode*.so`
   (verified — the only `'S:'` byte-matches in the host lib are coincidental
-  binary data). `[HIGH · OBSERVED.]`
+  binary data).
 
 * **Two distinct device→host text channels.** The file-io-manager's own
   256-byte-slot DRAM ring (a raw `write(fd, buf, len)` byte pipe for a loaded
   kernel's `stdout`/`stderr`, **no** severity byte, OVERWRITE wrap) is a
   *separate* channel that this host library does **not** drain. `print_logs`
-  handles only the `[sev][cstr]` `'S:'`/`'P%i:'` log ring. `[HIGH · OBSERVED —
-  the file-io-manager page's §6 CORRECTION distinguishes the two.]`
+  handles only the `[sev][cstr]` `'S:'`/`'P%i:'` log ring; the file-io-manager
+  page's §6 CORRECTION distinguishes the two.
 
 * **Severity is two distinct axes.** The SEQ error handler's engine-internal
   error severity (recoverable vs fatal — see
@@ -415,7 +414,7 @@ high-level handles plus an `atexit` reporter — four tiny functions and one
 `setup` runs from `.init_array[1]` at library load — verified
 `readelf -rW`: the `R_X86_64_RELATIVE` at `0x9b8ce0` resolves to `0x9b1780`.
 Its body is `xchg %eax,objcount` (an *implicitly* atomic zeroing store on x86)
-followed by `jmp atexit`. No explicit caller. `[HIGH · OBSERVED]`
+followed by `jmp atexit`. No explicit caller.
 
 ### 7b. Create/destroy semantics — who inc/dec the counter
 
@@ -434,7 +433,7 @@ nothing else in the binary touches inc/dec (confirmed by xref of
 >   **and** its scratch buffer (`0x200`); it stores `*ctx_out` and calls `inc`
 >   **only when both succeed**. On the inner `malloc` failing it frees the
 >   outer block and returns error **without** `inc` — so a failed create
->   contributes **no** spurious count. `[HIGH · OBSERVED]`
+>   contributes **no** spurious count.
 > * **`dec` is at-free.** `*_destroy` validates the handle, frees the block(s),
 >   **then** `dec`s. A destroy of an already-freed handle would `dec` a second
 >   time, driving `objcount` negative — which is exactly how the **double-free**
@@ -442,7 +441,7 @@ nothing else in the binary touches inc/dec (confirmed by xref of
 > * **`opset_create` does NOT inc** (verified — no call to `0x9b17a0`). Opsets,
 >   kernels, and ll sub-buffers are **not** counted. The counter is a **net
 >   live-handle** count of `{context, core, ll}` only, **not** a heap-block
->   count. `[HIGH · OBSERVED]`
+>   count.
 
 ### 7c. The teardown report — `nrtucode_objcount_check` @ `0x9b17c0`
 
@@ -469,14 +468,14 @@ void nrtucode_objcount_check(void) {
 * **`objcount == 0` ⇒ silent**, the clean path.
 
 Both diagnostics are **non-fatal**: no `abort`, no exit-code change, no block —
-purely a `stderr` tripwire at process teardown. `[HIGH · OBSERVED]`
+purely a `stderr` tripwire at process teardown.
 
 ---
 
 ## 8. Production-vs-debug (internal-twin) split
 
 The two libraries are **not** byte-identical in the leak detector — a concrete
-counter-example confirmed this session at the byte level:
+counter-example, at the byte level:
 
 | | Internal twin `0x9b17c0` | Stripped production `0x309c90` |
 | --- | --- | --- |
@@ -506,8 +505,7 @@ nrtucode: internal error: object(s) double-freed, improper teardown of library
 > real, dangerous condition). The **leak-count** report is an internal/debug
 > extra — the production build drops both the leak branch and its string. The
 > `.init_array` ctor + `inc`/`dec` hooks + the double-free check are
-> production-resident. `[HIGH · OBSERVED — sizes `0x60` vs `0x31`, string
-> presence verified both ways.]`
+> production-resident.
 
 A **second** production-vs-debug axis sits at the *firmware-image* level (§9):
 the device-log **verbosity** (whether the firmware emits the verbose `'S:'`
@@ -543,7 +541,7 @@ host compile flag. The host logging API is fully present in **both** host libs.
 The logging subsystem itself uses exactly **one of each**: the host log
 **scratch** (libc) and the device log **ring** (memhandle). `objcount` counts
 **host handles only**; the device heaps are accounted on the device side,
-invisible to it. `[HIGH · OBSERVED]`
+invisible to it.
 
 ### 9b. The env gates — none of them touch logging
 
@@ -560,7 +558,7 @@ invisible to it. `[HIGH · OBSERVED]`
 
 > **NOTE.** **None** of these gate the logging path. There is **no** env var
 > that turns host logging on/off — that is the `rw_impl->log_enabled()`
-> callback (§2/§3). These are feature / firmware-image selectors. `[HIGH · OBSERVED]`
+> callback (§2/§3). These are feature / firmware-image selectors.
 
 `NEURON_UCODE_FLAVOR` (string `0x52e2`) selects the **firmware image** via a
 `strcmp` chain in `get_memory_image`, indexing `image_list @0x9b8d20`:
@@ -592,7 +590,7 @@ dereferenced.]`
   i.e. `context_vlog(ctx, severity=1/ERROR, fmt, va)` with the args shuffled.
   This is the log callback the prelink/relocate loader (`prelink_log.c`)
   registers so its own errors funnel into the same context sink at **ERROR**
-  level. `[HIGH · OBSERVED]`
+  level.
 
 * **`log_error` @ `0x9b60a0`** — a self-contained variadic logger (same
   `va_list` assembly as `context_log`) that calls a callback at `obj[+0x30]`
@@ -606,7 +604,7 @@ dereferenced.]`
 
 ## 11. `.rodata` string catalog (logging + leak)
 
-All RVAs are `.rodata` file offsets (Δ = 0), byte-confirmed this session
+All RVAs are `.rodata` file offsets (Δ = 0), byte-confirmed
 (`strings -t x` / `dd`):
 
 | RVA | String | Used by |
@@ -630,7 +628,7 @@ All RVAs are `.rodata` file offsets (Δ = 0), byte-confirmed this session
 | `0x4877` | `"…NRTUCODE_MPLUS_ON_MARIANA flag has been removed … transition to … NEURON_RT_DBG_V4_PLUS=0/1 env var"` | removed-flag error |
 
 `__FILE__` tokens present in `.rodata`: `nrtucode_context.c`, `nrtucode_core.c`,
-`nrtucode_objcount.c`, `prelink_log.c`, `external_lib.c`. `[HIGH · OBSERVED]`
+`nrtucode_objcount.c`, `prelink_log.c`, `external_lib.c`.
 
 ---
 

@@ -8,7 +8,8 @@ Everything below is recovered by static analysis of the shipped binary only — 
 
 > **NOTE — addresses are file == VMA offsets.** `readelf -SW` shows `.text` at VMA `0x3dbc0` / file offset `0x3dbc0`, `.rodata` at `0x7cf000`/`0x7cf000`, and crucially `.data` at VMA `0xc07e00` == file offset `0xc07e00`. **This image has no `.data` VMA↔file-offset delta** (unlike `libtpu.so`'s `0x400000` or the ncore2gp config DLLs' `0x200000`). Every address in this table is therefore both a runtime VMA and a file offset; `objdump --start-address=` takes them verbatim.
 
-Tags per row: confidence **HIGH/MED/LOW** × provenance **OBSERVED** (read from this binary's symtab/DWARF/disasm) / **INFERRED** (reasoned from neighbours where DWARF was thin) / **CARRIED** (from a sibling report, re-checked here). Escaped `\|` inside table cells is a literal pipe.
+Tags per row: confidence **HIGH/MED/LOW** × provenance **OBSERVED** (read from this binary's symtab/DWARF/disasm) / **INFERRED** (reasoned from neighbours where DWARF was thin) / **CARRIED** (from a sibling report, re-checked here). Escaped `\|` inside table cells is a literal pipe. Every per-export row is
+`[HIGH/OBSERVED]`; the page default is `[HIGH/OBSERVED]` and claims that depart from it carry an explicit tag.
 
 ---
 
@@ -16,7 +17,7 @@ Tags per row: confidence **HIGH/MED/LOW** × provenance **OBSERVED** (read from 
 
 The public ABI is a **flat C surface over a C++ core**. Everything a framework (PyTorch / TensorFlow) or a collectives plugin (`libnccom`) may legally touch is one of these exports; every `tdrv_*`/`kmgr_*`/`encd_*`/`enc_*`/`ucode_*`/`aws_hal_*` symbol is **private** — present in `.symtab` as a local/internal name but never offered as a versioned dynamic-symbol contract.
 
-### Export count — re-grounded this pass `[HIGH/OBSERVED]`
+### Export count
 
 ```
 nm -D libnrt.so | rg -c ' T (nrt_|nrta_|nec_)'         → 145   (callable public exports)
@@ -33,11 +34,11 @@ readelf --dyn-syms | rg 'FUNC' | rg '@@NRT_3.0.0' | rg -c '(nrt_|nrta_|nec_)' �
 | Version-node `OBJECT` markers (`NRT_2.0.0`, `NRT_3.0.0`) | 2 | `readelf --dyn-syms \| rg 'OBJECT.*NRT_'` — **not API** |
 | `std::string _M_*` `LOCAL` ABI leaks | 4 | `_M_dispose@0xc6a60`, `_M_assign@0xc6a90`, `_M_mutate@0xc6bd0`, `_M_replace@0xc6dc0` — **not API** |
 
-> **CORRECTION — use 145, not 151.** Earlier inventory work cites "151": that is the raw `nm -D --defined-only \| rg -c '(nrt_\|nrta_\|nec_\|NRT_)'` line count (re-confirmed = 151 here), which folds in the 2 `OBJECT` version-node markers and the 4 `LOCAL` `std::string` `_M_*` helpers. The canonical **callable** figure is **145**. Use 151 only when reconciling against the older line-count inventory.
+> **CORRECTION — use 145, not 151.** Earlier inventory work cites "151": that is the raw `nm -D --defined-only \| rg -c '(nrt_\|nrta_\|nec_\|NRT_)'` line count (= 151), which folds in the 2 `OBJECT` version-node markers and the 4 `LOCAL` `std::string` `_M_*` helpers. The canonical **callable** figure is **145**. Use 151 only when reconciling against the older line-count inventory.
 
-There are **no** `nrt`/`nrta`/`nec` `OBJECT` (data) exports: the ABI is functions only. All state is opaque behind handles (`nrt_model_t*`, `nrt_tensor_t*`, `nrt_tensor_set_t*`, …); the layouts those handles wrap are covered by the pending sibling page `appendix/struct-exec-state-census.md` (the exec-state struct census).
+There are **no** `nrt`/`nrta`/`nec` `OBJECT` (data) exports: the ABI is functions only. All state is opaque behind handles (`nrt_model_t*`, `nrt_tensor_t*`, `nrt_tensor_set_t*`, …); the layouts those handles wrap are covered by [the exec-state struct census](../appendix/struct-exec-state-census.md).
 
-### Version nodes (`.gnu.version_d`) `[HIGH/OBSERVED]`
+### Version nodes (`.gnu.version_d`)
 
 ```
 Version definition section '.gnu.version_d' contains 3 entries:
@@ -61,22 +62,22 @@ Every section table uses the columns:
 
 ---
 
-## 1. Lifecycle / version / topology `[HIGH/OBSERVED — nrt_init.cpp, nrt_config.cpp]`
+## 1. Lifecycle / version / topology
 
 The bring-up family. `nrt_init` is the mandatory first call; nothing else (except the pure getters that fail with `NRT_UNINITIALIZED`) is legal before it. The host init state machine is `START → INITED → CLOSED` (the global `nrt_init_state` lives at `0xc5d1a0`); calls in the wrong state return `NRT_UNINITIALIZED`(13) or `NRT_CLOSED`(14).
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x94e90` | 2.0.0 | `NRT_STATUS` | `nrt_init(nrt_framework_type_t framework, const char *fw_version, const char *fal_version)` | `nrt_init.cpp:491` | HIGH/OBSERVED |
-| `0x93c20` | 2.0.0 | `void` | `nrt_close(void)` | `nrt_init.cpp:134` | HIGH/OBSERVED |
-| `0x940b0` | 2.0.0 | `NRT_STATUS` | `nrt_get_version(nrt_version_t *ver, size_t size)` | `nrt_init.cpp:779` | HIGH/OBSERVED |
-| `0x84210` | 2.0.0 | `NRT_STATUS` | `nrt_get_instance_info(nrt_instance_info_t *info, size_t instance_info_len)` | `nrt_config.cpp:1871` | HIGH/OBSERVED |
-| `0x84200` | 2.0.0 | `NRT_STATUS` | `nrt_get_total_nc_count(uint32_t *nc_count)` | `nrt_config.cpp:1794` | HIGH/OBSERVED |
-| `0x83e10` | 2.0.0 | `NRT_STATUS` | `nrt_get_total_vnc_count(uint32_t *nc_count)` | `nrt_config.cpp:1765` | HIGH/OBSERVED |
-| `0x85c60` | 2.0.0 | `NRT_STATUS` | `nrt_get_visible_nc_count(uint32_t *nc_count)` | `nrt_config.cpp:1752` | HIGH/OBSERVED |
-| `0x855b0` | 2.0.0 | `NRT_STATUS` | `nrt_get_visible_vnc_count(uint32_t *nc_count)` | `nrt_config.cpp:1704` | HIGH/OBSERVED |
-| `0x944a0` | 2.0.0 | `NRT_STATUS` | `nrt_host_device_id_get(int neuron_dev, uint32_t *host_device_id)` | `nrt_init.cpp:839` | HIGH/OBSERVED |
-| `0x94740` | 2.0.0 | `NRT_STATUS` | `nrt_host_device_id_rid_map_get(uint32_t *count, uint32_t *host_did_to_rid_map)` | `nrt_init.cpp:849` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x94e90` | 2.0.0 | `NRT_STATUS` | `nrt_init(nrt_framework_type_t framework, const char *fw_version, const char *fal_version)` | `nrt_init.cpp:491` |
+| `0x93c20` | 2.0.0 | `void` | `nrt_close(void)` | `nrt_init.cpp:134` |
+| `0x940b0` | 2.0.0 | `NRT_STATUS` | `nrt_get_version(nrt_version_t *ver, size_t size)` | `nrt_init.cpp:779` |
+| `0x84210` | 2.0.0 | `NRT_STATUS` | `nrt_get_instance_info(nrt_instance_info_t *info, size_t instance_info_len)` | `nrt_config.cpp:1871` |
+| `0x84200` | 2.0.0 | `NRT_STATUS` | `nrt_get_total_nc_count(uint32_t *nc_count)` | `nrt_config.cpp:1794` |
+| `0x83e10` | 2.0.0 | `NRT_STATUS` | `nrt_get_total_vnc_count(uint32_t *nc_count)` | `nrt_config.cpp:1765` |
+| `0x85c60` | 2.0.0 | `NRT_STATUS` | `nrt_get_visible_nc_count(uint32_t *nc_count)` | `nrt_config.cpp:1752` |
+| `0x855b0` | 2.0.0 | `NRT_STATUS` | `nrt_get_visible_vnc_count(uint32_t *nc_count)` | `nrt_config.cpp:1704` |
+| `0x944a0` | 2.0.0 | `NRT_STATUS` | `nrt_host_device_id_get(int neuron_dev, uint32_t *host_device_id)` | `nrt_init.cpp:839` |
+| `0x94740` | 2.0.0 | `NRT_STATUS` | `nrt_host_device_id_rid_map_get(uint32_t *count, uint32_t *host_did_to_rid_map)` | `nrt_init.cpp:849` |
 
 **`nrt_init`** — full runtime bring-up; idempotent guard on the init state. `framework` tags the caller and gates a few framework-specific defaults; `fw_version`/`fal_version` are the caller's framework + FAL (framework-abstraction-layer) version strings, logged and fed into the driver↔runtime↔collectives compat-id negotiation. On success transitions to `INITED` and brings up all visible NeuronCores. **Returns** `NRT_SUCCESS`; `NRT_FAILURE`/`NRT_RESOURCE`/`NRT_HW_ERROR` on device bring-up failure; `NRT_INVALID` on a bad framework tag.
 
@@ -97,21 +98,21 @@ nrt_framework_type_t [DWARF, byte-confirmed]:
 
 ---
 
-## 2. NEFF model load / unload / introspect `[HIGH/OBSERVED — nrt_model.cpp, nrt_tensor.cpp]`
+## 2. NEFF model load / unload / introspect
 
 A NEFF blob is parsed host-side, lowered to a KELF, staged, and installed on `vnc_count` virtual cores starting at base `vnc`; the opaque `nrt_model_t*` wraps the `dlr_model` handle, whose state walks `INVALID → STARTING → RUNNING`.
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0xa9fe0` | 2.0.0 | `NRT_STATUS` | `nrt_load(const void *neff_bytes, size_t size, int32_t vnc, int32_t vnc_count, nrt_model_t **model)` | `nrt_model.cpp:331` | HIGH/OBSERVED |
-| `0xaa4c0` | 2.0.0 | `NRT_STATUS` | `nrt_load_collectives(const void *neff_bytes, size_t size, int32_t vnc, int32_t vnc_count, uint32_t ctx_device_id, uint32_t ctx_device_count, nrt_model_t **model)` | `nrt_model.cpp:88` | HIGH/OBSERVED |
-| `0xaa190` | 2.0.0 | `NRT_STATUS` | `nrt_unload(nrt_model_t *model)` | `nrt_model.cpp:347` | HIGH/OBSERVED |
-| `0xaadf0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_info(const nrt_model_t *model, nrt_model_info_t *info, size_t info_size_in, size_t *info_size_out)` | `nrt_model.cpp:399` | HIGH/OBSERVED |
-| `0xaade0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_instance_count(nrt_model_t *model, uint32_t *instance_count)` | `nrt_model.cpp:393` | HIGH/OBSERVED |
-| `0xaadd0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_nc_count(const nrt_model_t *model, uint32_t *vnc_count)` | `nrt_model.cpp:388` | HIGH/OBSERVED |
-| `0xaadc0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_vnc_count(const nrt_model_t *model, uint32_t *vnc_count)` | `nrt_model.cpp:382` | HIGH/OBSERVED |
-| `0xc0090` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_tensor_info(nrt_model_t *model, nrt_tensor_info_array_t **tensor_info)` | `nrt_tensor.cpp:353` | HIGH/OBSERVED |
-| `0xc0390` | 2.0.0 | `NRT_STATUS` | `nrt_free_model_tensor_info(nrt_tensor_info_array_t *tensor_info)` | `nrt_tensor.cpp:417` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0xa9fe0` | 2.0.0 | `NRT_STATUS` | `nrt_load(const void *neff_bytes, size_t size, int32_t vnc, int32_t vnc_count, nrt_model_t **model)` | `nrt_model.cpp:331` |
+| `0xaa4c0` | 2.0.0 | `NRT_STATUS` | `nrt_load_collectives(const void *neff_bytes, size_t size, int32_t vnc, int32_t vnc_count, uint32_t ctx_device_id, uint32_t ctx_device_count, nrt_model_t **model)` | `nrt_model.cpp:88` |
+| `0xaa190` | 2.0.0 | `NRT_STATUS` | `nrt_unload(nrt_model_t *model)` | `nrt_model.cpp:347` |
+| `0xaadf0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_info(const nrt_model_t *model, nrt_model_info_t *info, size_t info_size_in, size_t *info_size_out)` | `nrt_model.cpp:399` |
+| `0xaade0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_instance_count(nrt_model_t *model, uint32_t *instance_count)` | `nrt_model.cpp:393` |
+| `0xaadd0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_nc_count(const nrt_model_t *model, uint32_t *vnc_count)` | `nrt_model.cpp:388` |
+| `0xaadc0` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_vnc_count(const nrt_model_t *model, uint32_t *vnc_count)` | `nrt_model.cpp:382` |
+| `0xc0090` | 2.0.0 | `NRT_STATUS` | `nrt_get_model_tensor_info(nrt_model_t *model, nrt_tensor_info_array_t **tensor_info)` | `nrt_tensor.cpp:353` |
+| `0xc0390` | 2.0.0 | `NRT_STATUS` | `nrt_free_model_tensor_info(nrt_tensor_info_array_t *tensor_info)` | `nrt_tensor.cpp:417` |
 
 **`nrt_load`** — parse + admit + install a NEFF onto `vnc_count` cores at base `vnc`. `*model` receives the handle. **Status:** `NRT_SUCCESS`; `NRT_INVALID` (malformed NEFF); `NRT_UNSUPPORTED_NEFF_VERSION`(10) (version gate); `NRT_LOAD_NOT_ENOUGH_NC`(9) ("insufficient pncs"); `NRT_RESOURCE` (no device memory/queues); `NRT_FAIL_HOST_MEM_ALLOC`(11). `vnc=-1` conventionally means "any".
 
@@ -119,15 +120,15 @@ A NEFF blob is parsed host-side, lowered to a KELF, staged, and installed on `vn
 
 **`nrt_unload`** — ref-counted teardown (inverse of load): unstage + uninstall, free device memory, drop the handle when the last reference goes. `NRT_INVALID_HANDLE`(3) on a bad handle; `NRT_FAILURE` if device teardown errors.
 
-> **CORRECTION — `nrt_get_model_instance_count` *does* have a full DWARF prototype.** Earlier work flagged this export as a "thin `.text` thunk with no `debug_info`" and the return type as UNVERIFIED. This binary's DWARF gives the complete definition at `nrt_model.cpp:393`: **`NRT_STATUS nrt_get_model_instance_count(nrt_model_t *model, uint32_t *instance_count)`** — a 2-argument `out`-param getter returning `NRT_STATUS`, **not** the single-argument `(nrt_model_t*)` guess. Reimplement it like the neighbouring `_nc_count`/`_vnc_count` getters.
+> **CORRECTION — `nrt_get_model_instance_count` *does* have a full DWARF prototype.** It is elsewhere described as a "thin `.text` thunk with no `debug_info`" with an UNVERIFIED return type. This binary's DWARF gives the complete definition at `nrt_model.cpp:393`: **`NRT_STATUS nrt_get_model_instance_count(nrt_model_t *model, uint32_t *instance_count)`** — a 2-argument `out`-param getter returning `NRT_STATUS`, **not** the single-argument `(nrt_model_t*)` guess. Reimplement it like the neighbouring `_nc_count`/`_vnc_count` getters.
 
 **`nrt_get_model_info`** — version-tolerant: pass your buffer size in `info_size_in`; `*info_size_out` returns the size the runtime would have written (probe-then-fill). **`_get_model_nc_count`/`_vnc_count`** fill a core-count `out`-param (`_nc_` = physical, `_vnc_` = LNC-virtual).
 
-**`nrt_get_model_tensor_info`** — allocates and returns the input/output tensor descriptor array (names, shapes, dtypes, sizes). **This is the host-side tensor-name contract**: the names here are exactly the keys passed to `nrt_add_tensor_to_tensor_set`, which in turn match the metaneff I/O names (see the pending sibling page `neff/metaneff-io-abi.md`). Free the array with **`nrt_free_model_tensor_info`** — note it lives in `nrt_tensor.cpp`, not `nrt_model.cpp`, because the tensor-info type is owned by the tensor module.
+**`nrt_get_model_tensor_info`** — allocates and returns the input/output tensor descriptor array (names, shapes, dtypes, sizes). **This is the host-side tensor-name contract**: the names here are exactly the keys passed to `nrt_add_tensor_to_tensor_set`, which in turn match the metaneff I/O names (see [the metaneff I/O ABI](../neff/metaneff-io-abi.md)). Free the array with **`nrt_free_model_tensor_info`** — note it lives in `nrt_tensor.cpp`, not `nrt_model.cpp`, because the tensor-info type is owned by the tensor module.
 
 ---
 
-## 3. Tensors / tensor-sets / memory `[HIGH/OBSERVED — nrt_tensor.cpp, nrt_init.cpp]`
+## 3. Tensors / tensor-sets / memory
 
 A `nrt_tensor_t` is an opaque buffer handle (device, host, or virtual placement); a `nrt_tensor_set_t` is a NAME→tensor map that `nrt_execute` consumes as I/O binding.
 
@@ -136,31 +137,31 @@ nrt_tensor_placement_t [DWARF, byte-confirmed]:
   NRT_TENSOR_PLACEMENT_DEVICE=0  HOST=1  VIRTUAL=2
 ```
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0xbc320` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_allocate(nrt_tensor_placement_t tensor_placement, int vnc, size_t size, const char *name, nrt_tensor_t **tensor)` | `nrt_tensor.cpp:43` | HIGH/OBSERVED |
-| `0xbc910` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_allocate_empty(const char *name, nrt_tensor_t **tensor)` | `nrt_tensor.cpp:103` | HIGH/OBSERVED |
-| `0xbf980` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_allocate_slice(const nrt_tensor_t *tensor_source, size_t offset, size_t size, const char *name, nrt_tensor_t **tensor_slice)` | `nrt_tensor.cpp:325` | HIGH/OBSERVED |
-| `0xbcd00` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_attach_buffer(nrt_tensor *tensor, void *buffer, size_t size)` | `nrt_tensor.cpp:117` | HIGH/OBSERVED |
-| `0xbd0e0` | 2.0.0 | `void` | `nrt_tensor_free(nrt_tensor_t **tensor)` | `nrt_tensor.cpp:128` | HIGH/OBSERVED |
-| `0xbd280` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_read(const nrt_tensor_t *tensor, void *buf, size_t offset, size_t size)` | `nrt_tensor.cpp:141` | HIGH/OBSERVED |
-| `0xbd570` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_write(nrt_tensor_t *tensor, const void *buf, size_t offset, size_t size)` | `nrt_tensor.cpp:161` | HIGH/OBSERVED |
-| `0xbd9e0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_read_batch(const nrt_tensor_batch_t *batches, uint64_t num_batches, bool unsafe)` | `nrt_tensor.cpp:181` | HIGH/OBSERVED |
-| `0xbde50` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_write_batch(const nrt_tensor_batch_t *batches, uint64_t num_batches, bool unsafe)` | `nrt_tensor.cpp:202` | HIGH/OBSERVED |
-| `0xbe2c0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_copy(const nrt_tensor_t *src, size_t src_offset, nrt_tensor_t *dst, size_t dst_offset, size_t size)` | `nrt_tensor.cpp:224` | HIGH/OBSERVED |
-| `0xbe590` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_memset(nrt_tensor_t *tensor, uint64_t offset, int value, size_t size)` | `nrt_tensor.cpp:243` | HIGH/OBSERVED |
-| `0xbfdb0` | 2.0.0 | `void *` | `nrt_tensor_get_va(const nrt_tensor_t *tensor)` | `nrt_tensor.cpp:344` | HIGH/OBSERVED |
-| `0xbe9d0` | 2.0.0 | `size_t` | `nrt_tensor_get_size(const nrt_tensor_t *tensor)` | `nrt_tensor.cpp:260` | HIGH/OBSERVED |
-| `0xc08e0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_get_device_allocation_info(const nrt_tensor_t *tensor, nrt_tensor_device_allocation_info *alloc_info)` | `nrt_tensor.cpp:468` | HIGH/OBSERVED |
-| `0xc0cc0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_check_output_completion(const nrt_tensor_t *output_tensor, int64_t timeout, uint64_t expected_completion_count)` | `nrt_tensor.cpp:479` | HIGH/OBSERVED |
-| `0xc12f0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_reset_output_completion(nrt_tensor_t *output_tensor)` | `nrt_tensor.cpp:562` | HIGH/OBSERVED |
-| `0xbeae0` | 2.0.0 | `NRT_STATUS` | `nrt_allocate_tensor_set(nrt_tensor_set_t **result)` | `nrt_tensor.cpp:266` | HIGH/OBSERVED |
-| `0xbeea0` | 2.0.0 | `void` | `nrt_destroy_tensor_set(nrt_tensor_set_t **tensor_set)` | `nrt_tensor.cpp:282` | HIGH/OBSERVED |
-| `0xbf1b0` | 2.0.0 | `NRT_STATUS` | `nrt_add_tensor_to_tensor_set(nrt_tensor_set_t *tensor_set, const char *tensor_name, nrt_tensor_t *tensor)` | `nrt_tensor.cpp:294` | HIGH/OBSERVED |
-| `0xbf580` | 2.0.0 | `NRT_STATUS` | `nrt_get_tensor_from_tensor_set(nrt_tensor_set_t *tensor_set, const char *tensor_name, nrt_tensor_t **tensor)` | `nrt_tensor.cpp:306` | HIGH/OBSERVED |
-| `0xc04b0` | 2.0.0 | `NRT_STATUS` | `nrt_memcpy_to_device(void *dest, const void *src, size_t size)` | `nrt_tensor.cpp:430` | HIGH/OBSERVED |
-| `0x949f0` | 2.0.0 | `NRT_STATUS` | `nrt_get_hbm_mmap_va(int device_id, int hbm_idx, void **addr, size_t *size)` | `nrt_init.cpp:859` | HIGH/OBSERVED |
-| `0xc0500` | 2.0.0 | `NRT_STATUS` | `nrt_get_dmabuf_fd(uint64_t va, uint64_t size, int *fd)` | `nrt_tensor.cpp:443` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0xbc320` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_allocate(nrt_tensor_placement_t tensor_placement, int vnc, size_t size, const char *name, nrt_tensor_t **tensor)` | `nrt_tensor.cpp:43` |
+| `0xbc910` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_allocate_empty(const char *name, nrt_tensor_t **tensor)` | `nrt_tensor.cpp:103` |
+| `0xbf980` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_allocate_slice(const nrt_tensor_t *tensor_source, size_t offset, size_t size, const char *name, nrt_tensor_t **tensor_slice)` | `nrt_tensor.cpp:325` |
+| `0xbcd00` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_attach_buffer(nrt_tensor *tensor, void *buffer, size_t size)` | `nrt_tensor.cpp:117` |
+| `0xbd0e0` | 2.0.0 | `void` | `nrt_tensor_free(nrt_tensor_t **tensor)` | `nrt_tensor.cpp:128` |
+| `0xbd280` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_read(const nrt_tensor_t *tensor, void *buf, size_t offset, size_t size)` | `nrt_tensor.cpp:141` |
+| `0xbd570` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_write(nrt_tensor_t *tensor, const void *buf, size_t offset, size_t size)` | `nrt_tensor.cpp:161` |
+| `0xbd9e0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_read_batch(const nrt_tensor_batch_t *batches, uint64_t num_batches, bool unsafe)` | `nrt_tensor.cpp:181` |
+| `0xbde50` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_write_batch(const nrt_tensor_batch_t *batches, uint64_t num_batches, bool unsafe)` | `nrt_tensor.cpp:202` |
+| `0xbe2c0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_copy(const nrt_tensor_t *src, size_t src_offset, nrt_tensor_t *dst, size_t dst_offset, size_t size)` | `nrt_tensor.cpp:224` |
+| `0xbe590` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_memset(nrt_tensor_t *tensor, uint64_t offset, int value, size_t size)` | `nrt_tensor.cpp:243` |
+| `0xbfdb0` | 2.0.0 | `void *` | `nrt_tensor_get_va(const nrt_tensor_t *tensor)` | `nrt_tensor.cpp:344` |
+| `0xbe9d0` | 2.0.0 | `size_t` | `nrt_tensor_get_size(const nrt_tensor_t *tensor)` | `nrt_tensor.cpp:260` |
+| `0xc08e0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_get_device_allocation_info(const nrt_tensor_t *tensor, nrt_tensor_device_allocation_info *alloc_info)` | `nrt_tensor.cpp:468` |
+| `0xc0cc0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_check_output_completion(const nrt_tensor_t *output_tensor, int64_t timeout, uint64_t expected_completion_count)` | `nrt_tensor.cpp:479` |
+| `0xc12f0` | 2.0.0 | `NRT_STATUS` | `nrt_tensor_reset_output_completion(nrt_tensor_t *output_tensor)` | `nrt_tensor.cpp:562` |
+| `0xbeae0` | 2.0.0 | `NRT_STATUS` | `nrt_allocate_tensor_set(nrt_tensor_set_t **result)` | `nrt_tensor.cpp:266` |
+| `0xbeea0` | 2.0.0 | `void` | `nrt_destroy_tensor_set(nrt_tensor_set_t **tensor_set)` | `nrt_tensor.cpp:282` |
+| `0xbf1b0` | 2.0.0 | `NRT_STATUS` | `nrt_add_tensor_to_tensor_set(nrt_tensor_set_t *tensor_set, const char *tensor_name, nrt_tensor_t *tensor)` | `nrt_tensor.cpp:294` |
+| `0xbf580` | 2.0.0 | `NRT_STATUS` | `nrt_get_tensor_from_tensor_set(nrt_tensor_set_t *tensor_set, const char *tensor_name, nrt_tensor_t **tensor)` | `nrt_tensor.cpp:306` |
+| `0xc04b0` | 2.0.0 | `NRT_STATUS` | `nrt_memcpy_to_device(void *dest, const void *src, size_t size)` | `nrt_tensor.cpp:430` |
+| `0x949f0` | 2.0.0 | `NRT_STATUS` | `nrt_get_hbm_mmap_va(int device_id, int hbm_idx, void **addr, size_t *size)` | `nrt_init.cpp:859` |
+| `0xc0500` | 2.0.0 | `NRT_STATUS` | `nrt_get_dmabuf_fd(uint64_t va, uint64_t size, int *fd)` | `nrt_tensor.cpp:443` |
 
 > **QUIRK — two non-status returns.** `nrt_tensor_get_va` returns `void *` (NULL if device-only / not mapped) and `nrt_tensor_get_size` returns `size_t` (0 on error) — they hand back the value directly, **not** an `NRT_STATUS`. Two exports are `void` and cannot fail at the ABI: `nrt_tensor_free` (frees and NULLs `*tensor`) and `nrt_destroy_tensor_set`.
 
@@ -173,16 +174,16 @@ nrt_tensor_placement_t [DWARF, byte-confirmed]:
 
 ---
 
-## 4. Execute `[HIGH/OBSERVED — nrt_exec.cpp, nrt_init.cpp]`
+## 4. Execute
 
 The inference-firing family. Sync vs implicit-async is selected at `nrt_init`: the sync path returns only after completion; the implicit-async path returns at submission and the caller polls via `nrt_tensor_check_output_completion` (§3). Status codes `101` and `1002..1206` are the execution-result band (§10).
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x91de0` | 2.0.0 | `NRT_STATUS` | `nrt_execute(nrt_model_t *model, const nrt_tensor_set_t *input, nrt_tensor_set_t *output)` | `nrt_exec.cpp:117` | HIGH/OBSERVED |
-| `0x91650` | 2.0.0 | `NRT_STATUS` | `nrt_execute_repeat(nrt_model_t *model, const nrt_tensor_set_t *input, nrt_tensor_set_t *output, int repeat_count)` | `nrt_exec.cpp:83` | HIGH/OBSERVED |
-| `0x92110` | 2.0.0 | `NRT_STATUS` | `nrt_async_drain_queued_execs(int32_t vnc_idx)` | `nrt_exec.cpp:162` | HIGH/OBSERVED |
-| `0x94490` | 2.0.0 | `NRT_STATUS` | `nrt_register_async_exec_callback(NRT_ASYNC_EXEC_STATUS_CALLBACK callback, void *params)` | `nrt_init.cpp:834` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x91de0` | 2.0.0 | `NRT_STATUS` | `nrt_execute(nrt_model_t *model, const nrt_tensor_set_t *input, nrt_tensor_set_t *output)` | `nrt_exec.cpp:117` |
+| `0x91650` | 2.0.0 | `NRT_STATUS` | `nrt_execute_repeat(nrt_model_t *model, const nrt_tensor_set_t *input, nrt_tensor_set_t *output, int repeat_count)` | `nrt_exec.cpp:83` |
+| `0x92110` | 2.0.0 | `NRT_STATUS` | `nrt_async_drain_queued_execs(int32_t vnc_idx)` | `nrt_exec.cpp:162` |
+| `0x94490` | 2.0.0 | `NRT_STATUS` | `nrt_register_async_exec_callback(NRT_ASYNC_EXEC_STATUS_CALLBACK callback, void *params)` | `nrt_init.cpp:834` |
 
 **`nrt_execute`** — fire one inference: bind `input`/`output` tensor-sets to the model and run. **Returns** `NRT_SUCCESS` or an execution-result code: `NRT_EXEC_BAD_INPUT`(1002), `NRT_EXEC_NC_BUSY`(1005), `NRT_EXEC_OOB`(1006), `NRT_EXEC_COMPLETED_WITH_{NUM_,}ERR`(1003/1004), or a HW-fault code (`1200..1206`). Multi-core faults are ranked by `nrt_status_priority_t` — the **worst** code wins.
 
@@ -192,11 +193,11 @@ The inference-firing family. Sync vs implicit-async is selected at `nrt_init`: t
 
 ---
 
-## 5. GPSIMD pool-engine ucode `[HIGH/OBSERVED — nrt_ucode.cpp — the task-critical export]`
+## 5. GPSIMD pool-engine ucode
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0xc1630` | 2.0.0 | `NRT_STATUS` | `nrt_set_pool_eng_ucode(const nrt_ucode_info *ucode_info)` | `nrt_ucode.cpp:10` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0xc1630` | 2.0.0 | `NRT_STATUS` | `nrt_set_pool_eng_ucode(const nrt_ucode_info *ucode_info)` | `nrt_ucode.cpp:10` |
 
 This is the **one public hook** by which a GPSIMD custom kernel replaces the stock Vision-Q7 "Pool" engine microcode. The caller hands two `{pointer,length}` blobs — one for instruction RAM, one for data RAM — describing the Q7 Pool-core image to swap in.
 
@@ -205,7 +206,7 @@ struct nrt_ucode_info  [DWARF, byte_size 0x20 = 32]   { nrt_ucode_img iram@+0; n
 struct nrt_ucode_img   [DWARF, byte_size 0x10 = 16]   { uint8_t *bin@+0; size_t size@+8; }
 ```
 
-### Call spine `[OBSERVED disasm @0xc1630, low_pc..high_pc = 0xc1630..0xc1708]`
+### Call spine (disasm `@0xc1630`, `low_pc..high_pc = 0xc1630..0xc1708`)
 
 ```c
 NRT_STATUS nrt_set_pool_eng_ucode(const nrt_ucode_info *ucode_info /* RDI */) {
@@ -234,28 +235,28 @@ The four BSS globals occupy the contiguous range **`0xc97018..0xc97038`** (`pool
 
 ---
 
-## 6. Collectives / P2P / async-sendrecv `[HIGH/OBSERVED — nrt_barrier/_model/_collectives/_async_sendrecv.cpp]`
+## 6. Collectives / P2P / async-sendrecv
 
 The fabric family: NeuronCore↔NeuronCore collectives over EFA/NeuronLink. Replica groups are addressed by `(vnc, g_device_id, g_device_count)` = (local core, this rank's global id, world).
 
 ### Collective primitives + comm setup
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x7f2d0` | 2.0.0 | `NRT_STATUS` | `nrt_all_gather(int32_t vnc, uint32_t g_device_id, uint32_t g_device_count, uint32_t rank_input_size, void *input, void *output)` | `nrt_barrier.cpp:367` | HIGH/OBSERVED |
-| `0xa9390` | 2.0.0 | `NRT_STATUS` | `nrt_build_global_comm(int32_t vnc, uint32_t g_device_id, uint32_t g_device_count)` | `nrt_model.cpp:35` | HIGH/OBSERVED |
-| `0x7ee30` | 2.0.0 | `NRT_STATUS` | `nrt_barrier(int32_t vnc, uint32_t g_device_id, uint32_t g_device_count)` | `nrt_barrier.cpp:326` | HIGH/OBSERVED |
-| `0x7ff10` | 2.0.0 | `NRT_STATUS` | `nrt_cc_create_stream(uint32_t stream_id)` | `nrt_collectives.cpp:325` | HIGH/OBSERVED |
-| `0x7fd90` | 2.0.0 | `NRT_STATUS` | `nrt_cc_global_comm_init(uint32_t vnc, uint32_t g_device_id, uint32_t g_device_count)` | `nrt_collectives.cpp:290` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x7f2d0` | 2.0.0 | `NRT_STATUS` | `nrt_all_gather(int32_t vnc, uint32_t g_device_id, uint32_t g_device_count, uint32_t rank_input_size, void *input, void *output)` | `nrt_barrier.cpp:367` |
+| `0xa9390` | 2.0.0 | `NRT_STATUS` | `nrt_build_global_comm(int32_t vnc, uint32_t g_device_id, uint32_t g_device_count)` | `nrt_model.cpp:35` |
+| `0x7ee30` | 2.0.0 | `NRT_STATUS` | `nrt_barrier(int32_t vnc, uint32_t g_device_id, uint32_t g_device_count)` | `nrt_barrier.cpp:326` |
+| `0x7ff10` | 2.0.0 | `NRT_STATUS` | `nrt_cc_create_stream(uint32_t stream_id)` | `nrt_collectives.cpp:325` |
+| `0x7fd90` | 2.0.0 | `NRT_STATUS` | `nrt_cc_global_comm_init(uint32_t vnc, uint32_t g_device_id, uint32_t g_device_count)` | `nrt_collectives.cpp:290` |
 
 > **NOTE.** `nrt_build_global_comm` (barrier/all-gather path) and `nrt_cc_global_comm_init` (the `cc_*` stream path) are two generations of the same setup; `cc` = collective-comm.
 
 ### Plugin / fabric bridge
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x94400` | 2.0.0 | `void *` | `nrt_get_libnccl_net(int *err, char *err_msg, size_t err_msg_size)` | `nrt_init.cpp:823` | HIGH/OBSERVED |
-| `0x94cb0` | 2.0.0 | `NRT_STATUS` | `nrt_get_attached_efa_bdf(const void *va, char *efa_bdf, size_t *len)` | `nrt_init.cpp:869` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x94400` | 2.0.0 | `void *` | `nrt_get_libnccl_net(int *err, char *err_msg, size_t err_msg_size)` | `nrt_init.cpp:823` |
+| `0x94cb0` | 2.0.0 | `NRT_STATUS` | `nrt_get_attached_efa_bdf(const void *va, char *efa_bdf, size_t *len)` | `nrt_init.cpp:869` |
 
 **`nrt_get_libnccl_net`** returns the embedded NCCL-net plugin vtable pointer (the `libnccl-net.so` contract the collectives layer exposes to NCCL); `*err`/`err_msg` report dlopen-style failures. **`nrt_get_attached_efa_bdf`** returns the PCI BDF string of the EFA NIC backing VA `va`.
 
@@ -279,7 +280,7 @@ A comm is opened connect/accept, tensors are posted, requests/comm are polled, t
 
 ---
 
-## 7. `nec_*` device + topology ABI `[HIGH/OBSERVED — enc/nec.cc — 16 exports]`
+## 7. `nec_*` device + topology ABI — 16 exports
 
 The low-level "Neuron Experimental Comms" bridge that `libnccom.so.2` calls back **into** — device-enumeration + fabric-topology + dynamic-buffer-sizing primitives beneath the collectives layer.
 
@@ -290,24 +291,24 @@ nec_pod_type_t [DWARF]: NONE=0  P2P=1  SWITCH=2  INVALID=3
 mla = "ML accelerator" device ; rid = routing-id
 ```
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x1bfd40` | 2.0.0 | `void` | `nec_inc_semaphore(volatile uint32_t *sem_inc_addr, uint32_t val)` | `nec.cc:19` | HIGH/OBSERVED |
-| `0x1bfd50` | 2.0.0 | `int` | `nec_get_device_count(int *available_mla_array, uint32_t array_size)` | `nec.cc:25` | HIGH/OBSERVED |
-| `0x1bfd60` | 2.0.0 | `int` | `nec_get_device_pci_bdf(int neuron_dev, uint32_t *domain, uint32_t *bus_num, uint8_t *pci_slot, uint8_t *dev_func)` | `nec.cc:31` | HIGH/OBSERVED |
-| `0x1bfdd0` | 2.0.0 | `NRT_STATUS` | `nec_get_virtual_core_size(uint32_t *virtual_core_size)` | `nec.cc:46` | HIGH/OBSERVED |
-| `0x1bfdf0` | 2.0.0 | `NRT_STATUS` | `nec_build_port_and_rid_map(int local_nec_dev_id, int *mla_indexes, int *host_device_ids, int count)` | `nec.cc:57` | HIGH/OBSERVED |
-| `0x1bfe00` | 2.0.0 | `bool` | `nec_is_mla_available(int local_nec_dev_id, int mla_idx)` | `nec.cc:61` | HIGH/OBSERVED |
-| `0x1bfe10` | 2.0.0 | `int` | `nec_mla_idx_to_rid(int local_nec_dev_id, int mla_idx)` | `nec.cc:66` | HIGH/OBSERVED |
-| `0x1bfe20` | 2.0.0 | `int` | `nec_rid_to_mla_idx(int local_nec_dev_id, int rid)` | `nec.cc:71` | HIGH/OBSERVED |
-| `0x1bfe30` | 2.0.0 | `int` | `nec_get_peer_mla_idx(int local_nec_dev_id, int mla_idx, int port)` | `nec.cc:76` | HIGH/OBSERVED |
-| `0x1bfeb0` | 2.0.0 | `int` | `nec_get_p2p_pod_peer_node(uint32_t nec_dev_id, int node, uint32_t port_distance, int *peer_node)` | `nec.cc:91` | HIGH/OBSERVED |
-| `0x1bfed0` | 2.0.0 | `NRT_STATUS` | `nec_pod_node_can_access_peer_node(nec_pod_type_t pod_type, uint32_t local_rid, uint32_t local_node_id, uint32_t remote_rid, uint32_t remote_node_id, int *can_access_peer)` | `nec.cc:98` | HIGH/OBSERVED |
-| `0x1bfee0` | 2.0.0 | `void` | `nec_ndl_printk(char *str, uint32_t size, uint32_t action)` | `nec.cc:107` | HIGH/OBSERVED |
-| `0x1bfef0` | 2.0.0 | `size_t` | `nec_get_dynamic_send_size_bytes(enc_host_mem_t *dyn_input, size_t data_type_sz, int dst_rank, int rank_n)` | `nec.cc:112` | HIGH/OBSERVED |
-| `0x1bff00` | 2.0.0 | `size_t` | `nec_get_dynamic_send_offset_bytes(enc_host_mem_t *dyn_input, size_t data_type_sz, int dst_rank, int rank_n)` | `nec.cc:118` | HIGH/OBSERVED |
-| `0x1bff10` | 2.0.0 | `size_t` | `nec_get_dynamic_recv_offset_bytes(enc_host_mem_t *dyn_input, size_t data_type_sz, int src_rank, int rank_n)` | `nec.cc:123` | HIGH/OBSERVED |
-| `0x1bff20` | 2.0.0 | `void` | `nec_set_recv_size_bytes(enc_host_mem_t *dyn_input, size_t recv_size_bytes, size_t data_type_sz, int src_rank, int rank_n)` | `nec.cc:128` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x1bfd40` | 2.0.0 | `void` | `nec_inc_semaphore(volatile uint32_t *sem_inc_addr, uint32_t val)` | `nec.cc:19` |
+| `0x1bfd50` | 2.0.0 | `int` | `nec_get_device_count(int *available_mla_array, uint32_t array_size)` | `nec.cc:25` |
+| `0x1bfd60` | 2.0.0 | `int` | `nec_get_device_pci_bdf(int neuron_dev, uint32_t *domain, uint32_t *bus_num, uint8_t *pci_slot, uint8_t *dev_func)` | `nec.cc:31` |
+| `0x1bfdd0` | 2.0.0 | `NRT_STATUS` | `nec_get_virtual_core_size(uint32_t *virtual_core_size)` | `nec.cc:46` |
+| `0x1bfdf0` | 2.0.0 | `NRT_STATUS` | `nec_build_port_and_rid_map(int local_nec_dev_id, int *mla_indexes, int *host_device_ids, int count)` | `nec.cc:57` |
+| `0x1bfe00` | 2.0.0 | `bool` | `nec_is_mla_available(int local_nec_dev_id, int mla_idx)` | `nec.cc:61` |
+| `0x1bfe10` | 2.0.0 | `int` | `nec_mla_idx_to_rid(int local_nec_dev_id, int mla_idx)` | `nec.cc:66` |
+| `0x1bfe20` | 2.0.0 | `int` | `nec_rid_to_mla_idx(int local_nec_dev_id, int rid)` | `nec.cc:71` |
+| `0x1bfe30` | 2.0.0 | `int` | `nec_get_peer_mla_idx(int local_nec_dev_id, int mla_idx, int port)` | `nec.cc:76` |
+| `0x1bfeb0` | 2.0.0 | `int` | `nec_get_p2p_pod_peer_node(uint32_t nec_dev_id, int node, uint32_t port_distance, int *peer_node)` | `nec.cc:91` |
+| `0x1bfed0` | 2.0.0 | `NRT_STATUS` | `nec_pod_node_can_access_peer_node(nec_pod_type_t pod_type, uint32_t local_rid, uint32_t local_node_id, uint32_t remote_rid, uint32_t remote_node_id, int *can_access_peer)` | `nec.cc:98` |
+| `0x1bfee0` | 2.0.0 | `void` | `nec_ndl_printk(char *str, uint32_t size, uint32_t action)` | `nec.cc:107` |
+| `0x1bfef0` | 2.0.0 | `size_t` | `nec_get_dynamic_send_size_bytes(enc_host_mem_t *dyn_input, size_t data_type_sz, int dst_rank, int rank_n)` | `nec.cc:112` |
+| `0x1bff00` | 2.0.0 | `size_t` | `nec_get_dynamic_send_offset_bytes(enc_host_mem_t *dyn_input, size_t data_type_sz, int dst_rank, int rank_n)` | `nec.cc:118` |
+| `0x1bff10` | 2.0.0 | `size_t` | `nec_get_dynamic_recv_offset_bytes(enc_host_mem_t *dyn_input, size_t data_type_sz, int src_rank, int rank_n)` | `nec.cc:123` |
+| `0x1bff20` | 2.0.0 | `void` | `nec_set_recv_size_bytes(enc_host_mem_t *dyn_input, size_t recv_size_bytes, size_t data_type_sz, int src_rank, int rank_n)` | `nec.cc:128` |
 
 The four `nec_get_dynamic_*` / `nec_set_recv_size_bytes` primitives compute bytes-per-rank for variable-length (ragged) all-to-all.
 
@@ -319,81 +320,81 @@ The observability family. All share the device Notification-Queue capture path a
 
 ### Legacy profile, session profile, continuous profile, trace
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0xaee40` | 2.0.0 | `NRT_STATUS` | `nrt_profile_start(nrt_model_t *model, const char *filename)` | `nrt_profile.cpp:1039` | HIGH/OBSERVED |
-| `0xb47c0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_stop(const char *filename)` | `nrt_profile.cpp:1367` | HIGH/OBSERVED |
-| `0xb6800` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_start(int32_t vnc)` | `nrt_profile.cpp:2204` | HIGH/OBSERVED |
-| `0xb1dd0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_stop(int32_t vnc, uint64_t *session_id)` | `nrt_profile.cpp:2271` | HIGH/OBSERVED |
-| `0xb61d0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_serialize(uint64_t session_id, const char *filename)` | `nrt_profile.cpp:2381` | HIGH/OBSERVED |
-| `0xb6070` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_drop(uint64_t session_id)` | `nrt_profile.cpp:2347` | HIGH/OBSERVED |
-| `0xb5f90` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_drop_all(int32_t vnc)` | `nrt_profile.cpp:2328` | HIGH/OBSERVED |
-| `0xacda0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_options_allocate(nrt_profile_continuous_options_t **options)` | `nrt_profile.cpp:1375` | HIGH/OBSERVED |
-| `0xace00` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_options_free(nrt_profile_continuous_options_t *options)` | `nrt_profile.cpp:1387` | HIGH/OBSERVED |
-| `0xace40` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_options_set_output_dir(nrt_profile_continuous_options_t *options, const char *output_dir)` | `nrt_profile.cpp:1395` | HIGH/OBSERVED |
-| `0xacee0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_start(nrt_profile_continuous_options_t *options)` | `nrt_profile.cpp:1415` | HIGH/OBSERVED |
-| `0xacf90` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_stop(void)` | `nrt_profile.cpp:1503` | HIGH/OBSERVED |
-| `0xb47d0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_save(uint32_t vnc, nrt_profile_continuous_options_t *options)` | `nrt_profile.cpp:1444` | HIGH/OBSERVED |
-| `0xad140` | 2.0.0 | `NRT_STATUS` | `nrt_trace_start(bool trace_mem)` | `nrt_profile.cpp:1542` | HIGH/OBSERVED |
-| `0xb5ad0` | 2.0.0 | `NRT_STATUS` | `nrt_trace_stop(const char *filename)` | `nrt_profile.cpp:1560` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0xaee40` | 2.0.0 | `NRT_STATUS` | `nrt_profile_start(nrt_model_t *model, const char *filename)` | `nrt_profile.cpp:1039` |
+| `0xb47c0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_stop(const char *filename)` | `nrt_profile.cpp:1367` |
+| `0xb6800` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_start(int32_t vnc)` | `nrt_profile.cpp:2204` |
+| `0xb1dd0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_stop(int32_t vnc, uint64_t *session_id)` | `nrt_profile.cpp:2271` |
+| `0xb61d0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_serialize(uint64_t session_id, const char *filename)` | `nrt_profile.cpp:2381` |
+| `0xb6070` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_drop(uint64_t session_id)` | `nrt_profile.cpp:2347` |
+| `0xb5f90` | 2.0.0 | `NRT_STATUS` | `nrt_profile_session_drop_all(int32_t vnc)` | `nrt_profile.cpp:2328` |
+| `0xacda0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_options_allocate(nrt_profile_continuous_options_t **options)` | `nrt_profile.cpp:1375` |
+| `0xace00` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_options_free(nrt_profile_continuous_options_t *options)` | `nrt_profile.cpp:1387` |
+| `0xace40` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_options_set_output_dir(nrt_profile_continuous_options_t *options, const char *output_dir)` | `nrt_profile.cpp:1395` |
+| `0xacee0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_start(nrt_profile_continuous_options_t *options)` | `nrt_profile.cpp:1415` |
+| `0xacf90` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_stop(void)` | `nrt_profile.cpp:1503` |
+| `0xb47d0` | 2.0.0 | `NRT_STATUS` | `nrt_profile_continuous_save(uint32_t vnc, nrt_profile_continuous_options_t *options)` | `nrt_profile.cpp:1444` |
+| `0xad140` | 2.0.0 | `NRT_STATUS` | `nrt_trace_start(bool trace_mem)` | `nrt_profile.cpp:1542` |
+| `0xb5ad0` | 2.0.0 | `NRT_STATUS` | `nrt_trace_stop(const char *filename)` | `nrt_profile.cpp:1560` |
 
 ### Inspect (activity-typed capture + rich config builder — `nrt_inspect.cpp` / `nrt_inspect_config.cpp`)
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x997e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_begin(void)` | `nrt_inspect.cpp:260` | HIGH/OBSERVED |
-| `0x99050` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_begin_with_options(nrt_inspect_config_t *options)` | `nrt_inspect.cpp:282` | HIGH/OBSERVED |
-| `0x9f130` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_stop(void)` | `nrt_inspect.cpp:341` | HIGH/OBSERVED |
-| `0x97b10` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_get_instance_output_dir(const char *output_dir, char *instance_dir_buf, size_t buf_size)` | `nrt_inspect.cpp:1464` | HIGH/OBSERVED |
-| `0xa8050` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_allocate(nrt_inspect_config_t **options)` | `nrt_inspect_config.cpp:22` | HIGH/OBSERVED |
-| `0xa80a0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_free(nrt_inspect_config_t *options)` | `nrt_inspect_config.cpp:44` | HIGH/OBSERVED |
-| `0xa7f60` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_defaults(nrt_inspect_config_t *options)` | `nrt_inspect_config.cpp:31` | HIGH/OBSERVED |
-| `0xa8100` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_output_dir(nrt_inspect_config_t *options, const char *output_dir)` | `nrt_inspect_config.cpp:60` | HIGH/OBSERVED |
-| `0xa80e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_session_id(nrt_inspect_config_t *options, int session_id)` | `nrt_inspect_config.cpp:52` | HIGH/OBSERVED |
-| `0xa85f0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_activity(nrt_inspect_config_t *options, const char *activity_type, bool enabled)` | `nrt_inspect_config.cpp:165` | HIGH/OBSERVED |
-| `0xa8200` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_capture_enabled_for_nc(nrt_inspect_config_t *options, uint32_t nc_idx, bool enabled)` | `nrt_inspect_config.cpp:97` | HIGH/OBSERVED |
-| `0xa8280` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_capture_enabled_for_event_type_string(nrt_inspect_config_t *options, const char *event_type, bool enabled)` | `nrt_inspect_config.cpp:111` | HIGH/OBSERVED |
-| `0xa82e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_enable_inspect(nrt_inspect_config_t *options, bool enable_inspect)` | `nrt_inspect_config.cpp:127` | HIGH/OBSERVED |
-| `0xa8300` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_enable_inspect_on_fail(nrt_inspect_config_t *options, bool enable_inspect_on_fail)` | `nrt_inspect_config.cpp:135` | HIGH/OBSERVED |
-| `0xa8320` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_inspect_device_profile_mode(nrt_inspect_config_t *options, nrt_inspect_device_profile_mode_t device_profile_mode)` | `nrt_inspect_config.cpp:143` | HIGH/OBSERVED |
-| `0xa81e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_sys_trace_max_events_per_nc(nrt_inspect_config_t *options, uint64_t sys_trace_max_events_per_nc)` | `nrt_inspect_config.cpp:89` | HIGH/OBSERVED |
-| `0xa8650` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_get_all_activity_types(const char ***activity_types, size_t *count)` | `nrt_inspect_config.cpp:186` | HIGH/OBSERVED |
-| `0xa8730` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_get_enabled_activity_types(nrt_inspect_config_t *options, const char ***activity_types, size_t *count)` | `nrt_inspect_config.cpp:217` | HIGH/OBSERVED |
-| `0xa8870` | 2.0.0 | `void` | `nrt_inspect_config_free_activity_types(const char **activity_types, size_t count)` | `nrt_inspect_config.cpp:255` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x997e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_begin(void)` | `nrt_inspect.cpp:260` |
+| `0x99050` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_begin_with_options(nrt_inspect_config_t *options)` | `nrt_inspect.cpp:282` |
+| `0x9f130` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_stop(void)` | `nrt_inspect.cpp:341` |
+| `0x97b10` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_get_instance_output_dir(const char *output_dir, char *instance_dir_buf, size_t buf_size)` | `nrt_inspect.cpp:1464` |
+| `0xa8050` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_allocate(nrt_inspect_config_t **options)` | `nrt_inspect_config.cpp:22` |
+| `0xa80a0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_free(nrt_inspect_config_t *options)` | `nrt_inspect_config.cpp:44` |
+| `0xa7f60` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_defaults(nrt_inspect_config_t *options)` | `nrt_inspect_config.cpp:31` |
+| `0xa8100` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_output_dir(nrt_inspect_config_t *options, const char *output_dir)` | `nrt_inspect_config.cpp:60` |
+| `0xa80e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_session_id(nrt_inspect_config_t *options, int session_id)` | `nrt_inspect_config.cpp:52` |
+| `0xa85f0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_activity(nrt_inspect_config_t *options, const char *activity_type, bool enabled)` | `nrt_inspect_config.cpp:165` |
+| `0xa8200` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_capture_enabled_for_nc(nrt_inspect_config_t *options, uint32_t nc_idx, bool enabled)` | `nrt_inspect_config.cpp:97` |
+| `0xa8280` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_capture_enabled_for_event_type_string(nrt_inspect_config_t *options, const char *event_type, bool enabled)` | `nrt_inspect_config.cpp:111` |
+| `0xa82e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_enable_inspect(nrt_inspect_config_t *options, bool enable_inspect)` | `nrt_inspect_config.cpp:127` |
+| `0xa8300` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_enable_inspect_on_fail(nrt_inspect_config_t *options, bool enable_inspect_on_fail)` | `nrt_inspect_config.cpp:135` |
+| `0xa8320` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_inspect_device_profile_mode(nrt_inspect_config_t *options, nrt_inspect_device_profile_mode_t device_profile_mode)` | `nrt_inspect_config.cpp:143` |
+| `0xa81e0` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_set_sys_trace_max_events_per_nc(nrt_inspect_config_t *options, uint64_t sys_trace_max_events_per_nc)` | `nrt_inspect_config.cpp:89` |
+| `0xa8650` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_get_all_activity_types(const char ***activity_types, size_t *count)` | `nrt_inspect_config.cpp:186` |
+| `0xa8730` | 2.0.0 | `NRT_STATUS` | `nrt_inspect_config_get_enabled_activity_types(nrt_inspect_config_t *options, const char ***activity_types, size_t *count)` | `nrt_inspect_config.cpp:217` |
+| `0xa8870` | 2.0.0 | `void` | `nrt_inspect_config_free_activity_types(const char **activity_types, size_t count)` | `nrt_inspect_config.cpp:255` |
 
 ### Sys-trace (system-event ring — `nrt_sys_trace*.cpp`)
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0xb9800` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_start(nrt_sys_trace_config_t *options)` | `nrt_sys_trace.cpp:11` | HIGH/OBSERVED |
-| `0xb9870` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_stop(void)` | `nrt_sys_trace.cpp:18` | HIGH/OBSERVED |
-| `0xb9880` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_fetch_events(char **buffer, size_t *written_size, const nrt_sys_trace_fetch_options_t *options)` | `nrt_sys_trace_api.cpp:17` | HIGH/OBSERVED |
-| `0xb9910` | 2.0.0 | `void` | `nrt_sys_trace_buffer_free(char *buffer)` | `nrt_sys_trace_api.cpp:24` | HIGH/OBSERVED |
-| `0xb9920` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_get_event_types(const char ***event_types, size_t *count)` | `nrt_sys_trace_api.cpp:29` | HIGH/OBSERVED |
-| `0xb99f0` | 2.0.0 | `void` | `nrt_sys_trace_free_event_types(const char **event_types, size_t count)` | `nrt_sys_trace_api.cpp:58` | HIGH/OBSERVED |
-| `0xb9fa0` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_config_allocate(nrt_sys_trace_config_t **options)` | `nrt_sys_trace_capture_config.cpp:24` | HIGH/OBSERVED |
-| `0xb9fd0` | 2.0.0 | `void` | `nrt_sys_trace_config_free(nrt_sys_trace_config_t *options)` | `nrt_sys_trace_capture_config.cpp:44` | HIGH/OBSERVED |
-| `0xb9f10` | 2.0.0 | `void` | `nrt_sys_trace_config_set_defaults(nrt_sys_trace_config_t *options)` | `nrt_sys_trace_capture_config.cpp:33` | HIGH/OBSERVED |
-| `0xb9ff0` | 2.0.0 | `void` | `nrt_sys_trace_config_set_max_events_per_nc(nrt_sys_trace_config_t *options, uint64_t max_events_per_nc)` | `nrt_sys_trace_capture_config.cpp:50` | HIGH/OBSERVED |
-| `0xba000` | 2.0.0 | `void` | `nrt_sys_trace_config_set_capture_enabled_for_nc(nrt_sys_trace_config_t *options, uint32_t nc_idx, bool enabled)` | `nrt_sys_trace_capture_config.cpp:56` | HIGH/OBSERVED |
-| `0xba0d0` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_config_set_capture_enabled_for_event_type(nrt_sys_trace_config_t *options, const char *event_type, bool enabled)` | `nrt_sys_trace_capture_config.cpp:67` | HIGH/OBSERVED |
-| `0xba8a0` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_config_get_enabled_event_types(nrt_sys_trace_config_t *options, const char ***event_types, size_t *count)` | `nrt_sys_trace_capture_config.cpp:102` | HIGH/OBSERVED |
-| `0xb9a60` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_fetch_options_allocate(nrt_sys_trace_fetch_options_t **options)` | `nrt_sys_trace_api_options.cpp:8` | HIGH/OBSERVED |
-| `0xb9a90` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_free(nrt_sys_trace_fetch_options_t *options)` | `nrt_sys_trace_api_options.cpp:25` | HIGH/OBSERVED |
-| `0xb9a40` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_set_defaults(nrt_sys_trace_fetch_options_t *options)` | `nrt_sys_trace_api_options.cpp:17` | HIGH/OBSERVED |
-| `0xb9aa0` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_set_max_events_per_nc(nrt_sys_trace_fetch_options_t *options, uint64_t max_events_per_nc)` | `nrt_sys_trace_api_options.cpp:29` | HIGH/OBSERVED |
-| `0xb9ab0` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_set_nc_idx(nrt_sys_trace_fetch_options_t *options, uint64_t nc_idx)` | `nrt_sys_trace_api_options.cpp:35` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0xb9800` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_start(nrt_sys_trace_config_t *options)` | `nrt_sys_trace.cpp:11` |
+| `0xb9870` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_stop(void)` | `nrt_sys_trace.cpp:18` |
+| `0xb9880` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_fetch_events(char **buffer, size_t *written_size, const nrt_sys_trace_fetch_options_t *options)` | `nrt_sys_trace_api.cpp:17` |
+| `0xb9910` | 2.0.0 | `void` | `nrt_sys_trace_buffer_free(char *buffer)` | `nrt_sys_trace_api.cpp:24` |
+| `0xb9920` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_get_event_types(const char ***event_types, size_t *count)` | `nrt_sys_trace_api.cpp:29` |
+| `0xb99f0` | 2.0.0 | `void` | `nrt_sys_trace_free_event_types(const char **event_types, size_t count)` | `nrt_sys_trace_api.cpp:58` |
+| `0xb9fa0` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_config_allocate(nrt_sys_trace_config_t **options)` | `nrt_sys_trace_capture_config.cpp:24` |
+| `0xb9fd0` | 2.0.0 | `void` | `nrt_sys_trace_config_free(nrt_sys_trace_config_t *options)` | `nrt_sys_trace_capture_config.cpp:44` |
+| `0xb9f10` | 2.0.0 | `void` | `nrt_sys_trace_config_set_defaults(nrt_sys_trace_config_t *options)` | `nrt_sys_trace_capture_config.cpp:33` |
+| `0xb9ff0` | 2.0.0 | `void` | `nrt_sys_trace_config_set_max_events_per_nc(nrt_sys_trace_config_t *options, uint64_t max_events_per_nc)` | `nrt_sys_trace_capture_config.cpp:50` |
+| `0xba000` | 2.0.0 | `void` | `nrt_sys_trace_config_set_capture_enabled_for_nc(nrt_sys_trace_config_t *options, uint32_t nc_idx, bool enabled)` | `nrt_sys_trace_capture_config.cpp:56` |
+| `0xba0d0` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_config_set_capture_enabled_for_event_type(nrt_sys_trace_config_t *options, const char *event_type, bool enabled)` | `nrt_sys_trace_capture_config.cpp:67` |
+| `0xba8a0` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_config_get_enabled_event_types(nrt_sys_trace_config_t *options, const char ***event_types, size_t *count)` | `nrt_sys_trace_capture_config.cpp:102` |
+| `0xb9a60` | 2.0.0 | `NRT_STATUS` | `nrt_sys_trace_fetch_options_allocate(nrt_sys_trace_fetch_options_t **options)` | `nrt_sys_trace_api_options.cpp:8` |
+| `0xb9a90` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_free(nrt_sys_trace_fetch_options_t *options)` | `nrt_sys_trace_api_options.cpp:25` |
+| `0xb9a40` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_set_defaults(nrt_sys_trace_fetch_options_t *options)` | `nrt_sys_trace_api_options.cpp:17` |
+| `0xb9aa0` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_set_max_events_per_nc(nrt_sys_trace_fetch_options_t *options, uint64_t max_events_per_nc)` | `nrt_sys_trace_api_options.cpp:29` |
+| `0xb9ab0` | 2.0.0 | `void` | `nrt_sys_trace_fetch_options_set_nc_idx(nrt_sys_trace_fetch_options_t *options, uint64_t nc_idx)` | `nrt_sys_trace_api_options.cpp:35` |
 
 > **CORRECTION — `nrt_sys_trace_stop` is defined in `nrt_sys_trace.cpp:18`, not `nrt_sys_trace.h:119`.** The export body at `0xb9870` (a 5-byte thunk, `low_pc 0xb9870..high_pc 0xb9875`) is the out-of-line definition whose `DW_AT_decl_file` is `nrt_sys_trace.cpp:18`. The `nrt_sys_trace.h:119` DIE (`low_pc 0x9fa20`) is an *inlined* instance elsewhere, not the export. The table above uses the `.cpp` coordinate, consistent with every other row.
 
 ### Debug stream + memory stats
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x91370` | 2.0.0 | `NRT_STATUS` | `nrt_debug_client_connect(int32_t logical_nc_idx, int *stream_fd)` | `nrt_debug_stream.cpp:17` | HIGH/OBSERVED |
-| `0x91490` | 2.0.0 | `void` | `nrt_debug_client_connect_close(int stream_fd)` | `nrt_debug_stream.cpp:45` | HIGH/OBSERVED |
-| `0x91530` | 2.0.0 | `NRT_STATUS` | `nrt_debug_client_read_one_event(int stream_fd, ndebug_stream_event_header_t *header, void **payload)` | `nrt_debug_stream.cpp:54` | HIGH/OBSERVED |
-| `0xb90a0` | 2.0.0 | `NRT_STATUS` | `nrt_get_vnc_memory_stats(uint32_t vnc, nrt_vnc_memory_stats_t *stats, size_t stats_size_in, size_t *stats_size_out)` | `nrt_stats.cpp:19` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x91370` | 2.0.0 | `NRT_STATUS` | `nrt_debug_client_connect(int32_t logical_nc_idx, int *stream_fd)` | `nrt_debug_stream.cpp:17` |
+| `0x91490` | 2.0.0 | `void` | `nrt_debug_client_connect_close(int stream_fd)` | `nrt_debug_stream.cpp:45` |
+| `0x91530` | 2.0.0 | `NRT_STATUS` | `nrt_debug_client_read_one_event(int stream_fd, ndebug_stream_event_header_t *header, void **payload)` | `nrt_debug_stream.cpp:54` |
+| `0xb90a0` | 2.0.0 | `NRT_STATUS` | `nrt_get_vnc_memory_stats(uint32_t vnc, nrt_vnc_memory_stats_t *stats, size_t stats_size_in, size_t *stats_size_out)` | `nrt_stats.cpp:19` |
 
 `nrt_get_vnc_memory_stats` uses the same version-tolerant probe-then-fill idiom (`stats_size_in`/`out`) as `nrt_get_model_info`.
 
@@ -412,22 +413,22 @@ nrt_dtype_t      [DWARF, sparse]: UNKNOWN/INVALID=0  UINT64=1  INT8=2  UINT8=3  
                    FP8_E3=13  FP8_E4=14  FP8_E5=15
 ```
 
-| addr | ver | ret | signature | decl | tag |
-|---|---|---|---|---|---|
-| `0x7c980` | 3.0.0 | `NRT_STATUS` | `nrta_cc_prepare(nrt_cc_comm_t *comm, nrt_tensor_list_t *input, nrt_tensor_list_t *output, nrt_dtype_t dtype, nrt_op_type_t op, nrt_cc_op_type_t cc_op, nrt_cc_context_t **cc_ctx)` | `nrt_async.cpp:691` | HIGH/OBSERVED |
-| `0x7bd80` | 3.0.0 | `NRT_STATUS` | `nrta_cc_schedule(nrt_cc_context_t **cc_ctx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:749` | HIGH/OBSERVED |
-| `0x7bb00` | 3.0.0 | `NRT_STATUS` | `nrta_execute_schedule(nrt_model_t *model, const nrt_tensor_set_t *input, nrt_tensor_set_t *output, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:629` | HIGH/OBSERVED |
-| `0x7c450` | 3.0.0 | `NRT_STATUS` | `nrta_get_sequence(uint32_t lnc_idx, nrta_xu_t xu_type, int queue, nrta_seq_t *seq)` | `nrt_async.cpp:822` | HIGH/OBSERVED |
-| `0x7c720` | 3.0.0 | `NRT_STATUS` | `nrta_is_completed(nrta_seq_t seq, bool *is_completed)` | `nrt_async.cpp:794` | HIGH/OBSERVED |
-| `0x7d8c0` | 3.0.0 | `NRT_STATUS` | `nrta_tensor_copy(nrt_tensor_t *src, uint64_t src_offset, nrt_tensor_t *dst, uint64_t dst_offset, uint64_t size, int lnc_idx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:540` | HIGH/OBSERVED |
-| `0x7e440` | 3.0.0 | `NRT_STATUS` | `nrta_tensor_read(void *buf, nrt_tensor_t *tensor, uint64_t offset, uint64_t size, int lnc_idx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:476` | HIGH/OBSERVED |
-| `0x7df10` | 3.0.0 | `NRT_STATUS` | `nrta_tensor_write(nrt_tensor_t *tensor, const void *buf, uint64_t offset, uint64_t size, int lnc_idx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:412` | HIGH/OBSERVED |
+| addr | ver | ret | signature | decl |
+|---|---|---|---|---|
+| `0x7c980` | 3.0.0 | `NRT_STATUS` | `nrta_cc_prepare(nrt_cc_comm_t *comm, nrt_tensor_list_t *input, nrt_tensor_list_t *output, nrt_dtype_t dtype, nrt_op_type_t op, nrt_cc_op_type_t cc_op, nrt_cc_context_t **cc_ctx)` | `nrt_async.cpp:691` |
+| `0x7bd80` | 3.0.0 | `NRT_STATUS` | `nrta_cc_schedule(nrt_cc_context_t **cc_ctx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:749` |
+| `0x7bb00` | 3.0.0 | `NRT_STATUS` | `nrta_execute_schedule(nrt_model_t *model, const nrt_tensor_set_t *input, nrt_tensor_set_t *output, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:629` |
+| `0x7c450` | 3.0.0 | `NRT_STATUS` | `nrta_get_sequence(uint32_t lnc_idx, nrta_xu_t xu_type, int queue, nrta_seq_t *seq)` | `nrt_async.cpp:822` |
+| `0x7c720` | 3.0.0 | `NRT_STATUS` | `nrta_is_completed(nrta_seq_t seq, bool *is_completed)` | `nrt_async.cpp:794` |
+| `0x7d8c0` | 3.0.0 | `NRT_STATUS` | `nrta_tensor_copy(nrt_tensor_t *src, uint64_t src_offset, nrt_tensor_t *dst, uint64_t dst_offset, uint64_t size, int lnc_idx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:540` |
+| `0x7e440` | 3.0.0 | `NRT_STATUS` | `nrta_tensor_read(void *buf, nrt_tensor_t *tensor, uint64_t offset, uint64_t size, int lnc_idx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:476` |
+| `0x7df10` | 3.0.0 | `NRT_STATUS` | `nrta_tensor_write(nrt_tensor_t *tensor, const void *buf, uint64_t offset, uint64_t size, int lnc_idx, int queue, NRT_STATUS *exec_ret, nrta_seq_t *req_sequence)` | `nrt_async.cpp:412` |
 
 > **GOTCHA — `nrta_is_completed` takes `nrta_seq_t` *by value*.** Every other `nrta_*` passes the sequence token by pointer (`nrta_seq_t *seq` / `*req_sequence`); the poll alone takes it by value. `nrta_is_completed` is a non-blocking poll: `*is_completed=true` once the token's work has retired.
 
 ---
 
-## 10. The status-code contract (`nrt_status_t` / `NRT_STATUS`) `[HIGH/OBSERVED — DWARF]`
+## 10. The status-code contract (`nrt_status_t` / `NRT_STATUS`)
 
 Every `NRT_STATUS`-returning export shares one flat enum (the typedef `NRT_STATUS = enum nrt_status`). Read verbatim from this binary's DWARF (`DW_AT_const_value` per enumerator). Gaps at **8** and **12** are intentional/reserved — there is no enumerator with those values.
 
@@ -474,13 +475,13 @@ Every `NRT_STATUS`-returning export shares one flat enum (the typedef `NRT_STATU
 
 ---
 
-## 11. Handle + struct quick-ref `[HIGH/OBSERVED DWARF]`
+## 11. Handle + struct quick-ref
 
 The opaque types the table points at. Layouts (byte-confirmed here) for the structs a reimplementer must size; everything else is an opaque heap handle created/freed through its own allocate/free export.
 
 | Type | What it wraps / layout |
 |---|---|
-| `nrt_model_t*` | the `dlr_model` handle; state walks `INVALID → STARTING → RUNNING` (layout in the pending sibling page `appendix/struct-exec-state-census.md`) |
+| `nrt_model_t*` | the `dlr_model` handle; state walks `INVALID → STARTING → RUNNING` (layout in [the exec-state struct census](../appendix/struct-exec-state-census.md)) |
 | `nrt_tensor_t*` | opaque buffer handle; placement `DEVICE`/`HOST`/`VIRTUAL` |
 | `nrt_tensor_set_t*` | name→tensor map consumed by execute; names = model tensor-info names = metaneff I/O names |
 | `nrt_version_t` | **224 B** (`0xe0`): `u64 rt_major@+0, rt_minor@+8, rt_patch@+16, rt_maintenance@+24; char rt_detail[128]@+32; char git_hash[64]@+160` |
@@ -504,8 +505,8 @@ The opaque types the table points at. Layouts (byte-confirmed here) for the stru
 
 **Confidence ledger.**
 - All **145** signatures, addresses, version nodes, and `decl_file:line` are **OBSERVED** from this binary's DWARF/symtab/disasm — **HIGH**.
-- Three earlier-report items were re-checked and **CORRECTED** against the binary this pass: (1) `nrt_get_model_instance_count` *has* a full DWARF prototype `(nrt_model_t*, uint32_t*) → NRT_STATUS`; (2) `nrt_sys_trace_stop` is defined in `nrt_sys_trace.cpp:18`, not `.h:119`; (3) `nrt_version_t` is 224 B (`0xe0`), not 232.
+- Three items are **CORRECTED** against the binary: (1) `nrt_get_model_instance_count` *has* a full DWARF prototype `(nrt_model_t*, uint32_t*) → NRT_STATUS`; (2) `nrt_sys_trace_stop` is defined in `nrt_sys_trace.cpp:18`, not `.h:119`; (3) `nrt_version_t` is 224 B (`0xe0`), not 232.
 - The full `nrt_status` enum (Bands A/B/C, gaps at 8/12) is **byte-confirmed** from DWARF `DW_AT_const_value`. Status-code-per-family channels are OBSERVED for the fault path and INFERRED-from-convention where a family's exact returnable subset was not individually disassembled (**MED** for those mappings).
 - The 4 `std::string _M_*` `LOCAL` helpers and the 2 version-node `OBJECT` markers are **not API** — ignore them when building the contract. Use **145**, not 151, as the callable-export count.
 
-**Cross-references.** [public-vs-internal partition](public-vs-internal-partition.md) (which symbols are the *private* `tdrv_*`/`kmgr_*` surface) · [runtime synthesis](runtime-synthesis.md) (the load/execute narrative this table backs) · pending siblings `neff/metaneff-io-abi.md` (the metaneff host I/O / tensor-name binding) and `appendix/struct-exec-state-census.md` (`dlr_model` / tensor struct layouts behind these handles).
+**Cross-references.** [public-vs-internal partition](public-vs-internal-partition.md) (which symbols are the *private* `tdrv_*`/`kmgr_*` surface) · [runtime synthesis](runtime-synthesis.md) (the load/execute narrative this table backs) · [metaneff I/O ABI](../neff/metaneff-io-abi.md) (the metaneff host I/O / tensor-name binding) and [exec-state struct census](../appendix/struct-exec-state-census.md) (`dlr_model` / tensor struct layouts behind these handles).

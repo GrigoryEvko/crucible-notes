@@ -6,8 +6,9 @@
 > `libnrtucode.so` (BuildID `abf4e088…`, `.dynsym`-only) carries the same code
 > with `.dynsym` exports at the stripped addresses listed below; it was used to
 > cross-check codegen. Every offset, immediate, symbol and `.rodata` string on
-> this page was re-verified by `nm`/`objdump`/`readelf`/`xxd` against the
-> internal binary.
+> this page was verified by `nm`/`objdump`/`readelf`/`xxd` against the internal
+> binary. The page default is `[HIGH·OBSERVED]`; claims that depart from it
+> carry an explicit tag.
 >
 > **Section deltas** (`readelf -SW`): `.rodata` VMA==fileoffset (Δ=0), `.text`
 > Δ=0x1000, `.data.rel.ro` Δ=0x2000, `.data` Δ=0x3000. All `.rodata` strings and
@@ -38,18 +39,17 @@ Cross-links:
 - The host prelinker / R\_XTENSA relocator that `create` calls and whose `"UCPL "`
   output header `create` stages to device:
   [`runtime/ucode-relocation-consumer.md`](./ucode-relocation-consumer.md)
-  (committed) and [`runtime/prelinker-ucpl.md`](./prelinker-ucpl.md) (stub).
+  and [`runtime/prelinker-ucpl.md`](./prelinker-ucpl.md).
 - The load/unload **instruction-sequence** generators (distinct from `destroy`):
-  [`runtime/nrtucode-ll-load-unload.md`](./nrtucode-ll-load-unload.md) (stub).
+  [`runtime/nrtucode-ll-load-unload.md`](./nrtucode-ll-load-unload.md).
 - The opcode→library resolver that maps opcodes to a `library_selector`:
-  [`runtime/opcode-to-lib-resolver.md`](./opcode-to-lib-resolver.md) (stub).
+  [`runtime/opcode-to-lib-resolver.md`](./opcode-to-lib-resolver.md).
 - The device-side consumer of the staged image:
-  [`../firmware/pool/external-lib-loader.md`](../firmware/pool/external-lib-loader.md)
-  (committed).
+  [`../firmware/pool/external-lib-loader.md`](../firmware/pool/external-lib-loader.md).
 
 ---
 
-## 0. Symbol table `[HIGH·OBSERVED]`
+## 0. Symbol table
 
 `nm` confirms the four exported entry points (all `T`, global) plus the
 internal helpers `create` reaches:
@@ -85,7 +85,7 @@ object corresponds to exactly one library to be loaded into Q7 IRAM/DRAM."*
 
 ---
 
-## 1. The `nrtucode_ll_t` struct — `malloc(0x48)`, 72 bytes `[HIGH·OBSERVED]`
+## 1. The `nrtucode_ll_t` struct — `malloc(0x48)`, 72 bytes
 
 Allocation: `mov $0x48,%edi`@`0x9b1afd` → `call malloc@plt`@`0x9b1b02`. Every
 store into the block (`rax`/`rbx` = `ll`) is single-instruction-anchored:
@@ -122,12 +122,12 @@ struct nrtucode_ll_t {                  /* sizeof = 0x48 = 72  (malloc'd)       
 > out-parameter (`lea 0x8(%rbx),%rcx`) and writes the on-device buffer handle
 > into it. So `+0x08` is meaningful **only** on the prelink path; on the
 > coretype-6 path it is left whatever `malloc` returned (and `destroy`'s
-> `prelinked_size!=0` gate keeps it from being touched). The committed
+> `prelinked_size!=0` gate keeps it from being touched). The
 > object-model-graph page lists the same `0x48` layout.
 
 ---
 
-## 2. Signature `[HIGH·OBSERVED prologue + writers]`
+## 2. Signature
 
 ```c
 nrtucode_result_t nrtucode_ll_create(
@@ -153,7 +153,7 @@ both abort.
 
 ---
 
-## 3. Library-selector resolution — the CPTC env force `[HIGH·OBSERVED]`
+## 3. Library-selector resolution — the CPTC env force
 
 The very first thing `create` does after the NULL guards is a single `getenv`
 (the only one in the function) on the byte-exact name
@@ -185,7 +185,7 @@ Truth table (derived by executing both `cmov`s):
 
 ---
 
-## 4. `nrtucode_ll_create` — annotated reconstruction `[HIGH·OBSERVED]`
+## 4. `nrtucode_ll_create` — annotated reconstruction
 
 Symbol `@0x9b1a90` (internal) / `0x309f40` (stripped). The flow:
 
@@ -276,7 +276,7 @@ name_and_succeed:
 
 ---
 
-## 5. The per-coretype switch — exact constants `[HIGH·OBSERVED]`
+## 5. The per-coretype switch — exact constants
 
 `create` validates `coretype` against the **opcode-style** numbering
 `{6, 13, 21, 29}` — *not* the `core_create` numbering `{2,9,17,25}` (the two
@@ -309,7 +309,7 @@ rel32 entries). The table routes `6 → 0x30a183` (no-prelink success), `13/21/2
 
 ---
 
-## 6. Two allocation tiers `[HIGH·OBSERVED]`
+## 6. Two allocation tiers
 
 Do not conflate them.
 
@@ -349,7 +349,7 @@ when `prelinked_size != 0`.
 
 ---
 
-## 7. The 64 KiB device cap `[HIGH·OBSERVED]`
+## 7. The 64 KiB device cap
 
 After the three writes succeed, `@0x9b1d0b`:
 
@@ -372,7 +372,7 @@ on device"` (`.rodata 0x4d44`), frees the device handle + both scratch buffers
 
 ---
 
-## 8. Device write sequence + the UCPL header `[HIGH·OBSERVED]`
+## 8. Device write sequence + the UCPL header
 
 All three writes go through `call *0x18(%rax)` (memhandle table slot `+0x18` =
 write), `rax = ctx->memhandle_impl`. Args: `write(ctx, handle, off, len, src)`.
@@ -405,7 +405,7 @@ write), `rax = ctx->memhandle_impl`. Args: `write(ctx, handle, off, len, src)`.
 
 ---
 
-## 9. `nrtucode_ll_destroy` — the host destructor `[HIGH·OBSERVED]`
+## 9. `nrtucode_ll_destroy` — the host destructor
 
 Symbol `@0x9b1da0` / `0x30a230`, **`0x82` bytes**, full disasm decoded
 byte-exact. It frees exactly what `create` allocated and nothing it did not.
@@ -476,7 +476,7 @@ return `0`.
 
 ---
 
-## 10. `nrtucode_ll_set_friendly_name` `[HIGH·OBSERVED]`
+## 10. `nrtucode_ll_set_friendly_name`
 
 Symbol `@0x9b2450` / `0x30a8e0`, **`0x46` bytes**.
 
@@ -507,7 +507,7 @@ NUL — names longer than 32 chars are silently **truncated to 32 + NUL**. Cap =
 
 ---
 
-## 11. `nrtucode_ll_get_library_size` `[HIGH·OBSERVED]`
+## 11. `nrtucode_ll_get_library_size`
 
 Symbol `@0x9b24a0` / `0x30a930`, **`0x05` bytes**, byte-for-byte identical in
 both libs (`48 8b 47 18 c3`):
@@ -528,7 +528,7 @@ coretype-6 `ll` it is exactly `0`. No NULL guard (bare deref), caller-trusted.
 
 ---
 
-## 12. Alloc / free symmetry — no leak `[HIGH·OBSERVED]`
+## 12. Alloc / free symmetry — no leak
 
 | # | resource (create) | create site | freed by | balanced? |
 | - | ----------------- | ----------- | -------- | --------- |
@@ -545,7 +545,7 @@ row 5 inline). No leak; no normal-path double-free.
 
 ---
 
-## 13. Per-build (Maverick) delta `[HIGH·OBSERVED]`
+## 13. Per-build (Maverick) delta
 
 `create`'s coretype switch **does** diverge between the two libs (§5: internal
 lists `37`, shipped jump-table omits it). The **lifecycle-tail trio**

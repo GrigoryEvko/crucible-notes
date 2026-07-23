@@ -17,13 +17,13 @@ opcode→library knowledge the brief expects lives downstream — in the device
 
 This page decodes the resolver byte-exact in both shipped twins, decodes the two
 `.rodata` tables that drive it (the per-coretype bitmask and the stripped jump
-table), reconciles the lib-index↔EXTISA-image correspondence against the committed
-image catalog, and pins where the real per-opcode dispatch actually happens.
+table), reconciles the lib-index↔EXTISA-image correspondence against the image catalog, and pins where the real per-opcode dispatch actually happens.
 
 > All addresses, bytes, table entries, and strings below were read directly from
 > the two shipped host libraries with stock `objdump`/`nm`/`readelf` and a small
 > Python `.rodata` reader. Recovered symbol names, strings, and the public header
-> are binary-derived artifacts and are cited as such.
+> are binary-derived artifacts and are cited as such. The page default is
+> *[HIGH/OBSERVED]*; claims that depart from it carry an explicit tag.
 
 ---
 
@@ -33,11 +33,11 @@ image catalog, and pins where the real per-opcode dispatch actually happens.
 | --- | --- | --- |
 | Shipped runtime (authoritative) | `libnrtucode.so` (stripped) | `extracted/…/c10/lib/libnrtucode.so` |
 | Symbol twin | `libnrtucode_internal.so` (10,276,288 B, **not** stripped) | same dir |
-| BuildID (stripped) | `abf4e088ebef327b2abac3551f2b1de699d50f38` | `readelf -nW` *[HIGH/OBSERVED]* |
-| BuildID (internal) | `9cbf78c6f59cdb5839f155fdb2113bbe51e585fd` | `readelf -nW` *[HIGH/OBSERVED]* |
-| `.rodata` | VMA `0x46b0`, file off `0x46b0` → **Δ = 0** | `readelf -SW` *[HIGH/OBSERVED]* |
-| `.text` | VMA `0x9b01a0`, file off `0x9af1a0` → **Δ = 0x1000** | `readelf -SW` *[HIGH/OBSERVED]* |
-| `_ZTV` vtable count | **0** (`nm libnrtucode_internal.so \| rg -c '_ZTV'` → empty) | *[HIGH/OBSERVED]* |
+| BuildID (stripped) | `abf4e088ebef327b2abac3551f2b1de699d50f38` | `readelf -nW` |
+| BuildID (internal) | `9cbf78c6f59cdb5839f155fdb2113bbe51e585fd` | `readelf -nW` |
+| `.rodata` | VMA `0x46b0`, file off `0x46b0` → **Δ = 0** | `readelf -SW` |
+| `.text` | VMA `0x9b01a0`, file off `0x9af1a0` → **Δ = 0x1000** | `readelf -SW` |
+| `_ZTV` vtable count | **0** (`nm libnrtucode_internal.so \| rg -c '_ZTV'` → empty) | |
 
 > **GOTCHA — no C++ vtables in this binary.** `libnrtucode_internal.so` has
 > **zero** `_ZTV` symbols. Every fn-ptr / data table referenced here (the
@@ -46,7 +46,7 @@ image catalog, and pins where the real per-opcode dispatch actually happens.
 > `+0x00`. The `_ZTV + 0x10` (offset-to-top/typeinfo header) rule does **not**
 > apply. Counts on this page are grounded with `nm … | rg -c`, never a decompile.
 
-Symbol locations (`nm`, both twins): *[HIGH/OBSERVED]*
+Symbol locations (`nm`, both twins):
 
 | Symbol | internal `.symtab` | stripped `.dynsym` |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ Symbol locations (`nm`, both twins): *[HIGH/OBSERVED]*
 
 ## 1. Signature and the ABI-vs-binary mismatch
 
-From `nrtucode.h:339-357` (read verbatim from the shipped header): *[HIGH/OBSERVED]*
+From `nrtucode.h:339-357` (read verbatim from the shipped header):
 
 ```c
 nrtucode_result_t nrtucode_ll_get_libraries_from_opcodes(
@@ -74,7 +74,7 @@ nrtucode_result_t nrtucode_ll_get_libraries_from_opcodes(
 ```
 
 Return values (`nrtucode.h:100-110`): `0 = NRTUCODE_SUCCESS`,
-`1 = NRTUCODE_ERR_UNKNOWN_CORE` (core not a Q7_POOL coretype). *[HIGH/OBSERVED]*
+`1 = NRTUCODE_ERR_UNKNOWN_CORE` (core not a Q7_POOL coretype).
 
 > **CORRECTION — the header's `[1, num_opcodes]` range is stale; the binary
 > writes `0`.** `nrtucode.h:350-351` promises *"`libs` … guaranteed to be in the
@@ -84,7 +84,7 @@ Return values (`nrtucode.h:100-110`): `0 = NRTUCODE_SUCCESS`,
 > `*num_libs = 0` when `num_opcodes == 0` (an empty model). The header reads like
 > a forward-looking spec for a per-opcode-UID scheme that was never implemented;
 > the shipped resolver is a degenerate one-library picker. **Code wins.**
-> *[HIGH/OBSERVED]*
+>
 
 The `subopcodes`/`num_subopcodes` arguments exist only to match that aspirational
 spec. The function never NULL-guards them and never reads them — `rcx` (the
@@ -92,7 +92,7 @@ spec. The function never NULL-guards them and never reads them — `rcx` (the
 any possible use (§2). The doc cross-reference to a
 `nrtucode_ll_get_library_index_from_opcodes` (`nrtucode.h:365`) names a function
 that does not exist as a symbol in either twin — the live entry point is the
-plural `…get_libraries_from_opcodes`. *[HIGH/OBSERVED]*
+plural `…get_libraries_from_opcodes`.
 
 NULL-argument contract is **fatal** (not error-returned), matching the
 `fprintf(stderr, "…is null") + abort()` idiom used across the ll-create /
@@ -105,7 +105,7 @@ add-instruction family:
 
 Format string @ `0x5469` = `"nrtucode: invalid API usage in \`%s\`: \`%s\` is null\n"`;
 function-name token @ `0x4cee` = `"nrtucode_ll_get_libraries_from_opcodes"`.
-All four offsets read directly from the binary. *[HIGH/OBSERVED]*
+All four offsets read directly from the binary.
 
 ---
 
@@ -167,12 +167,12 @@ the reconstructable spec; every instruction is OBSERVED.
 (= `subopcodes`) are **never dereferenced and never iterated**; `rcx` is reused at
 `0x9b18b0` to hold `core_type`, destroying the `subopcodes` pointer before any use.
 The only non-abort external call in the whole body is `getenv`. The resolver is a
-pure `(core_type, num_opcodes != 0, CPTC-env)` decision. *[HIGH/OBSERVED — decisive]*
+pure `(core_type, num_opcodes != 0, CPTC-env)` decision.
 
 > **NOTE — `lea (%rcx,%rcx,2)` is the entire "library bitmap".** `rcx ∈ {0,1}`
 > (the `setne cl` result), so `rax = 3·rcx ∈ {0,3}`. That single LEA *is* the
 > opcode→library "mapping": it maps "is the CPTC env set?" to lib UID `0` or `3`.
-> No table is indexed; the value is computed. *[HIGH/OBSERVED]*
+> No table is indexed; the value is computed.
 
 ---
 
@@ -202,7 +202,7 @@ same shipped-vs-internal split the ll-create / get-ext-isa pages document.
 
 24 signed `rel32` entries; `idx = coretype − 6`; `target = 0x39c4 + rel32`. Decoded
 with a Python reader straight from the file. Every row carries its coretype and its
-meaning — no bare address list. *[HIGH/OBSERVED]*
+meaning — no bare address list.
 
 | idx | coretype | enum member | target VA | meaning |
 | --- | --- | --- | --- | --- |
@@ -214,14 +214,14 @@ meaning — no bare address list. *[HIGH/OBSERVED]*
 | (out of bound) | ≥ 30 (incl. 37 = MAVERICK) | — | — | `cmp $0x17` rejects → `return 1` |
 
 The stripped strings are identical text to the internal twin: CPTC env @ `0x3084`,
-fn-name @ `0x305d`, `"libs"` @ `0x3632`, `"num_libs"` @ `0x3985`. *[HIGH/OBSERVED]*
+fn-name @ `0x305d`, `"libs"` @ `0x3632`, `"num_libs"` @ `0x3985`.
 
 > **NOTE — shipped omits Maverick; internal accepts it.** The shipped jump table
 > bounds `coretype − 6 ≤ 23` (`cmp $0x17`), so the accepted set is
 > **`{6, 13, 21, 29}`**. The internal bitmask form (`movabs $0x2020202000` +
 > `cmp $0x25` = 37) additionally accepts **`37` (MAVERICK)**. Treat
 > `{6, 13, 21, 29}` as the authoritative shipped lib-set keys; `37` is an
-> internal-only twin artifact. *[HIGH/OBSERVED]*
+> internal-only twin artifact.
 
 ---
 
@@ -233,7 +233,7 @@ The bitmask / jump-table index is `core_type`, and the only accepted values are
 the **GPSIMD pooling core** (`Q7_POOL`) of each generation. From the
 `nrtucode_coretype_t` enum (`nrtucode.h:13-58`, ordinals counted directly from the
 enum block — `SUNDA_Q7_POOL` is the 7th member, ordinal 6; each generation is an
-8-core stride): *[HIGH/OBSERVED]*
+8-core stride):
 
 | Generation | Enum member (Q7 pooling core) | coretype | arch_id | NCFW |
 | --- | --- | --- | --- | --- |
@@ -259,13 +259,13 @@ Bit positions decoded with Python (`for i in range(64): (m>>i)&1`). Net accepted
 set for this resolver = `{6, 13, 21, 29 (, 37 internal)}` = the `Q7_POOL` coretype
 of every generation. The NX cores (ACT/DVE/POOL/PE/SP/TOPSP) and `Q7_CCE` are
 **rejected** — the EXTISA libraries are a `Q7_POOL`-only artifact (cf.
-`nrtucode.h:79` *"Q7_POOL only"*). *[HIGH/OBSERVED]*
+`nrtucode.h:79` *"Q7_POOL only"*).
 
 ### 4c. The per-coretype library set (how many libs each gen has)
 
 The lib UID this resolver emits (`0` or `3`) is a 0-based index into a per-gen
 library table whose *size* is decided by `nrtucode_get_num_ext_isa_libs`.
-Cross-checked against the committed [EXTISA image catalog](../images/extisa-inventory.md):
+Cross-checked against the [EXTISA image catalog](../images/extisa-inventory.md):
 
 | Generation | coretype | # EXTISA libs | Valid index range | Reachable here |
 | --- | --- | --- | --- | --- |
@@ -279,11 +279,11 @@ This is **exactly why SUNDA is special-cased** to lib `0` and never takes the
 getenv branch: with a one-entry lib table, index `3` would point past the end of
 `sunda_libs`. The PERF gens have a 4-entry table, so index `3` (`EXTISA_3`) is a
 legal slot. *[HIGH/OBSERVED gating; per-gen counts cross-checked against the
-committed image catalog.]*
+image catalog.]*
 
 ### 4d. The "library bitmap" is a scalar index, not a bit-set
 
-> **CORRECTION — the task's "opcode→library bitmap" / "OR together the required
+> **CORRECTION — the "opcode→library bitmap" / "OR together the required
 > library bitmap" model does not describe this binary.** The output is a *single*
 > library UID written to `libs[0]` with `*num_libs = 1` (always 1 on non-empty
 > success, never a multi-element list, never a bitwise OR). There is no closure,
@@ -291,7 +291,7 @@ committed image catalog.]*
 > single integer **index** (`0` or `3`) — the same finding the
 > [ll-create selector](nrtucode-ll-create.md) reports for its `library_index`. A
 > reimplementer building the opcode→lib map from this page must implement a
-> **picker**, not a union. *[HIGH/OBSERVED]*
+> **picker**, not a union.
 
 ---
 
@@ -305,7 +305,7 @@ nrtucode_result_t nrtucode_opset_get_library_index(
         size_t *lib_index /*rdx*/);
 ```
 
-Body (internal `@0x9b1950`): *[HIGH/OBSERVED]*
+Body (internal `@0x9b1950`):
 
 ```
 9b1951  test %rdi,%rdi ; je <abort "opset">         ; opset NULL -> abort (.rodata 0x4a16)
@@ -322,9 +322,9 @@ Body (internal `@0x9b1950`): *[HIGH/OBSERVED]*
 ```
 
 The stripped form (`@0x309e00`) uses a `cmp $0x1d` (= 29) bound and a 32-bit mask
-`0x20202040` (bits `{6,13,21,29}`, no Maverick). *[HIGH/OBSERVED]*
+`0x20202040` (bits `{6,13,21,29}`, no Maverick).
 
-**Key divergences from `ll_get_libraries_from_opcodes`:** *[HIGH/OBSERVED]*
+**Key divergences from `ll_get_libraries_from_opcodes`:**
 
 1. **Different bitmask.** `0x2020202040` sets bit `6` (SUNDA) — no special-case arm
    — because SUNDA and the PERF gens both return index `0`; there is no value
@@ -340,14 +340,14 @@ The stripped form (`@0x309e00`) uses a `cmp $0x1d` (= 29) bound and a 32-bit mas
 > **GOTCHA — the two documented resolvers diverge on CPTC.** A model using the
 > CPTC ops gets lib `3` only via `ll_get_libraries_from_opcodes` **with the env
 > set**. The opset path *always* picks the base lib `0`. Both are coretype-keyed
-> and opcode-content-blind beyond an empty/non-empty gate. *[HIGH/OBSERVED]*
+> and opcode-content-blind beyond an empty/non-empty gate.
 
 ---
 
 ## 6. Where the opcode → library mapping actually lives (two stages)
 
-The brief expects "how each opcode/specialization maps to the library that
-implements it". This host resolver does **not** perform that map. The real binding
+A natural expectation is that this resolver maps each opcode/specialization to
+the library that implements it. It does **not** perform that map. The real binding
 is a two-stage, mostly-implicit scheme:
 
 ### Stage 1 — host (this function): coretype + CPTC-env → one union library `{0|3}`
@@ -367,7 +367,7 @@ handlers. So "opcode X needs library Y" collapses to one binary policy bit:
   see the ledger rows for `0xE4`/`0xF0`). The CPTC env upgrades the chosen lib from
   base `0` to CPTC-capable `3`. *[HIGH/OBSERVED for the host mechanism; the
   index→blob *content* membership is INFERRED from the env name `…_CPTC_DECODE` +
-  the committed image catalog, MED.]*
+  the image catalog, MED.]*
 
 > **The `0xF0` specialization is not handled in this function.** Despite the
 > `subopcodes[]` argument (the `0xF0` specs the opset's slot-`0xF0` bitmap tracks),
@@ -383,7 +383,7 @@ library*: POOL keys `(opcode<<24)|(spec<<16)` → handler VA by linear scan. Tha
 the true opcode→handler map — but it lives in the firmware image on the Q7, not in
 this host resolver. **The host picks WHICH library; the device table inside that
 library picks WHICH handler.** *[HIGH host leg OBSERVED; device dispatch carried
-from the committed `kernel_info_table` / opcode-ledger pages.]*
+from the `kernel_info_table` / opcode-ledger pages.]*
 
 ---
 
@@ -432,23 +432,23 @@ opcodes → empty result (`num_libs = 0`); **(3)** reject non-`Q7_POOL` coretype
 **(4)** choose **one** library index — SUNDA → `0`; PERF-gen → `CPTC-env ? 3 : 0`;
 **(5)** emit it as a one-element list. No dependency closure (a single lib is
 self-contained), no opcode iteration, no specialization scan, no multi-library
-union. *[HIGH/OBSERVED]*
+union.
 
 ---
 
 ## 8. Per-generation differences
 
 - **The coretype key differs by gen** (`6 / 13 / 21 / 29 / 37` — the `+8`
-  `Q7_POOL` stride). *[HIGH/OBSERVED]*
+  `Q7_POOL` stride).
 - **The lib-set *size* differs**: SUNDA has 1 lib (index `0` only); CAYMAN /
   MARIANA / MPLUS / MAVERICK have 4 (indices `0..3`). Lib `3` (CPTC) is reachable
   *only* on the PERF gens — SUNDA can never take the getenv branch (it would index
   a non-existent slot). This is precisely why SUNDA is special-cased.
-  *[HIGH/OBSERVED + per-gen counts from the committed image catalog]*
+  *[HIGH/OBSERVED + per-gen counts from the image catalog]*
 - **The decision *logic* is otherwise identical across gens**: every PERF gen uses
   the same `getenv → {0|3}` rule; the function never branches on gen beyond the
   coretype gate and the SUNDA/PERF split. There is **no per-gen opcode table** —
-  because there is no opcode table at all. *[HIGH/OBSERVED]*
+  because there is no opcode table at all.
 - **MARIANA == MARIANA_PLUS at the image level**: byte-identical EXTISA blobs. So
   coretypes `21` and `29` select the *same physical lib contents* despite being
   distinct coretype keys. *[carried from the cross-gen kernel-info matrix]*
@@ -475,16 +475,16 @@ the exported ABI + the ll-create selector, which uses the same CPTC env.]*
 
 ## 10. Adversarial self-verification
 
-The five strongest claims, each re-challenged against the binary:
+The five strongest claims, each anchored in the binary:
 
 1. **Resolver symbol & address** — `nrtucode_ll_get_libraries_from_opcodes` @
    `internal 0x9b1880` / `stripped 0x309d30`. → `nm` lists both; the disassembled
    prologue (`push r14/rbx/rax`) and abort tails referencing the fn-name token at
-   `.rodata 0x4cee` confirm identity. **CONFIRMED.** *[HIGH/OBSERVED]*
+   `.rodata 0x4cee` confirm identity. **CONFIRMED.**
 2. **The "bitmap" layout** — output is a *scalar* index in `libs[0]` with
    `*num_libs = 1`, not a bitwise OR. → `lea (%rcx,%rcx,2)` computes `3·cl ∈ {0,3}`;
    `mov %rax,(%rbx)` writes one element; `movq $0x1,(%r14)` sets count = 1. No loop,
-   no OR, no second store. **CONFIRMED.** *[HIGH/OBSERVED]*
+   no OR, no second store. **CONFIRMED.**
 3. **A specific opcode→lib mapping** — CPTC ops → lib `3` via the env, everything
    else → lib `0`. → The only data-dependent input is `getenv("NRT_UCODE_…
    _CPTC_DECODE")` (string @ `0x4d15`, OBSERVED); `setne cl` then `3·cl`. The opcode
@@ -494,46 +494,46 @@ The five strongest claims, each re-challenged against the binary:
 4. **The coretype gate** — accepted set `{6,13,21,29(,37)}` = the `Q7_POOL` core of
    each gen. → internal `bt`-mask `0x2020202000` (Python-decoded bits `{13,21,29,37}`)
    + the `cmp $0x6` SUNDA arm; stripped jump table (decoded: ct6→SUNDA,
-   ct13/21/29→getenv, else→err, bound 29). **CONFIRMED.** *[HIGH/OBSERVED]*
+   ct13/21/29→getenv, else→err, bound 29). **CONFIRMED.**
 5. **lib-index ↔ image correspondence** — index `0` = `EXTISA_0`, index `3` =
-   `EXTISA_3`; SUNDA has only index `0`. → cross-checked against the committed
+   `EXTISA_3`; SUNDA has only index `0`. → cross-checked against the
    [extisa-inventory](../images/extisa-inventory.md): CAYMAN/MARIANA/MPLUS/MAVERICK
    carry `EXTISA_0..3` (4 libs), SUNDA carries `EXTISA_0` only (1 lib), and
    `get_num_ext_isa_libs` returns `1` for coretype 6 / `4` otherwise — matching the
    SUNDA-can't-reach-index-3 gate exactly. **CONFIRMED (gate OBSERVED; image identity
-   carried from the committed catalog).**
+   carried from the catalog).**
 
-No claim failed re-challenge. The one deliberately conservative tag is the *content*
-of lib `3` (MED/INFERRED): the host resolver proves the *index* `3` and its env
-trigger byte-exact, but the EXTISA_3 blob's opcode roster is established by the
-committed image catalog and firmware pages, not re-disassembled here.
+The one deliberately conservative tag is the *content* of lib `3` (MED/INFERRED):
+the host resolver proves the *index* `3` and its env trigger byte-exact, but the
+EXTISA_3 blob's opcode roster is established by the image catalog and firmware
+pages, not disassembled here.
 
 ---
 
 ## 11. Evidence index
 
-| Anchor | Address / offset | Confidence |
-| --- | --- | --- |
-| Resolver symbol | internal `0x9b1880` / stripped `0x309d30` | HIGH/OBSERVED |
-| Prologue (no frame) | `push r14/rbx/rax` @ `0x9b1880` | HIGH/OBSERVED |
-| `libs` NULL guard / arg-name | `0x9b1884` / `"libs"` @ `0x51cc` | HIGH/OBSERVED |
-| `num_libs` NULL guard / arg-name | `0x9b188e` / `"num_libs"` @ `0x551f` | HIGH/OBSERVED |
-| fn-name / fmt strings | `0x4cee` / `0x5469` | HIGH/OBSERVED |
-| Empty gate | `0x9b189e` `test %rdx` → SUCCESS, `num_libs = 0` | HIGH/OBSERVED |
-| Coretype upper bound | `0x9b18a8` `cmp $0x25` (= 37) | HIGH/OBSERVED |
-| PERF bitmask | `0x9b18b2` `movabs $0x2020202000` → bits `{13,21,29,37}` | HIGH/OBSERVED |
-| SUNDA arm | `0x9b18ee` `cmp $0x6` | HIGH/OBSERVED |
-| CPTC env / getenv / `3·cl` | `0x9b18c2` (`0x4d15`) / `0x9b18c9` / `0x9b18d6` | HIGH/OBSERVED |
-| Output stores | `0x9b18da` `libs[0]` / `0x9b18dd` `*num_libs = 1` | HIGH/OBSERVED |
-| opcodes/subopcodes never read | `rg %rsi/%r8/(%rcx)` = 2 abort leas only | HIGH/OBSERVED (decisive) |
-| Stripped jump table | `.rodata 0x39c4`, 24 rel32, idx = coretype−6 | HIGH/OBSERVED |
-| Stripped bound (no Maverick) | `add $0xfffffffa` / `cmp $0x17` | HIGH/OBSERVED |
-| `opset_get_library_index` | internal `0x9b1950` / stripped `0x309e00` | HIGH/OBSERVED |
-| opset mask / always-0 | `movabs $0x2020202040` / `movq $0x0,(%rdx)` | HIGH/OBSERVED |
-| coretype enum ordinals | `nrtucode.h:13-58` (`Q7_POOL` = 6/13/21/29/37) | HIGH/OBSERVED |
-| Header `[1, num_opcodes]` doc (stale) | `nrtucode.h:350-351` | HIGH/OBSERVED |
-| Per-gen lib counts | [extisa-inventory](../images/extisa-inventory.md) (1 / 4) | HIGH carried |
-| BuildIDs | stripped `abf4e088…` / internal `9cbf78c6…` | HIGH/OBSERVED |
+| Anchor | Address / offset |
+| --- | --- |
+| Resolver symbol | internal `0x9b1880` / stripped `0x309d30` |
+| Prologue (no frame) | `push r14/rbx/rax` @ `0x9b1880` |
+| `libs` NULL guard / arg-name | `0x9b1884` / `"libs"` @ `0x51cc` |
+| `num_libs` NULL guard / arg-name | `0x9b188e` / `"num_libs"` @ `0x551f` |
+| fn-name / fmt strings | `0x4cee` / `0x5469` |
+| Empty gate | `0x9b189e` `test %rdx` → SUCCESS, `num_libs = 0` |
+| Coretype upper bound | `0x9b18a8` `cmp $0x25` (= 37) |
+| PERF bitmask | `0x9b18b2` `movabs $0x2020202000` → bits `{13,21,29,37}` |
+| SUNDA arm | `0x9b18ee` `cmp $0x6` |
+| CPTC env / getenv / `3·cl` | `0x9b18c2` (`0x4d15`) / `0x9b18c9` / `0x9b18d6` |
+| Output stores | `0x9b18da` `libs[0]` / `0x9b18dd` `*num_libs = 1` |
+| opcodes/subopcodes never read (**decisive**) | `rg %rsi/%r8/(%rcx)` = 2 abort leas only |
+| Stripped jump table | `.rodata 0x39c4`, 24 rel32, idx = coretype−6 |
+| Stripped bound (no Maverick) | `add $0xfffffffa` / `cmp $0x17` |
+| `opset_get_library_index` | internal `0x9b1950` / stripped `0x309e00` |
+| opset mask / always-0 | `movabs $0x2020202040` / `movq $0x0,(%rdx)` |
+| coretype enum ordinals | `nrtucode.h:13-58` (`Q7_POOL` = 6/13/21/29/37) |
+| Header `[1, num_opcodes]` doc (stale) | `nrtucode.h:350-351` |
+| Per-gen lib counts (`HIGH carried`) | [extisa-inventory](../images/extisa-inventory.md) (1 / 4) |
+| BuildIDs | stripped `abf4e088…` / internal `9cbf78c6…` |
 
 ---
 
@@ -551,7 +551,7 @@ bitmap, not a multi-element list): SUNDA → `0`; PERF gens → `CPTC env ? 3 : 
 `*num_libs = 1` (or `0` for an empty model, which violates the header's stale
 `[1, num_opcodes]` promise). Index `0` = `EXTISA_0` (the base POOL ext-isa union);
 index `3` = `EXTISA_3` (the CPTC / cptc-decode superset). The per-opcode → handler
-mapping the brief expects is **not** a host lookup — it is a two-stage scheme: the
+mapping is **not** a host lookup — it is a two-stage scheme: the
 host picks one union library by coretype + CPTC-env, and the device
 [`kernel_info_table`](../firmware/pool/kernel-info-table.md) inside that staged
 library does the `(opcode<<24)|(spec<<16)` dispatch. The parallel

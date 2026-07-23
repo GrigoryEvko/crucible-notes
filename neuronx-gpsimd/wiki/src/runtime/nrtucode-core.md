@@ -29,6 +29,8 @@ the two shipped binaries via static analysis:
   routine as `nrtucode_core_on_ucode_booted @0x9b0ab0` (documented in
   [device bring-up](nrtucode-bringup.md) §7).
 
+The page default is `[HIGH·OBSERVED]`; claims that depart from it carry an explicit tag.
+
 > **Section deltas (VMA − file offset), `libnrtucode_internal.so`** —
 > `.rodata` Δ=0, `.text` Δ=`0x1000`, `.data.rel.ro` Δ=`0x2000`, `.data` Δ=`0x3000`
 > (`readelf -SW`). `.rodata`/`.text` addresses listed in this page are VMA; the
@@ -61,8 +63,7 @@ the two shipped binaries via static analysis:
 | `0x9b0ab0` | `0x308f90` | `nrtucode_core_on_ucode_booted` |
 | `0x9b0540` | `0x308a20` | `nrtucode_context_log` *(internal variadic logger; helper)* |
 
-Addresses verified with `nm libnrtucode_internal.so | rg nrtucode_core_` this
-analysis. `[HIGH·OBSERVED]`
+Addresses verified with `nm libnrtucode_internal.so | rg nrtucode_core_`.
 
 ---
 
@@ -99,7 +100,7 @@ accessors. The allocation is byte-exact:
 `0x20` dram_base · `0x28` opaque_b · `0x30` boot_state · `0x34` PAD ·
 `0x38` log_memhandle · `0x40` log_buf_size · `0x44` log_read_cursor ·
 `0x48..0x68` friendly_name`[0x21]` (NUL @`0x68`) · `0x69..0x6F` tail PAD.
-**Every one of the `0x70` bytes is accounted for.** `[HIGH·OBSERVED]`
+**Every one of the `0x70` bytes is accounted for.**
 
 > **Adversarial pad check.** A scan of the create body `0x9b0640..0x9b06f0`
 > shows writes to exactly `(%rax)` `+0x08` `+0x10` `+0x18` `+0x20` `+0x28` `+0x30`
@@ -155,7 +156,7 @@ nrtucode_context_t *nrtucode_core_get_context(nrtucode_core_t *core) {
 }
 ```
 
-Returns the `+0x00` back-pointer verbatim. No side effects. `[HIGH·OBSERVED]`
+Returns the `+0x00` back-pointer verbatim. No side effects.
 
 ### 3.2 `nrtucode_core_get_coretype` @`0x9b0a10`
 
@@ -169,7 +170,7 @@ uint32_t nrtucode_core_get_coretype(nrtucode_core_t *core) {
 
 A pure 32-bit zero-extended load of the field create stamped from arg2. **No
 validation here** — the `{2,9,17,25,32}` legality gate lives in the
-`dge_*`/`mailbox` methods (§3.5), not in this getter. `[HIGH·OBSERVED]`
+`dge_*`/`mailbox` methods (§3.5), not in this getter.
 
 ### 3.3 `nrtucode_core_set_friendly_name` @`0x9b0a50`
 
@@ -188,7 +189,7 @@ void nrtucode_core_set_friendly_name(nrtucode_core_t *core, const char *name) {
 
 The INFO log is emitted **first**, reading the *old* name before `strncpy`
 overwrites it — the line reads `"<oldname> renamed <newname>"`. No return value,
-no bound on `name` beyond the 32-byte `strncpy` cap. `[HIGH·OBSERVED]`
+no bound on `name` beyond the 32-byte `strncpy` cap.
 
 > **GOTCHA — `set_friendly_name(NULL, …)` segfaults; it does not abort.** Unlike
 > the other three accessors, it has no `test rdi,rdi`; `mov (%rdi),%rdi`
@@ -300,7 +301,7 @@ Body:
    @`0x9b07ab`, then rw WRITE slot1 4B `call *0x8(%rax)` @`0x9b07c7`) — returning
    the device to the unclaimed state (single-owner release).
 5. Log `"Destroyed %s"` (sev 4); `objcount_decrement` @`0x9b07ee`; `free(core)`
-   @`0x9b07e7`; return `0`. `[HIGH·OBSERVED]`
+   @`0x9b07e7`; return `0`.
 
 ---
 
@@ -476,8 +477,6 @@ padding, never written, heap-garbage contents — accounted for as padding).
   magics this page reconciles with).
 - [Boot & Reset (microarchitecture)](../uarch/boot-reset.md) — the device side of
   the ready/claim sentinel.
-- Device firmware globals (`.globstruct`) — the on-device structure whose first
-  word is the `0x6099cb34` ready sentinel; see
-  `neuronx-gpsimd/wiki/src/appendix/struct-device-firmware-globals.md` *(page
-  pending; until it lands, the `.globstruct[0]` ready word is documented in
-  device bring-up §7).*
+- [Device-Firmware Global Structs](../appendix/struct-device-firmware-globals.md) —
+  the on-device structure whose first word is the `0x6099cb34` ready sentinel (the
+  `.globstruct[0]` ready word is also documented in device bring-up §7).

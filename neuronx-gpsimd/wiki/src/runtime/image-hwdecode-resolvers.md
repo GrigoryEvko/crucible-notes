@@ -28,7 +28,8 @@ and the [EXTISA Q7 SO-Blob Inventory](../images/extisa-inventory.md).
 > `CAYMAN_NX_ACT_PERF_IRAM_get`, `…_PROF_CAM_get`, …) are themselves
 > binary-derived and citeable. Section file-offset deltas used below (confirmed
 > with `readelf -SW`): `.rodata` Δ=0, `.text` Δ=0x1000, `.data.rel.ro` Δ=0x2000,
-> `.data` Δ=0x3000.
+> `.data` Δ=0x3000. The page default is `[HIGH/OBSERVED]`; claims that depart from
+> it carry an explicit tag.
 >
 > **GOTCHA (no C++ vtables).** `nm libnrtucode_internal.so | rg -c '_ZTV'` →
 > **0**. Every function-pointer table here is a *plain C array*: slot `N` is
@@ -54,7 +55,7 @@ int nrtucode_get_memory_image(
 //          | 3 region getter NULL | 8 removed-env-flag tripwire
 ```
 
-`[HIGH/OBSERVED]` — signature from the prologue register moves at `0x9b2979`
+Signature from the prologue register moves at `0x9b2979`
 (`r8→rbx`, `rcx→r14`, `edx→r15d`, `esi→ebp`, `edi→r12d`) and the SysV ABI.
 
 ### 1.2 Annotated body
@@ -132,7 +133,7 @@ removed_flag:                                  // 9b2ae9
 > auto path produces only `{1,2,3}` from `NEURON_UCODE_FLAVOR`. The
 > `DYNAMIC_KERNEL_LOAD` keys `17/18/19` (`0x11/0x12/0x13`) exist in the
 > `image_list` descriptors (Q7_POOL rows only) but are **unreachable via env** —
-> a caller must pass `flavor = 17/18/19` explicitly. `[HIGH/OBSERVED]`
+> a caller must pass `flavor = 17/18/19` explicitly.
 
 ### 1.3 Return codes
 
@@ -149,7 +150,7 @@ removed_flag:                                  // 9b2ae9
 > — "present but empty". Code **3** is reserved for a genuinely NULL getter
 > *slot*. The caller distinguishes "this image has no SRAM bytes" (code 0,
 > len 0) from "this variant is not in this build" (code 3) by the **return
-> code**, not the size. `[HIGH/OBSERVED]`
+> code**, not the size.
 
 ---
 
@@ -177,7 +178,7 @@ struct image_desc {
 // typedef void img_get(void** out_ptr, size_t* out_len);
 ```
 
-`[HIGH/OBSERVED]` — `count` is read from the file image; `table` and the four
+`count` is read from the file image; `table` and the four
 getters are zero in the file and supplied by `R_X86_64_RELATIVE` relocations
 (addends read with `readelf -rW`). The stride is the `add $0x28,%rdi` at
 `9b29ed`; the four getter offsets are the `add $0x08/0x10/0x18/0x20` in the
@@ -194,7 +195,7 @@ region switch.
 The four getter slots of `[0]` resolve to
 `CAYMAN_NX_ACT_PERF_{IRAM=0x9b3020, DRAM=0x9b3040, SRAM=0x9b3060,
 EXTRAM=0x9b3080}_get` — confirming the `GEN_CLS_ENG_VARIANT_REGION` symbol
-ordering and the `+0x08/+0x10/+0x18/+0x20` region offsets. `[HIGH/OBSERVED]`
+ordering and the `+0x08/+0x10/+0x18/+0x20` region offsets.
 
 ### 2.1 The flat `(gen, engine)` index — arg0
 
@@ -247,7 +248,7 @@ from the file image, gen/engine from each descriptor's IRAM getter symbol):
 Σ = **102 descriptors** (SUNDA 7 + CAYMAN 27 + MARIANA 27 + MPLUS 27 +
 MAVERICK 14). The counts in this table were read byte-exact from the file
 image; this reconciles with the [Firmware-Image Accessor Index](../images/image-catalog-index.md)
-key-map. `[HIGH/OBSERVED]`
+key-map.
 
 > **QUIRK (double-SP + empty idx 36).** Every generation enumerates `NX_SP`
 > *twice* (e.g. `il[4]&il[5]`, `il[34]&il[35]`); both SP descriptors alias the
@@ -286,7 +287,6 @@ Decoded byte-exact:
 > reaches the table (`cmp $0x3,%ebp ; ja -> ret 2`). There is **no PROF
 > region** here — `PROF_CAM`/`PROF_TABLE` are a separate table reached only via
 > `get_hwdecode_table` ([§4](#4-nrtucode_get_hwdecode_table--the-prof-profiler-resolver)).
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -329,13 +329,13 @@ int nrtucode_get_hwdecode_table(unsigned idx, int kind,
 > `9b2cea`, *before* the kind comparison at `9b2cf3`. A `kind ∉ {0,1}` therefore
 > falls out with `eax == 2`, **not** `1`. An earlier read that bad-kind returns
 > `1` is wrong; this lane has no code `3` at all (contrast `get_memory_image`'s
-> code 3). `[HIGH/OBSERVED]`
+> code 3).
 
 > **NOTE (no flavor, no env, no guard).** Unlike `get_memory_image`, this
 > resolver has **no** `getenv`, **no** `strcmp`, **no** flavor key, **no**
 > region jump table, and **no** `MPLUS` deprecation guard. PROF tables are a
 > single variant per `(gen, engine)` — there is no PERF/DEBUG/TEST or DKL
-> split. `[HIGH/OBSERVED]`
+> split.
 
 ### 4.2 The `hwdecode_table_list` table
 
@@ -377,14 +377,12 @@ the relocation addends:
 `CAYMAN_NX_ACT_PROF_CAM_get`; idx 9 (`0x9b3c60`) → `CAYMAN_NX_POOL_PROF_CAM_get`
 and idx 10 (`0x9b3c20`) → `CAYMAN_NX_PE_PROF_CAM_get`, confirming the
 flat-index → engine mapping even though the getter VAs are non-monotonic.
-`[HIGH/OBSERVED]`
 
 > **NOTE (sparse population — who has no profiler).** SUNDA (idx 0–6) is
 > entirely NULL — no HW-decode profiler. `NX_SP` (idx 4/5, 11/12, 19/20, 27/28,
 > 34/35) and `Q7_POOL` (idx 6, 13/14, 21/22, 29/30, 37) slots exist in the
 > index space but are NULL. MAVERICK has **no ACT row** (idx 31 starts at DVE),
 > matching `image_list`. Any NULL slot → `get_hwdecode_table` returns 2.
-> `[HIGH/OBSERVED]`
 
 ### 4.3 The PROF getter stubs
 
@@ -404,7 +402,7 @@ TABLE getters return `0x2000` (8 KiB)**:
 ```
 
 The blobs live in `.rodata` (Δ=0 → VA == file offset), so a carve is
-`dd skip=<blobVA> count=<size>`. `[HIGH/OBSERVED]`
+`dd skip=<blobVA> count=<size>`.
 
 ---
 
@@ -425,13 +423,13 @@ Binary evidence (each independently sufficient):
 1. **Naming.** The resolver is `nrtucode_get_hwdecode_table`, the table is
    `hwdecode_table_list`, and the getters are
    `<GEN>_NX_<ENG>_PROF_{CAM,TABLE}_get` — "**hwdecode**" = HW instruction
-   *decode*. `[HIGH/OBSERVED]`
+   *decode*.
 2. **No activation tables in the library.**
    `nm libnrtucode_internal.so | rg -ci 'stpb|act_profile|_BUCKET_|_CONTROL_TABLE'`
    → **0**. The activation CAM/PROFILE/BUCKET/CONTROL PWL tables are *not in
    this library at all* — they are a different, DMA-staged subsystem. There is
    nothing here for `get_hwdecode_table` to deliver *except* the decode
-   profiler. `[HIGH/OBSERVED]`
+   profiler.
 3. **Record format.** `PROF_CAM` (CAYMAN ACT, `@0x3028a0`, size `0x400`,
    sha256 `8fd7e422…`) is a 16-byte record `{u32 opcode_id; u32 mask; u32
    enable; u32 reserved}` × 64, with **47 armed** (`enable==1`). Slot 0 arms
@@ -440,11 +438,11 @@ Binary evidence (each independently sufficient):
    *executing instruction opcodes* with a per-opcode enable is a decode
    profiler; the activation CAM is a 32-byte record keyed on
    `(opcode, func_id)`. Different stride (16 vs 32), different key, different
-   count (47 vs 128). `[HIGH/OBSERVED]`
+   count (47 vs 128).
 4. **`PROF_TABLE`** (`@0x302ca0`, size `0x2000`) is 64 × 128-byte records, 47
    populated, **parallel to `PROF_CAM`** (record `i` describes the opcode armed
    by CAM slot `i`), and **sparse** (≤ ~36 of 128 bytes used) — not a dense
-   128-byte activation PWL config. `[HIGH/OBSERVED]`
+   128-byte activation PWL config.
 
 The full blob decode (the 47-opcode model, the per-engine specialisation from
 MARIANA on, the cross-gen sha256 matrix) is in
@@ -470,12 +468,12 @@ under stripped (auto-named) symbols:
 > relocates only the **PERF / DKL_PERF** getters and **no MAVERICK** getters:
 > a MAVERICK or DEBUG/TEST request resolves a descriptor, then hits a NULL
 > getter → code **3**. The internal twin populates DEBUG/PERF/TEST and MAVERICK
-> from an external archive (functionally 5-gen). `[HIGH/OBSERVED]`
+> from an external archive (functionally 5-gen).
 
 For the PROF lane, the front `hwdecode_table_list @0x30f810` populates only the
 12 entries idx 7–10/15–18/23–26 (CAYMAN/MARIANA/MARIANA_PLUS) and leaves
 MAVERICK (idx 31–33) NULL → `get_hwdecode_table(31/32/33, …)` returns 2 in the
-front lib. `[HIGH/OBSERVED]`
+front lib.
 
 ---
 
