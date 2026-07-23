@@ -2,7 +2,7 @@
 
 > *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel; cp310/11/12 share the C++ core). The front half (HLO/MHLO dynamic passes) lives in the native tools `hlo2penguin` / `hlo-opt`; the runtime-value primitives `bir::BirIntRuntimeValue`, `bir::InstDynamicForLoop`, `bir::DynamicForLoopAxis`, the `bir::Hwm` latency stubs, and `pelican::AffineIdx` live in `libBIR.so` and are exercised by the simulator binary `nki_klr_sim`; the AP-lowering, DGE-routing, and descriptor passes live in `neuronxcc/starfish/lib/libwalrus.so` (`.text` base `0x62d660`, `.rodata` base `0x1c72000`, VA == file-offset); the ADDR4 encoder also lives in `libwalrus.so`. Other wheels differ; treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
 >
-> *Provenance: `libwalrus.so` and `libBIR.so` are present in the corpus — as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/`. The `nm -DC` body addresses (`assembleDynamicInfo @0xf20230`, `rewireDynamicAPRegisters @0xef91d0`, …) are the `libwalrus.so`-proper VA frame recovered from the `ida/…libwalrus.so/` database; the per-symbol sidecars carry the same bodies in a distinct internal VA frame. The cited bodies are disassembled, not merely declared — the addresses are CONFIRMED. The same provenance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [DGE Level Selection](dge-level-dynamic-dma.md), [the Dynamic For-Loop](dynamic-for-loop.md), and [Backend Dependence-Distance](backend-dependence-distance.md).*
+> *Provenance: `libwalrus.so` and `libBIR.so` are present in the corpus — as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/`. The `nm -DC` body addresses (`assembleDynamicInfo @0xf20230`, `rewireDynamicAPRegisters @0xef91d0`, …) are the `libwalrus.so`-proper VA frame recovered from the `ida/…libwalrus.so/` database; the per-symbol sidecars carry the same bodies in a distinct internal VA frame. The cited bodies are disassembled, not merely declared. The same provenance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [DGE Level Selection](dge-level-dynamic-dma.md), [the Dynamic For-Loop](dynamic-for-loop.md), and [Backend Dependence-Distance](backend-dependence-distance.md).*
 
 ## Abstract
 
@@ -18,7 +18,7 @@ For reimplementation, the synthesis contract is:
 
 - The **two genuinely-dynamic artifacts** the compiler emits (runtime OFFSET via [TensorCopyDynamic](tensorcopy-dynamic-generators.md) → DGE/indirect DMA; runtime TRIP COUNT via [`InstDynamicForLoop`](dynamic-for-loop.md)) and the **single primitive** both reduce to.
 - The **seven hand-off seams** between the per-organ pages, each anchored to a shared offset/symbol witnessed in both producer and consumer.
-- The **honest gaps**: the cross-binary front→back hand-off (synthesis, not a co-verified offset) and — now resolved on this page — the ADDR4 register-mode bit number.
+- The **honest gaps**, chiefly the cross-binary front→back hand-off, which is synthesis rather than a co-verified offset.
 
 | | |
 |---|---|
@@ -40,15 +40,15 @@ For reimplementation, the synthesis contract is:
 
 The deepest fact, established by the front-end survey ([4.31 hlo-opt dynamic front](../front/) family) and threaded through every backend organ:
 
-> **neuronx-cc 2.24 has no "compile-N-static-shape-buckets" mechanism.** Shape bucketing is produced *above* the compiler — the framework (torch-neuronx / transformers-neuronx) traces the model once per shape, emitting one fully-static HLO module per bucket; the runtime (libnrt) dispatches to the smallest fitting NEFF and pads the input up to it. The compiler sees one program per invocation, and inside it there is no bucket choice. *(CONFIRMED — by exhaustive absence plus the positive bounded-dynamic mechanism.)*
+> **neuronx-cc 2.24 has no "compile-N-static-shape-buckets" mechanism.** Shape bucketing is produced *above* the compiler — the framework (torch-neuronx / transformers-neuronx) traces the model once per shape, emitting one fully-static HLO module per bucket; the runtime (libnrt) dispatches to the smallest fitting NEFF and pads the input up to it. The compiler sees one program per invocation, and inside it there is no bucket choice.
 
-**Adversarial verification of the negative.** A negative result is only as strong as the search behind it. Sweeping the compiler binaries for every `bucket` token resolves each one to something **unrelated to shapes**:
+A negative result is only as strong as the search behind it. Sweeping the compiler binaries for every `bucket` token resolves each one to something **unrelated to shapes**:
 
 - `tbb::…::init_bucket` / `rehash_bucket` / `advance_to_next_bucket` — Intel TBB concurrent-hash-map internals.
 - `llvm::DenseMapBase<…>::LookupBucketFor` / `moveFromOldBuckets` — LLVM open-addressing probe (this is the *same* helper family the `axisRegs` map uses; see seam S2).
 - `bir::isCoalescedCCOp` / `birverifier::checkCoalescedCCOps` / `InstCollectiveCompute` coalescing — **collective-op** byte-size bucketing (the `--internal-ccop-*-bucketing` flags), which groups small AllGather/AllReduce/ReduceScatter into fewer large collectives. This is a distributed-SPMD performance fusion, **orthogonal** to dynamic shapes.
 
-There is **no** pass, class, flag, or string that compiles one dynamic shape into N static shape variants, and **no** runtime bucket-selection loop in the AOT compiler binaries. *(CONFIRMED — `bucket` token sweep over `libwalrus.so` / `libBIR.so`; every hit is TBB, LLVM DenseMap, or CCop coalescing.)*
+There is **no** pass, class, flag, or string that compiles one dynamic shape into N static shape variants, and **no** runtime bucket-selection loop in the AOT compiler binaries. Across `libwalrus.so` and `libBIR.so`, every `bucket` hit is TBB, LLVM DenseMap, or CCop coalescing.
 
 > **NOTE — why this is the deepest reason there is no bucketing.** By the time the SBUF allocator runs, `xla::DynamicPadder` has already padded every bounded-dynamic dim to its compile-time bound `N` and select-masked the valid region. The only sizes the allocator ever sees are the bounds. "Allocate for the max" is therefore not a heuristic — it is structural: **one bound = one buffer**. There is nothing to bucket. (See Section 4.)
 
@@ -74,7 +74,7 @@ The model is traced at a **bounded** shape: the sequence dim has bound `N`, `is_
 - a **static-shape** `DynamicUpdateSlice` whose **destination offset is a runtime `S32` scalar**, and
 - a runtime **size/count scalar** (the sequence length) destined to become a loop bound.
 
-> **⭐ HAND-OFF 0→1 (seam S6, STRONG / synthesis).** `TensorizerLegalizationPass` → `xla::hilo` builds Penguin IR. The runtime scalar becomes an opaque `S32` Penguin value; the dynamic-DMA SBUF scratch is sized by `xla::hilo::SetDynamicDMASbufBytes` and the `dynamic-dma-sbuf-bytes` / `dynamic-dma-scratch-size-per-partition` flags. **No registers exist yet.** This hand-off crosses a binary boundary (front-end `hlo2penguin` vs back-end `libwalrus`/`libBIR`); it is documented structurally on both sides but is **not** a single co-disassembled body — it is the seam most reliant on synthesis (S6).
+> **⭐ HAND-OFF 0→1 (seam S6, synthesis).** `TensorizerLegalizationPass` → `xla::hilo` builds Penguin IR. The runtime scalar becomes an opaque `S32` Penguin value; the dynamic-DMA SBUF scratch is sized by `xla::hilo::SetDynamicDMASbufBytes` and the `dynamic-dma-sbuf-bytes` / `dynamic-dma-scratch-size-per-partition` flags. **No registers exist yet.** This hand-off crosses a binary boundary (front-end `hlo2penguin` vs back-end `libwalrus`/`libBIR`); it is documented structurally on both sides but is **not** a single co-disassembled body — it is the seam most reliant on synthesis (S6).
 
 ### Stage 1 — Penguin IR node  *([5.24 TensorCopyDynamic generators](tensorcopy-dynamic-generators.md))*
 
@@ -86,7 +86,7 @@ The runtime loop bound (the sequence-length scalar) is emitted as a `birpy.BirDy
 
 ### Stage 1b — Dynamic loop structure  *([5.26 dynamic for-loop](dynamic-for-loop.md))*
 
-The runtime-trip loop is `bir::InstDynamicForLoop` (opcode 106), carrying one `bir::DynamicForLoopAxis*`. The axis holds three `QuasiAffineExpr`: `lb`, `ub`, `step` (set together by `InstDynamicForLoop::setAxis(string, QuasiAffineExpr, QuasiAffineExpr, QuasiAffineExpr)` — CONFIRMED symbol in `libBIR.so`). The dynamic discriminator vs the static `LoopAxis` is `getTripcount() → 0` paired with `hasRuntimeValue() → 1`. The verifier asserts `lb`/`step` are constants and `ub` is **exactly** `coef·<runtime-register> + const` with a non-null register. The trip count is therefore `const + coef·reg`, where `reg` is the value the `axisRegs` map produced (seam S2).
+The runtime-trip loop is `bir::InstDynamicForLoop` (opcode 106), carrying one `bir::DynamicForLoopAxis*`. The axis holds three `QuasiAffineExpr`: `lb`, `ub`, `step` (set together by `InstDynamicForLoop::setAxis(string, QuasiAffineExpr, QuasiAffineExpr, QuasiAffineExpr)`, an exported symbol in `libBIR.so`). The dynamic discriminator vs the static `LoopAxis` is `getTripcount() → 0` paired with `hasRuntimeValue() → 1`. The verifier asserts `lb`/`step` are constants and `ub` is **exactly** `coef·<runtime-register> + const` with a non-null register. The trip count is therefore `const + coef·reg`, where `reg` is the value the `axisRegs` map produced (seam S2).
 
 > **⭐ HAND-OFF 1b→spine (seam S1).** The `ub` `QuasiAffineExpr`'s single non-constant term is a `bir::BirIntRuntimeValue`; **its register lives at `+0x40`** — the same register handle as the offset path. This is *why* a runtime offset and a runtime trip count are the same primitive.
 
@@ -150,9 +150,9 @@ The runtime then reads the register / index, computes the address (the value the
 
 ## Section 2 — The seams (each hand-off, witnessed in producer and consumer)
 
-A seam is **CONFIRMED** when the same offset/symbol is witnessed in *both* the producing and the consuming body. Below, each verdict is grounded directly in the binary.
+A seam is fully pinned when the same offset or symbol is witnessed in *both* the producing and the consuming body; where that is not the case, the entry says so.
 
-### ⭐ Seam S1 — `BirIntRuntimeValue.regref @ +0x40` — the system spine  *(CONFIRMED, 4 bodies)*
+### ⭐ Seam S1 — `BirIntRuntimeValue.regref @ +0x40` — the system spine
 
 The runtime value's backing `Register*` lives at `BirIntRuntimeValue + 0x40` (= `+64`). This **one** offset is shared by four independent producers/consumers, binary-witnessed here:
 
@@ -161,53 +161,53 @@ The runtime value's backing `Register*` lives at `BirIntRuntimeValue + 0x40` (= 
 3. **Reader — `BirIntRuntimeValue::getNameStr @0x513f30` (nki_klr_sim / libBIR):** `v2 = *(a2 + 64)` then formats `*(v2 + 296)` (the register's name). The simulator's upper-bound evaluation reaches the trip-count register through exactly this path.
 4. **Reader — `BirIntRuntimeValue::str @0x514a10` (nki_klr_sim / libBIR):** reads `a2[8]` (= `+0x40`) and, when the printer is `getNameStr`, formats `*(v4 + 296)` — a *second* independent body in the simulator binary using `+0x40` → `+296`.
 
-**VERDICT: CONFIRMED.** `regref @ +0x40` is identical across the offset path (`assembleDynamicInfo` / `rewireDynamicAPRegisters`) and the trip-count path (the simulator's runtime-value printers), and the `reg.name @ +296` key is shared by both. This is the strongest seam in the system — it is *why* a runtime offset and a runtime trip count reduce to the same primitive.
+`regref @ +0x40` is identical across the offset path (`assembleDynamicInfo` / `rewireDynamicAPRegisters`) and the trip-count path (the simulator's runtime-value printers), and the `reg.name @ +296` key is shared by both. This is the strongest seam in the system — it is *why* a runtime offset and a runtime trip count reduce to the same primitive.
 
-> **CORRECTION (D-Z07 §S1 / Evidence Anchors).** The capstone backing report cited the trip-count read in the simulator's `evaluateUpperBoundExpr` as `RegState::read(…, *(bir::Register**)(v38 + 64), 0)` — i.e. it inferred the `+0x40` read inside the (decompilation-failed) upper-bound evaluator. The mechanism is **right** and the offset is **right**, but the *cleanest* binary witnesses for `+0x40` in the simulator binary are the two `BirIntRuntimeValue` name printers (`getNameStr @0x513f30`, `str @0x514a10`), whose pseudocode *did* decompile and which unambiguously dereference `+0x40 → +296`. Anchor the simulator end of S1 to those two bodies, not to the failed-decompile evaluator. *(The four `bir::Hwm` latency methods for `InstDynamicForLoop` are likewise present as symbols in `nki_klr_sim` but did not produce pseudocode — see Section 5.)*
+The simulator end of S1 is anchored on the two name printers above rather than on `evaluateUpperBoundExpr`. The evaluator performs the same `+0x40` read on its way to `RegState::read`, but Hex-Rays fails on that body, so the printers — whose pseudocode is clean and which unambiguously dereference `+0x40 → +296` — are the citable witnesses. (The four `bir::Hwm` latency methods for `InstDynamicForLoop` are likewise present as symbols in `nki_klr_sim` without producing pseudocode; see Section 5.)
 
-### ⭐ Seam S2 — `axisRegs : DenseMap<DynamicForLoopAxis*, Register*>` — loop ↔ register  *(CONFIRMED map + consumer; producer INFERRED)*
+### ⭐ Seam S2 — `axisRegs : DenseMap<DynamicForLoopAxis*, Register*>` — loop ↔ register
 
 The loop's induction-variable register is bound into a `DenseMap<bir::DynamicForLoopAxis*, bir::Register*>`; `convertSymAP`'s `lowerAffineExpr` **looks up** (does not mint) that per-axis register when lowering a symbolic AP over the axis. The map helpers (`operator[]`, `LookupBucketFor`, `grow`) are present in `libwalrus.so`, and the consumer's error path (*"loop axis hasn't been assigned register for induction variable!"*) proves the producer/consumer contract.
 
-**VERDICT: CONFIRMED** (map helpers present; consumer contract co-cited). **NOTE:** the exact *population site* — the codegen body that fills the map (mints the induction register and inserts it) — was not isolated; it is **INFERRED** to be the loop-structuring/unroll pass.
+The map helpers are present and the consumer contract is co-cited, so the consuming half of this seam is settled. The *population site* — the codegen body that mints the induction register and inserts it into the map — was not isolated; the loop-structuring/unroll pass is the [INFERRED] producer.
 
-### ⭐ Seam S3 — `DGEType @ InstDMA+0xF8` — scan ↔ engine binder  *(CONFIRMED, both ends)*
+### ⭐ Seam S3 — `DGEType @ InstDMA+0xF8` — scan ↔ engine binder
 
-**Producer:** `DynamicDMAScan` stamps `I.DGEType @ +0xF8 = getDGEInstructionType().first` (`{0 None / 1 SWDGE / 2 HWDGE}`, HWDGE only if `ArchLevel > 29`). **Consumer:** `assignEngine @0x1180360`'s first line is `if (a2[62] != 2) return;` — `a2[62]` is the `_DWORD` at `+0xF8`. Both the arch gate (`getDGEInstructionType` line 164: `*(getModule() + 172)`, line 573/629/704: `if (v9 > 29)`) and the consumer gate are binary-witnessed. **VERDICT: CONFIRMED.**
+**Producer:** `DynamicDMAScan` stamps `I.DGEType @ +0xF8 = getDGEInstructionType().first` (`{0 None / 1 SWDGE / 2 HWDGE}`, HWDGE only if `ArchLevel > 29`). **Consumer:** `assignEngine @0x1180360`'s first line is `if (a2[62] != 2) return;` — `a2[62]` is the `_DWORD` at `+0xF8`. Both the arch gate (`getDGEInstructionType` line 164: `*(getModule() + 172)`, line 573/629/704: `if (v9 > 29)`) and the consumer gate are binary-witnessed.
 
-### ⭐ Seam S4 — kind-3 `RegisterAP` → ADDR4 register/indirect mode  *(RESOLVED on this page)*
+### ⭐ Seam S4 — kind-3 `RegisterAP` → ADDR4 register/indirect mode
 
-**Producer:** `convertSymAP` writes `regref @ +0xE8`, `reg_ap_offset @ +0xF0`, `reg_sub_tensor_id @ +0xF8` on the kind-3 `RegisterAccessPattern`. **Consumer:** `CoreV{2,3,4}GenImpl` stamps the ADDR4 word. The dynamic-shape reports flagged the *register-mode bit number* as `SEAM-UNCERTAIN` (one input said bit-31, another listed bit-30 "active" without naming a register-mode bit). **This page resolves it** — see Section 3.
+**Producer:** `convertSymAP` writes `regref @ +0xE8`, `reg_ap_offset @ +0xF0`, `reg_sub_tensor_id @ +0xF8` on the kind-3 `RegisterAccessPattern`. **Consumer:** `CoreV{2,3,4}GenImpl` stamps the ADDR4 word. The bit assignment is given in Section 3.
 
-### ⭐ Seam S5 — `DynamicAPINFO @ PhysicalAP+0x1D8` — produce ↔ consume  *(CONFIRMED)*
+### ⭐ Seam S5 — `DynamicAPINFO @ PhysicalAP+0x1D8` — produce ↔ consume
 
-**Producer:** `assembleDynamicInfo` hangs the `DynamicAPINFO` off `+0x1D8`. **Consumer:** `rewireDynamicAPRegisters @0xef91d0` guards on `*(a1 + 472)` (= `+0x1D8`) before walking it with `PhysicalAccessPattern::forEachDynamicExpr` (CONFIRMED at `0x3fd7178`). Same offset, same struct. **VERDICT: CONFIRMED.**
+**Producer:** `assembleDynamicInfo` hangs the `DynamicAPINFO` off `+0x1D8`. **Consumer:** `rewireDynamicAPRegisters @0xef91d0` guards on `*(a1 + 472)` (= `+0x1D8`) before walking it with `PhysicalAccessPattern::forEachDynamicExpr` (`0x3fd7178`). Same offset, same struct.
 
-### ⭐ Seam S6 — front-end `S32` scalar → Penguin value  *(STRONG / synthesis)*
+### ⭐ Seam S6 — front-end `S32` scalar → Penguin value
 
-**Producer:** the front end leaves an `S32` runtime size/offset scalar (the survivor of `DynamicPadder` + `DynamicIndexSplitter`). **Consumer:** [5.24](tensorcopy-dynamic-generators.md) wires it as `generic_addrs`/`addr_free_indices` (offset) or as a `BirDynamicForAxis` upper bound (trip count). **VERDICT: STRONG, not a single co-verified offset.** The front end (`hlo2penguin`) and the backend (`libwalrus`/`libBIR`) are **different binaries**; the `xla::hilo → Penguin` bridge is documented structurally (`SetDynamicDMASbufBytes`, `BirDynamicForAxis`) but the exact Penguin-value → `BirIntRuntimeValue` construction is **not** traced end-to-end in one body. This is the seam most reliant on reasoning. *(Flagged.)*
+**Producer:** the front end leaves an `S32` runtime size/offset scalar (the survivor of `DynamicPadder` + `DynamicIndexSplitter`). **Consumer:** [5.24](tensorcopy-dynamic-generators.md) wires it as `generic_addrs`/`addr_free_indices` (offset) or as a `BirDynamicForAxis` upper bound (trip count). This seam has no single co-verified offset: the front end (`hlo2penguin`) and the backend (`libwalrus`/`libBIR`) are **different binaries**, and while the `xla::hilo → Penguin` bridge is documented structurally (`SetDynamicDMASbufBytes`, `BirDynamicForAxis`), the exact Penguin-value → `BirIntRuntimeValue` construction is not traced end-to-end in one body. It is the seam most reliant on reasoning.
 
-### ⭐ Seam S7 — DGE flavour (scalar/vector) ↔ AP offset kind (k7/k3)  *(STRONG)*
+### ⭐ Seam S7 — DGE flavour (scalar/vector) ↔ AP offset kind (k7/k3)
 
-`getDGEInstructionType` dispatches on `isScalarDynamicOffsetAP` (vfn+88, witnessed at line 562) vs `isVectorDynamicOffsetAP` (vfn+72); `assembleDynamicInfo` builds a scalar `BirIntRuntimeValue` (k7) or a vector `IndirectArgExpr` (k3) and XOR-validates via the **same** `_validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided`. Scalar AP → SWDGE; vector AP → vector-offsets/HWDGE. **VERDICT: STRONG** (shared validator co-cited; the predicate *bodies* are PLT-only in the DGE pass, so semantics come from call sites).
+`getDGEInstructionType` dispatches on `isScalarDynamicOffsetAP` (vfn+88, witnessed at line 562) vs `isVectorDynamicOffsetAP` (vfn+72); `assembleDynamicInfo` builds a scalar `BirIntRuntimeValue` (k7) or a vector `IndirectArgExpr` (k3) and XOR-validates via the **same** `_validateOnlyOneOfScalarAndVectorDynamicOffsetIsProvided`. Scalar AP → SWDGE; vector AP → vector-offsets/HWDGE. The shared validator ties the two ends together, but the predicate *bodies* are PLT-only in the DGE pass, so their semantics are read from the call sites rather than the implementations.
 
 ### Seam-agreement table
 
-| Seam | Producer | Consumer | Shared symbol / offset | Status |
+| Seam | Producer | Consumer | Shared symbol / offset | Confidence |
 |---|---|---|---|---|
-| S1 | `assembleDynamicInfo @0xf20230` | sim printers / `rewireDynamicAPRegisters` | `BirIntRuntimeValue.regref @ +0x40` | **CONFIRMED** (4 bodies) |
-| S2 | loop-lowering (population site) | `convertSymAP` `lowerAffineExpr` | `DenseMap<DynamicForLoopAxis*,Register*>` | CONFIRMED map; producer INFERRED |
-| S3 | `DynamicDMAScan` | `assignEngine @0x1180360` | `DGEType @ InstDMA+0xF8` | **CONFIRMED** |
-| S4 | `convertSymAP` kind-3 RegisterAP | `CoreV*GenImpl` ADDR4 | bits 29 indirect / 31 register-mode | **RESOLVED** (Section 3) |
-| S5 | `assembleDynamicInfo` | `rewireDynamicAPRegisters @0xef91d0` | `DynamicAPINFO @ PhysicalAP+0x1D8` | **CONFIRMED** |
-| S6 | front-end `S32` scalar | Penguin node | `xla::hilo → Penguin` (cross-binary) | STRONG / synthesis |
-| S7 | `getDGEInstructionType` | `assembleDynamicInfo` | `_validateOnlyOneOf…Offset` XOR | STRONG |
+| S1 | `assembleDynamicInfo @0xf20230` | sim printers / `rewireDynamicAPRegisters` | `BirIntRuntimeValue.regref @ +0x40` | **CERTAIN** (4 bodies) |
+| S2 | loop-lowering (population site) | `convertSymAP` `lowerAffineExpr` | `DenseMap<DynamicForLoopAxis*,Register*>` | CERTAIN map; producer MEDIUM |
+| S3 | `DynamicDMAScan` | `assignEngine @0x1180360` | `DGEType @ InstDMA+0xF8` | **CERTAIN** |
+| S4 | `convertSymAP` kind-3 RegisterAP | `CoreV*GenImpl` ADDR4 | bits 29 indirect / 31 register-mode | **CERTAIN** (Section 3) |
+| S5 | `assembleDynamicInfo` | `rewireDynamicAPRegisters @0xef91d0` | `DynamicAPINFO @ PhysicalAP+0x1D8` | **CERTAIN** |
+| S6 | front-end `S32` scalar | Penguin node | `xla::hilo → Penguin` (cross-binary) | HIGH / synthesis |
+| S7 | `getDGEInstructionType` | `assembleDynamicInfo` | `_validateOnlyOneOf…Offset` XOR | HIGH |
 
 ---
 
-## Section 3 — ⭐ The ADDR4 register-mode bit (seam S4 resolution)
+## Section 3 — ⭐ The ADDR4 register-mode bit (seam S4)
 
-The dynamic-shape reports left this open as `SEAM-UNCERTAIN`: one input recorded register-mode as ADDR4 **bit 31**, another listed the high nibble as bits 29(indirect)/30(active) and did **not** name a bit-31 register-mode — and neither disassembled the `CoreV*Gen` ADDR4 bit-set. The [ADDR4 encoding page](../isa/addr4.md) **does** disassemble that emitter, and it closes the seam unambiguously. The 32-bit word packs:
+The [ADDR4 encoding page](../isa/addr4.md) disassembles the `CoreV*Gen` emitter that stamps this word, which fixes every mode bit. The 32-bit word packs:
 
 | Field | Bits | Mask | Meaning |
 |---|---|---|---|
@@ -218,12 +218,9 @@ The dynamic-shape reports left this open as `SEAM-UNCERTAIN`: one input recorded
 
 The encoder bytes are witnessed in `libwalrus.so` disassembly: `or byte [rax+3], 0x20` stamps **bit 29** (tensor-indirect, mode `0b01`); `test edi, 0x40000000` tests **bit 30** (active/dynamic); and the `0x80000000` register-mode flag (bit 31) collapses the word to `0x80000000 | (regid & 0xFF)` with `regid < 0x40`.
 
-> **CORRECTION (D-Z07 §U1 / §S4).** The seam was a **granularity gap, not a conflict**, and the two readings are now reconciled:
-> - **"register-mode = ADDR4 bit 31"** is **CORRECT.** Bit 31 (`0x80000000`) is the register-mode flag; setting it re-purposes byte 0 as the colored register id that supplies the runtime base address — exactly the kind-3 `RegisterAccessPattern → register-mode descriptor` hand-off the register-ALU pass feeds.
-> - **"bit 30 active"** is a **different bit**, not a competing register-mode claim. Bit 30 (`0x40000000`) is the ACTIVE / dynamic-AP marker; it is *not* the register-mode flag. The second report was describing the mode **nibble** (bits 30:29) and never named bit 31, which made it *look* like a disagreement.
-> - **"bit 29 indirect"** was already consistent across both inputs and is CONFIRMED-cross.
->
-> **NET:** ADDR4 bit 29 = indirect-gather, bit 30 = active/dynamic, **bit 31 = register-mode** — all three CONFIRMED from the encoder disassembly on the [ADDR4](../isa/addr4.md) page. The dynamic-shape thread's `SEAM-UNCERTAIN` on the register-mode bit number is **resolved: bit 31.**
+Setting bit 31 re-purposes byte 0 as the colored register id that supplies the runtime base address — exactly the kind-3 `RegisterAccessPattern` → register-mode descriptor hand-off the register-ALU pass feeds.
+
+> **GOTCHA — the mode *nibble* is bits 30:29, and it does not include register-mode.** Bit 29 (indirect-gather) and bit 30 (active/dynamic-AP) together form the two-bit mode field; bit 31 sits outside it and is the independent register-mode flag. A description of the "mode bits" that stops at bit 30 is describing the nibble, not the full high-byte layout.
 
 ---
 
@@ -232,11 +229,11 @@ The encoder bytes are witnessed in `libwalrus.so` disassembly: `or byte [rax+3],
 > **Question.** Does a dynamic AP force a worst-case / max-bound SBUF allocation?
 > **Answer.** Yes — for a *structural* reason, not a heuristic one.
 
-**4.1 The shape is already bounded + padded before SBUF allocation.** By the time the backend allocator runs, there are no shape-dynamic tensors left: `xla::DynamicPadder` padded every bounded-dynamic dim to its bound `N` and select-masked the valid region (Section 0). The allocator sees a tensor of **compile-time size = the bound**. There is no "dynamic-sized SBUF buffer" to allocate; the buffer is statically max-sized. A dynamic **offset** does not change the buffer's size — it only changes *which element* of the max-sized buffer the runtime addresses. *(CONFIRMED — DynamicPadder removes shape-dynamic ops; only static + runtime-offset slices survive into Penguin.)*
+**4.1 The shape is already bounded + padded before SBUF allocation.** By the time the backend allocator runs, there are no shape-dynamic tensors left: `xla::DynamicPadder` padded every bounded-dynamic dim to its bound `N` and select-masked the valid region (Section 0). The allocator sees a tensor of **compile-time size = the bound**. There is no "dynamic-sized SBUF buffer" to allocate; the buffer is statically max-sized. A dynamic **offset** does not change the buffer's size — it only changes *which element* of the max-sized buffer the runtime addresses. `DynamicPadder` removes the shape-dynamic ops outright; only static and runtime-offset slices survive into Penguin.
 
-**4.2 The compiler-side max-bound path for trip counts.** Any static sizing/cost analysis that must run **without** a live register uses `pelican::AffineIdx::getMaxTripcount @0xb45430` — a **virtual** call through `vtable + 0x140` (slot 320): `return (*(this->vtable[0x140]))(this);`. A register-backed `AffineIdx`'s subclass override returns a **conservative upper bound** (the max), because the concrete count is unknown at compile time. This is the explicit "use the max for sizing" hook. **CONTRAST:** the simulator uses the **concrete** register (it executes the actual runtime count). So the tension the task named resolves cleanly: **compiler = max (`getMaxTripcount`), simulator = concrete (register read)**. *(CONFIRMED — `getMaxTripcount` is a single-instruction virtual dispatch through vtable+0x140; the override value/derivation is INFERRED.)*
+**4.2 The compiler-side max-bound path for trip counts.** Any static sizing/cost analysis that must run **without** a live register uses `pelican::AffineIdx::getMaxTripcount @0xb45430` — a **virtual** call through `vtable + 0x140` (slot 320): `return (*(this->vtable[0x140]))(this);`. A register-backed `AffineIdx`'s subclass override returns a **conservative upper bound** (the max), because the concrete count is unknown at compile time. This is the explicit "use the max for sizing" hook. **CONTRAST:** the simulator uses the **concrete** register (it executes the actual runtime count). The split is therefore clean: **compiler = max (`getMaxTripcount`), simulator = concrete (register read)**. `getMaxTripcount` itself is a single-instruction virtual dispatch through vtable+0x140; what the override actually computes is [INFERRED].
 
-**4.3 The dynamic-DMA SB scratch reservation.** Independently of the data buffers, the DGE/indirect path reserves a fixed SB-space scratch: `dynamic_dma_setup` inserts one `MemoryLocation "DynamicDMAScratchLoc"` (memory-space tag 4 = SB) to stage the dynamically-generated descriptors, and its size is governed by the front-end flags `dynamic-dma-sbuf-bytes` (`xla::hilo::SetDynamicDMASbufBytes`) and `dynamic-dma-scratch-size-per-partition` — a fixed, max-bounded per-partition reservation, not data-dependent. *(CONFIRMED — scratch memloc + sizing flags.)*
+**4.3 The dynamic-DMA SB scratch reservation.** Independently of the data buffers, the DGE/indirect path reserves a fixed SB-space scratch: `dynamic_dma_setup` inserts one `MemoryLocation "DynamicDMAScratchLoc"` (memory-space tag 4 = SB) to stage the dynamically-generated descriptors, and its size is governed by the front-end flags `dynamic-dma-sbuf-bytes` (`xla::hilo::SetDynamicDMASbufBytes`) and `dynamic-dma-scratch-size-per-partition` — a fixed, max-bounded per-partition reservation, not data-dependent.
 
 **4.4 Net SBUF model** *(synthesis)*:
 
@@ -244,36 +241,35 @@ The encoder bytes are witnessed in `libwalrus.so` disassembly: `or byte [rax+3],
 - Dynamic **offset** → no buffer-size change; the buffer is max-sized; the offset re-addresses within it; plus a fixed DGE scratch.
 - Dynamic **trip** → loop-body buffers sized by `getMaxTripcount` (the max), reused across iterations.
 
-The compiler **always** allocates SBUF for the worst case. Runtime values only steer *addresses* and *iteration counts* within max-sized, statically-allocated space. *(STRONG — each piece CONFIRMED individually; the unified "always max" conclusion is synthesis across the three mechanisms, since no single allocator body reads the bound, `getMaxTripcount`, and the scratch together.)*
+The compiler **always** allocates SBUF for the worst case. Runtime values only steer *addresses* and *iteration counts* within max-sized, statically-allocated space. Each of the three mechanisms above is read directly; the unified "always max" statement is a synthesis across them, since no single allocator body reads the bound, `getMaxTripcount` and the scratch together.
 
 ---
 
 ## Section 5 — Scheduling interaction
 
-**5.1 The dynamic loop has no static per-instruction latency.** All four `bir::Hwm` latency methods for `InstDynamicForLoop` — `getLatency @0x99e608`, `getLatencyExec @0x99eed8`, `getLatencyReadInit @0x99e330`, `getLatencyWriteDrain @0x99f4f0` (addresses in `nki_klr_sim`) — are present as symbols but **do not produce pseudocode** (Hex-Rays decompilation fails on each), consistent with the reported "not implemented" stubs. *(CONFIRMED present as symbols; bodies are decompilation-failed — see the S1 CORRECTION.)* So `InstDynamicForLoop` is a pure **control container**: its cost is obtained by **recursing the loop body** (as for a static `InstLoop`) with the trip count being an *estimate* (`getMaxTripcount` or a profile estimate), since the real count is runtime. The body's per-instruction latencies are well-defined; the loop multiplies them by the estimated trip count.
+**5.1 The dynamic loop has no static per-instruction latency.** All four `bir::Hwm` latency methods for `InstDynamicForLoop` — `getLatency @0x99e608`, `getLatencyExec @0x99eed8`, `getLatencyReadInit @0x99e330`, `getLatencyWriteDrain @0x99f4f0` (addresses in `nki_klr_sim`) — are present as symbols but **do not produce pseudocode** (Hex-Rays fails on each), consistent with "not implemented" stubs. So `InstDynamicForLoop` is a pure **control container**: its cost is obtained by **recursing the loop body** (as for a static `InstLoop`) with the trip count being an *estimate* (`getMaxTripcount` or a profile estimate), since the real count is runtime. The body's per-instruction latencies are well-defined; the loop multiplies them by the estimated trip count.
 
 **5.2 The data-dependent cost estimators** (registered through `neuronxcc.starfish.penguin.Statistics`):
 
 - `DynamicInstEstimator` (**coarse**): `est_inst_count += num_dynamic_instances // 65536` (load/store/contract, 2¹⁶ elems/inst) and `// 8388608` (TensorContract, 2²³); also sets `has_copy`/`has_reduce` shape flags. The floor-division is deliberately an estimate.
 - `DetailDynInst` (**precise**): masked/predicated iteration domain (`domain_size ∩ active masks`) × `compute_flops` → `Total_flops`, × `dtype_size` → `Total_bytes_moved`. The loop trip count determines the domain **size**; `DetailDynInst` is where that estimate becomes a FLOP/byte cost.
 
-These feed the scheduler/tiling heuristics where an exact count is impossible. *(CONFIRMED/STRONG — emitted as stats; the exact consuming scheduler module is not in these binaries.)*
+These feed the scheduler/tiling heuristics where an exact count is impossible. Both estimators are emitted as statistics; the scheduler module that consumes them is not in these binaries.
 
 **5.3 Net scheduling model** *(synthesis)*: a static region is exact (`Hwm` per-instruction latency); a dynamic **loop** is `body-recursion × estimated trip`; a dynamic **offset** DMA is scheduled like a normal DMA on its (SWDGE-trigger / HWDGE-SP/Act) engine, and the *extra* `InstRegisterAlu` address-compute ops the register-ALU pass emitted **do** have static latency. So a dynamic **offset** adds a few statically-costed ALU ops; only the dynamic **trip count** is genuinely estimate-costed.
 
-> **NOTE — "Bucketize" in the scheduler is not shape bucketing.** `BucketizeCCOp` is collective-op **coalescing** (group small same-`(group_id, factor)` collectives into one tuple-I/O collective), driven by the `--internal-ccop-*-bucketing` flags. It is orthogonal to dynamic shapes — mentioned here only to close the loop with the Section-0 negative result. *(CONFIRMED — the CCop coalescing symbols `isCoalescedCCOp` / `checkCoalescedCCOps` are the only "bucketize"-adjacent code in the backend.)*
+> **NOTE — "Bucketize" in the scheduler is not shape bucketing.** `BucketizeCCOp` is collective-op **coalescing** (group small same-`(group_id, factor)` collectives into one tuple-I/O collective), driven by the `--internal-ccop-*-bucketing` flags. It is orthogonal to dynamic shapes — mentioned here only to close the loop with the Section-0 negative result. `isCoalescedCCOp` / `checkCoalescedCCOps` are the only "bucketize"-adjacent code in the backend.
 
 ---
 
 ## Section 6 — Flagged gaps (honest uncertainties)
 
-| # | Gap | Status |
+| # | Gap | Confidence |
 |---|---|---|
-| U1 | **ADDR4 register-mode bit number** — was `SEAM-UNCERTAIN` in the dynamic-shape reports. | **RESOLVED: bit 31** (Section 3, from the [ADDR4](../isa/addr4.md) encoder disassembly). |
-| U2 | **Front-end `S32` scalar → backend `BirIntRuntimeValue`** (seam S6). Different binaries; the `xla::hilo → Penguin` bridge is documented structurally but not co-disassembled in one body. | STRONG / synthesis. |
-| U3 | **`axisRegs` population site** (seam S2). Map helpers + consumer CONFIRMED; the producer pass that mints+inserts the induction register was not isolated. | Consumer CONFIRMED; producer INFERRED (loop-structuring/unroll). |
-| U4 | **`getMaxTripcount` override value.** The virtual (vtable+0x140) returning a conservative max is CONFIRMED; the exact override body / how the max is derived (ub `coef·reg+const` with `reg` → its declared range?) was not read. | Path CONFIRMED; value INFERRED. |
-| U5 | **Bounded-dynamic (single-NEFF) path use in production.** The compiler *can* compile a single NEFF with runtime size scalars (the XLA `PadToStatic`/`SliceToDynamic` path), but production stacks predominantly trace-per-bucket; which path a given NEFF uses is decided above the compiler. | Both paths CONFIRMED to exist; relative use INFERRED. |
+| U1 | **Front-end `S32` scalar → backend `BirIntRuntimeValue`** (seam S6). Different binaries; the `xla::hilo → Penguin` bridge is documented structurally but not co-disassembled in one body. | HIGH / synthesis |
+| U2 | **`axisRegs` population site** (seam S2). The map helpers and the consumer are pinned; the producer pass that mints and inserts the induction register was not isolated (loop-structuring/unroll is the likely home). | consumer CERTAIN; producer MEDIUM |
+| U3 | **`getMaxTripcount` override value.** The virtual dispatch through vtable+0x140 returning a conservative max is settled; the override body — how the max is derived from `ub = coef·reg + const` and the register's declared range — was not read. | path CERTAIN; value MEDIUM |
+| U4 | **Bounded-dynamic (single-NEFF) path use in production.** The compiler *can* compile a single NEFF with runtime size scalars (the XLA `PadToStatic`/`SliceToDynamic` path), but production stacks predominantly trace-per-bucket; which path a given NEFF uses is decided above the compiler. | both paths CERTAIN; relative use MEDIUM |
 
 ---
 

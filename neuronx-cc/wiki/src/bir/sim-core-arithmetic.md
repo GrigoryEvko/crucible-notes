@@ -4,7 +4,7 @@
 
 ## Abstract
 
-When the BIR simulator executes a scatter, an indirect copy, or an embedding-bag accumulate, every output element passes through one 1055-byte kernel: `birsim::cast_copy_or_accumulate` @ `0x28ff00`. It is the simulator's numerical-fidelity floor — the function that decides, byte for byte, what `dst = reduce(dst, src)` *means* for each of the 20 BIR dtypes. This page recovers that kernel: its two-level dispatch (a copy fast-path plus a per-dtype reduce jump table), the exactly **8 dtypes** that support reduction, the **WRAP-vs-IEEE** split between integer and float accumulation, the hard **round-to-nearest-even** every float narrow performs, and one decisive correction — the `MemoryReductionOp` enum's **MIN/MAX numbering was previously documented reversed**, and the binary proves it three independent ways.
+When the BIR simulator executes a scatter, an indirect copy, or an embedding-bag accumulate, every output element passes through one 1055-byte kernel: `birsim::cast_copy_or_accumulate` @ `0x28ff00`. It is the simulator's numerical-fidelity floor — the function that decides, byte for byte, what `dst = reduce(dst, src)` *means* for each of the 20 BIR dtypes. This page recovers that kernel: its two-level dispatch (a copy fast-path plus a per-dtype reduce jump table), the exactly **8 dtypes** that support reduction, the **WRAP-vs-IEEE** split between integer and float accumulation, the hard **round-to-nearest-even** every float narrow performs, and the exact `MemoryReductionOp` numbering — `{copy=0, add=1, MIN=2, MAX=3}` — which three independent reduce handlers agree on.
 
 The kernel does *not* re-implement dtype conversion; the per-element widen/narrow it calls (fp8/fp16/bf16 ↔ fp32) is the same family of decoders/encoders the whole-tensor cast engine `bir::CastToNewDType` uses. This page documents the *reduction* layer — the dispatch, the ALU cores, the integer wrap, and the float rounding it applies *around* those conversions — and cross-references [9.3 Cast to New Dtype](../numerics/cast-to-new-dtype.md) for the conversion LUTs themselves, which it does not re-tabulate. The simulator state model the kernel reads and mutates is in [7.34 Sim Dispatch & State](sim-dispatch-state.md).
 
@@ -46,7 +46,7 @@ void* jpt = &REDUCE_JT;                 // 0x28ff4c lea 0x5f7694(%rip),%rdx
 goto *(jpt + (int32_t)REDUCE_JT[idx]);  // 0x28ff55 movslq (%rdx,%rax,4),%rax ; add %rdx,%rax ; jmp
 ```
 
-Two structural facts fall out. **Copy supports all 20 dtypes** — it is a `memcpy` of `COPY_SIZE_LUT[dt]` bytes, gated only by `dt <= 0x13`. The reduce path is far narrower: it first rebases `dt-3` (the smallest reducible dtype, `E3M4`, is dtype 3), bounds-checks against 16, then performs a table-relative computed jump. [CONFIRMED — disasm `0x28ff00`–`0x28ff5c`, both `lea`-relative table bases read directly off the instruction stream.]
+Two structural facts fall out. **Copy supports all 20 dtypes** — it is a `memcpy` of `COPY_SIZE_LUT[dt]` bytes, gated only by `dt <= 0x13`. The reduce path is far narrower: it first rebases `dt-3` (the smallest reducible dtype, `E3M4`, is dtype 3), bounds-checks against 16, then performs a table-relative computed jump.
 
 `COPY_SIZE_LUT` @ `0x5f7760` is the dtype byte-stride table (`xxd` verified):
 
@@ -54,11 +54,11 @@ Two structural facts fall out. **Copy supports all 20 dtypes** — it is a `memc
 005f7760: {1,1,2,1, 1,1,1,1, 4,4,2,2, 2,2,4,4, 4,4,8,8}   // u64 each, dtypes 0..19
 ```
 
-This is the same stride vector the BIR dtype tables carry ([dtype-tables](dtype-tables.md)); copy emits exactly one element of the dtype's width. [CONFIRMED — `xxd -s 0x5f7760 -l 160`.]
+This is the same stride vector the BIR dtype tables carry ([dtype-tables](dtype-tables.md)); copy emits exactly one element of the dtype's width.
 
 ## The 8 reducing dtypes
 
-`REDUCE_JT` @ `0x5f7694` is 17 `int32` entries; the jump target is `0x5f7694 + entry`. Nine entries equal `0xffb18eb4`, which resolves to `0x110548` — the cold throw block. The remaining eight route to a per-dtype handler. [CONFIRMED — `xxd -s 0x5f7694 -l 68`; throw entries decode to `0x110548` by inspection regardless of any base ambiguity, and the dispatch head reads `jpt = 0x5f7694` directly.]
+`REDUCE_JT` @ `0x5f7694` is 17 `int32` entries; the jump target is `0x5f7694 + entry`. Nine entries equal `0xffb18eb4`, which resolves to `0x110548` — the cold throw block. The remaining eight route to a per-dtype handler.
 
 | idx | dtype | name | target | handler | reduce? |
 |----|----|----|----|----|----|
@@ -80,9 +80,9 @@ This is the same stride vector the BIR dtype tables carry ([dtype-tables](dtype-
 | 15 | 18 | uint64 | `0x110548` | THROW | ✗ |
 | 16 | 19 | int64 | `0x28ff60` | int64 inline (`cmovg`/`cmovl`/add) | ✅ |
 
-**Exactly 8 dtypes reduce**: `{3 E3M4, 4 E4M3, 7 E5M2}` ∪ `{12 bf16, 13 fp16}` ∪ `{15 int32, 16 float32, 19 int64}`. The other 12 hit `0x110548`, which allocates a `std::runtime_error` carrying `"cast_accumulate: unsupported dtype "` (string @ `0x5c9608`) concatenated with `bir::Dtype2string(dt)`. [CONFIRMED — REDUCE_JT byte decode (9 throw entries / 8 live handlers); throw string `xxd -s 0x5c9608`: `cast_accumulate: unsupported dty pe`.]
+**Exactly 8 dtypes reduce**: `{3 E3M4, 4 E4M3, 7 E5M2}` ∪ `{12 bf16, 13 fp16}` ∪ `{15 int32, 16 float32, 19 int64}`. The other 12 hit `0x110548`, which allocates a `std::runtime_error` carrying `"cast_accumulate: unsupported dtype "` (string @ `0x5c9608`) concatenated with `bir::Dtype2string(dt)`.
 
-> **GOTCHA — `float32r` (dtype 17) cannot be accumulated in the simulator.** `REDUCE_JT[14] = 0x110548` → throw. `float32r` is the PE array's reduced-precision FP32 accumulation format, yet a scatter-add targeting a `float32r` buffer aborts with `unsupported dtype`. Copy of `float32r` works (it has a `COPY_SIZE_LUT` entry of 4); only the ALU path rejects it. The same applies to every integer narrower than 32 bits (`int8/16`, all `uint`), the OCP `e4m3fn`/`e8m0fnu`, and the x4-packed fp8/fp4 dtypes. [CONFIRMED.]
+> **GOTCHA — `float32r` (dtype 17) cannot be accumulated in the simulator.** `REDUCE_JT[14] = 0x110548` → throw. `float32r` is the PE array's reduced-precision FP32 accumulation format, yet a scatter-add targeting a `float32r` buffer aborts with `unsupported dtype`. Copy of `float32r` works (it has a `COPY_SIZE_LUT` entry of 4); only the ALU path rejects it. The same applies to every integer narrower than 32 bits (`int8/16`, all `uint`), the OCP `e4m3fn`/`e8m0fnu`, and the x4-packed fp8/fp4 dtypes.
 
 ## WRAP vs IEEE: the integer/float split
 
@@ -98,7 +98,9 @@ switch (op) {
 }
 ```
 
-The add is a plain `add DWORD[r12],eax` — overflow wraps mod 2³², no clamp. `pminsd`/`pmaxsd` are signed. [CONFIRMED — `objdump 0x28ffb0`: `cmp $0x2,%edi; je 0x290260` (pminsd), `cmp $0x3,%edi; je 0x2901e0` (pmaxsd), `cmp $0x1,%edi; add %eax,(%r12)`.]
+The add is a plain `add DWORD[r12],eax` — overflow wraps mod 2³², no clamp. `pminsd`/`pmaxsd` are signed.
+
+*Anchors: dispatch at `0x28ffb0` — `cmp $0x2,%edi → 0x290260` (`pminsd`), `cmp $0x3,%edi → 0x2901e0` (`pmaxsd`), `cmp $0x1,%edi → add %eax,(%r12)`.*
 
 ### int64 — dtype 19, inline @ `0x28ff60`
 
@@ -110,7 +112,7 @@ switch (op) {
 }
 ```
 
-Signed 64-bit compare via `cmov`; add wraps mod 2⁶⁴. [CONFIRMED — `objdump 0x290200`–`0x290252`.]
+Signed 64-bit compare via `cmov`; add wraps mod 2⁶⁴.
 
 ### float32 — dtype 16, tail-jmp @ `0x28ff90` → `sub_28f700`
 
@@ -125,9 +127,9 @@ switch (op) {
 }
 ```
 
-[CONFIRMED — `objdump 0x28f700`: `cmp $0x2,%edi; je 0x28f900`; `jg 0x28f728` then `cmp $0x3` → `maxss`; `cmp $0x1` → `addss`.]
+*Anchors: `sub_28f700` — `cmp $0x2,%edi; je 0x28f900` (minss), `jg 0x28f728` then `cmp $0x3` (maxss), `cmp $0x1` (addss).*
 
-> **GOTCHA — SSE `minss`/`maxss` are not IEEE `minNum`/`maxNum`.** On a NaN operand or an exact tie, x86 `minss`/`maxss` return the **second** source operand. Here both encode `movss (x); {min,max}ss (acc); movss → (acc)` — i.e. the second operand is `acc` (= `dst`). So `reduce(dst, NaN)` keeps `dst`, and a NaN already in `dst` is *replaced* by `src` only if `src` is not NaN. This differs from a `minNum`/`maxNum` implementation that always propagates the non-NaN value symmetrically. [CONFIRMED — operand order read off the `movss` sources at `0x28f72d`/`0x28f900`.]
+> **GOTCHA — SSE `minss`/`maxss` are not IEEE `minNum`/`maxNum`.** On a NaN operand or an exact tie, x86 `minss`/`maxss` return the **second** source operand. Here both encode `movss (x); {min,max}ss (acc); movss → (acc)` — i.e. the second operand is `acc` (= `dst`). So `reduce(dst, NaN)` keeps `dst`, and a NaN already in `dst` is *replaced* by `src` only if `src` is not NaN. This differs from a `minNum`/`maxNum` implementation that always propagates the non-NaN value symmetrically. (The operand order is fixed by the `movss` sources at `0x28f72d`/`0x28f900`.)
 
 | dtype | add overflow | NaN under min/max |
 |----|----|----|
@@ -154,7 +156,7 @@ fp8_encode(dst, &tmpB, 1, /*cfg=*/0);// 0x2901c4 xor %ecx,%ecx ; call 0x2a36e0  
 
 The encoder's RNE adds a `1<<(MANT_SHIFT-1)` round-bias plus guard/round/sticky/odd correction before the mantissa shift. The decode/encode byte-tables (exponent rebias, mantissa shift, denormal hidden-bit, Inf/NaN codes) belong to the shared conversion layer and are tabulated in [9.3 Cast to New Dtype](../numerics/cast-to-new-dtype.md); this page does not duplicate them.
 
-> **GOTCHA — fp8 reduce hard-codes `FP8Config = 0`.** Each fp8 stub clears the config argument (`xor %ecx,%ecx` @ `0x2901c4`/`0x290174`/`0x290124`) before the encode, so `fp8_sis` (saturate) and `fp8_sns` (NaN-suppress) are both off. **Overflow therefore emits Inf, not max-finite**, and NaN emits canonical NaN. This diverges from the compiler/runtime default `0x0001` (saturate) that the whole-tensor `CastToNewDType` and the MX-quantize path honor — a *simulator-fidelity gap* where the sim is more pessimistic than the device. [CONFIRMED that the stub passes config 0 — disasm; that the device saturates is INFERRED from NEFF `fp8_sis=1` metadata, not from a HW model in these binaries.]
+> **GOTCHA — fp8 reduce hard-codes `FP8Config = 0`.** Each fp8 stub clears the config argument (`xor %ecx,%ecx` @ `0x2901c4`/`0x290174`/`0x290124`) before the encode, so `fp8_sis` (saturate) and `fp8_sns` (NaN-suppress) are both off. **Overflow therefore emits Inf, not max-finite**, and NaN emits canonical NaN. This diverges from the compiler/runtime default `0x0001` (saturate) that the whole-tensor `CastToNewDType` and the MX-quantize path honor — a *simulator-fidelity gap* where the sim is more pessimistic than the device. That the *device* saturates is [INFERRED] from NEFF `fp8_sis=1` metadata; these binaries carry no hardware model to check it against.
 
 **bf16 (dtype 12), encode `cast_fp32_to_bf16` @ `0x2a42e0`** — bf16 is the high 16 bits of fp32 (shared 8-bit exponent, bias 127), so decode (`0x2a42d0`) is a lossless `<<16`. Encode is true conditional RNE:
 
@@ -169,7 +171,7 @@ if (guard && (lsbKept || sticky)) m += 0x10000; // round up (carry can bump exp)
 m >>= 16; // recombine sign|exp|mant7
 ```
 
-No saturation — bf16 and fp32 share the exponent range, so overflow occurs only when a round-up carries out of `exp==0xfe` into bf16 Inf `0x7f80`. [CONFIRMED — `objdump 0x2a42e0`–`0x2a4400`: the `0x8000`/`0x10000`/`0x7fff` masks and the `0x7fc0`/`0x7f80` codes are byte-present.]
+No saturation — bf16 and fp32 share the exponent range, so overflow occurs only when a round-up carries out of `exp==0xfe` into bf16 Inf `0x7f80`.
 
 **fp16 (dtype 13), inline @ `0x28ffd0`** — the only narrow float with no helper; both decode and encode are open-coded.
 
@@ -188,13 +190,13 @@ f |= (x << 16) & 0x80000000;                    // 0x290003 and $0x80000000  sig
 //   else overflow: out = (mag < 0x7F800001) ? 0x7C00 : 0x7E00  // finite/Inf -> Inf, NaN -> qNaN
 ```
 
-fp16 overflow produces fp16 **Inf `0x7c00`** (IEEE-correct, not a max-finite clamp); NaN → `0x7e00`. The fp32 round constant is `0x37FFF001` (= `-exp_rebias 0x38000000 + RNE_bias 0xfff + 1`). [CONFIRMED for the decode rebase (`cmp $0xf800000`, `lea 0x38000000`, sign mask `0x80000000`) and the `0.5`/`2^-14` rodata @ `0x5f3260` = `0x3f000000 0x38800000`; the encode knee constants `0x477fffff`/`0x37FFF001`/`0x7F800001` are STRONG — documented and consistent with the decode-side immediates, materialized as SSE float comparisons rather than `cmp` immediates.]
+fp16 overflow produces fp16 **Inf `0x7c00`** (IEEE-correct, not a max-finite clamp); NaN → `0x7e00`. The fp32 round constant is `0x37FFF001` (939520001, = `-exp_rebias 0x38000000 + RNE_bias 0xfff + 1`); the `lea` folds the round bias into that one immediate.
 
-> Note on a prior transcription: the fp16 RNE constant is `0x37FFF001` (939520001), not `0x37FF0001`; the binary `lea` folds the round bias into this single immediate. [CONFIRMED.]
+The decode side is read straight off the instruction stream (`cmp $0xf800000`, `lea 0x38000000`, sign mask `0x80000000`, and the `0.5`/`2^-14` rodata pair `0x3f000000 0x38800000` @ `0x5f3260`). The encode knee constants `0x477fffff`/`0x37FFF001`/`0x7F800001` materialize as SSE float comparisons rather than `cmp` immediates, so they are reconstructed from the compare operands rather than lifted verbatim.
 
-## The MIN/MAX reversal correction
+## MemoryReductionOp numbering: 2 is MIN, 3 is MAX
 
-This is the page's strongest finding. The compact `birsim::MemoryReductionOp` enum was previously documented as `{copy=0, add=1, MAX=2, MIN=3}`. **The binary proves the byte-exact truth is `{copy=0, add=1, MIN=2, MAX=3}`** — op code 2 is MIN, op code 3 is MAX. Three independent reduce handlers agree, leaving no ambiguity:
+The compact `birsim::MemoryReductionOp` enum is **`{copy=0, add=1, MIN=2, MAX=3}`** — op code 2 is MIN, op code 3 is MAX. Three independent reduce handlers pin the same assignment, so there is no ambiguity to resolve:
 
 | `op` | int32 (`0x28ffb0`) | int64 (`0x28ff60`) | fp32 (`0x28f700`) | meaning |
 |----|----|----|----|----|
@@ -202,7 +204,7 @@ This is the page's strongest finding. The compact `birsim::MemoryReductionOp` en
 | 2 | `je 0x290260` → `pminsd` | `je 0x290240` → `cmovg` (keep-smaller) | `je 0x28f900` → `minss` | **MIN** |
 | 3 | `je 0x2901e0` → `pmaxsd` | `je 0x290210` → `cmovl` (keep-larger) | `maxss` | **MAX** |
 
-[CONFIRMED — all three handlers disassembled above; `cmp $0x2,%edi` always routes to the MIN instruction (`pminsd`/`cmovg`/`minss`) and `cmp $0x3,%edi` always to the MAX instruction. The int64 `cmovg %rdx,%rax` after `mov (%r12),%rax` keeps `rax`(dst) when `dst <= src` — i.e. selects the smaller — confirming op 2 = MIN.]
+In every handler `cmp $0x2,%edi` routes to the MIN instruction (`pminsd`/`cmovg`/`minss`) and `cmp $0x3,%edi` to the MAX instruction. The int64 case is the clearest read: `cmovg %rdx,%rax` after `mov (%r12),%rax` keeps `rax` (= `dst`) when `dst <= src`, i.e. it selects the smaller value under op 2.
 
 The practical consequence is muted by a second finding: in this build **the memory-RMW min/max kernels are unreachable**. Both branches exist (the SSE/`cmov` instructions are present), but no producer of the `op` argument ever passes 2 or 3.
 
@@ -227,9 +229,9 @@ if (a2 == 4) { slot = 1; return slot; } // 0x1b0ef2 cmp $0x4,%esi; je 0x1b1250; 
 | min | 9 | **THROWS** | same |
 | (all others) | … | **THROWS** | same |
 
-[CONFIRMED — `objdump 0x1b0ed0`: the two `je` branches to `0x1b1258`/`0x1b1250`, the `movl $0x1,0x1c(%rsp)` at `0x1b1250`, and the shared `mov 0x1c(%rsp),%eax; ... ret` epilogue at `0x1b1258`–`0x1b126d`. The else-path loads the assertion source-path string @ `0x5a57d8` (`.../Simulator/inst_visitor.cpp:363`).]
+*Anchors: `AluOpType2MemoryReduction` @ `0x1b0ed0` — the two `je` branches to `0x1b1258`/`0x1b1250`, `movl $0x1,0x1c(%rsp)` at `0x1b1250`, shared epilogue `0x1b1258`–`0x1b126d`; the else-path loads the assertion path string @ `0x5a57d8` (`.../Simulator/inst_visitor.cpp:363`).*
 
-> **GOTCHA — min/max do not map; they throw.** A previous pass inferred `min(9)/max(8) → MemoryReductionOp 2/3` by fall-through. The converter does no such thing: only `bypass→copy` and `add→add` return; every other `AluOpType` (min and max included) hits `NeuronAssertion(false)` and throws. So the converter *never* produces a 2 or a 3, which is why the kernel's MIN/MAX branches are dead through this path. [CONFIRMED.]
+> **GOTCHA — `min`/`max` do not fall through to `MemoryReductionOp` 2/3; they throw.** Only `bypass→copy` and `add→add` return a value. Every other `AluOpType`, min and max included, hits `NeuronAssertion(false)`. The converter therefore *never* produces a 2 or a 3, which is why the kernel's MIN/MAX branches are dead through this path.
 
 ### Reachability of `op`
 
@@ -238,7 +240,7 @@ if (a2 == 4) { slot = 1; return slot; } // 0x1b0ef2 cmp $0x4,%esi; je 0x1b1250; 
 - `Memory::doCopyIndirect` @ `0x17a930` — per-element loop calls `cast_copy_or_accumulate` @ `0x17bcb0` with `op` threaded from `writeIndirect`. That `op` originates from `AluOpType2MemoryReduction`, so it is 0 or 1 only.
 - `MemoryObject::runAP` @ `0x298390` — calls @ `0x29883f` with a **boolean** `op` (`*v34 != 0`): 0 = copy, 1 = add. Never 2/3.
 
-`AluOpType2MemoryReduction` itself has three callers (`visitInstIndirectSaveAccumulate` `0x1e2640`, `visitInstGenericIndirectSave` `0x1f3b30`, `visitInstDMACopy` `0x20b7b0`), all forwarding the cce-op field and all therefore restricted to `{bypass, add}`. The BIR verifier (`birverifier::checkCCEAluOpType`) admits a wider per-opcode set including min/max, so a min/max cce-reduce is *verifier-legal but simulator-unsupported* in this build. [CONFIRMED for the call sites; the verifier-vs-sim gap is STRONG — the verifier permits combinations the converter rejects.]
+`AluOpType2MemoryReduction` itself has three callers (`visitInstIndirectSaveAccumulate` `0x1e2640`, `visitInstGenericIndirectSave` `0x1f3b30`, `visitInstDMACopy` `0x20b7b0`), all forwarding the cce-op field and all therefore restricted to `{bypass, add}`. The BIR verifier (`birverifier::checkCCEAluOpType`) admits a wider per-opcode set including min/max, so a min/max cce-reduce is *verifier-legal but simulator-unsupported* in this build.
 
 ## The collective reducer is a separate engine
 
@@ -254,28 +256,28 @@ switch (op) {
 }
 ```
 
-This is the **only** path that executes a reducing min/max in this build. [CONFIRMED — `objdump 0x1b35ca`: `cmp $0x8` / `cmp $0x9` / `cmp $0x4` dispatch on `inst+0x180` (`cmpl $0x4,0x180(%rbx)`); handlers at `0x1b3af0`/`0x1b3b70` are `maxss (%rdx),%xmm0` / `minss (%rdx),%xmm0`.]
+This is the **only** path that executes a reducing min/max in this build. The collective min/max handlers are inline SSE, not libm: `0x1b3af0` is `maxss (%rdx),%xmm0` and `0x1b3b70` is `minss (%rdx),%xmm0`, with no `fmaxf`/`fminf` PLT call anywhere in the dispatch region. They therefore inherit the *same* 2nd-operand-on-NaN behaviour as `cast_copy_or_accumulate`'s fp32 core — with `movss (x); maxss (acc)`, a NaN operand or an exact tie returns `acc` — rather than the IEEE-quieting semantics of libm.
 
-> **CORRECTION to a prior note.** The collective min/max were earlier described as libm `fmaxf`/`fminf` (IEEE quieting). The binary disagrees: the handlers at `0x1b3af0`/`0x1b3b70` are inline SSE `maxss`/`minss` — the *same* 2nd-operand-on-NaN family as `cast_copy_or_accumulate`'s fp32 core, **not** libm. With `movss (x); maxss (acc)`, a NaN operand or tie returns `acc`. There is no `call fmaxf@plt`/`call fminf@plt` in the dispatch region. [CONFIRMED — `objdump 0x1b3af0`/`0x1b3b70` show `maxss (%rdx),%xmm0` / `minss (%rdx),%xmm0` with no PLT call.]
+*Anchors: `doReduction` dispatch @ `0x1b35ca` — `cmpl $0x4,0x180(%rbx)` plus `cmp $0x8` / `cmp $0x9` on the same field.*
 
 ## Function map
 
 | Function | Addr | Role | Conf |
 |----|----|----|----|
-| `birsim::cast_copy_or_accumulate` | `0x28ff00` | per-dtype RMW apply `(op,dst,src,dt)` | CONFIRMED |
-| `birsim::AluOpType2MemoryReduction` | `0x1b0ed0` | `AluOp → MemoryReductionOp` (only `{copy,add}`) | CONFIRMED |
-| `sub_28f700` (fp32 ALU core) | `0x28f700` | `op1`=`addss`, `op2`=`minss`, `op3`=`maxss` | CONFIRMED |
-| fp8 reduce stubs E3M4/E4M3/E5M2 | `0x290190`/`0x290140`/`0x2900f0` | decode→ALU→encode, config=0 | CONFIRMED |
-| bf16 stub | `0x2900a0` | decode `0x2a42d0` (`<<16`) / encode `0x2a42e0` (RNE) | CONFIRMED |
-| fp16 inline | `0x28ffd0` | open-coded decode + RNE encode | CONFIRMED |
-| int32 inline | `0x28ffb0` | `pminsd`/`pmaxsd`/wrap-add | CONFIRMED |
-| int64 inline | `0x28ff60` | `cmovg`(MIN)/`cmovl`(MAX)/wrap-add | CONFIRMED |
-| `REDUCE_JT` | `0x5f7694` | 17×int32 table-rel; 9 → throw `0x110548` | CONFIRMED |
-| `COPY_SIZE_LUT` | `0x5f7760` | 20×u64 dtype stride | CONFIRMED |
-| throw string | `0x5c9608` | `"cast_accumulate: unsupported dtype "` | CONFIRMED |
-| `Memory::doCopyIndirect` | `0x17a930` | per-elem caller (call @ `0x17bcb0`) | CONFIRMED |
-| `MemoryObject::runAP` | `0x298390` | bool-op caller (call @ `0x29883f`) | CONFIRMED |
-| `doReduction` (collective) | `0x1b3400` | AluOp-direct `addss`/`maxss`/`minss` on fp32 | CONFIRMED |
+| `birsim::cast_copy_or_accumulate` | `0x28ff00` | per-dtype RMW apply `(op,dst,src,dt)` | CERTAIN |
+| `birsim::AluOpType2MemoryReduction` | `0x1b0ed0` | `AluOp → MemoryReductionOp` (only `{copy,add}`) | CERTAIN |
+| `sub_28f700` (fp32 ALU core) | `0x28f700` | `op1`=`addss`, `op2`=`minss`, `op3`=`maxss` | CERTAIN |
+| fp8 reduce stubs E3M4/E4M3/E5M2 | `0x290190`/`0x290140`/`0x2900f0` | decode→ALU→encode, config=0 | CERTAIN |
+| bf16 stub | `0x2900a0` | decode `0x2a42d0` (`<<16`) / encode `0x2a42e0` (RNE) | CERTAIN |
+| fp16 inline | `0x28ffd0` | open-coded decode + RNE encode | CERTAIN |
+| int32 inline | `0x28ffb0` | `pminsd`/`pmaxsd`/wrap-add | CERTAIN |
+| int64 inline | `0x28ff60` | `cmovg`(MIN)/`cmovl`(MAX)/wrap-add | CERTAIN |
+| `REDUCE_JT` | `0x5f7694` | 17×int32 table-rel; 9 → throw `0x110548` | CERTAIN |
+| `COPY_SIZE_LUT` | `0x5f7760` | 20×u64 dtype stride | CERTAIN |
+| throw string | `0x5c9608` | `"cast_accumulate: unsupported dtype "` | CERTAIN |
+| `Memory::doCopyIndirect` | `0x17a930` | per-elem caller (call @ `0x17bcb0`) | CERTAIN |
+| `MemoryObject::runAP` | `0x298390` | bool-op caller (call @ `0x29883f`) | CERTAIN |
+| `doReduction` (collective) | `0x1b3400` | AluOp-direct `addss`/`maxss`/`minss` on fp32 | CERTAIN |
 
 ## Reimplementation checklist
 

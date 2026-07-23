@@ -14,7 +14,7 @@ For reimplementation, the contract is:
 
 - The **four constructor families** and the literal arguments each passes — these *are* the geometry; there is no config file or device probe.
 - The **invariants** (128 partitions, 128×128 PE, 256 semaphores, 2048-byte PSUM bank, one unit per engine) versus the **divergent axes** (SBUF size, gen1's half-width PSUM/Pool/Act, DVE opcode count, cost-model frequency, per-core HBM).
-- The **cross-source check**: the geometry is single-sourced in the CTM ctors, but the `walrus_driver` cost model is an independent binary that re-derives the PSUM bank size (2048) and supplies per-engine frequencies. One claimed third source — a gen4 PE dtype slot — does **not** exist in the geometry and is corrected below.
+- The **cross-source check**: the geometry is single-sourced in the CTM ctors, but the `walrus_driver` cost model is an independent binary that re-derives the PSUM bank size (2048) and supplies per-engine frequencies. There is no third source, and in particular no gen4 PE dtype slot (see §"MX is not a PE dimension").
 
 | | |
 |---|---|
@@ -67,41 +67,41 @@ The table below is the deliverable: every per-generation geometry constant, with
 
 | Constant | gen1 Inferentia | gen2 Sunda | gen3 Cayman | gen4 CoreV4 | Source (ctor → arg) | Conf |
 |---|---|---|---|---|---|---|
-| ArchLevel ordinal | 10 | 20 | 30 | 40 | `ArchLevel2string` switch | CONFIRMED |
-| Internal codename | `inferentia` | `sunda` | `gen3` | `core_v4` | `getArchModel` aliases | CONFIRMED |
-| Runtime codename | inferentia | sunda | cayman | **mariana** | `ArchLevel2RuntimeTarget` | CONFIRMED |
-| Marketed device | Inf1 | Trn1 | Trn2 | Trn3 | `ArchLevel2ExternalString` | CONFIRMED |
-| CoreVN / codegen | CoreV1 (legacy) | CoreV2 | CoreV3 | CoreV4 | `initCodegen` variant | CONFIRMED |
-| **SBUF bytes/partition** | 0x18000 = 96 KiB | 0x30000 = 192 KiB | 0x38000 = 224 KiB | 0x40000 = 256 KiB | `Statebuf` arg0 `partitionSize` | CONFIRMED |
-| **SBUF total** (×128) | 12 MiB | 24 MiB | 28 MiB | 32 MiB | arg0 × 128 | CONFIRMED |
-| SBUF partitions | 128 | 128 | 128 | 128 | `Statebuf` arg2 `numPartitions` = 0x80 | CONFIRMED |
-| SBUF SOC step size | 0x20000 = 128 KiB | 0x40000 = 256 KiB | 0x40000 = 256 KiB | 0x40000 = 256 KiB | `Statebuf` arg1 `PartitionSOCStepSize` | CONFIRMED |
-| SBUF mid-partition | 64 | 64 | 64 | 64 | `Statebuf` arg3 `midPartition` | CONFIRMED |
-| SBUF reservedSize | 0x4000 = 16384 | 0x4000 = 16384 | 0x4008 = 16392 | 0x4008 = 16392 | `Statebuf` arg5 `reservedSize` | CONFIRMED |
-| **PSUM bank count** | 4 | 8 | 8 | 8 | `Psumbuf` arg0 `numBanks` | CONFIRMED |
-| **PSUM bank size** | 2048 B | 2048 B | 2048 B | 2048 B | `Psumbuf` arg2 `partSize` = 0x800 | CONFIRMED |
-| PSUM partitions | 64 | 128 | 128 | 128 | `Psumbuf` arg1 `numPartitions` | CONFIRMED |
-| PSUM phys/partition | 8 KiB (4×2K) | 16 KiB (8×2K) | 16 KiB | 16 KiB | banks × partSize | CONFIRMED |
-| PSUM phys total | 0.5 MiB | 2 MiB | 2 MiB | 2 MiB | banks × partSize × parts | CONFIRMED |
-| **PE array (rows×cols)** | 128 × 64 | 128 × 128 | 128 × 128 | 128 × 128 | `PeDimensionsForDtype` arg0×arg1 | CONFIRMED |
-| PE maxWeightStep | 2 | 2 | 2 | 2 | `PeDimensionsForDtype` arg2 | CONFIRMED |
-| PE minWave | 128 | 128 | 128 | 128 | `PeDimensionsForDtype` arg3 = 0x80 | CONFIRMED |
-| PE reorder window | 64 | 64 | 64 | 64 | `<Arch>Pe::getReorderWindowSize` | CONFIRMED |
-| Pool channels (parts) | 64 | 128 | 128 | 128 | `Pool` arg0 `numChannels` | CONFIRMED |
-| Act channels (parts) | 64 | 128 | 128 | 128 | `Act` arg0 `numChannels` | CONFIRMED |
-| Pool reorder window | 8 | 8 | 8 | 8 | `<Arch>Pool::getReorderWindowSize` | CONFIRMED |
-| Act reorder window | 8 | 8 | 8 | 16 | `<Arch>Act::getReorderWindowSize` | CONFIRMED |
-| Dve reorder window | 8 | 8 | 8 | 16 | `<Arch>Dve::getReorderWindowSize` | CONFIRMED (gen4) |
-| **Semaphores / core** | 256 | 256 | 256 | 256 | `CoreParamSet.NumSemaphores` = 0x100 | CONFIRMED |
-| **Per-core HBM** | 16 GiB | 16 GiB | 24 GiB | 36 GiB | `Core::dramSizeGb` (CoreParamSet) | CONFIRMED |
-| Device HBM | 32 GiB | 32 GiB | 24 GiB | 36 GiB | `Device::dramSizeGb` (arg2) | CONFIRMED |
-| NeuronCores / device | 4 | 2 | 2 | 2 | `Device` arg1 `numCores` | CONFIRMED |
-| Devices / board | 2 | 2 | 2 | 2 | `Board` arg1 `numDevices` | CONFIRMED |
-| Per-engine count (each) | 1 | 1 | 1 | 1 | `CoreParamSet.*EngineCount` | CONFIRMED |
-| **Cost-model freq** PE/Pool/Act | (140)¹ | 140 | 120 | 120 | `<Hwm>::getEngineFrequency` ord 1–3 | CONFIRMED |
-| **Cost-model freq** SP | (112)¹ | 112 | 96 | 120 | `<Hwm>::getEngineFrequency` ord 5 | CONFIRMED |
-| DVE default-set opcodes | — | 46 | 52 | 59 | `dve_bin_gen{2,3,4}` opcode_table | CONFIRMED |
-| MX / FP4 microscaling | NO | NO | NO | feature, not geometry | see §"MX is not a PE dimension" | STRONG |
+| ArchLevel ordinal | 10 | 20 | 30 | 40 | `ArchLevel2string` switch | CERTAIN |
+| Internal codename | `inferentia` | `sunda` | `gen3` | `core_v4` | `getArchModel` aliases | CERTAIN |
+| Runtime codename | inferentia | sunda | cayman | **mariana** | `ArchLevel2RuntimeTarget` | CERTAIN |
+| Marketed device | Inf1 | Trn1 | Trn2 | Trn3 | `ArchLevel2ExternalString` | CERTAIN |
+| CoreVN / codegen | CoreV1 (legacy) | CoreV2 | CoreV3 | CoreV4 | `initCodegen` variant | CERTAIN |
+| **SBUF bytes/partition** | 0x18000 = 96 KiB | 0x30000 = 192 KiB | 0x38000 = 224 KiB | 0x40000 = 256 KiB | `Statebuf` arg0 `partitionSize` | CERTAIN |
+| **SBUF total** (×128) | 12 MiB | 24 MiB | 28 MiB | 32 MiB | arg0 × 128 | CERTAIN |
+| SBUF partitions | 128 | 128 | 128 | 128 | `Statebuf` arg2 `numPartitions` = 0x80 | CERTAIN |
+| SBUF SOC step size | 0x20000 = 128 KiB | 0x40000 = 256 KiB | 0x40000 = 256 KiB | 0x40000 = 256 KiB | `Statebuf` arg1 `PartitionSOCStepSize` | CERTAIN |
+| SBUF mid-partition | 64 | 64 | 64 | 64 | `Statebuf` arg3 `midPartition` | CERTAIN |
+| SBUF reservedSize | 0x4000 = 16384 | 0x4000 = 16384 | 0x4008 = 16392 | 0x4008 = 16392 | `Statebuf` arg5 `reservedSize` | CERTAIN |
+| **PSUM bank count** | 4 | 8 | 8 | 8 | `Psumbuf` arg0 `numBanks` | CERTAIN |
+| **PSUM bank size** | 2048 B | 2048 B | 2048 B | 2048 B | `Psumbuf` arg2 `partSize` = 0x800 | CERTAIN |
+| PSUM partitions | 64 | 128 | 128 | 128 | `Psumbuf` arg1 `numPartitions` | CERTAIN |
+| PSUM phys/partition | 8 KiB (4×2K) | 16 KiB (8×2K) | 16 KiB | 16 KiB | banks × partSize | CERTAIN |
+| PSUM phys total | 0.5 MiB | 2 MiB | 2 MiB | 2 MiB | banks × partSize × parts | CERTAIN |
+| **PE array (rows×cols)** | 128 × 64 | 128 × 128 | 128 × 128 | 128 × 128 | `PeDimensionsForDtype` arg0×arg1 | CERTAIN |
+| PE maxWeightStep | 2 | 2 | 2 | 2 | `PeDimensionsForDtype` arg2 | CERTAIN |
+| PE minWave | 128 | 128 | 128 | 128 | `PeDimensionsForDtype` arg3 = 0x80 | CERTAIN |
+| PE reorder window | 64 | 64 | 64 | 64 | `<Arch>Pe::getReorderWindowSize` | CERTAIN |
+| Pool channels (parts) | 64 | 128 | 128 | 128 | `Pool` arg0 `numChannels` | CERTAIN |
+| Act channels (parts) | 64 | 128 | 128 | 128 | `Act` arg0 `numChannels` | CERTAIN |
+| Pool reorder window | 8 | 8 | 8 | 8 | `<Arch>Pool::getReorderWindowSize` | CERTAIN |
+| Act reorder window | 8 | 8 | 8 | 16 | `<Arch>Act::getReorderWindowSize` | CERTAIN |
+| Dve reorder window | 8 | 8 | 8 | 16 | `<Arch>Dve::getReorderWindowSize` | CERTAIN |
+| **Semaphores / core** | 256 | 256 | 256 | 256 | `CoreParamSet.NumSemaphores` = 0x100 | CERTAIN |
+| **Per-core HBM** | 16 GiB | 16 GiB | 24 GiB | 36 GiB | `Core::dramSizeGb` (CoreParamSet) | CERTAIN |
+| Device HBM | 32 GiB | 32 GiB | 24 GiB | 36 GiB | `Device::dramSizeGb` (arg2) | CERTAIN |
+| NeuronCores / device | 4 | 2 | 2 | 2 | `Device` arg1 `numCores` | CERTAIN |
+| Devices / board | 2 | 2 | 2 | 2 | `Board` arg1 `numDevices` | CERTAIN |
+| Per-engine count (each) | 1 | 1 | 1 | 1 | `CoreParamSet.*EngineCount` | CERTAIN |
+| **Cost-model freq** PE/Pool/Act | (140)¹ | 140 | 120 | 120 | `<Hwm>::getEngineFrequency` ord 1–3 | CERTAIN |
+| **Cost-model freq** SP | (112)¹ | 112 | 96 | 120 | `<Hwm>::getEngineFrequency` ord 5 | CERTAIN |
+| DVE default-set opcodes | — | 46 | 52 | 59 | `dve_bin_gen{2,3,4}` opcode_table | CERTAIN |
+| MX / FP4 microscaling | NO | NO | NO | feature, not geometry | see §"MX is not a PE dimension" | HIGH |
 
 ¹ gen1 has no distinct `Hwm` subclass; `TrainiumHwm` (the gen2/Sunda cost model) is the lowest cost model that ships. gen1 latency uses the base perf-sim path. See §"Cost-model frequencies".
 
@@ -124,7 +124,7 @@ Statebuf::Statebuf(this, 229376 /*0x38000=224KiB*/, 0x40000, 128, 64, &align, 16
 Statebuf::Statebuf(this, 0x40000 /*256KiB*/,        0x40000, 128, 64, &align, 16392);
 ```
 
-So per partition: **96 / 192 / 224 / 256 KiB** for gen1/2/3/4, i.e. **12 / 24 / 28 / 32 MiB** total across 128 partitions. The trailing `reservedSize` (arg5, header default `16384`) flips from `0x4000` to `0x4008` (bit 3 set) starting with Cayman; the byte value is CONFIRMED, but `ctm.hpp` names it only `reservedSize`, so the meaning of the extra bit is INFERRED. The second argument `PartitionSOCStepSize` is `0x20000` (128 KiB) on Inferentia and `0x40000` (256 KiB) on gen2+; `midPartition` (arg3) is `64` on every generation.
+So per partition: **96 / 192 / 224 / 256 KiB** for gen1/2/3/4, i.e. **12 / 24 / 28 / 32 MiB** total across 128 partitions. The trailing `reservedSize` (arg5, header default `16384`) flips from `0x4000` to `0x4008` (bit 3 set) starting with Cayman; the byte values are read directly, but `ctm.hpp` names the field only `reservedSize`, so what the extra bit *means* is [INFERRED]. The second argument `PartitionSOCStepSize` is `0x20000` (128 KiB) on Inferentia and `0x40000` (256 KiB) on gen2+; `midPartition` (arg3) is `64` on every generation.
 
 The allocator reads `partitionSize` through the standard object chain. In the SBUF coloring allocator (`SB_Allocator`), the read is `getArchModel → Board+8(Device) → Device+0x10(Core) → Core+0x28(Statebuf) → Statebuf+0`, then stored into the allocator's per-partition byte budget. That `Statebuf+0` is exactly arg0 — the per-partition SBUF size. The 128-partition count is a *separate* field (`Statebuf+8`), so the two are never conflated. The geometry of how the allocator carves this budget is owned by [arch/sbuf-psum-geometry.md](sbuf-psum-geometry.md).
 
@@ -151,8 +151,6 @@ Gen3Hwm::getPsumBankSize()     → return 2048;   // gen3
 CoreV4Hwm::getPsumBankSize()   → return 2048;   // gen4
 ```
 
-> **CORRECTION (M13/K10) —** an earlier reading inferred `NUM_PSUM_BANKS = 8` from the *size of the PSUM address window* rather than from a constructor. It is a literal: `Psumbuf` arg0, directly read as `8` on gen2/3/4 and `4` on gen1. The inferred-then-confirmed value happens to agree, but the grounding is now the constructor argument, not the window size.
-
 > **GOTCHA — physical PSUM (2 MiB) is not the PSUM *address window* (4 MiB).** The encoder reserves a 4 MiB address region at `0x2000000` for PSUM in the 64-byte compute word (bit-25 base, mask `0x1E000000`). That is address space, not bank capacity (8 banks × 2 KiB × 128 partitions = 2 MiB physical). A reimplementer who conflates the two will mis-size either the encoder's address fields or the allocator's bank budget. They describe different axes; both are correct.
 
 ---
@@ -172,7 +170,7 @@ PeDimensionsForDtype::PeDimensionsForDtype(&this->m16, 0x80, 0x80, 2, 0x80);
 
 ### MX is not a PE dimension
 
-> **CORRECTION (M13) —** an earlier report read a *third* `PeDimensionsForDtype` dtype slot on gen4 (an extra `0x10 = 16` immediate) from a libBIR-side PE constructor and concluded "MX / microscaling is a gen4-only PE geometry dimension." The authoritative `ctm.hpp` header declares exactly one `const PeDimensionsForDtype &m16` on `Pe`, and the runtime `CoreV4Pe` constructor builds exactly **one** `PeDimensionsForDtype(128, 128, 2, 128)` — byte-identical to `SundaPe` and `CaymanPe`. `Pe::getDimensionsForDtype` accepts only two dtype spellings before asserting `"Dtype not available in PE array"`. The CTM PE geometry therefore shows **no** gen4-specific dtype slot.
+> **GOTCHA — MX does not add a gen4 PE dtype slot.** It is tempting to read a *third* `PeDimensionsForDtype` slot on gen4 (an extra `0x10 = 16` immediate appears near a libBIR-side PE constructor) and conclude that microscaling is a gen4-only PE geometry dimension. It is not. `ctm.hpp` declares exactly one `const PeDimensionsForDtype &m16` on `Pe`; `CoreV4Pe` builds exactly **one** `PeDimensionsForDtype(128, 128, 2, 128)`, byte-identical to `SundaPe` and `CaymanPe`; and `Pe::getDimensionsForDtype` accepts only two dtype spellings before asserting `"Dtype not available in PE array"`.
 
 MX / FP4 microscaling is unambiguously a real gen4-era compiler feature — but it lives at the HLO, BIR, and *cost-model* layers, not in the PE geometry tree. It is implemented by the HLO legalize passes `legalize-quantize-mx` and `legalize-scaled-matmul` (which recognize the `QuantizeMX` and `__op$block_scaled_dot` custom-calls, with `block_size` defaulting to 32 = `0x20`) and lowered to the BIR opcodes `InstMatmultMx` / `InstQuantizeMx`. Where the gen4-specificity *does* surface as a concrete per-generation override is the cost model: `CoreV4Hwm::getLatency(const bir::InstMatmultMx&)` exists as a CoreV4-only latency override (`@0x483de0`), with **no** matching `Gen3Hwm` or `TrainiumHwm` override — so the MX matmul has a cost-model handler only on gen4, while the base `bir::Hwm` handles it (by default) on the other generations. The "MX = gen4" association is correct; its mechanism is the HLO/BIR pipeline plus the gen4 `Hwm` latency override, not an extra column in the systolic array. A reimplementer building the geometry tree from `ctm.hpp` should give gen4 the same 128×128 PE as gen2/gen3 and look for MX support in the legalize passes ([hlo-opt](../hlo-opt/)) and the `CoreV4Hwm` latency overrides.
 
@@ -218,9 +216,9 @@ Beyond the six sub-objects, `Core` carries 24 scalar parameters, filled from the
 | `MemTensorIndirectEngPartitionGroupSize` | shared RT constant | 16 | 16 | 16 | 16 |
 | `{Unassigned,Pe,Pool,Act,Dve,Dma,Sp,All}EngineCount` | per-engine multiplicity | 1 each | 1 each | 1 each | 1 each |
 
-The `SundaCore` constructor, decoded, sets `CoreParamSet` slot 12 (= `Core+0x30`) to `16`, slot 13 (= `NumSemaphores`) to `256`, then `62, 64, 64, 4096, 8, 16, 3, 176, 2, 12, 32, 16`, then nine engine-count slots each `1`. `CaymanCore` and `CoreV4Core` differ from `SundaCore` *only* in slot 12: `24` and `36` respectively. The semaphore count `256` (8-bit index, `< 256`) is therefore CONFIRMED-uniform.
+The `SundaCore` constructor, decoded, sets `CoreParamSet` slot 12 (= `Core+0x30`) to `16`, slot 13 (= `NumSemaphores`) to `256`, then `62, 64, 64, 4096, 8, 16, 3, 176, 2, 12, 32, 16`, then nine engine-count slots each `1`. `CaymanCore` and `CoreV4Core` differ from `SundaCore` *only* in slot 12: `24` and `36` respectively. The semaphore count `256` (an 8-bit index, so `< 256`) is uniform across all four.
 
-> **CORRECTION (M12/M13) —** the first scalar (`Core+0x30`, values 16/16/24/36) was originally read as an inferred "per-core DMA-ring / queue count." The shipped `ctm.hpp` names it `Core::dramSizeGb` — the **per-core HBM window in GiB**, with the comment `// dram/hbm per core`. The HBM budget check (`HBMUsage`) reads exactly this field and shifts it left by 30 to get the byte limit. The 16/16/24/36 are GiB, not ring counts.
+> **GOTCHA — `Core+0x30` (16/16/24/36) is HBM gibibytes, not a queue or ring count.** `ctm.hpp` names it `Core::dramSizeGb` with the comment `// dram/hbm per core`, and `HBMUsage` reads exactly this field and shifts it left by 30 to get a byte limit. A small integer in the first scalar slot invites the wrong reading.
 
 ### Per-core HBM and the budget check
 
@@ -245,7 +243,7 @@ CoreV4Hwm::getEngineFrequency(t):    // gen4 / CoreV4
     else → getEngineCyclesPerElement();   // alt path
 ```
 
-> **CORRECTION (K20) —** the `140 / 112` pair was originally attributed to Tonga (gen1). It belongs to **`TrainiumHwm`, the gen2/Sunda cost model** — `getArchModel` groups `{sunda, trainium, trn1, inf2}` onto Sunda, so "Trainium" is gen2, not gen1. gen1 ships *no* distinct `Hwm` subclass (only `TrainiumHwm`, `Gen3Hwm`, `CoreV4Hwm` exist); gen1 latency falls through to the base perf-sim path. PE is the *slower* clock domain on gen2/gen3 (PE 140-vs-SP-112, PE 120-vs-SP-96) and equal to SP on gen4 (both 120).
+> **GOTCHA — "Trainium" in `TrainiumHwm` means gen2, not gen1.** `getArchModel` groups `{sunda, trainium, trn1, inf2}` onto Sunda, so the `140 / 112` pair is the **gen2/Sunda** cost model, not Tonga's. gen1 ships no distinct `Hwm` subclass at all — only `TrainiumHwm`, `Gen3Hwm` and `CoreV4Hwm` exist — and gen1 latency falls through to the base perf-sim path. Note also that PE is the *slower* clock domain on gen2 and gen3 (PE 140 vs SP 112, PE 120 vs SP 96) and equal to SP on gen4 (both 120).
 
 > **NOTE — the perf-sim `Hwm` families are a coarser 3-tier grouping.** The cost model collapses the four codegen tiers into three latency buckets, with `Gen3Hwm` spanning both Sunda (gen2) and Cayman (gen3). This is a perf-model simplification; the *codegen* keeps the generations distinct (`CoreV2Gen` vs `CoreV3Gen`). Do not read the shared `Hwm` family as a generation merge.
 

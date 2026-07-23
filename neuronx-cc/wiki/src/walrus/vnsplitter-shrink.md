@@ -8,7 +8,7 @@ Two consecutive walrus backend passes reshape the live-range graph *before* the 
 
 The single most important structural fact — and the one that corrects a naive reading — is that **`vn_splitter` is not a splitter; it is a split-then-fold body.** `VNSplitterPass::run` (`@0xd73890`) calls *two* transforms in sequence: `VNSplitter::runTransform` (the **SPLIT** phase, called first at `d73d6a`) and then `VerticalFusion::runTransform` (the **FOLD** phase, called second at `d74162`). Both call sites are directly visible in the dispatch, in straight-line order with no reorder branch between them. The splitter carves a tensor along a dimension into `N` disjoint `_VN_` sub-tensors; vertical fusion then folds producer→consumer op chains vertically to collapse intermediate-tensor liveness over the result. The two are inverse footprint moves — split *increases* node count by carving, fold *reduces* it by merging — and the pass runs split-first, so the fold operates on the chains the splitter produced (and any residual chains). The `foldIntoPredecessor` `PassOption` gates the fold stage.
 
-> **CORRECTION — order is SPLIT-then-FOLD, not fold-then-split.** An earlier revision of this page asserted the pass folds first and splits second. That is backwards. In `VNSplitterPass::run` (`@0xd73890`) the call sequence is `VNSplitter::runTransform` (SPLIT) at `d73d6a` **first**, then `VerticalFusion::runTransform` (FOLD) at `d74162` **second** — straight-line, no order-selecting branch. The page's own embedded disassembly (§1) already labelled these two sites correctly; only the surrounding prose had the order inverted. The PGA driver `runVNSplitterOnce` (`@0xd6f440`) runs the same split(`d6fad2`)-then-fold(`d6febf`) order, so there is no order difference between the two drivers. The *why* of the post-split fold is INFERRED (collapse the chains the split produced / residual chains); only the order is CONFIRMED.
+Both drivers agree on that order: the PGA entry `runVNSplitterOnce` (`@0xd6f440`) also splits (`d6fad2`) before folding (`d6febf`). [INFERRED] The *reason* the fold runs after the split — to collapse the chains the split just produced, along with any residual chains — is not stated anywhere in the binary; only the order is.
 
 The splitter's piece count `N` is not a constant. The Profile-Guided Auto-Tuning loop (`ProfileGuidedAutoTuning::runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`) drives the *same* fold+split body with a tuned `(vn_limit, ratio, perSplitLimit)` triple; the float `ratio` bounds tolerated cross-piece duplication and the two integer caps bound the virtual-node count and pieces-per-node. So the split factor is a **knob the autotuner searches**, not a fixed property of the tensor — documented further in the PGA autotuner page (planned). The `shrink_ml` half is unconditional: it minimizes the per-partition live byte-extent of every shrinkable node, leaving reinterpret-cast and shifted-partition nodes intact.
 
@@ -43,11 +43,11 @@ For reimplementation, the contract is:
 
 ## 1. Pass identity and the split-then-fold dispatch
 
-Both passes are `BackendPass` subclasses registered into the walrus pass set by generator lambdas. The registrars and pass-order positions are CONFIRMED from the registry strings and the `S2-06 §3` pass-order map (`vn_splitter=24`, `shrink_ml=25`), corroborated by the metric `VNSplitterDeadNodesCount` cited in `S2-07 §3.3`.
+Both passes are `BackendPass` subclasses registered into the walrus pass set by generator lambdas. The registrars come from the registry strings, and the pass-order positions (`vn_splitter=24`, `shrink_ml=25`) from the pass-order map.
 
-The `shrink_ml` ↔ `ShrinkDN` identity is CONFIRMED two ways: the class-name string `"ShrinkDN"` is co-resident (×36 occurrences) with the pass-name `"shrink_ml"` (×13), and `shrink_dn.cpp` is the only source TU under `shrink_ml/`. The `run` body's own symbol confirms the mangled name `_ZN9neuronxcc7backend8ShrinkDN3runERN3bir6ModuleE`.
+Two independent things tie `shrink_ml` to `ShrinkDN`: the class-name string `"ShrinkDN"` is co-resident (×36 occurrences) with the pass-name `"shrink_ml"` (×13), and `shrink_dn.cpp` is the only source TU under `shrink_ml/`. The `run` body carries the mangled name `_ZN9neuronxcc7backend8ShrinkDN3runERN3bir6ModuleE`.
 
-The structural correction is in the `vn_splitter` body. `VNSplitterPass::run` `@0xd73890` does not call one splitter — it calls *two* transforms, **split first then fold**, and the dispatch is directly readable in the disassembly: [CONFIRMED]
+The `vn_splitter` body does not call one splitter — it calls *two* transforms, **split first then fold**, and the dispatch is directly readable in the disassembly:
 
 ```text
 d73d6a:  call   5f4930 <…VNSplitter12runTransformEv@plt>        // SPLIT phase
@@ -62,13 +62,13 @@ The `VNSplitter::runTransform` call at `d73d6a` runs first; the `VerticalFusion`
 
 ### 1.1 `PassOptions` knobs
 
-The following keys are parsed from `.rodata` (single occurrence each, so each is a distinct option): `vn_limit`, `vnLimit`, `perSplitLimit`, `noSplitDRAM`, `foldIntoPredecessor`, `splitSB`/`SplitSB`, `VNSplitterOnce`. The autotuner entry `runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)` consumes the three tuning knobs as a positional triple; its mangled member-function signature `…ProfileGuidedAutoTuning…(f,i)…i,f,i…` confirms the `(int, float, int)` parameter shape. [STRONG — signature pinned by the mangled symbol and the dedicated reject-strings below; `runVNSplitterOnce` body not separately traced.]
+The following keys are parsed from `.rodata` (single occurrence each, so each is a distinct option): `vn_limit`, `vnLimit`, `perSplitLimit`, `noSplitDRAM`, `foldIntoPredecessor`, `splitSB`/`SplitSB`, `VNSplitterOnce`. The autotuner entry `runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)` consumes the three tuning knobs as a positional triple; its mangled member-function signature `…ProfileGuidedAutoTuning…(f,i)…i,f,i…` fixes the `(int, float, int)` parameter shape. The per-knob roles come from the dedicated reject-strings below; the `runVNSplitterOnce` body itself was not separately traced.
 
 ---
 
 ## 2. VN-Splitter — the SPLIT phase
 
-### 2.1 `runTransform` — the orchestrator (`@0xd5a3d0`) [CONFIRMED]
+### 2.1 `runTransform` — the orchestrator (`@0xd5a3d0`)
 
 `runTransform` first caches the SB geometry from the arch model, then runs a two-pass analyze/split sweep over each function's `MemoryLocation` set.
 
@@ -115,9 +115,9 @@ void VNSplitter::runTransform() {
 }
 ```
 
-The two option-byte reads are CONFIRMED in the disassembly: `cmpb $0x0,0x150(%rax)` at `d5a63f` is the `noSplitDRAM` test, and the `0x151` byte at `d5a5ef` is `foldIntoPredecessor`. The `VNSplitterDeadNodesCount` metric (string at VA `0x1d95cd9`, mangled `backend::VNSplitterDeadNodesCount`) is emitted from three `addMetric` sites; its value equals the count of `MemoryLocation`s removed this run (= the `"total dead nodes"` figure in the `SplitSB` log). [CONFIRMED metric exists and is emitted; value semantics STRONG.]
+Both option-byte reads are visible in the disassembly: `cmpb $0x0,0x150(%rax)` at `d5a63f` is the `noSplitDRAM` test, and the `0x151` byte at `d5a5ef` is `foldIntoPredecessor`. The `VNSplitterDeadNodesCount` metric (string at VA `0x1d95cd9`, mangled `backend::VNSplitterDeadNodesCount`) is emitted from three `addMetric` sites; [INFERRED] its value is the count of `MemoryLocation`s removed this run, matching the `"total dead nodes"` figure in the `SplitSB` log.
 
-### 2.2 `analyze` — the split-shape decision (`@0xd53020`) [CONFIRMED]
+### 2.2 `analyze` — the split-shape decision (`@0xd53020`)
 
 `analyze(MemoryLocation* ml, float ratio, int vn_limit, int perSplitLimit)` is a four-stage funnel: pre-filter unsplittable tensors, sweep access-patterns for legality, cluster legal APs into `ApGroup`s, then test each group against the SB budget.
 
@@ -171,17 +171,17 @@ bool VNSplitter::analyze(MemoryLocation *ml, float ratio, int vn_limit, int perS
 }
 ```
 
-**The three PGA knobs are each pinned by a dedicated reject-string** [STRONG]:
+**Each of the three PGA knobs has its own dedicated reject-string:**
 
 - `ratio` — bounds duplication. Logged as `"elts/partition duplicated (<ratio> x)"`. A split that would replicate more than `ratio×` elements across pieces is rejected.
 - `vn_limit` — caps the running virtual-node count. Reject-string `"; exceed vn limit = … v.s. limit=<vn_limit>"`.
-- `perSplitLimit` — caps pieces per node. Reject-string `"Do not split the vn if this would result in any of the splits having to be placed in DRAM (due to perSplitLimit exceeded)"` (CONFIRMED present in the binary).
+- `perSplitLimit` — caps pieces per node. Reject-string `"Do not split the vn if this would result in any of the splits having to be placed in DRAM (due to perSplitLimit exceeded)"`.
 
 These are exactly the three positional arguments of `runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`, which is why the autotuner can sweep the split factor: tightening `ratio` or `perSplitLimit` reduces `N`, loosening them lets the splitter carve more pieces. The split factor `N` is therefore PGA-tuned, not fixed.
 
 ### 2.3 The `ApGroup` accumulator and `APAccesses`
 
-An `ApGroup` is the per-logical-sub-tensor accumulator — one group becomes one `_VN_` sub-tensor. Fields reconstructed from offsets [STRONG]:
+An `ApGroup` is the per-logical-sub-tensor accumulator — one group becomes one `_VN_` sub-tensor. The field map below is [INFERRED] from the offsets each accessor touches:
 
 | Offset | Field | Meaning |
 |---|---|---|
@@ -194,13 +194,13 @@ An `ApGroup` is the per-logical-sub-tensor accumulator — one group becomes one
 | `+0x50` | `u32 partitionStride` | dtype partition stride (offset→partition-index divisor) |
 | `+0x54` | `u32 rangeStat` | per-partition range stat (max of `getRange[0]`) |
 
-`getDimensions()` (`@0xd4dde0`) returns the 2-entry shape `SmallVector<u32>{ group+0x4c, group+0x04 }` = `[freeExtentBytes, highestElementInPartition]`. `getBaseOffset()` (`@0xd4dcb0`) is CONFIRMED to `collectStats()` then `return this+0x08` (`mov 0x8(%rbx),%eax; ret`).
+`getDimensions()` (`@0xd4dde0`) returns the 2-entry shape `SmallVector<u32>{ group+0x4c, group+0x04 }` = `[freeExtentBytes, highestElementInPartition]`. `getBaseOffset()` (`@0xd4dcb0`) calls `collectStats()` then returns `this+0x08` (`mov 0x8(%rbx),%eax; ret`).
 
 An `APAccesses` is the use-def grouping unit, one per `PhysicalAP`: it holds the `PhysicalAP*`, a `set<int> partitionIndices`, and an element range (the ctor `@0xd4be50` calls `getElementRange()`). The grouping predicate is `overlaps()` (`@0xd4a5a0`), defined as `!is_set_disjoint(a.partitions, b.partitions)` (`is_set_disjoint @0xd49120`) — **two APs overlap iff their accessed-partition sets intersect.** APs that never share a partition land in separate groups, so they become separate sub-tensors with non-conflicting live ranges. This is INV-2 (use-def locality).
 
-### 2.4 `isValidForSB` — the SB-fit gate (`@0xd501e0`) [CONFIRMED]
+### 2.4 `isValidForSB` — the SB-fit gate (`@0xd501e0`)
 
-The gate packs the `SBModel` into a single 64-bit register: low 32 bits = `sbBytesPerPartition` budget, high 32 bits = `sbPartitionCount`. This is directly visible in the prologue — `mov %rsi,%rax; sar $0x20,%rsi` extracts the high half. [CONFIRMED]
+The gate packs the `SBModel` into a single 64-bit register: low 32 bits = `sbBytesPerPartition` budget, high 32 bits = `sbPartitionCount`. This is directly visible in the prologue — `mov %rsi,%rax; sar $0x20,%rsi` extracts the high half.
 
 ```c
 // ApGroup::isValidForSB(SBModel sb, bool strict)  @0xd501e0
@@ -221,9 +221,9 @@ bool ApGroup::isValidForSB(SBModel sb /* esi: low32=byteBudget, high32=partCount
 }
 ```
 
-The partition gate is CONFIRMED in the disassembly: at `d50526` the group loads `mov 0x50(%rbx),%rax` (the SBModel record), and `d50536: cmp 0x8(%rax),%edx; jge` fails when the partition dim (`%edx` from `0x6c(%rsp)`) reaches the partition count at `0x8` of the SBModel record. This is the precondition that lets the colorer assume every node fits one SB tile (INV-1). The running per-AP byte sum is SIMD-inlined, so the *gate semantics* (partition-count + byte-budget) are CONFIRMED but the exact per-AP sum form is STRONG.
+The partition gate is plain in the disassembly: at `d50526` the group loads `mov 0x50(%rbx),%rax` (the SBModel record), and `d50536: cmp 0x8(%rax),%edx; jge` fails when the partition dim (`%edx` from `0x6c(%rsp)`) reaches the partition count at `0x8` of that record. This is the precondition that lets the colorer assume every node fits one SB tile (INV-1). The running per-AP byte sum is SIMD-inlined: the gate *semantics* — partition-count plus byte-budget — are unambiguous, but the exact per-AP summation form is [INFERRED].
 
-### 2.5 `split` — sub-tensor creation (`@0xd57c80`) [CONFIRMED]
+### 2.5 `split` — sub-tensor creation (`@0xd57c80`)
 
 For each valid `ApGroup`, `split` creates a new physical `MemoryLocation` named `<orig>_VN_<k>` (the literal `"_VN_"` is in `.rodata`), re-points every AP of the group at it, rebases offsets, and records the original for removal.
 
@@ -244,7 +244,7 @@ void VNSplitter::split(MemoryLocation *ml, float ratio, bool foldIntoPred,
             g.getDimensions(),         // tensorShape SmallVector<…,4>
             /*flags*/, /*optional*/, ml.getDebugInfo(),
             ml.getBankId(), ml.getAddress(), ml.getBasePartition(),
-            ml.getMemoryType(),        // SB(16)/PSUM(32) per ml  (see D-D05 bit-flags)
+            ml.getMemoryType(),        // SB(16)/PSUM(32) per ml  (memory-type bit-flags)
             ml.getMemoryAddressSpace());
 
         for (PhysicalAP *ap : g.{writeAPs, readAPs}) {
@@ -262,13 +262,13 @@ void VNSplitter::split(MemoryLocation *ml, float ratio, bool foldIntoPred,
 }
 ```
 
-The offset rebase is CONFIRMED exact at `normalizeOffsetToNewNode` (`@0xd4dc80`): `sub 0x8(%rdi),%esi` then `idivl 0x50(%rdi)` — i.e. `(ap.offset − group.baseOffset[+0x08]) / group.partitionStride[+0x50]`. The group stats accumulate via `addAPtoStats` (`@0xd49200`): partition index `(ap.offset[+0xD0] − base) / stride`, range stat `group[+0x54] = max(·, getRange[0])` (via `pmaxsd`), free extent `group[+0x4c] = max(·, ap.basePtr[+8] + adj)`, and `group[+0x04] = max(·) + 1` (highest element index + 1).
+The offset rebase is exact at `normalizeOffsetToNewNode` (`@0xd4dc80`): `sub 0x8(%rdi),%esi` then `idivl 0x50(%rdi)` — i.e. `(ap.offset − group.baseOffset[+0x08]) / group.partitionStride[+0x50]`. The group stats accumulate via `addAPtoStats` (`@0xd49200`): partition index `(ap.offset[+0xD0] − base) / stride`, range stat `group[+0x54] = max(·, getRange[0])` (via `pmaxsd`), free extent `group[+0x4c] = max(·, ap.basePtr[+8] + adj)`, and `group[+0x04] = max(·) + 1` (highest element index + 1).
 
-`getBytesPerPartition` (`@0xd4dc40`) = `getHighestElementInPartition() × dtypeBytes[ml.Dtype]`, indexed into the dtype byte-size table at `0x1de6c40` (20×int64: u8=1, u16=2, fp32/i32=4, i64/fp64=8, …, `Dtype` field ≤ `0x13`, matching the BIR `AccessPattern` Dtype range in D-E12).
+`getBytesPerPartition` (`@0xd4dc40`) = `getHighestElementInPartition() × dtypeBytes[ml.Dtype]`, indexed into the dtype byte-size table at `0x1de6c40` (20×int64: u8=1, u16=2, fp32/i32=4, i64/fp64=8, …, `Dtype` field ≤ `0x13`, matching the BIR `AccessPattern` Dtype range).
 
-### 2.6 Dead-node elimination and `VNSplitterDeadNodesCount` [STRONG]
+### 2.6 Dead-node elimination and `VNSplitterDeadNodesCount`
 
-A node is **dead** after a split when its every reader/writer AP has been re-pointed to the new `_VN_` sub-tensors, leaving it with no real use — that is the original over-sized `MemoryLocation` and any wholly-subsumed copy/memset instruction. `split` collects these into `deadSet` (`std::set<variant<MemoryLocation*, Instruction*>>`); the `DenseSet<MemoryLocation*>` / `DenseSet<Instruction*>` arguments are the **keep-alive** sets (referenced elsewhere, must survive). `runTransform`'s tail resolves each dead entry by name (`getMemoryLocationByName`) and erases it via `removeMemoryLocation(ml, /*recursive=*/true)`. The `VNSplitterDeadNodesCount` metric equals the count removed this run, which is the `"total dead nodes"` figure in the `SplitSB` log — confirming `S2-07 §3.3`. This is INV-3 (clean graph).
+A node is **dead** after a split when its every reader/writer AP has been re-pointed to the new `_VN_` sub-tensors, leaving it with no real use — that is the original over-sized `MemoryLocation` and any wholly-subsumed copy/memset instruction. `split` collects these into `deadSet` (`std::set<variant<MemoryLocation*, Instruction*>>`); the `DenseSet<MemoryLocation*>` / `DenseSet<Instruction*>` arguments are the **keep-alive** sets (referenced elsewhere, must survive). `runTransform`'s tail resolves each dead entry by name (`getMemoryLocationByName`) and erases it via `removeMemoryLocation(ml, /*recursive=*/true)`. The `VNSplitterDeadNodesCount` metric equals the count removed this run, which is the `"total dead nodes"` figure in the `SplitSB` log. This is INV-3 (clean graph).
 
 ---
 
@@ -276,7 +276,7 @@ A node is **dead** after a split when its every reader/writer AP has been re-poi
 
 Where the splitter carves nodes to *fit*, `shrink_ml` trims each node to its *true* size. A `MemoryLocation` was sized for its declared shape; `ShrinkDN` discovers the live window — the largest byte-range any access actually touches in a partition — and physically rewrites the node down to that window. The pass runs at order 25, *after* the splitter, so each `_VN_` piece is shrunk independently.
 
-### 3.1 `ShrinkDN::run` — the driver (`@0x16c4db0`) [CONFIRMED]
+### 3.1 `ShrinkDN::run` — the driver (`@0x16c4db0`)
 
 ```c
 // ShrinkDN::run(bir::Module&)  @0x16c4db0
@@ -290,7 +290,7 @@ void ShrinkDN::run(bir::Module &m) {
 }
 ```
 
-### 3.2 `ShrinkDN::analyze` — the liveness probe (`@0x16c07a0`) [CONFIRMED]
+### 3.2 `ShrinkDN::analyze` — the liveness probe (`@0x16c07a0`)
 
 ```c
 // ShrinkDN::analyze(bir::MemoryLocation &ml)  @0x16c07a0
@@ -310,9 +310,9 @@ void ShrinkDN::analyze(bir::MemoryLocation &ml) {
 }
 ```
 
-The metric `ShrinkDN` minimises is the **per-partition live byte-extent**: the largest range any access touches in a partition. `isShrinkable(ap)` (`@0x16bef10`) is `AccessPattern::isPartitionContiguous()` — only contiguous-partition APs may shrink; shifted/non-contiguous nodes bail and stay at their declared size. [CONFIRMED footprint metric; STRONG on exact result storage.]
+The metric `ShrinkDN` minimises is the **per-partition live byte-extent**: the largest range any access touches in a partition. `isShrinkable(ap)` (`@0x16bef10`) is `AccessPattern::isPartitionContiguous()` — only contiguous-partition APs may shrink; shifted/non-contiguous nodes bail and stay at their declared size. Where exactly `analyze` stores its result for `shrinkDN` to pick up is [INFERRED].
 
-### 3.3 `ShrinkDN::shrinkDN` — the extent rewrite (`@0x16c38a0`) [CONFIRMED]
+### 3.3 `ShrinkDN::shrinkDN` — the extent rewrite (`@0x16c38a0`)
 
 ```c
 // ShrinkDN::shrinkDN(bir::MemoryLocation &ml)  @0x16c38a0
@@ -346,7 +346,7 @@ void shrinkPAP(PhysicalAP *ap, u32 n) {
 
 `updateChannelStep` re-packs the partition stride so partitions stay contiguous after the free dim shrinks (`setOffset = newStep * idx + oldBase`); `shrinkPAP` keeps the partition dim and rewrites the free dims to the canonical `{step, num}` with the free count set to the shrunk extent `n`. `shrinkAP` (`@0x16c3020`) computes the live count via `getElementRangeInPartition + getMemoryLocationSet`, guarded by `isPartitionContiguous` (×5), then calls `shrinkPAP(ap, liveCount)`. Together these write the reduced extents back through `MemoryLocation::updateDimensions`, so the tensor occupies fewer bytes per partition. This is INV-4 (minimal footprint).
 
-### 3.4 `shrinkTensor` — the set-level analyzer [STRONG]
+### 3.4 `shrinkTensor` — the set-level analyzer
 
 `shrinkTensor(bir::Function&)` (`@0x1826e00`) is the *logical* counterpart that operates at the `MemoryLocationSet` level rather than on physical extents. For each `MemoryLocationSet`, it inspects `SymbolicAccessPattern::getBlockAddrs()` and `Instruction::getLoopnest()` over the set's APs (a `hashtable<u64, Instruction*>` of block→writer), derives the shrink dimension and the count of *live* blocks, then records:
 
@@ -355,9 +355,9 @@ MemoryLocationSet::setShrinkDim(dim);   // producer
 MemoryLocationSet::setLiveN(n);         // live block count
 ```
 
-`shrinkTensor(bir::Module&)` (`@0x1829e90`) just loops functions. The cross-pass channel is `getShrinkDim()` — only a thunk lives in libwalrus (`0x5fb650` for `MemoryLocation`, `0x5efe20` for `MemoryLocationSet`); the real body and the shrink-dim *selection heuristic* live in libBIR and are **not traced here** [GAP]. So `shrinkTensor` is the analysis that annotates each set with `(shrinkDim, liveN)`, and `ShrinkDN` is the transform that reads `getShrinkDim()` and physically rewrites the per-`MemoryLocation` APs. The producer/consumer split (`setShrinkDim` vs `getShrinkDim`) proves the linkage. [STRONG]
+`shrinkTensor(bir::Module&)` (`@0x1829e90`) just loops functions. The cross-pass channel is `getShrinkDim()` — only a thunk lives in libwalrus (`0x5fb650` for `MemoryLocation`, `0x5efe20` for `MemoryLocationSet`); the real body and the shrink-dim *selection heuristic* live in libBIR and are **not traced here** [GAP]. So `shrinkTensor` is the analysis that annotates each set with `(shrinkDim, liveN)`, and `ShrinkDN` is the transform that reads `getShrinkDim()` and physically rewrites the per-`MemoryLocation` APs. The producer/consumer split (`setShrinkDim` versus `getShrinkDim`) is what ties them together.
 
-> **QUIRK — `VncLink` is not part of this chain.** `VncLink` (`run(Module&) @0x16477c0`, `run(vector<unique_ptr<Module>>&) @0x1648de0`) is the per-Neuron-Core *link* pass that joins per-LNC module shards. It shares no callgraph edge with `VNSplitter`/`ShrinkDN`; the only overlap is the `"VN"` prefix, which here means *virtual-neuron-core*, not *virtual-node*. A reimplementer must not conflate the two. [STRONG]
+> **QUIRK — `VncLink` is not part of this chain.** `VncLink` (`run(Module&) @0x16477c0`, `run(vector<unique_ptr<Module>>&) @0x1648de0`) is the per-Neuron-Core *link* pass that joins per-LNC module shards. It shares no callgraph edge with `VNSplitter`/`ShrinkDN`; the only overlap is the `"VN"` prefix, which here means *virtual-neuron-core*, not *virtual-node*. A reimplementer must not conflate the two.
 
 ---
 
@@ -367,20 +367,21 @@ The coloring allocator ([`allocator-drivers`](allocator-drivers.md)) and `SBSize
 
 | Invariant | Owner | Guarantee | Confidence |
 |---|---|---|---|
-| **INV-1 SB-fittability** | VN-Splitter | every SB/PSUM node, post-split, has `partitionDim < sbPartitionCount` **and** `bytesPerPartition ≤ sbBytesPerPartition` (`isValidForSB`). An over-sized node is decomposed into disjoint-partition `_VN_` pieces that each fit. | CONFIRMED |
-| **INV-2 Use-def locality** | VN-Splitter | sub-tensors carved along `ApGroup` boundaries (overlapping-partition-set clusters). Disjoint access clusters become independent nodes whose live ranges no longer conflict and can share colors; duplication bounded by `ratio`. | CONFIRMED |
-| **INV-3 Clean graph** | VN-Splitter | the original over-sized node and now-redundant copy/memset instructions are removed (`deadSet → removeMemoryLocation`); `VNSplitterDeadNodesCount` records the cleanup. | CONFIRMED |
-| **INV-4 Minimal footprint** | Shrink-ML | each node's physical extent reduced to the live element-range-in-partition, with partition strides re-packed (`updateChannelStep`) and free-dim counts trimmed (`shrinkPAP`). Reinterpret-cast / shifted-partition nodes left intact. | CONFIRMED |
+| **INV-1 SB-fittability** | VN-Splitter | every SB/PSUM node, post-split, has `partitionDim < sbPartitionCount` **and** `bytesPerPartition ≤ sbBytesPerPartition` (`isValidForSB`). An over-sized node is decomposed into disjoint-partition `_VN_` pieces that each fit. | CERTAIN |
+| **INV-2 Use-def locality** | VN-Splitter | sub-tensors carved along `ApGroup` boundaries (overlapping-partition-set clusters). Disjoint access clusters become independent nodes whose live ranges no longer conflict and can share colors; duplication bounded by `ratio`. | CERTAIN |
+| **INV-3 Clean graph** | VN-Splitter | the original over-sized node and now-redundant copy/memset instructions are removed (`deadSet → removeMemoryLocation`); `VNSplitterDeadNodesCount` records the cleanup. | CERTAIN |
+| **INV-4 Minimal footprint** | Shrink-ML | each node's physical extent reduced to the live element-range-in-partition, with partition strides re-packed (`updateChannelStep`) and free-dim counts trimmed (`shrinkPAP`). Reinterpret-cast / shifted-partition nodes left intact. | CERTAIN |
 
-**Ordering rationale.** `vn_splitter`(24) runs before `shrink_ml`(25): the splitter carves each over-sized node so each piece is independently shrinkable; `shrink_ml` then trims each piece to its live extent; then the disjoint, minimal, SB-fitting node set is handed to the colorer. *Within* `vn_splitter` the order is split-then-fold: the virtual-node split runs first, then `VerticalFusion` folds the producer→consumer chains over the splitter's output (CONFIRMED by call order; the precise rationale for folding *after* splitting is INFERRED).
+**Ordering rationale.** `vn_splitter`(24) runs before `shrink_ml`(25): the splitter carves each over-sized node so each piece is independently shrinkable; `shrink_ml` then trims each piece to its live extent; then the disjoint, minimal, SB-fitting node set is handed to the colorer. *Within* `vn_splitter` the order is split-then-fold: the virtual-node split runs first, then `VerticalFusion` folds the producer→consumer chains over the splitter's output. [INFERRED] The precise rationale for folding *after* splitting is not stated in the binary.
 
 **The PGA loop closes over this.** Because `runVNSplitterOnce` re-runs the whole split+fold body with a tuned `(vn_limit, ratio, perSplitLimit)`, the autotuner is effectively searching the split factor `N` against the downstream colorer's success/cost — tightening the knobs to fewer, larger pieces or loosening them to more, smaller pieces. The split↔fold duality plus this tuned knob is what makes `vn_splitter` an *adaptive* footprint reshaper rather than a fixed transform.
 
 ---
 
-## 5. Confidence summary and gaps
+## 5. Limits of this reading
 
-- **CONFIRMED** by direct disassembly: the split↔fold dispatch (`VNSplitterPass::run` calling `VNSplitter::runTransform` at `d73d6a` first, then `VerticalFusion::runTransform` at `d74162`); the `isValidForSB` partition gate (`cmp 0x8(%rax),%edx; jge`); the packed-`SBModel` register split (`sar $0x20,%rsi`); `normalizeOffsetToNewNode` `(off − base)/stride` (`sub`/`idivl`); `getBaseOffset` returning `this+0x08`; the two option-byte reads at `+0x150`/`+0x151`; the `perSplitLimit` reject-string; the `_VN_`, `SplitSB`, `is splittable`, and `VNSplitterDeadNodesCount` strings; the `ShrinkDN::run` symbol and namespace.
-- **STRONG** (pinned by strings/signature but with SIMD-inlined or partly-inferred arithmetic): the `(int, float, int)` PGA signature and the per-knob role mapping; the `isValidForSB` running byte-sum form; the `ApGroup` field map at `+0x4c`/`+0x54`; the `shrinkTensor` ↔ `ShrinkDN` producer/consumer linkage; `VncLink` being unrelated.
-- **GAP** (not traced on this page): `VerticalFusion::runTransform` internals — the actual fold heuristic — are a separate symbol; the `getShrinkDim` selection heuristic lives in libBIR (only thunks here); the exact `runVNSplitterOnce` body and the autotuner's search policy (planned PGA page).
-- **Honest re-verify ceiling.** The structural skeleton (which functions, what they gate, the invariants) is solid against the binary. The two heuristics not in libwalrus (vertical-fold condition, shrink-dim selection) are *named and positioned* but not *reconstructed*; a reimplementer would need the libBIR bodies and `VerticalFusion::runTransform` to fill them.
+Read straight off the disassembly: the split-then-fold dispatch (`VNSplitter::runTransform` at `d73d6a`, then `VerticalFusion::runTransform` at `d74162`); the `isValidForSB` partition gate (`cmp 0x8(%rax),%edx; jge`); the packed-`SBModel` register split (`sar $0x20,%rsi`); `normalizeOffsetToNewNode` as `(off − base)/stride` (`sub`/`idivl`); `getBaseOffset` returning `this+0x08`; the two option-byte reads at `+0x150`/`+0x151`; the `perSplitLimit` reject-string; the `_VN_`, `SplitSB`, `is splittable` and `VNSplitterDeadNodesCount` literals; and the `ShrinkDN::run` symbol and namespace.
+
+Softer, pinned by strings or signatures but with SIMD-inlined or partly-reconstructed arithmetic: the `(int, float, int)` PGA signature and its per-knob role mapping; the `isValidForSB` running byte-sum; the `ApGroup` field map at `+0x4c`/`+0x54`; the `shrinkTensor` ↔ `ShrinkDN` producer/consumer linkage.
+
+Two heuristics are named and positioned but **not reconstructed**, because their bodies are not in `libwalrus.so`: the vertical-fold condition inside `VerticalFusion::runTransform`, and the shrink-dim selection behind `getShrinkDim` (libwalrus carries only thunks; the real body is in libBIR). The `runVNSplitterOnce` body and the autotuner's search policy are likewise out of scope here. A reimplementer would need those bodies to fill in the decision logic; everything structural on this page — which functions run, what they gate, and the invariants they establish — holds without them.

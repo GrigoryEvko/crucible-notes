@@ -4,7 +4,7 @@
 
 ## Abstract
 
-Every production kernel in the nkilib reference tree — the flash-attention, RoPE, RMSNorm, MoE and conv kernels documented in [6.7.2 onward](attention-cte.md) — is built on a single layer of shared infrastructure that lives in `nkilib/core/utils/`. That layer does four things: it bump-allocates SBUF byte offsets at trace time (`allocator.py`, `modular_allocator.py`), it records the integer tiling geometry of each tensor axis (`tile_info.py`), it iterates a large dimension tile-by-tile with remainder handling (`tiled_range.py`), and it builds zero-copy strided views that lower to NKI access patterns (`tensor_view.py`). The shared enum vocabulary every kernel dispatches on lives in `common_types.py`. This page is the reference for all six files, with provenance drawn from RE reports **D-O23** (allocator + tiling) and **D-O24** (common types).
+Every production kernel in the nkilib reference tree — the flash-attention, RoPE, RMSNorm, MoE and conv kernels documented in [6.7.2 onward](attention-cte.md) — is built on a single layer of shared infrastructure that lives in `nkilib/core/utils/`. That layer does four things: it bump-allocates SBUF byte offsets at trace time (`allocator.py`, `modular_allocator.py`), it records the integer tiling geometry of each tensor axis (`tile_info.py`), it iterates a large dimension tile-by-tile with remainder handling (`tiled_range.py`), and it builds zero-copy strided views that lower to NKI access patterns (`tensor_view.py`). The shared enum vocabulary every kernel dispatches on lives in `common_types.py`. This page is the reference for all six files.
 
 The single most important fact about this layer is that the nkilib "allocator" is **not** a register/graph-coloring allocator. It is a pure address-arithmetic layer that runs in the NKI trace and emits `nl.ndarray(..., address=(partition, byte_offset))` calls. The SBUF rectangle it manages is `(partition band × byte offset)`; it only ever bumps the **byte** axis, and it deliberately drops the partition dimension (`shape[0]`) from the byte budget. In manual mode it *pins* the rectangle so the BIR `MemoryLocation` arrives at the backend pre-colored, which the libwalrus coloring allocator must then honor as a fixed reservation. In auto mode it emits a symbolic tile and defers placement entirely. Contrast this with the backend's Chaitin-Briggs register allocator (Part 8): same tensors, two different allocators, one a source-level byte-bump hint generator, the other the authoritative physical placer. See [§ NKI vs Backend Allocator](#nki-allocator-vs-the-backend-coloring-allocator).
 
@@ -48,7 +48,7 @@ Three free functions underpin every allocation (`allocator.py:32-66`):
 | `align_to(value, alignment)` | 57-59 | `((v + a - 1) // a) * a` — verbatim `llvm::alignTo` |
 | `num_elts(shape)` | 62-66 | product of all dims (called on `shape[1:]`, the per-partition free size) |
 
-The `sizeinbytes` dispatch table (transcribed verbatim, **CONFIRMED** `allocator.py:33-53`):
+The `sizeinbytes` dispatch table (transcribed verbatim from `allocator.py:33-53`):
 
 | dtype(s) | bytes | dtype(s) | bytes |
 |---|---|---|---|
@@ -58,7 +58,7 @@ The `sizeinbytes` dispatch table (transcribed verbatim, **CONFIRMED** `allocator
 
 The two `_x4` micro-formats pack four sub-byte values into a wider container: four FP4 values in 2 bytes (`float4_e2m1fn_x4` = 2), four FP8 values in 4 bytes (`*_x4` = 4).
 
-> **CORRECTION (D-O23 §1.1 / §8) —** the report flags a dtype-size discrepancy versus the older `private_nkl/utils/StackAllocator.py`, which maps `float4_e2m1fn_x4 = 4` and also defines `tfloat32 = 4`. Re-reading the **core** `allocator.py:50-53` confirms the report's conclusion: the current core copy maps `float4_e2m1fn_x4 = 2` and has **no** `tfloat32` case (a `tfloat32` tensor would hit the `kernel_assert(False)` at line 54). Use the core values. This is not a cosmetic difference — a reimplementation that copies the old `=4` mapping will over-reserve every packed-FP4 buffer by 2×.
+> **GOTCHA — the two trees disagree on `float4_e2m1fn_x4`.** The older `private_nkl/utils/StackAllocator.py` maps `float4_e2m1fn_x4 = 4` and additionally defines `tfloat32 = 4`. The current core `allocator.py:50-53` maps `float4_e2m1fn_x4 = 2` and has **no** `tfloat32` case — a `tfloat32` tensor hits the `kernel_assert(False)` at line 54. Use the core values: copying the old `= 4` mapping over-reserves every packed-FP4 buffer by 2×.
 
 ### The SBUF Address Model
 
@@ -105,7 +105,7 @@ if (!is_auto_alloc() && stack_curr_addr + bytes_per_partition > heap_curr_addr)
     // — both log stats + tree, then abort
 ```
 
-> **NOTE (D-O23 §1.3 refinement) —** the heap path's OOM test is *not* `heap - req < stack`; it is the identical `stack_curr_addr + req > heap_curr_addr` (`allocator.py:456`). Both cursors are checked against the collision point between them, so the predicate is symmetric by construction.
+> **NOTE — the heap OOM test is not the mirror of the stack one.** It is *not* `heap - req < stack`; it is the identical `stack_curr_addr + req > heap_curr_addr` (`allocator.py:456`). Both cursors are checked against the collision point between them, so the predicate is symmetric by construction.
 
 `alloc_stack` requires an open scope (`kernel_assert` at 402-405), aligns the cursor (`align` defaults to `sizeinbytes(dtype)`), emits the ndarray, advances `stack_curr_addr += bytes_per_partition`, and updates the scope's high-water mark. `alloc_heap` grows down, realigns to a 4-byte floor (`align_to(heap_curr_addr - 3, 4)`, line 472), records the mloc on a LIFO `heap` list, and is **not** freed on scope close. `pop_heap` (501-517) re-queries `heap_top.shape[1:]` / `dtype` to recompute the size and restores `heap_curr_addr` with the same 4-byte realign.
 
@@ -145,7 +145,7 @@ if (top.cur_section_id == top.num_sections) {           // wrap to section 0
 
 The `min_independent_addr` field is the correctness invariant of the whole scoped scheme — the `Scope` definition carries a 40-line worked ASCII proof of the WAR hazard it prevents (`allocator.py:111-153`). Without it, double-buffering would silently alias a live tensor. The proof's worked example: with `interleave_degree=2`, allocating `t1` then opening a sub-scope to allocate `t2` then closing it leaves the cursor back at `t2`'s base; the next iteration's `t1@i=1` would then overlap `t2@i=0` — an anti-dependency. Tracking the max address any prior section touched (updated on every alloc at line 423, on child-scope close at line 334, and on reset-to-section-0 at line 305) forces the new section above the collision point.
 
-> **GOTCHA —** the older `private_nkl/utils/StackAllocator.py` (the `SbufManager` predecessor) **lacks** `min_independent_addr` entirely — its `increment_section` just resets or continues with no high-water tracking. A reimplementation that follows the old code will produce a silently-wrong double buffer whenever a section allocates into a sub-scope. The high-water guard is the single real correctness improvement of the current `BufferManager`. (D-O23 §8.)
+> **GOTCHA —** the older `private_nkl/utils/StackAllocator.py` (the `SbufManager` predecessor) **lacks** `min_independent_addr` entirely — its `increment_section` just resets or continues with no high-water tracking. A reimplementation that follows the old code will produce a silently-wrong double buffer whenever a section allocates into a sub-scope. The high-water guard is the single real correctness improvement of the current `BufferManager`.
 
 ### `create_auto_alloc_manager`
 
@@ -168,7 +168,7 @@ The convenience constructor for "give me the whole SBUF window in AUTO mode." It
 :858  sb = sbm.alloc_stack(buf.shape, dtype=buf.dtype, buffer=nl.sbuf)        // _to_sbuf helper
 ```
 
-> **CORRECTION (D-O23 §1.7) —** D-O23 cites `create_auto_alloc_manager` callers as `output_projection_tkg.py:182` and `qkv_tkg.py:253`. Those files are **not present** in this wheel; the report was written against a fuller kernel corpus. The real witness shipped here is `attention_block_tkg.py:356`. (See [§ Corpus](#corpus-and-the-three-tree-reconciliation).)
+`attention_block_tkg.py:356` is the only `create_auto_alloc_manager` call site in this wheel; the production kernels that also call it are not shipped here (see [§ Corpus](#corpus-and-the-three-tree-reconciliation)).
 
 ---
 
@@ -239,9 +239,7 @@ Defaults and shapes (`:160-193`):
 
 ### Witness
 
-The canonical attention witnesses cited by D-O23 (`attention_cte.py:1294-1300`, `num_free_tiles=[2]` ping-pong of Q groups) are not in this wheel — see the corpus note below. `ModularAllocator` itself ships in both `nkilib/core/utils/modular_allocator.py` (this subject) and the older `neuronxcc/private_nkl/utils/modular_allocator.py` twin.
-
-> **CORRECTION (D-O23 §2.3 / §0) —** D-O23 reports `attention_cte.py` as the canonical `ModularAllocator` witness and states "Only 2 kernels instantiate ModularAllocator." In **this** wheel there is **no** `attention_cte.py`, and a sweep finds **zero** instantiation sites for `ModularAllocator` outside the class definition and its twin. The ring allocator ships as library code whose consumers (the `attention_cte` / cumsum production kernels) are part of the fuller corpus the report was authored against, not the kernel set shipped here. The address law above is verified directly from `modular_allocator.py`; the *usage* claims are inherited from D-O23 and tagged **INFERRED** for this wheel.
+`ModularAllocator` ships in this wheel purely as library code: it exists in both `nkilib/core/utils/modular_allocator.py` (this subject) and the older `neuronxcc/private_nkl/utils/modular_allocator.py` twin, but a sweep finds **zero** instantiation sites outside those two class definitions. Its consumers — the flash-attention and cumsum production kernels, which ping-pong Q groups with `num_free_tiles=[2]` — belong to the fuller kernel corpus that is not shipped here (see the corpus note below). The address law documented above comes straight from `modular_allocator.py`; the usage pattern is [INFERRED] for this wheel.
 
 ---
 
@@ -261,7 +259,7 @@ tile_count      : int                    // number of tiles to cover the dimensi
 subtile_dim_info: Optional[TiledDimInfo]  // recursive sub-tile descriptor (None = no subtiling)
 ```
 
-> **CORRECTION (task framing) —** the task brief asks for a "tile shape / dtype / buffer-kind" struct. `TiledDimInfo` carries **none** of those — no dtype, no SBUF/PSUM/DRAM kind, not even a multi-axis shape. It is purely the integer geometry of one axis. dtype and buffer kind live on the `nl.ndarray` itself (the allocator's output) and on `TensorView.dtype`. There is no monolithic "TileInfo struct"; tile metadata is split across `TiledDimInfo` (geometry), the ndarray (dtype/buffer), and `TensorView` (view dtype). (Confirmed by reading `tile_info.py:44-50` — no such fields exist. D-O23 §3.1.)
+There is no monolithic "TileInfo struct" in this layer. `TiledDimInfo` carries no dtype, no SBUF/PSUM/DRAM buffer kind, and not even a multi-axis shape — the four fields above are the whole class. Tile metadata is deliberately split three ways: `TiledDimInfo` holds the integer geometry of one axis, the `nl.ndarray` produced by the allocator holds dtype and buffer kind, and `TensorView.dtype` holds the view dtype.
 
 ### Factories and the Remainder Math
 
@@ -298,7 +296,7 @@ The subtile family (`get_subtile_indices` :73, `get_subtile_start` :81, `get_loc
 
 ### Aggregation
 
-The real per-kernel "tile info struct" aggregates `TiledDimInfo` members, one per axis. D-O23 §3.2/§3.4 cites `MLPCTETileInfo` (~9 members, PSUM-bank-aware sizing via `NUM_HW_PSUM_BANKS` / `PSUM_BANK_SIZE`) and a 2-field RMSNorm variant. The typical sizes seen in this wheel are `nl.tile_size.pmax` (=128, the partition axis) for the outer/partition tile and `nl.tile_size.gemm_moving_fmax` (=512, the free axis) for the moving GEMM dimension. The exact numeric constants live inside the compiled `nki.language` module, so 128/512 are **STRONG** (witnessed by usage, e.g. `transpose.py:403`'s `nl.tile_size.pmax`) but not directly transcribable from readable source.
+The real per-kernel "tile info struct" aggregates `TiledDimInfo` members, one per axis: `MLPCTETileInfo` carries about nine of them with PSUM-bank-aware sizing (`NUM_HW_PSUM_BANKS` / `PSUM_BANK_SIZE`), while the RMSNorm variant needs only two. The typical sizes seen in this wheel are `nl.tile_size.pmax` (=128, the partition axis) for the outer/partition tile and `nl.tile_size.gemm_moving_fmax` (=512, the free axis) for the moving GEMM dimension. Those two numeric constants live inside the compiled `nki.language` module, so 128/512 are read from usage (e.g. `transpose.py:403`'s `nl.tile_size.pmax`) rather than transcribed from readable source.
 
 ---
 
@@ -353,9 +351,7 @@ The docstring's worked example (`tiled_range.py:71-76`): `TiledRange(300, 128)` 
 :474      ... I_tile.start_offset * J ...                                                   // start_offset drives the HBM slice
 ```
 
-The tile object's `.size` auto-handles the ragged last tile and `.start_offset` drives the source slice — exactly the large-tensor → tile pattern. Note the witness here uses the `private_nkl` twin import path; the `core/utils/tiled_range.py` and `private_nkl/utils/tiled_range.py` bodies are equivalent.
-
-> **CORRECTION (D-O23 §4.3) —** D-O23 cites `cumsum.py:99-120` as the canonical `TiledRange` witness and "17 kernel files use TiledRange." Neither `cumsum.py` nor that file count is present in this wheel — only `private_nkl/transpose.py` actually loops over a `TiledRange` here. The algorithm above is verified directly; the usage breadth is inherited from D-O23.
+The tile object's `.size` auto-handles the ragged last tile and `.start_offset` drives the source slice — exactly the large-tensor → tile pattern. Note the witness here uses the `private_nkl` twin import path; the `core/utils/tiled_range.py` and `private_nkl/utils/tiled_range.py` bodies are equivalent. `private_nkl/transpose.py` is the only file in this wheel that actually loops over a `TiledRange`; the production kernels that use it more heavily are not shipped here.
 
 ---
 
@@ -404,11 +400,11 @@ function get_view():                                    // → nl.ndarray array-
         return base_tensor.ap(pattern=ap_pattern, offset=offset, dtype=dtype);
 ```
 
-> **QUIRK —** the `(strides[i], shape[i])` list emitted at `tensor_view.py:258-261` is exactly the BIR `AccessPattern` AP-pair vector — `step = stride`, `num = size`, with `offset` as the base. `TensorView` is the front-end builder of the same structure the backend `AccessPattern` codegen lowers to DMA descriptors. So the full chain is: `TensorView.slice/permute/reshape` → AP pairs → BIR `AccessPattern` → DMA descriptor. The highest-dim step is the partition step the backend reads as `getStepBytesPerHighestDim`. (D-O23 §5.2.)
+> **QUIRK —** the `(strides[i], shape[i])` list emitted at `tensor_view.py:258-261` is exactly the BIR `AccessPattern` AP-pair vector — `step = stride`, `num = size`, with `offset` as the base. `TensorView` is the front-end builder of the same structure the backend `AccessPattern` codegen lowers to DMA descriptors. So the full chain is: `TensorView.slice/permute/reshape` → AP pairs → BIR `AccessPattern` → DMA descriptor. The highest-dim step is the partition step the backend reads as `getStepBytesPerHighestDim`.
 
 ### View Ops
 
-All return a new view via `_copy`; all **CONFIRMED** against the source. The SBUF partition-dim invariants (`dim 0` protected) apply only when `is_sbuf()` is true.
+All return a new view via `_copy`. The SBUF partition-dim invariants (`dim 0` protected) apply only when `is_sbuf()` is true.
 
 | Op | Line | Effect | SBUF dim-0 rule |
 |---|---|---|---|
@@ -473,9 +469,7 @@ kernel_assert(False, "Cannot create base dim with stride ...");
 :630  src = input_view.slice(dim=1, start=src_start, end=src_end, step=stride).get_view(),  // view → DMA src
 ```
 
-`TensorView(...).slice(...).get_view()` is the HBM/SBUF-side slice descriptor feeding a DMA op; chained slices compose without copying. `is_sbuf()` / `is_hbm()` (62-66) gate the partition-dim invariants (dim 0 protected only for SBUF/PSUM). Other shipped users: `transformer_tkg.py`, `attention_block_tkg_sharding.py`, `attention_block_tkg.py`.
-
-> **CORRECTION (D-O23 §5.5) —** D-O23 cites `output_projection_cte_tensor_io.py` and "32 kernel files use TensorView." This wheel ships 4 nkilib consumers (`conv1d.py`, `transformer_tkg.py`, `attention_block_tkg.py`, `attention_block_tkg_sharding.py`) plus the `private_nkl` twin — not the 32-file production tree. The view algebra above is verified directly from `tensor_view.py`.
+`TensorView(...).slice(...).get_view()` is the HBM/SBUF-side slice descriptor feeding a DMA op; chained slices compose without copying. `is_sbuf()` / `is_hbm()` (62-66) gate the partition-dim invariants (dim 0 protected only for SBUF/PSUM). Other shipped users: `transformer_tkg.py`, `attention_block_tkg_sharding.py`, `attention_block_tkg.py`. Those four nkilib consumers plus the `private_nkl` twin are the complete `TensorView` user set in this wheel; the view algebra above comes directly from `tensor_view.py` and holds regardless.
 
 ---
 
@@ -520,9 +514,9 @@ The contrast with [6.5.15 — NKI Compiler-Option & Allocation Decorators](optio
 
 ## The 8-Enum Catalog — `common_types.py`
 
-`common_types.py` (file A, `nkilib/core/utils/common_types.py`, 96 lines, md5 `0c2cff02…`, identical across cp310/11/12) defines exactly **8 enums and zero dataclasses** (D-O24 §0/§1). Every member and value below is transcribed verbatim from the source.
+`common_types.py` (file A, `nkilib/core/utils/common_types.py`, 96 lines, md5 `0c2cff02…`, identical across cp310/11/12) defines exactly **8 enums and zero dataclasses**. Every member and value below is transcribed verbatim from the source.
 
-> **CORRECTION (task framing, D-O24 §0) —** the task brief assumes the MoE config dataclasses (`MoECTESpec`, `ShardOnBlockConfig`, `ShardOnIConfig`, `QuantizationConfig`, `MoECTEImplementation`) live in `common_types.py`. They do **not** — `common_types.py` is enums-only; those configs live in `nkilib/core/moe/moe_cte/moe_cte.py` and are documented in the MoE kernel pages, not here.
+> **NOTE — `common_types.py` is enums-only.** The MoE configuration dataclasses (`MoECTESpec`, `ShardOnBlockConfig`, `ShardOnIConfig`, `QuantizationConfig`, `MoECTEImplementation`) are *not* here despite the file's name; they live in `nkilib/core/moe/moe_cte/moe_cte.py` and are covered by the MoE kernel pages.
 
 ### `QKVOutputLayout` — `common_types.py:19-22`
 
@@ -532,7 +526,7 @@ NBSd = 1   // (num_heads, b, s, d_head)
 NBdS = 2   // (num_heads, b, d_head, s)
 ```
 
-`BSD` (default) and `NBSd` are the live device layouts; `NBdS` is device-**unsupported** — handled only in the reference torch path, hard-asserted-against in the QKV TKG kernels (D-O24 §1.1).
+`BSD` (default) and `NBSd` are the live device layouts; `NBdS` is device-**unsupported** — handled only in the reference torch path, hard-asserted-against in the QKV TKG kernels.
 
 ### `NormType` — `common_types.py:25-29`
 
@@ -540,7 +534,7 @@ NBdS = 2   // (num_heads, b, d_head, s)
 NO_NORM = 0;  RMS_NORM = 1;  LAYER_NORM = 2;  RMS_NORM_SKIP_GAMMA = 3
 ```
 
-All four members live; no dead members (D-O24 §1.2).
+All four members live; no dead members.
 
 ### `ActFnType` — `common_types.py:32-36`
 
@@ -548,7 +542,9 @@ All four members live; no dead members (D-O24 §1.2).
 SiLU = 0;  GELU = 1;  GELU_Tanh_Approx = 2;  Swish = 3
 ```
 
-> **CORRECTION (task brief, D-O24 §1.3) —** the brief guessed members like "SWIGLU". There is **no** `SWIGLU` member. The four members are exactly `{SiLU, GELU, GELU_Tanh_Approx, Swish}`. SwiGLU is a `gate*act(up)` structural pattern (handled by `GateUpDim` + the MLP), not an activation-function member. Device map (`kernel_helpers.py:45-50`): `SiLU→nl.silu`, `GELU→nl.gelu` (exact erf), `GELU_Tanh_Approx→nl.gelu_apprx_tanh`, `Swish→nl.gelu_apprx_sigmoid` (β=1.702 sigmoid-approx GELU — *not* generic Swish-β).
+The four members are exactly `{SiLU, GELU, GELU_Tanh_Approx, Swish}`; the device map is `SiLU→nl.silu`, `GELU→nl.gelu` (exact erf), `GELU_Tanh_Approx→nl.gelu_apprx_tanh`, `Swish→nl.gelu_apprx_sigmoid` (`kernel_helpers.py:45-50`).
+
+> **GOTCHA — two names mean less than they look.** There is no `SWIGLU` member: SwiGLU is a `gate * act(up)` *structural* pattern, built from `GateUpDim` plus the MLP, not an activation function. And `Swish` here maps to `nl.gelu_apprx_sigmoid`, the β=1.702 sigmoid approximation of GELU — not a generic Swish-β.
 
 ### `RouterActFnType` — `common_types.py:39-46`
 
@@ -557,7 +553,7 @@ SIGMOID = 0;  SOFTMAX = 1
 def __str__(self): return self.name.lower()   // "sigmoid" / "softmax" — the only enum with a __str__
 ```
 
-Both members live (`router_topk` kernel); `SOFTMAX` gates the negmax/exp-sum path (D-O24 §1.4).
+Both members live (`router_topk` kernel); `SOFTMAX` gates the negmax/exp-sum path.
 
 ### `ExpertAffinityScaleMode` — `common_types.py:49-53`
 
@@ -565,7 +561,7 @@ Both members live (`router_topk` kernel); `SOFTMAX` gates the negmax/exp-sum pat
 NO_SCALE = 0;  POST_SCALE = 1;  PRE_SCALE = 2;  PRE_SCALE_DELAYED = 3
 ```
 
-`NO_SCALE`/`POST_SCALE`/`PRE_SCALE` are broadly live. `PRE_SCALE_DELAYED` is accepted at the API surface but normalized early to `PRE_SCALE` in the I/MX kernels (`if mode == PRE_SCALE_DELAYED: mode = PRE_SCALE`), and asserted-against in the block-shard and TKG paths — a documented-but-largely-unimplemented mode (D-O24 §1.5).
+`NO_SCALE`/`POST_SCALE`/`PRE_SCALE` are broadly live. `PRE_SCALE_DELAYED` is accepted at the API surface but normalized early to `PRE_SCALE` in the I/MX kernels (`if mode == PRE_SCALE_DELAYED: mode = PRE_SCALE`), and asserted-against in the block-shard and TKG paths — a documented-but-largely-unimplemented mode.
 
 ### `QuantizationType` — `common_types.py:56-62`
 
@@ -573,9 +569,9 @@ NO_SCALE = 0;  POST_SCALE = 1;  PRE_SCALE = 2;  PRE_SCALE_DELAYED = 3
 NONE = 0;  STATIC = 1;  ROW = 2;  MX = 3;  STATIC_MX = 4;  ROW_MX = 5
 ```
 
-`NONE`/`STATIC`/`ROW` (FP8 tensor-wise / row-wise) are widely used. `MX` (MXFP4/MXFP8) and `STATIC_MX` (FP8 "4× perf", `float8_e4m3fn_x4`-packed) are used in output-projection/MLP. `ROW_MX` is referenced only by a single `is_row_mx` predicate — effectively near-dead (D-O24 §1.6).
+`NONE`/`STATIC`/`ROW` (FP8 tensor-wise / row-wise) are widely used. `MX` (MXFP4/MXFP8) and `STATIC_MX` (FP8 "4× perf", `float8_e4m3fn_x4`-packed) are used in output-projection/MLP. `ROW_MX` is referenced only by a single `is_row_mx` predicate — effectively near-dead.
 
-> **NOTE (D-O24 §3) —** the `_pre_prod_kernels` / `private_nkl` twin `common_types.py` (file B≡C, 44 lines, md5 `9721a6bb…`) truncates `QuantizationType` to `{NONE, STATIC, ROW}` — it lacks `MX`/`STATIC_MX`/`ROW_MX` — and omits `QKVWeightLayout` and `GateUpDim` entirely. Downstream code in the `_pre_prod` namespace must not assume the 6-member enum.
+> **GOTCHA — the twin `common_types.py` is a smaller enum set.** The `_pre_prod_kernels` / `private_nkl` copy (file B≡C, 44 lines, md5 `9721a6bb…`) truncates `QuantizationType` to `{NONE, STATIC, ROW}` — it lacks `MX`/`STATIC_MX`/`ROW_MX` — and omits `QKVWeightLayout` and `GateUpDim` entirely. Downstream code in the `_pre_prod` namespace must not assume the 6-member enum.
 
 ### `QKVWeightLayout` — `common_types.py:65-91`
 
@@ -585,7 +581,7 @@ MX_CONTIGUOUS = 1   // MX w/o DMA transpose: pack 4 consecutive H rows → float
 MX_INTERLEAVED= 2   // MX w/ DMA transpose: reorder rows to match transpose interleave, re-pack x4
 ```
 
-All three live in the QKV kernels; default `CONTIGUOUS`; `MX_INTERLEAVED` is the DMA-transpose optimization path. The 27-line class docstring (`:65-87`) carries the exact pack/reshape recipes (D-O24 §1.7).
+All three live in the QKV kernels; default `CONTIGUOUS`; `MX_INTERLEAVED` is the DMA-transpose optimization path. The 27-line class docstring (`:65-87`) carries the exact pack/reshape recipes.
 
 ### `GateUpDim` — `common_types.py:94-96`
 
@@ -593,13 +589,13 @@ All three live in the QKV kernels; default `CONTIGUOUS`; `MX_INTERLEAVED` is the
 GATE = 0;  UP = 1
 ```
 
-Index selector into a fused gate/up weight tensor: `.select(dim=…, index=GateUpDim.GATE.value)` splits fused gate_up weights into halves. This is the structural mechanism behind "SwiGLU" (`gate * act(up)`) — there is no `SWIGLU` enum (D-O24 §1.8).
+Index selector into a fused gate/up weight tensor: `.select(dim=…, index=GateUpDim.GATE.value)` splits fused gate_up weights into halves. This is the structural mechanism behind "SwiGLU" (`gate * act(up)`) — there is no `SWIGLU` enum.
 
 ---
 
 ## Corpus and the Three-Tree Reconciliation
 
-This wheel ships the `nkilib/core/utils/` infrastructure described above plus a set of `nkilib/experimental/` kernels (`transformer/`, `conv/`, `moe/bwd/`) and the older `neuronxcc/private_nkl/` twin tree — but **not** the full production MoE / flash-attention / cumsum kernel set that D-O23 and D-O24 were authored against. That is why several of those reports' witness citations (`attention_cte.py`, `cumsum.py`, `output_projection_*.py`, `qkv_tkg.py`) and usage tallies ("17 TiledRange files", "32 TensorView files") do not resolve here. The infrastructure file bodies, the address laws, and the 8-enum catalog are all verified **directly** against the shipped source; the broader usage breadth is inherited from the reports and tagged accordingly above.
+This wheel ships the `nkilib/core/utils/` infrastructure described above plus a set of `nkilib/experimental/` kernels (`transformer/`, `conv/`, `moe/bwd/`) and the older `neuronxcc/private_nkl/` twin tree — but **not** the full production MoE / flash-attention / cumsum kernel set. Files such as `attention_cte.py`, `cumsum.py`, `output_projection_*.py` and `qkv_tkg.py` are simply absent, which is why the witness lists on this page are short: only a handful of shipped kernels exercise each primitive. The infrastructure file bodies, the address laws, and the 8-enum catalog are all read directly from the shipped source and stand on their own; only the *breadth of use* is limited by what this wheel contains.
 
 Three parallel copies of the utilities ship, consistent with the readable/orchestrator/compiled three-tree story of [the production-kernel inventory](production-kernel-inventory.md):
 
@@ -621,5 +617,3 @@ Three parallel copies of the utilities ship, consistent with the readable/orches
 - [NKI Architecture Overview & the 3-Layer Lowering Stack](architecture-overview.md) — the Python-trace → `penguin.ir` → BIR stack this layer feeds.
 - Part 8 — The libwalrus Backend (`walrus/`) — the backend Chaitin-Briggs `ColoringAllocator` that honors manual pins and colors auto-mode symbolic tiles; the contrast in [§ NKI vs Backend Allocator](#nki-allocator-vs-the-backend-coloring-allocator).
 - The 6.7.2+ kernels — [flash-attention](attention-cte.md), MoE, RMSNorm, RoPE — all build on the allocator / tiling / view primitives documented here.
-
-*Provenance: RE reports D-O23 (allocator + tiling) and D-O24 (common types), re-verified line-by-line against the shipped `nkilib/core/utils/` source.*

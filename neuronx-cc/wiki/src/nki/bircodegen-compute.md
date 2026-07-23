@@ -6,7 +6,7 @@
 
 `BirCodeGenLoop` is **layer 2 of Strand-P**: it walks the Penguin *tensoriser IR* — one op at a time, at the TongaISAInst level — and **builds Backend IR (BIR) directly**. Its own module docstring (verbatim `.rodata`) states the job: *"BirCodeGen - Generate Backend IR from tensoriser IR at the TongaISAInst level."* The class is a single public `BirCodeGenLoop` carrying **173 `PyMethodDef` methods**, of which roughly 120 are `codegen<OpName>` per-instruction lowerings. This page catalogs the **compute** subset — the matmul family (`codegenMatMulOp` / `MXOp` / `SparseOp`), the activation pair (`codegenActivationOp` / `codegenActivate2`), the tensor-scalar pointer emitters, and the tensor/reduce/copy/DVE/register-load/sequence-bounds/inline-asm lowerings — naming for each the real symbol and the `birpy.Instruction` it constructs.
 
-The central structural fact, and a **correction to the layer-2 picture drawn by upstream reports**, is that this module emits BIR *directly* via the Python `birpy.Instruction` binding — there is **no** `Penguin IR → klr → BIR` chain inside it. The BIR construction surface it imports is `neuronxcc.starfish.birpy.{Instruction, Opcodes, MemoryLocation, Function, Module, BirAffineExpr}` (all confirmed in `.rodata`). The only `klr`/`KLIR` tokens in the binary belong to a *separate, unrelated* method, `codegenExternalNativeNkiKlirKernel` (the external-NKI beta2 KLIR-tracing kernel path), whose config docstring literally reads *"beta2: Use beta2 KLIR tracing (default)"*. So layer 2 here is the **beta3 / Penguin** front-end onto BIR, running **in parallel** with the C++ **beta2 / klr** front-end (`KlirToBirCodegen`, libwalrus). The two are twin emitters that converge on the *same* BIR `Inst` node family — they are **not** a pipeline.
+The central structural fact is that this module emits BIR *directly* via the Python `birpy.Instruction` binding — there is **no** `Penguin IR → klr → BIR` chain inside it. The BIR construction surface it imports is `neuronxcc.starfish.birpy.{Instruction, Opcodes, MemoryLocation, Function, Module, BirAffineExpr}` (all confirmed in `.rodata`). The only `klr`/`KLIR` tokens in the binary belong to a *separate, unrelated* method, `codegenExternalNativeNkiKlirKernel` (the external-NKI beta2 KLIR-tracing kernel path), whose config docstring literally reads *"beta2: Use beta2 KLIR tracing (default)"*. So layer 2 here is the **beta3 / Penguin** front-end onto BIR, running **in parallel** with the C++ **beta2 / klr** front-end (`KlirToBirCodegen`, libwalrus). The two are twin emitters that converge on the *same* BIR `Inst` node family — they are **not** a pipeline.
 
 The page is organized: foundation and the two emit idioms (§1), then the matmul family (§2), activation (§3), the tensor-scalar pointer ops (§4), the reduce pair (§5), the Sunda/DVE max/argmax/match-replace family (§6), the offloaded-FMA / register-load / sequence-bounds / inline-asm / misc family (§7), and finally the convergence/divergence table against the klr twins (§8).
 
@@ -44,7 +44,7 @@ There are two front-ends onto Backend IR, and they are *siblings*, not stages:
                         Activation / TensorScalarPtr / Memset / …)
 ```
 
-> **CORRECTION — layer 2 does *not* emit klr.** An earlier reading drew layer 2 as *"Penguin IR → klr (KLIR) AST → klr::NcMatMul"*. The binary contradicts the klr-intermediate claim. `BirCodeGenLoop` imports `birpy.Instruction` and appends with `addInstruction` — there is **no** `klr::NcMatMul` / klr AST construction in any matmul or tensor codegen. The 3-stage chain *"Penguin → klr → BIR"* is wrong; the truth is *"Penguin → BIR (L2)"* running **parallel** to *"klr → BIR (Lx)"*. CONFIRMED by: the `birpy.*` import strings; the absence of any klr build call in the codegen bodies; and the fact that every `klr`/`KLIR` token in `.rodata` is owned by `codegenExternalNativeNkiKlirKernel` (`_233`) plus its `klir_binary` / `klir_input_names` config — an unrelated external-NKI kernel path, **not** the per-inst lowerings.
+> **GOTCHA — layer 2 does *not* pass through klr.** There is no *"Penguin → klr → BIR"* chain: `BirCodeGenLoop` imports `birpy.Instruction` and appends with `addInstruction`, and no matmul or tensor codegen constructs a `klr::NcMatMul` or any klr AST. The two paths are **parallel** — *"Penguin → BIR"* alongside *"klr → BIR"*. Every `klr`/`KLIR` token in this module's `.rodata` belongs to `codegenExternalNativeNkiKlirKernel` (`_233`) and its `klir_binary` / `klir_input_names` config, an unrelated external-NKI kernel path, not the per-inst lowerings.
 
 The `_INTERNAL_KERNEL_REGISTRY` module global (and `_build_internal_kernel_registry` with its `._get_attrs` / `._get_conv_attrs` / `._get_resize_args` closures, plus `get_internal_kernel_registry`) is **confirmed present in this same binary**. The matmul/activation/tensor codegens do **not** consult it — it is the compiled-vs-readable internal-kernel selector used by a different cluster of methods (`_trace_internal_kernel_to_new_nki_frontend`, `_resolve_kernel_config`, `codegenInternalNativeNkiKernel`).
 
@@ -68,11 +68,11 @@ i.build_debuginfo(inst.id);          // attach source location from the Penguin 
 bb.addInstruction(i);                // append onto the current BasicBlock
 ```
 
-CONFIRMED ordered tokens common to flavor A: `{id, build_debuginfo, addInstruction, Opcode}`.
+The ordered tokens common to flavor A: `{id, build_debuginfo, addInstruction, Opcode}`.
 
 **FLAVOR B — attribute-marshal tail** (memset, local-reduce, dropout, index-value, stream-shuffle): build the inst, set its named attrs (`setmode`, `setop`, …), `addAP(dst)`, then append. The dst operand is always marked by `addAP(..., isOutput=...)` over a `NeuronAP`.
 
-**Shared matmul/activation tail — `addInstToBir`** (`_265`, `0x63f30`): the matmul/activation family does **not** inline the append; it calls the shared helper, which sets the inst name (`set_name`), the engine (`set_engine`, via `engineTrans` → `birEngineType` / `EngineType`), then `addInstruction` onto the BIR `Function`. CONFIRMED tokens `set_engine`, `addInstruction`, `engineTrans`, `birEngineType`.
+**Shared matmul/activation tail — `addInstToBir`** (`_265`, `0x63f30`): the matmul/activation family does **not** inline the append; it calls the shared helper, which sets the inst name (`set_name`), the engine (`set_engine`, via `engineTrans` → `birEngineType` / `EngineType`), then `addInstruction` onto the BIR `Function`. Its tokens: `set_engine`, `addInstruction`, `engineTrans`, `birEngineType`.
 
 > **NOTE — `Opcode` is accessed singular.** The import is `birpy.Opcodes` (plural, the enum module) but call sites read `Opcode.<Name>` (singular). Both tokens are confirmed in `.rodata`. The opcode *name* of an inst is selected through this enum loaded from module-state — which is why opcodes like the plain `Matmult` and `Memset` do **not** surface as standalone strings (see §2 / §7.1).
 
@@ -96,7 +96,7 @@ The upstream Penguin `MatMulOp` carries **stationary** (=weight), **moving** (=i
 
 ```c
 // codegenMatMulOp  —  Penguin MatMulOp → bir Matmult, engine PE.
-// CONFIRMED: vocabulary, validation literals.  INFERRED: exact call order.
+// vocabulary and validation literals are read; the exact call order is INFERRED.
 Instruction codegenMatMulOp(self, op) {
     // (1) operand memlocs.  createMemLoc(_299) builds a BIR MemoryLocation set
     //     for each tensor operand; transformNeuronPSUMTensor(_305) maps the dst
@@ -114,7 +114,7 @@ Instruction codegenMatMulOp(self, op) {
     //     is_single_assign_psum_fast + SINGLE_ASSIGN_PSUM classify the fast
     //     single-assignment PSUM case.
 
-    // (3) the 3 boolean attrs  (CONFIRMED setters; note the weight/fmap renaming):
+    // (3) the 3 boolean attrs  (note the weight/fmap renaming):
     inst.set_is_transpose(op.isTranspose);
     inst.set_is_weight_onezero(op.isStationaryOneZero);      // Penguin is_lhs_onezero
     inst.set_is_fmap_onezero(op.isMovingZero);               // Penguin is_rhs_onezero
@@ -139,7 +139,7 @@ Instruction codegenMatMulOp(self, op) {
 }
 ```
 
-Validation literals (CONFIRMED verbatim in `.rodata`): `"A splittable NeuronWeightTensor should be of rank 2"`, `"Incorrect access pattern!"`, `") or dst start_partition("` (the multi-line *"src start_partition(…) or dst start_partition(…)"* mismatch message, shared with tensorcopy — `"tensorcopy src start_partition("` is its sibling), and `"incorrect double row step"`.
+Validation literals, verbatim from `.rodata`: `"A splittable NeuronWeightTensor should be of rank 2"`, `"Incorrect access pattern!"`, `") or dst start_partition("` (the multi-line *"src start_partition(…) or dst start_partition(…)"* mismatch message, shared with tensorcopy — `"tensorcopy src start_partition("` is its sibling), and `"incorrect double row step"`.
 
 > **NOTE — naming divergence vs the klr twin.** The Penguin op exposes `is_lhs_onezero` / `is_rhs_onezero`; this BIR surface renames them weight/fmap-centric (`set_is_weight_onezero` / `set_is_fmap_onezero`). The klr twin uses the field order `{isStationaryOneZero, isMovingZero, isTranspose}`. Same semantics, different setter surface — lhs/stationary = weight, rhs/moving = ifmap.
 
@@ -153,17 +153,17 @@ Instruction codegenMatMulMXOp(self, op) {
     bind dst / stationary / moving memlocs;                  // as §2.1
     ap_ls = getMxScalePartitionAp(self, op.lhs_scale);       // _255: [P/8] partition AP
     ap_rs = getMxScalePartitionAp(self, op.rhs_scale);       //       for the E8M0 scales
-    inst = Instruction(Opcode.MatmultMx);                    // CONFIRMED .rodata token
+    inst = Instruction(Opcode.MatmultMx);                    // .rodata token
     inst.set_scale(...);                                     // scale / scales / scale_ptr
     //   "Scale should be 1.0 if scale_ptr is specified"  ← when an explicit scale_ptr
-    //   tensor is bound, the immediate scale must be 1.0.  (CONFIRMED literal.)
+    //   tensor is bound, the immediate scale must be 1.0.  (verbatim literal)
     //   per-operand fields: lhs_scale / rhs_scale / dst_scale / offset_scale.
     inst.set_tile_size(...);  inst.pe_tile_position(...);    // as §2.1
     return addInstToBir(self, inst);                         // PE
 }
 ```
 
-MX is **always** transpose=false, onezero=false, PE-engine, **no** `perf_mode` — MX-ness rides on the operand DTYPE plus the two scale tensors. Second validation literal: `"offset scale is not equivalent to the accumulated tensor size on right of generic dim in {inst}"`. (`lhs_scale` / `rhs_scale` / `getMxScalePartitionAp` and the two literals are all CONFIRMED in `.rodata`.)
+MX is **always** transpose=false, onezero=false, PE-engine, **no** `perf_mode` — MX-ness rides on the operand DTYPE plus the two scale tensors. Second validation literal: `"offset scale is not equivalent to the accumulated tensor size on right of generic dim in {inst}"`. (`lhs_scale`, `rhs_scale`, `getMxScalePartitionAp` and both literals are all in `.rodata`.)
 
 ### 2.3 `codegenMatMulSparseOp` (_37) → bir `MatmultSparse`
 
@@ -174,7 +174,7 @@ Structured-sparse matmul. Reuses the §2.1 base operand binding (stationary/movi
 Instruction codegenMatMulSparseOp(self, op) {
     bind §2.1 base operands;
     addSparseMatmulAP(self, op);          // _281: the sparse-matmul access pattern
-    inst = Instruction(Opcode.MatmultSparse);             // CONFIRMED .rodata token
+    inst = Instruction(Opcode.MatmultSparse);             // .rodata token
     inst.set_compress_ratio(op.compress_ratio);           // verbatim copy from the IR node
     inst.set_is_transpose / set_is_fmap_onezero / set_is_weight_onezero;
     inst.set_replication_{resolution,shift_amnt,num_rows}; setTilePosition; set_tile_size;
@@ -182,7 +182,7 @@ Instruction codegenMatMulSparseOp(self, op) {
 }
 ```
 
-> **CORRECTION —** an earlier revision claimed this body calls `inst.setMask(op.mask)` and cited `"Mask pattern only support 1 step multiplier"` as its validation literal. The decompiled body (`__pyx_pw_…_BirCodeGenLoop_37c` @ `0x102cd0`) contains **zero** `mask`/`setMask`/`shuffle_mask` attribute references; its setter vocabulary is exactly `set_compress_ratio`, `set_is_transpose`, `set_is_fmap_onezero`, `set_is_weight_onezero`, the three `set_replication_*`, `setTilePosition`, `set_tile_size` (`__pyx_n_s_*` interned-name set). The `"Mask pattern only support 1 step multiplier"` string *is* present in `BirCodeGenLoop.so`'s `.rodata`, but it belongs to a different codegen (the mask is a stream-shuffle / lane-mask surface — see `codegenStreamShuffleInst`'s `setMask(shuffle_mask)`, §7.6), **not** the sparse matmul. The structured sparsity input is the `tags` / `compress_ratio` pair carried on `MatMulSparseOp` (no boolean mask). Verified against the body and consistent with [Sparse Matmul Lowering §4](sparse-matmul-lowering.md).
+> **GOTCHA — the sparse matmul carries no mask.** The body at `0x102cd0` contains **zero** `mask` / `setMask` / `shuffle_mask` references; its setter vocabulary is exactly `set_compress_ratio`, `set_is_transpose`, `set_is_fmap_onezero`, `set_is_weight_onezero`, the three `set_replication_*`, `setTilePosition` and `set_tile_size`. The literal `"Mask pattern only support 1 step multiplier"` *is* present in this module's `.rodata`, but it belongs to the stream-shuffle / lane-mask surface (`codegenStreamShuffleInst`'s `setMask(shuffle_mask)`, §7.6). The structured-sparsity input is the `tags` / `compress_ratio` pair on `MatMulSparseOp` — see [Sparse Matmul Lowering §4](sparse-matmul-lowering.md).
 
 ### 2.4 The matmul-family AP machinery
 
@@ -196,7 +196,7 @@ Three AP builders feed the matmul codegens:
 
 ## 3. The activation pair
 
-`codegenActivationOp` (`_33`, `0x197310`, ~15.5 KB) and `codegenActivate2` (`_31`, `0xa4d00`) **share one BIR `Activation` builder**. The classic form emits `Activation`; the accumulating form emits `ActivationAccumulationOp`; the dual/2-output "activation v2" form flips a flag. The class-name tokens `Activation` and `ActivationAccumulationOp` are both CONFIRMED standalone in `.rodata`. The `Activate2` op is the imported `neuronxcc.starfish.penguin.targets.generated.Activate2`.
+`codegenActivationOp` (`_33`, `0x197310`, ~15.5 KB) and `codegenActivate2` (`_31`, `0xa4d00`) **share one BIR `Activation` builder**. The classic form emits `Activation`; the accumulating form emits `ActivationAccumulationOp`; the dual/2-output "activation v2" form flips a flag. The class-name tokens `Activation` and `ActivationAccumulationOp` both appear standalone in `.rodata`. The `Activate2` op is the imported `neuronxcc.starfish.penguin.targets.generated.Activate2`.
 
 ```c
 // codegenActivationOp / codegenActivate2  —  Penguin → bir Activation.
@@ -230,13 +230,13 @@ Instruction codegenActivationOp(self, op) {
 }
 ```
 
-Confirmed setters: `set_func` / `set_func_args` / `set_func_outs`, `set_scale`, `setreduce_op` / `setreduce_cmd`, `setIsActivate2`. `generateCopyAct` (`_163`) is the copy-as-activation helper — a `Copy` lowered as an identity `Activation`. CONFIRMED: `set_func[_args/_outs]`, `setreduce_op/_cmd`, `setIsActivate2`, `set_scale`, `ActivationAccumulationOp` are all present in `.rodata`.
+Confirmed setters: `set_func` / `set_func_args` / `set_func_outs`, `set_scale`, `setreduce_op` / `setreduce_cmd`, `setIsActivate2`. `generateCopyAct` (`_163`) is the copy-as-activation helper — a `Copy` lowered as an identity `Activation`. `set_func[_args/_outs]`, `setreduce_op/_cmd`, `setIsActivate2`, `set_scale` and `ActivationAccumulationOp` are all present in `.rodata`.
 
 ---
 
 ## 4. The tensor-scalar pointer emitters
 
-`codegenAffSelTensorScalarOp` (`_57`, `0x9dba0`) and `codegenTensorScalarGEPOp` (`_179`, `0x1c6450`) both lower a Penguin tensor-scalar variant onto **one shared BIR `TensorScalarPtr` emitter**, `getTensorScalarPtr` (`_169`, `0x882a0`). The union-type literals in `.rodata` make the sharing explicit: `"Union[TensorScalarGEPOp, TensorScalarPtrOp]"` and `"Union[TensorScalarPtrOp, TensorScalarCacheCumulative]"`. The companions `codegenTensorScalarPtrOp` (`_171`) and `codegenTensorScalarCacheCumulative` (`_173`) share the same emitter. Downstream class token `TensorScalarPtr` is CONFIRMED standalone in `.rodata`.
+`codegenAffSelTensorScalarOp` (`_57`, `0x9dba0`) and `codegenTensorScalarGEPOp` (`_179`, `0x1c6450`) both lower a Penguin tensor-scalar variant onto **one shared BIR `TensorScalarPtr` emitter**, `getTensorScalarPtr` (`_169`, `0x882a0`). The union-type literals in `.rodata` make the sharing explicit: `"Union[TensorScalarGEPOp, TensorScalarPtrOp]"` and `"Union[TensorScalarPtrOp, TensorScalarCacheCumulative]"`. The companions `codegenTensorScalarPtrOp` (`_171`) and `codegenTensorScalarCacheCumulative` (`_173`) share the same emitter. The downstream class token `TensorScalarPtr` appears standalone in `.rodata`.
 
 ```c
 // getTensorScalarPtr (_169)  —  the common TS-ptr BIR builder → bir TensorScalarPtr.
@@ -267,15 +267,15 @@ Instruction codegenAffSelTensorScalarOp(self, op) {
 }
 ```
 
-CONFIRMED: `BirAffinePredicate`, `predicates`, `enumerate_predicates_in_codegen_order` all in `.rodata`. Siblings that share this predicate machinery: `codegenRangeSelect` (`_185`), `codegenSelectReduce` (`_187`), `codegenTensorSelect` (`_189`), `codegenTensorCopyPredicated` (`_191`).
+`BirAffinePredicate`, `predicates` and `enumerate_predicates_in_codegen_order` are all in `.rodata`. Siblings that share this predicate machinery: `codegenRangeSelect` (`_185`), `codegenSelectReduce` (`_187`), `codegenTensorSelect` (`_189`), `codegenTensorCopyPredicated` (`_191`).
 
-**`codegenTensorScalarGEPOp` (_179)** lowers a tensor-scalar whose scalar operand is fetched through an indexed/pointer (getelementptr-style) access. It routes through `getTensorScalarPtr` with the indirect operand bound via the `TensorScalarPtr` `scale_ptr` / `op1` slot. (STRONG.)
+**`codegenTensorScalarGEPOp` (_179)** lowers a tensor-scalar whose scalar operand is fetched through an indexed/pointer (getelementptr-style) access. It routes through `getTensorScalarPtr` with the indirect operand bound via the `TensorScalarPtr` `scale_ptr` / `op1` slot. [INFERRED]
 
 ---
 
 ## 5. The reduce pair — local vs. macro
 
-Two reduce lowerings, both converging on a bir `Reduce` / `TensorReduce` node (both tokens CONFIRMED standalone in `.rodata`). The local-vs-macro split is the defining distinction.
+Two reduce lowerings, both converging on a bir `Reduce` / `TensorReduce` node (both tokens appear standalone in `.rodata`). The local-vs-macro split is the defining distinction.
 
 | Method | idx | `pw` addr | ~size | bir target |
 |---|---|---|---|---|
@@ -319,7 +319,7 @@ void codegenNeuronReduceMacro(self, op) {
 }
 ```
 
-> **CORRECTION — "Macro" is *not* a preprocessor macro.** The name `NeuronReduceMacro` denotes a **multi-STEP / multi-axis reduce expansion** — a chain of `Reduce` nodes where only the first (`is_first_reduce`) reads the source tensor and the rest fold the running partial. It has nothing to do with C-preprocessor macros. CONFIRMED tokens `setReduceAxes`, `is_first_reduce`, `enumerate_axes`.
+> **GOTCHA — "Macro" here is not a preprocessor macro.** The name `NeuronReduceMacro` denotes a **multi-STEP / multi-axis reduce expansion** — a chain of `Reduce` nodes where only the first (`is_first_reduce`) reads the source tensor and the rest fold the running partial. It has nothing to do with C-preprocessor macros. Its tokens are `setReduceAxes`, `is_first_reduce`, `enumerate_axes`.
 
 > **NOTE — a real divergence vs. the klr twin.** The klr path emits a **single** `InstTensorReduce` whose `AxisListType` holds *all* axes at once. The Penguin macro path here expands to a **multi-step chain** (`is_first_reduce`). Same `Reduce` node family, different expansion granularity — the Penguin side does axis-by-axis what the klr side packs into one `AxisListType`.
 
@@ -336,7 +336,7 @@ The `Sunda*` prefix is the **Sunda / DVE engine codename**. This is the 8-wide r
 | `codegenSundaMatchReplace8` | `_199` | `0x68270` | 5.6 KB | `MatchReplace` (enum) | IT90 |
 | `codegenMaxIndexAndMatchReplace` | `_201` | `0xcf480` | 7.2 KB | `MaxIndexAndMatchReplace` | IT91 |
 
-`MaxIndex` and `MaxIndexAndMatchReplace` are CONFIRMED standalone tokens; bare `Max` and `MatchReplace` are enum-selected (no standalone string).
+`MaxIndex` and `MaxIndexAndMatchReplace` appear as standalone tokens; bare `Max` and `MatchReplace` are enum-selected (no standalone string).
 
 ### 6.1 `codegenMaxIndexAndMatchReplace` (_201) — the fused index+replace
 
@@ -357,7 +357,7 @@ Instruction codegenMaxIndexAndMatchReplace(self, inst_in) {
 }
 ```
 
-CONFIRMED: `MaxIndexAndMatchReplace`, `dst_idx`, `asscalar_or_str`, `clip_scalar`, `setImmediateVal` all in `.rodata`. The fused node's two outputs (`dst` replaced-values + `dst_idx` max-index) match the klr path's *"index output present → IT91"* selection.
+`MaxIndexAndMatchReplace`, `dst_idx`, `asscalar_or_str`, `clip_scalar` and `setImmediateVal` are all in `.rodata`. The fused node's two outputs (`dst` replaced-values + `dst_idx` max-index) match the klr path's *"index output present → IT91"* selection.
 
 ### 6.2 The unfused arms
 
@@ -373,7 +373,7 @@ CONFIRMED: `MaxIndexAndMatchReplace`, `dst_idx`, `asscalar_or_str`, `clip_scalar
 
 ### 7.1 `codegenMemsetOp` (_39) → bir `Memset` + dtype reinterpret
 
-`codegenMemsetOp` (`0x1dd000`, ~12.9 KB) lowers a constant-fill / RNG-fill of a tile. It carries the `MemsetMode` enum (CONFIRMED token) with members `Const` and `Random` (both CONFIRMED standalone). The bulk of the 12.9 KB body is **dtype-aware constant marshalling**, not the inst itself.
+`codegenMemsetOp` (`0x1dd000`, ~12.9 KB) lowers a constant-fill / RNG-fill of a tile. It carries the `MemsetMode` enum with members `Const` and `Random` (both standalone tokens). The bulk of the 12.9 KB body is **dtype-aware constant marshalling**, not the inst itself.
 
 ```c
 // codegenMemsetOp  —  Penguin MemsetOp → bir Memset.  FLAVOR B.
@@ -394,11 +394,11 @@ void codegenMemsetOp(self, op) {
 }
 ```
 
-CONFIRMED: `MemsetMode`, `Const`, `Random`, `setmode`, `setconstant`, `is_first_reduce`-style ordering tokens. Note bare `Memset` is **not** a standalone string (enum-selected). The `Const` arm fills the BIR inst's fill field; the `Random` arm leaves it empty (RNG state is engine-side).
+Tokens present: `MemsetMode`, `Const`, `Random`, `setmode`, `setconstant`, plus the `is_first_reduce`-style ordering names. Note bare `Memset` is **not** a standalone string (enum-selected). The `Const` arm fills the BIR inst's fill field; the `Random` arm leaves it empty (RNG state is engine-side).
 
 ### 7.2 `codegenOffloadedFMA` (_117) + `codegenTiledOffloadedFMA` (_115) → bir `DMACopy`
 
-> **CORRECTION — the "offloaded FMA" is a DMA-engine copy, *not* a PE/Act compute FMA.** `codegenOffloadedFMA` (`0x19d570`, ~8.2 KB) lowers to a bir `DMACopy` inst on the **CCE** (collective/copy) DMA engine. CONFIRMED Opcode token `DMACopy` + `setCceOp`. The FMA is a copy with an inline affine (`scale·x + const`) applied **by the DMA engine**, offloading the multiply-add off the PE/Act engines. Any prior doc treating offloaded-FMA as a compute inst is wrong.
+> **GOTCHA — the "offloaded FMA" is a DMA-engine copy, not a PE/Act compute FMA.** `codegenOffloadedFMA` (`0x19d570`, ~8.2 KB) lowers to a bir `DMACopy` inst on the **CCE** (collective/copy) DMA engine; the Opcode token is `DMACopy`, paired with `setCceOp`. The "FMA" is a copy with an inline affine (`scale·x + const`) applied **by the DMA engine**, which is the whole point: the multiply-add is offloaded off the PE and Activation engines. Reading it as a compute instruction gets both the engine and the cost model wrong.
 
 ```c
 // codegenOffloadedFMA  —  Penguin → bir DMACopy on the CCE/DMA engine.  FLAVOR A.
@@ -417,11 +417,11 @@ Instruction codegenOffloadedFMA(self, fma) {
 }
 ```
 
-CONFIRMED: `DMACopy`, `setCceOp`, `setconstants`, `scales`, `addSeqAccess`. **`codegenTiledOffloadedFMA` (_115)** is the tiled wrapper: same token set but uses `addAP` (static AP per tile) instead of `addSeqAccess`, looping over tiles.
+Tokens present: `DMACopy`, `setCceOp`, `setconstants`, `scales`, `addSeqAccess`. **`codegenTiledOffloadedFMA` (_115)** is the tiled wrapper: same token set but uses `addAP` (static AP per tile) instead of `addSeqAccess`, looping over tiles.
 
 ### 7.3 `codegenLoadTensorToRegister` (_45) → bir `TensorLoad` (register-addressed)
 
-`codegenLoadTensorToRegister` (`0x765f0`, ~12.2 KB) → bir Opcode `TensorLoad` (CONFIRMED standalone). A "load tensor value(s) into named scalar register(s)" — the result is **named scalar registers, not an AP dst** — running on `EngineType.ALL`.
+`codegenLoadTensorToRegister` (`0x765f0`, ~12.2 KB) → bir Opcode `TensorLoad` (a standalone token). A "load tensor value(s) into named scalar register(s)" — the result is **named scalar registers, not an AP dst** — running on `EngineType.ALL`.
 
 ```c
 // codegenLoadTensorToRegister  —  bir TensorLoad: tensor element(s) → named register(s).
@@ -444,20 +444,20 @@ Instruction codegenLoadTensorToRegister(self, op) {
 }
 ```
 
-CONFIRMED: `TensorLoad`, `dst_registers`, `RegisterAccess`, `addRegister`, `result_index`, `addArgumentOrOutput`, `isInputOrOutput`, `EngineType`, `ALL`, and the `Function`/`BasicBlock`/`curModule` plumbing.
+Tokens present: `TensorLoad`, `dst_registers`, `RegisterAccess`, `addRegister`, `result_index`, `addArgumentOrOutput`, `isInputOrOutput`, `EngineType`, `ALL`, plus the `Function`/`BasicBlock`/`curModule` plumbing.
 
 ### 7.4 `codegenGetSequenceBounds` (_183) → bir `GetSequenceBounds`
 
-`codegenGetSequenceBounds` (`0x1cfc30`) → bir Opcode `GetSequenceBounds` (CONFIRMED standalone). Computes the dynamic `[lo, hi]` bounds of a variable-length sequence — the masked/padded-seq length primitive used in attention / MoE. FLAVOR A **with explicit engine assignment**: `Instruction(Opcode.GetSequenceBounds)` → `setEngine(engineTrans(engine))` → src → `addAP(dst, is_output)` → `addInstruction`. Helper `_24 codegenGetSequenceBounds.ap_helper` (`0xde8d0`) builds the seq-bounds AP. The `engineTrans` (`_267`) mapper translates the Penguin engine → `birEngineType`.
+`codegenGetSequenceBounds` (`0x1cfc30`) → bir Opcode `GetSequenceBounds` (a standalone token). Computes the dynamic `[lo, hi]` bounds of a variable-length sequence — the masked/padded-seq length primitive used in attention / MoE. FLAVOR A **with explicit engine assignment**: `Instruction(Opcode.GetSequenceBounds)` → `setEngine(engineTrans(engine))` → src → `addAP(dst, is_output)` → `addInstruction`. Helper `_24 codegenGetSequenceBounds.ap_helper` (`0xde8d0`) builds the seq-bounds AP. The `engineTrans` (`_267`) mapper translates the Penguin engine → `birEngineType`.
 
 ### 7.5 Inline-ASM escape hatches — `codegenInlineASMInst` (_111) + `codegenInlineASMBytesInst` (_109)
 
 Two inline-assembly escape hatches that emit a raw engine instruction the compiler treats opaquely.
 
-- **`codegenInlineASMInst` (_111, `0x181360`)** — **structured** form. Uses a **dedicated** builder call `addInlineASMInst(opcode, asm_attrs, operands, num_inputs)` (not the generic `Instruction(Opcode.X)`). `num_inputs` (CONFIRMED) splits the operand list into inputs vs outputs; `asm_attrs` is the per-ISA attribute dict.
+- **`codegenInlineASMInst` (_111, `0x181360`)** — **structured** form. Uses a **dedicated** builder call `addInlineASMInst(opcode, asm_attrs, operands, num_inputs)` (not the generic `Instruction(Opcode.X)`). `num_inputs` splits the operand list into inputs vs outputs; `asm_attrs` is the per-ISA attribute dict.
 - **`codegenInlineASMBytesInst` (_109, `0x56a10`)** — **raw-bytes** form. `setAsmBytes(asm_bytes)` binds the raw machine-code byte string directly (the bytes *are* the encoded inst). Because the bytes are opaque, the scheduler must be **given** the sync semantics and latency explicitly: `setSyncType(sync_type)` + `setLatencyEstimate(latency_estimate)`. Engine via `setEngine(engineTrans(engine))`.
 
-CONFIRMED: `addInlineASMInst`, `asm_attrs`, `num_inputs`, `setAsmBytes`, `setSyncType`, `setLatencyEstimate`. Both carry the literal `"'%.200s' object is unsliceable"` (operand-byte slicing).
+Tokens present: `addInlineASMInst`, `asm_attrs`, `num_inputs`, `setAsmBytes`, `setSyncType`, `setLatencyEstimate`. Both carry the literal `"'%.200s' object is unsliceable"` (operand-byte slicing).
 
 ### 7.6 The small misc lowerings
 
@@ -505,12 +505,14 @@ For the dispatcher that selects among these codegens, see [§6.5.10 BirCodeGenLo
 
 ---
 
-## Confidence and corrections
+## Limits of this reading
 
-**CONFIRMED** (nm / function_addresses / `.rodata` of this binary): the class + roster; the seven matmul/activation/tensor-scalar codegens and the tensor/reduce/copy/DVE/register-load/sequence-bounds/inline-asm/misc methods at the cited indices and addresses (re-verified against `function_addresses.json`); the module docstring; the `birpy.{Instruction, Opcodes, MemoryLocation, Function, Module, BirAffineExpr}` imports; the BIR class/Opcode tokens `MatmultMx` / `MatmultSparse` / `Activation` / `ActivationAccumulationOp` / `TensorScalarPtr` / `DMACopy` / `TensorLoad` / `GetSequenceBounds` / `MaxIndex` / `MaxIndexAndMatchReplace` / `Reduce` / `TensorReduce` / `MemsetMode{Const,Random}` / `DoubleRow`; the full setter vocabulary (`set_is_transpose` / `_is_weight_onezero` / `_is_fmap_onezero` / `set_perf_mode` / `set_tile_size` / `setnum_active_channels` / `set_psum_buf_shape` / `setIsActivate2` / `set_func[_args/_outs]` / `setreduce_op/_cmd` / `set_scale` / `setMask` / `set_replication_num_rows` / `setReduceAxes` / `is_first_reduce` / `setLocal` / `setReplicaGroups` / `setCceOp` / `setconstants` / `addSeqAccess` / `dst_registers` / `RegisterAccess` / `addRegister` / `addArgumentOrOutput` / `setAsmBytes` / `setSyncType` / `setLatencyEstimate` / `set_keep_rate` / `lnc_id` / `BirQuasiAffineExpr`); the MX scale fields (`lhs_scale` / `rhs_scale` / `getMxScalePartitionAp`); the affine-predicate surface (`BirAffinePredicate` / `predicates` / `enumerate_predicates_in_codegen_order`); the dual emit idiom (`build_debuginfo` / `id` / `addInstruction` vs `addInstToBir`); and all quoted validation literals.
+Read directly off this binary's symbol table and `.rodata`: the class and its method roster; every codegen at the cited index and address; the module docstring; the `birpy.{Instruction, Opcodes, MemoryLocation, Function, Module, BirAffineExpr}` imports; the BIR class and Opcode tokens (`MatmultMx`, `MatmultSparse`, `Activation`, `ActivationAccumulationOp`, `TensorScalarPtr`, `DMACopy`, `TensorLoad`, `GetSequenceBounds`, `MaxIndex`, `MaxIndexAndMatchReplace`, `Reduce`, `TensorReduce`, `MemsetMode{Const,Random}`, `DoubleRow`); the full setter vocabulary; the MX scale fields (`lhs_scale`, `rhs_scale`, `getMxScalePartitionAp`); the affine-predicate surface; the two emit idioms; and every quoted validation literal.
 
-**STRONG**: the emit-skeleton ordering; the weight/fmap ↔ stationary/moving operand mapping; AffSel→predicated-TS and GEP→indirect-TS folding; Activate2 sharing the Activation builder; the §8 convergence table; the bir-Inst ↔ IT-number mapping (via the klr twins).
+Reconstructed rather than read verbatim: the emit-skeleton ordering; the weight/fmap ↔ stationary/moving operand mapping; the AffSel→predicated-TS and GEP→indirect-TS folding; Activate2 sharing the Activation builder; the §8 convergence table; and the bir-Inst ↔ IT-number mapping, which comes via the klr twins.
 
-**INFERRED**: the exact intra-body call order for the matmul/activation family (name-via-module-state blocks byte-tracing of those bodies; the misc/tensor family ordering, by contrast, was recovered from IDA disasm program order); the precise `MemsetMode.Random` RNG wiring; the BasicBlock-append call for FLAVOR-B ops.
+Three things are [INFERRED] outright:
 
-**CORRECTIONS** issued in place: (1) layer 2 emits BIR *directly* via `birpy.Instruction`, not through klr (§1.1); (2) `NeuronReduceMacro` is a multi-step reduce, not a preprocessor macro (§5.2); (3) offloaded-FMA is a `DMACopy` on the CCE/DMA engine, not a PE/Act compute inst (§7.2).
+- **The exact intra-body call order for the matmul/activation family.** Those bodies reach their names through module state, which blocks byte-tracing. (The misc/tensor family is different — its ordering *was* recovered from disassembly program order.)
+- **The `MemsetMode.Random` RNG wiring.** The mode is set; where the RNG state lives is engine-side.
+- **The BasicBlock-append call for FLAVOR-B ops.**

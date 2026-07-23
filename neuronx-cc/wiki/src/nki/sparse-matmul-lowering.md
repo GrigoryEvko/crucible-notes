@@ -73,7 +73,7 @@ neuronxcc/nki/_private/private_api.py : nc_matmul_sparse           @0x23480
 ### Algorithm
 
 ```c
-// nc_matmul_sparse  —  private_api.so @0x23480.  CONFIRMED: body interns
+// nc_matmul_sparse  —  private_api.so @0x23480.  body interns
 // matmult_sparse(1×), nki_ctx(2×), moving(2×), stationary(2×), tags(11×), compress_ratio(19×).
 PyObject* nc_matmul_sparse(moving, stationary, tags, compress_ratio) {
     ctx = nki_ctx();                                  // module-global active codegen ctx
@@ -85,9 +85,9 @@ PyObject* nc_matmul_sparse(moving, stationary, tags, compress_ratio) {
 }
 ```
 
-The argument names are `{moving, stationary, tags, compress_ratio}` (CONFIRMED from the `__pyx_pyargnames` table). The user passes **both** the `tags` tensor and the `compress_ratio` explicitly — neither is inferred by the compiler. `matmult_sparse` is resolved by `getattr` on the `nki_ctx()` object (the `KernelBuilder.NeuronCodegen` forward builder; see [Forward Builder](neuroncodegen-forward-builder.md)) and called with the four keyword arguments.
+The argument names are `{moving, stationary, tags, compress_ratio}`, read from the `__pyx_pyargnames` table. The user passes **both** the `tags` tensor and the `compress_ratio` explicitly — neither is inferred by the compiler. `matmult_sparse` is resolved by `getattr` on the `nki_ctx()` object (the `KernelBuilder.NeuronCodegen` forward builder; see [Forward Builder](neuroncodegen-forward-builder.md)) and called with the four keyword arguments.
 
-> **CORRECTION — the matmul cost `4×` is the fp32 penalty, not the compression factor.** The shipped NKI ISA stub gives the Tensor-Engine `nc_matmul` cost as `max(min(64, N_stationary), N_moving)` cycles for low-precision inputs (`float8_e4m3/e5m2/bfloat16/float16/tfloat32`) and `4 * max(min(64, N_stationary), N_moving)` for `float32` (`neuronxcc-stubs/nki/isa/__init__.pyi:957–959`, CONFIRMED). The `4×` factor is the **float32 cost multiplier** — it is *not* a `/ 4` compression term and must not be read as evidence for `compress_ratio = 4`. `N_stationary` / `N_moving` are elements-per-partition of the two tiles. The `compress_ratio = 4` design point is established independently — by the element-count `4*out == in` invariant and the 4-bit (16-position) nibble tag that selects one of four lanes per group ([Sparsity Compress §tag layout](sparsity-compress.md)) — not by this cost table. `compress_ratio` stays a free user parameter on both the intrinsic and the IR node; `4` is merely the point the nibble tag and the element-count invariant are built around.
+> **GOTCHA — the matmul cost `4×` is the fp32 penalty, not the compression factor.** The shipped NKI ISA stub gives the Tensor-Engine `nc_matmul` cost as `max(min(64, N_stationary), N_moving)` cycles for low-precision inputs (`float8_e4m3/e5m2/bfloat16/float16/tfloat32`) and `4 * max(min(64, N_stationary), N_moving)` for `float32` (`neuronxcc-stubs/nki/isa/__init__.pyi:957–959`), where `N_stationary` / `N_moving` are elements-per-partition. That `4×` is a float32 cost multiplier, not a `/4` compression term, and is no evidence for `compress_ratio = 4`. The 4:1 design point rests on two independent facts: the element-count `4*out == in` invariant and the 4-bit (16-position) nibble tag that selects one of four lanes per group ([Sparsity Compress §tag layout](sparsity-compress.md)). `compress_ratio` itself stays a free user parameter on both the intrinsic and the IR node.
 
 ---
 
@@ -114,7 +114,7 @@ void combine_sparse_matmult_tiles(lhs_tile, rhs_tile, tag_tile) {
     rps = rhs_tile.par_shape;  rfs = rhs_tile.free_shape;
     tps = tag_tile.par_shape;  tfs = tag_tile.free_shape;
 
-    // (1) shape-equality guard across all THREE operands  — CONFIRMED .rodata literal:
+    // (1) shape-equality guard across all THREE operands  — .rodata literal:
     //     "LHS, RHS and TAG should has the same number of contract dim!"
     assert (lps,lfs) == (rps,rfs) == (tps,tfs);
 
@@ -125,7 +125,7 @@ void combine_sparse_matmult_tiles(lhs_tile, rhs_tile, tag_tile) {
     // (3) filter, then slice
     filtered = filter_indices(idx)[:N];                                   // 14 refs in body
 
-    // (4) per-tile index equality guard  — CONFIRMED .rodata literal: "Indices mismatch!"
+    // (4) per-tile index equality guard  — .rodata literal: "Indices mismatch!"
     for tile in (lhs, rhs, tag): read tile.par_indices / tile.free_indices;
     assert indices_match_across(lhs, rhs, tag);
 
@@ -135,9 +135,9 @@ void combine_sparse_matmult_tiles(lhs_tile, rhs_tile, tag_tile) {
 }
 ```
 
-> **CORRECTION (module placement) —** the task brief assumed this combiner lives in `BirCodeGenLoop`. It does **not**: the symbol is `…KernelBuilder…9combine_sparse_matmult_tiles` and the `__FILE__` is `KernelBuilder.py`. It is part of the NKI *forward builder* ([three-sink model](three-sink-kernel-model.md)), which runs before `BirCodeGenLoop` lowering. [CONFIRMED]
+> **NOTE — this combiner is not part of `BirCodeGenLoop`.** Its symbol is `…KernelBuilder…9combine_sparse_matmult_tiles` and its `__FILE__` is `KernelBuilder.py`: it belongs to the NKI *forward builder* ([three-sink model](three-sink-kernel-model.md)), which runs before any `BirCodeGenLoop` lowering.
 
-> **QUIRK — no `compress_ratio` here.** `rg -c compress_ratio` over this function body returns **0**. The 4:1 ratio is carried on the `MatMulSparseOp` IR node (from the user's `nc_matmul_sparse` call) and is an *input* to the geometry, not something this combiner derives. Compression ratio and tile geometry are deliberately split across two layers — a reimplementer must not fold them. [CONFIRMED]
+> **QUIRK — no `compress_ratio` here.** The token does not appear anywhere in this function body. The 4:1 ratio is carried on the `MatMulSparseOp` IR node (from the user's `nc_matmul_sparse` call) and is an *input* to the geometry, not something this combiner derives. Compression ratio and tile geometry are deliberately split across two layers — a reimplementer must not fold them.
 
 The third operand being a **first-class TAG tile of equal shape** is the forward-builder mirror of the on-device tag datapath: at this layer the tag is a tile combined with lhs+rhs; downstream the walrus backend's `generateLoadTagsSparse` streams it into the PE array as the uint16 nibble tag ([Sparsity Compress](sparsity-compress.md)). The tag is therefore *supplied* by the user / intrinsic, never synthesised by a detection pass.
 
@@ -162,27 +162,27 @@ class MatMulSparseOp(MatMulOpBase):                # __FILE__ = …/generated/Ma
     #           remove_ap_index, updateAPIndicies, _updateAllIndicesList
 ```
 
-The class name, base class `MatMulOpBase`, method roster, and the field names `tags` / `compress_ratio` / `compress_indices` / `tag_indices` / `ap_indices` are **CONFIRMED** as interned strings in `MatMulSparseOpGen.so`.
+The class name, base class `MatMulOpBase`, method roster, and the field names `tags` / `compress_ratio` / `compress_indices` / `tag_indices` / `ap_indices` all appear as interned strings in `MatMulSparseOpGen.so`.
 
 ### Construction
 
 ```c
 // MatMulSparseOp.__init__  —  MatMulSparseOpGen.so @0x150b0
-// argnames {self, tags, compress_ratio, compress_indices, tag_indices, **kwargs} CONFIRMED.
+// argnames: {self, tags, compress_ratio, compress_indices, tag_indices, **kwargs}
 void MatMulSparseOp.__init__(self, tags, compress_ratio, compress_indices, tag_indices, **kwargs) {
     MatMulOpBase.__init__(self, **kwargs);             // dense base: operands, dst, tile, onezero
     self.tags            = tags;                        // sparsity tag tensor (4-bit indices)
     self.compress_ratio  = compress_ratio;             // verbatim from nc_matmul_sparse (≡4)
     self.compress_indices= compress_indices;           // per-tile kept-row index lists
     self.tag_indices     = tag_indices;
-    self.set_access_mode(AccessMode.LOAD);             // operands are loads (CONFIRMED)
+    self.set_access_mode(AccessMode.LOAD);             // operands are loads
     self.link_operands(...);                            // wire operand use-def edges
 }
 ```
 
-`compress_ratio` is the most-referenced token in the constructor body (interned `36×`), reflecting that it is stored, exposed via a `compress_ratio` accessor method, and threaded into the AP-index machinery. The operands are marked `AccessMode.LOAD` (`set_access_mode` + `AccessMode.LOAD` both CONFIRMED), and `link_operands` wires the use-def edges.
+`compress_ratio` is the most-referenced token in the constructor body (interned `36×`), reflecting that it is stored, exposed via a `compress_ratio` accessor method, and threaded into the AP-index machinery. The operands are marked `AccessMode.LOAD`, and `link_operands` wires the use-def edges.
 
-> **NOTE — `compress_indices` / `tag_indices` are not seen at lowering time.** These per-tile index lists (which rows are kept) are consumed by the forward-builder geometry (§2) and become the nibble-tag stream downstream; `codegenMatMulSparseOp` (§4) reads `compress_ratio`, the onezero/transpose flags, tile geometry and the operand APs — not `compress_indices`/`tag_indices` directly. They are derived from the user's `tags` tensor, **not** from weight magnitude. [CONFIRMED — field presence; STRONG — consumption point]
+> **NOTE — `compress_indices` / `tag_indices` are not seen at lowering time.** These per-tile index lists (which rows are kept) are consumed by the forward-builder geometry (§2) and become the nibble-tag stream downstream; `codegenMatMulSparseOp` (§4) reads `compress_ratio`, the onezero/transpose flags, tile geometry and the operand APs — not `compress_indices`/`tag_indices` directly. They are derived from the user's `tags` tensor, **not** from weight magnitude. (The fields themselves are read off the class; where exactly they are consumed is [INFERRED] from the absence of any reference at lowering time.)
 
 ---
 
@@ -211,7 +211,7 @@ Instruction codegenMatMulSparseOp(self, inst) {
     name = "I %s" % inst.id;                            // __pyx_kp_u_I_s
     di   = build_debuginfo(inst);                       // module-global
     BIR  = bb.addInstruction(Opcode.MatmultSparse, name, di);   // *** create the sparse inst ***
-                                                        // "MatmultSparse" CONFIRMED .rodata literal
+                                                        // "MatmultSparse" .rodata literal
 
     // ---- replication block (activation broadcast; guarded on inst.replicate_ap) ----
     if (inst.replicate_ap) {                            // INFERRED guard condition
@@ -231,7 +231,7 @@ Instruction codegenMatMulSparseOp(self, inst) {
     // ---- assertion guards (only when NOT python -O; gated on Py_OptimizeFlag) ----
     assert inst.dst.free_ap_size % 2 == 0;              // dst free-AP size must be even
     assert operand[0].dtype == dt.float32r;             // WEIGHT operand must be float32r ('r' = packed fp32)
-    assert inst.dst.start_partition % N == 0,           // CONFIRMED literal:
+    assert inst.dst.start_partition % N == 0,           // literal:
            "Illegal start partition in MatMulOp: %s" % …;
 
     // ---- PE-array tile placement ----
@@ -250,11 +250,11 @@ Instruction codegenMatMulSparseOp(self, inst) {
 }
 ```
 
-The setter sequence — `set_compress_ratio`, `set_is_transpose`, `set_is_fmap_onezero`, `set_is_weight_onezero`, the three `set_replication_*`, `setTilePosition`, `set_tile_size` — and the calls `addSparseMatmulAP` (`1×`), `addAP` (`3×`), the `MatmultSparse` literal, `float32r` (`3×`), `num_result_elts` (`2×`), `build_debuginfo` (`2×`) are all **CONFIRMED present** in the decompiled body. The `"Illegal start partition in MatMulOp: %s"` assert string is interned in the `BirCodeGenLoop` string table.
+The setter sequence — `set_compress_ratio`, `set_is_transpose`, `set_is_fmap_onezero`, `set_is_weight_onezero`, the three `set_replication_*`, `setTilePosition`, `set_tile_size` — and the calls `addSparseMatmulAP` (`1×`), `addAP` (`3×`), the `MatmultSparse` literal, `float32r` (`3×`), `num_result_elts` (`2×`), `build_debuginfo` (`2×`) are all present in the decompiled body. The `"Illegal start partition in MatMulOp: %s"` assert string is interned in the `BirCodeGenLoop` string table.
 
-> **CORRECTION — this op carries NO mask.** A prior draft of [BirCodeGenLoop compute codegen §2.3](bircodegen-compute.md) modeled `codegenMatMulSparseOp` as calling `inst.setMask(op.mask)` and gated it on the literal `"Mask pattern only support 1 step multiplier"`. Direct inspection of the `@0x102cd0` body contradicts this: a case-insensitive search for `mask` / `shuffle` over the function returns **zero** hits, and `"Mask pattern only support 1 step multiplier"` lives only in the module-wide `…CreateStringTabAndInitStrings…` init (an interned string belonging to a *different* op), never referenced from this codegen. The sparse matmul carries its structure through `compress_ratio` + the `tags`/`compress_indices`/`tag_indices` node fields + `addSparseMatmulAP`, **not** a mask setter. [CONFIRMED — `rg -c -i mask @0x102cd0` = 0]
+> **GOTCHA — this op carries no mask.** Neither `mask` nor `shuffle` appears anywhere in the `@0x102cd0` body, and there is no `setMask` call. The interned literal `"Mask pattern only support 1 step multiplier"` belongs to a *different* op — it lives in the module-wide `…CreateStringTabAndInitStrings…` init and is never referenced from this codegen. The sparse matmul carries its structure through `compress_ratio`, the `tags` / `compress_indices` / `tag_indices` node fields, and `addSparseMatmulAP` — never through a mask setter.
 
-> **QUIRK — three operands, one sparse AP.** `inst.operands` is unpacked as exactly three (the decompile asserts the unpack count). Only `operand[0]` — the compressed, stationary, `float32r` weight — is routed through `addSparseMatmulAP`; `operand[1]` (ifmap/moving) and `operand[2]` use the plain `addAP`. The Cython layer emits **one** `addInstruction(Opcode.MatmultSparse)` and never separately emits `Ldweights`/`Ldtags`; those are expanded later by the walrus backend from this single fused instruction (§6, [PE Matmul Encoding](../isa/pe-matmul-encoding.md)). [STRONG]
+> **QUIRK — three operands, one sparse AP.** `inst.operands` is unpacked as exactly three (the decompile asserts the unpack count). Only `operand[0]` — the compressed, stationary, `float32r` weight — is routed through `addSparseMatmulAP`; `operand[1]` (ifmap/moving) and `operand[2]` use the plain `addAP`. The Cython layer emits **one** `addInstruction(Opcode.MatmultSparse)` and never separately emits `Ldweights`/`Ldtags`; those are expanded later by the walrus backend from this single fused instruction (§6, [PE Matmul Encoding](../isa/pe-matmul-encoding.md)).
 
 > **NOTE — float32r weight.** The `operand[0].dtype == dt.float32r` assert (3 `float32r` references in-body) requires the stationary compressed weight to be in the `r` (packed/replicated fp32) representation — the same representation the dense matmul uses for its fp32 two-pass marker ([PE Matmul Encoding §dtype remap](../isa/pe-matmul-encoding.md), wire tag `0x0b`).
 
@@ -266,12 +266,12 @@ A central design question: does the compiler *detect* sparsity (magnitude-prune 
 
 | Evidence | Finding | Confidence |
 |---|---|---|
-| `nc_matmul_sparse` args | The user passes `tags` **and** `compress_ratio` explicitly; the body forwards them verbatim to `matmult_sparse`. The compiler never derives either. | CONFIRMED |
-| Public dense matmul | `nki tensor._matmul` `@0x42510` (`backends/neuron/tensor.py`) has **zero** sparse / compress / tag interned names — no "if weight is sparse → sparse path" branch. Dense and sparse matmuls are separate user-callable ops. | CONFIRMED |
-| HLO frontend | `codegenMatMulSparseOp` has **no** `backend_config` interned name (0 hits); no `hlo2penguin` decompile references `MatMulSparse`. There is no path rewriting a `backend_config={sparse:…}` annotation on a dense HLO matmul into a `MatMulSparseOp`. | CONFIRMED |
-| `combine_sparse_matmult_tiles` | The tag is a first-class **input** tile of equal shape (§2), and the on-device compress op's mask is also an external input ([Sparsity Compress §mask](sparsity-compress.md)). No `topk`/`argsort`/`abs`/`threshold` magnitude logic anywhere. | CONFIRMED |
+| `nc_matmul_sparse` args | The user passes `tags` **and** `compress_ratio` explicitly; the body forwards them verbatim to `matmult_sparse`. The compiler never derives either. | CERTAIN |
+| Public dense matmul | `nki tensor._matmul` `@0x42510` (`backends/neuron/tensor.py`) has **zero** sparse / compress / tag interned names — no "if weight is sparse → sparse path" branch. Dense and sparse matmuls are separate user-callable ops. | CERTAIN |
+| HLO frontend | `codegenMatMulSparseOp` has **no** `backend_config` interned name (0 hits); no `hlo2penguin` decompile references `MatMulSparse`. There is no path rewriting a `backend_config={sparse:…}` annotation on a dense HLO matmul into a `MatMulSparseOp`. | CERTAIN |
+| `combine_sparse_matmult_tiles` | The tag is a first-class **input** tile of equal shape (§2), and the on-device compress op's mask is also an external input ([Sparsity Compress §mask](sparsity-compress.md)). No `topk`/`argsort`/`abs`/`threshold` magnitude logic anywhere. | CERTAIN |
 
-> **GOTCHA — opposite of NVIDIA 2:4.** On NVIDIA, ASP / cuSPARSELt performs the magnitude prune and *produces* the 2:4 mask at quantization time. Here, the mask is assumed to already exist (training produced a structured-sparse weight per the L:R pattern), and the compiler is a faithful **carrier**: it trusts the user's `tags` and `compress_ratio` and never makes a hardware magnitude decision. A reimplementer porting from a CUDA mental model must not add a prune pass — there is none. [CONFIRMED]
+> **GOTCHA — opposite of NVIDIA 2:4.** On NVIDIA, ASP / cuSPARSELt performs the magnitude prune and *produces* the 2:4 mask at quantization time. Here, the mask is assumed to already exist (training produced a structured-sparse weight per the L:R pattern), and the compiler is a faithful **carrier**: it trusts the user's `tags` and `compress_ratio` and never makes a hardware magnitude decision. A reimplementer porting from a CUDA mental model must not add a prune pass — there is none.
 
 The `prune` / `PruneFunctions` passes that *do* exist in `hlo2penguin` are MLIR dead-**function** elimination, unrelated to weight pruning. The "PruneFunctions" name is a false friend.
 
@@ -297,13 +297,13 @@ bir::InstMatmultSparse                                       libBIR @0x176340 (c
   — misc              : getLatency, isSymbolic, ArithOps
 ```
 
-Every symbol above is **CONFIRMED present** in `libBIR.so`'s native-exports table. `getWeights` / `getTags` / `getIfmap` / `getDst` make the **three-operand-plus-dst** contract explicit at the C++ level; the four `get*ValidDtypes` accessors gate each operand's dtype independently (the moving-operand restriction lives in `getIfmapValidDtypes`, `libwalrus @0x5eb200`).
+Every symbol above appears in `libBIR.so`'s native-exports table. `getWeights` / `getTags` / `getIfmap` / `getDst` make the **three-operand-plus-dst** contract explicit at the C++ level; the four `get*ValidDtypes` accessors gate each operand's dtype independently (the moving-operand restriction lives in `getIfmapValidDtypes`, `libwalrus @0x5eb200`).
 
 ### Serialization & Latency
 
-The class round-trips through JSON via `toJson` / `readFieldsFromJson` / `createFromJson` (CONFIRMED symbols; `createFromJson @0x181790`). All nine serialized field names are present as interned strings in `libBIR.so`: `compress_ratio`, `is_transpose`, `accumulation_flag`, `psum_zero_region`, `replication_num_rows`, `replication_resolution`, `replication_shift_amnt`, `tile_position`, `tile_size` (the onezero flags ride in the shared `MatMul` base serialization). The de/serializer resolves them through rodata string pointers rather than inlined C literals — standard for `nlohmann::json` field lookups — so the names show in the string pool, not the decompiled function body.
+The class round-trips through JSON via `toJson` / `readFieldsFromJson` / `createFromJson` (`createFromJson @0x181790`). All nine serialized field names are present as interned strings in `libBIR.so`: `compress_ratio`, `is_transpose`, `accumulation_flag`, `psum_zero_region`, `replication_num_rows`, `replication_resolution`, `replication_shift_amnt`, `tile_position`, `tile_size` (the onezero flags ride in the shared `MatMul` base serialization). The de/serializer resolves them through rodata string pointers rather than inlined C literals — standard for `nlohmann::json` field lookups — so the names show in the string pool, not the decompiled function body.
 
-Latency is modeled per-architecture — **all four** overloads exist for `InstMatmultSparse` across `Gen3Hwm`, `CoreV4Hwm`, and `bir::Hwm` (CONFIRMED demangled symbols):
+Latency is modeled per-architecture — **all four** overloads exist for `InstMatmultSparse` across `Gen3Hwm`, `CoreV4Hwm`, and `bir::Hwm`:
 
 ```text
 ZNK7Gen3Hwm10getLatency           …InstMatmultSparse     ZNK9CoreV4Hwm10getLatency           …InstMatmultSparse
@@ -314,11 +314,11 @@ ZNK7Gen3Hwm20getLatencyWriteDrain …InstMatmultSparse     ZNK9CoreV4Hwm20getLat
 
 Distinct read-init / exec / write-drain latencies prove the hardware-model treats the sparse matmul as a real PE-array instruction with its own pipeline timing.
 
-> **QUIRK — `compress_ratio` is an affine expression, not a plain int.** The accessor is `getCompressRatioEvalIfNeeded(DenseMap<pelican::AffineIdx*, long>)` — i.e. the BIR `compress_ratio` field is a `variant<int, QuasiAffineExpr>` that may require evaluation against the loop-index map before it is a concrete number (consistent with [PE Matmul Encoding §sparse](../isa/pe-matmul-encoding.md), which reads it from `InstMatmultSparse+0x328`). `codegenMatMulSparseOp` (§4) sets it from `inst.compress_ratio`, which for the common path is the literal `4` from the user, but the BIR layer keeps the general affine form so the ratio can be a function of a tiling axis. [CONFIRMED — symbol; STRONG — variant interpretation]
+> **QUIRK — `compress_ratio` is an affine expression, not a plain int.** The accessor is `getCompressRatioEvalIfNeeded(DenseMap<pelican::AffineIdx*, long>)` — i.e. the BIR `compress_ratio` field is a `variant<int, QuasiAffineExpr>` that may require evaluation against the loop-index map before it is a concrete number (consistent with [PE Matmul Encoding §sparse](../isa/pe-matmul-encoding.md), which reads it from `InstMatmultSparse+0x328`). `codegenMatMulSparseOp` (§4) sets it from `inst.compress_ratio`, which for the common path is the literal `4` from the user, but the BIR layer keeps the general affine form so the ratio can be a function of a tiling axis. (The accessor symbol is exported; reading its `variant<int, QuasiAffineExpr>` shape off that signature is [INFERRED].)
 
 ### Simulation
 
-`birsim::InstVisitor::visitInstMatmultSparse` (`libBIRSimulator @0x1f0a10`, `libwalrus @0x5f6000`, CONFIRMED) executes the instruction in software: it re-expands the tag stream to dense columns (`dense_col(lane) = (tag_word >> (4*lane)) & 0xF`) and accumulates over each group of 4. The asserts `num_active_rows % 4 == 0` and `num_active_rows == 128` reinforce the group-of-4 structure and the single supported 128-active-row case. The tag bit-layout and the consumer-side codegen are documented in [Sparsity Compress §tag layout](sparsity-compress.md).
+`birsim::InstVisitor::visitInstMatmultSparse` (`libBIRSimulator @0x1f0a10`, `libwalrus @0x5f6000`) executes the instruction in software: it re-expands the tag stream to dense columns (`dense_col(lane) = (tag_word >> (4*lane)) & 0xF`) and accumulates over each group of 4. The asserts `num_active_rows % 4 == 0` and `num_active_rows == 128` reinforce the group-of-4 structure and the single supported 128-active-row case. The tag bit-layout and the consumer-side codegen are documented in [Sparsity Compress §tag layout](sparsity-compress.md).
 
 ---
 
@@ -330,24 +330,24 @@ A faithful reimplementation of the producer/lowering side must reproduce:
 2. **A three-tile geometry combiner** that asserts moving/weight/tag share contract shape (`"LHS, RHS and TAG should has the same number of contract dim!"`), builds an AP index list, and emits a substitution map — **without** touching `compress_ratio` (§2).
 3. **An IR node** `MatMulSparseOp ⊂ MatMulOpBase` carrying `{tags, compress_ratio, compress_indices, tag_indices}` as constructor args, with `AccessMode.LOAD` operands (§3).
 4. **A lowering** that creates one `Opcode.MatmultSparse`, copies `compress_ratio` and the onezero/transpose flags (with the `lhs→fmap` / `rhs→weight` rename), asserts the weight operand is `float32r` and `dst.free_ap_size` is even, sets tile geometry, and routes **only operand[0]** through the sparse AP builder while the other two use plain `addAP` (§4).
-5. **A sparse AP builder** (`addSparseMatmulAP`, [BirCodeGenLoop AP §3.1](bircodegen-ap.md)) that reads `compress_ratio` to size/stride the compressed-weight AP and folds the companion tag/index address stream into the same `createAP` operand — so the BIR instruction's operand[0] is the weight+tag pair (§4 QUIRK; STRONG — address concatenation inferred from `PyNumber_Add` of `addrs` streams under one `createAP`).
+5. **A sparse AP builder** (`addSparseMatmulAP`, [BirCodeGenLoop AP §3.1](bircodegen-ap.md)) that reads `compress_ratio` to size/stride the compressed-weight AP and folds the companion tag/index address stream into the same `createAP` operand — so the BIR instruction's operand[0] is the weight+tag pair (§4 QUIRK). The address concatenation itself is [INFERRED] from the `PyNumber_Add` of two `addrs` streams feeding one `createAP`.
 6. **A BIR class** `InstMatmultSparse` with `getIfmap`/`getWeights`/`getTags`/`getDst`, per-operand dtype validators, an affine `compress_ratio`, JSON round-trip, and per-arch latency overloads (§6).
 
 > **NOTE — what this page does not own.** The on-wire bit-layout of the emitted `LoadTagsSparse` (opcode 6) and `MatmultSparse` (opcode 7) bundles, the row-group LUT, and the dtype-remap legality gates are in [PE Matmul Encoding](../isa/pe-matmul-encoding.md). The `SparsityCompress`/`SparsityCompressTag` DVE ops, the uint16 4×nibble tag format, the flipped tag ordering, and the host-side `to_compressed_sparse` packing are in [Sparsity Compress](sparsity-compress.md). The shared sparse access-pattern builder body is in [BirCodeGenLoop AP Builders](bircodegen-ap.md).
 
 ---
 
-## Confidence Ledger
+## Evidence Ledger
 
 | Claim | Confidence | Basis |
 |---|---|---|
-| `codegenMatMulSparseOp` setter sequence + `addSparseMatmulAP(operand[0])` + 3× `addAP` + `MatmultSparse` literal + `float32r` asserts + "Illegal start partition…" | CONFIRMED | Token counts in `@0x102cd0` body; assert string in BirCodeGenLoop strtab |
-| No mask / no `setMask` in `codegenMatMulSparseOp` (corrects bircodegen-compute §2.3) | CONFIRMED | `rg -c -i mask @0x102cd0` = 0; mask string only in module strtab-init |
-| `nc_matmul_sparse(moving, stationary, tags, compress_ratio)` → `nki_ctx().matmult_sparse` | CONFIRMED | argnames + body interns (`matmult_sparse`, `nki_ctx`, `compress_ratio`×19) |
-| `MatMulSparseOp ⊂ MatMulOpBase`; ctor `{tags, compress_ratio, compress_indices, tag_indices}`; `AccessMode.LOAD` | CONFIRMED | `MatMulSparseOpGen.so` strings + ctor body |
-| `combine_sparse_matmult_tiles` shape asserts, helpers, **no** compress_ratio | CONFIRMED | `@0x12b670` body; both assert literals verbatim; `rg -c compress_ratio` = 0 |
-| Annotation, not detection (no auto-dispatch / `backend_config` / magnitude prune) | CONFIRMED | 4 negatives (§5) |
-| `bir::InstMatmultSparse` class surface + four `Hwm` latency overloads (`getLatency{,Exec,ReadInit,WriteDrain}`) + JSON symbols + affine `compress_ratio` | CONFIRMED | `libBIR.so` / `libwalrus.so` native-exports |
-| `addSparseMatmulAP` packs weight+tag addresses into one `createAP` operand | STRONG | tokens (`createAP`, `neuron_ap`, `compress_ratio`, `addArgumentOrOutput`) confirmed; address-stream concatenation inferred |
-| `nc_matmul` cost table `max(min(64,N_stationary),N_moving)`, `4×` for fp32 (not a compression term) | CONFIRMED | shipped stub `nki/isa/__init__.pyi:957–959` |
-| BIR JSON field list (9 names present in `libBIR.so` strings); replication-block guard condition | STRONG / INFERRED | field set resolved via rodata pointers in `toJson`/`createFromJson`, not inlined; `replicate_ap` truthiness guard not byte-pinned |
+| `codegenMatMulSparseOp` setter sequence + `addSparseMatmulAP(operand[0])` + 3× `addAP` + `MatmultSparse` literal + `float32r` asserts + "Illegal start partition…" | CERTAIN | Token counts in `@0x102cd0` body; assert string in BirCodeGenLoop strtab |
+| No mask / no `setMask` in `codegenMatMulSparseOp` | CERTAIN | zero `mask` hits in `@0x102cd0`; mask string only in module strtab-init |
+| `nc_matmul_sparse(moving, stationary, tags, compress_ratio)` → `nki_ctx().matmult_sparse` | CERTAIN | argnames + body interns (`matmult_sparse`, `nki_ctx`, `compress_ratio`×19) |
+| `MatMulSparseOp ⊂ MatMulOpBase`; ctor `{tags, compress_ratio, compress_indices, tag_indices}`; `AccessMode.LOAD` | CERTAIN | `MatMulSparseOpGen.so` strings + ctor body |
+| `combine_sparse_matmult_tiles` shape asserts, helpers, **no** compress_ratio | CERTAIN | `@0x12b670` body; both assert literals verbatim; zero `compress_ratio` hits |
+| Annotation, not detection (no auto-dispatch / `backend_config` / magnitude prune) | CERTAIN | 4 negatives (§5) |
+| `bir::InstMatmultSparse` class surface + four `Hwm` latency overloads (`getLatency{,Exec,ReadInit,WriteDrain}`) + JSON symbols + affine `compress_ratio` | CERTAIN | `libBIR.so` / `libwalrus.so` native-exports |
+| `addSparseMatmulAP` packs weight+tag addresses into one `createAP` operand | HIGH | tokens (`createAP`, `neuron_ap`, `compress_ratio`, `addArgumentOrOutput`) present; address-stream concatenation inferred |
+| `nc_matmul` cost table `max(min(64,N_stationary),N_moving)`, `4×` for fp32 (not a compression term) | CERTAIN | shipped stub `nki/isa/__init__.pyi:957–959` |
+| BIR JSON field list (9 names present in `libBIR.so` strings); replication-block guard condition | MEDIUM | field set resolved via rodata pointers in `toJson`/`createFromJson`, not inlined; `replicate_ap` truthiness guard not byte-pinned |

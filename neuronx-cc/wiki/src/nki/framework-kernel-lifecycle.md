@@ -20,16 +20,14 @@
 `23b090983c13cbdd33920903008fd22b664b31eb`, **"with debug_info, NOT stripped"** —
 full DWARF). cp311/cp312 copies are byte-equivalent in source; cp310 used throughout.
 
-> **Evidence posture for this page.** Every `backend_config` key, every pipeline
-> method name, the cache-attribute name, the custom-call target, and the worked HLO
-> example below are **string/decompile-confirmed** out of `FrameworkKernel.so`'s
-> `.rodata` (verified directly with `strings`/`rg` against the binary, not lifted from
-> a report). The `TraceKernel.so` method **bodies** — `specialize_and_call`,
-> `expand_kernel_with_ctx`, `call_impl` — were **DWARF-reconstructed** (IDA's batch
-> only processed the PLT/GOT thunk band `0x608e8–0x60e80`; the real pyx bodies at
-> `0x1c000–0x4e000` were disassembled from the `.so` and cross-keyed to the 33,623-row
-> DWARF line table). Those are tagged **[DWARF]** below; the `FrameworkKernel` claims
-> are tagged **[CONFIRMED]** from the string pool.
+> **How the two binaries were read.** Every `backend_config` key, every pipeline method
+> name, the cache-attribute name, the custom-call target, and the worked HLO example
+> below come out of `FrameworkKernel.so`'s `.rodata` string pool. The `TraceKernel.so`
+> method **bodies** — `specialize_and_call`, `expand_kernel_with_ctx`, `call_impl` — were
+> **DWARF-reconstructed**: IDA's batch only processed the PLT/GOT thunk band
+> `0x608e8–0x60e80`, so the real pyx bodies at `0x1c000–0x4e000` were disassembled
+> directly and cross-keyed to the 33,623-row DWARF line table. Claims resting on that
+> reconstruction carry a **[DWARF]** tag below.
 
 ---
 
@@ -37,7 +35,7 @@ full DWARF). cp311/cp312 copies are byte-equivalent in source; cp310 used throug
 
 Both the framework path (JAX / torch-xla, emit HLO) and the local path (baremetal /
 benchmark / profile / simulate, compile & run on numpy) inherit a single trace engine.
-Bottom-up [CONFIRMED symbols, both `.so` tables]:
+Bottom-up, from the symbol tables of both `.so` files:
 
 ```
 Kernel                  (TraceKernel.so)  — arg-binding + grid base
@@ -61,7 +59,7 @@ body to build the IR; `FrameworkKernel` turns that IR into a serialized
 > *runs the user Python function again* under a tracing context; the NKI intrinsics in
 > the body emit `penguin.ir` ops into the live `GeneratedNeuronCodegen` builder. There
 > is no persisted KLIR AST in this file. (The KLIR-AST / beta2 re-trace path lives
-> downstream in `BirCodeGenLoop`, not here — see CORRECTION in §2.4.) [DWARF; the base
+> downstream in `BirCodeGenLoop`, not here — see §2.4.) [DWARF; the base
 > `Kernel.call_impl` at `0x30090` literally raises with
 > `"call_impl not implemented for base kernel"`, and `TraceKernel.call_impl` at
 > `0x398b0` is the real dispatcher.]
@@ -86,13 +84,13 @@ stores `func`, `func_name`/`kernel_name` (defaulting to `func.__name__`, falling
 `debug_kernel`, and a `parent_ctx` (`TraceContext`). [DWARF — field vocabulary.]
 
 ```c
-// trace(self, func) — the @nki.jit entry. CONFIRMED decorator-factory shape.
+// trace(self, func) — the @nki.jit entry; a decorator factory, not a tracer.
 PyObject* TraceKernel_trace(TraceKernel *self, PyObject *func) {
     // capture func + inspect.signature(func) into the Kernel object (Kernel.__init__)
     return CyFunction_New(decorating_function, /*closure=*/ self);   // 0x24583
 }
 
-// trace.<locals>.decorating_function(*args, **kwargs) — the per-CALL wrapper [DWARF, STRONG]
+// trace.<locals>.decorating_function(*args, **kwargs) — the per-CALL wrapper [DWARF]
 PyObject* decorating_function(PyObject *args, PyObject *kwargs) {    // pf @0x1def0
     boundargs = translate_args_kwargs(self.signature, args, kwargs); // inlines Kernel.translate (0x1fb10)
     return self.specialize_and_call(boundargs);                      // dispatch into the trace
@@ -106,13 +104,13 @@ class (runs to `0x42c20`) and carries a generator
 (`__pyx_gb_…specialize_and_call_2generator2 @0x1ea50`). It is the cache-keyed trace
 entry: build (or reuse) a specialized `TraceKernel` for the concrete arg shapes/dtypes,
 re-execute the body under the trace context, and return the traced result plus the
-`has_collectives` flag. [DWARF; the method's k-string vocabulary CONFIRMED via `strings`
+`has_collectives` flag. [DWARF; the method's k-string vocabulary in `.rodata`
 includes `addBasicBlock`, `boundargs`, `expand_kernel_with_ctx`, `Function`,
 `GeneratedNeuronCodegen`, `grid`, `grid_has_multi_physical_cores`, `has_collectives`,
 `opt_level`, `opts`, `recompiled`, `new_ctx`.]
 
 ```c
-// specialize_and_call(self, boundargs) -> (kernel_return, has_collectives, ...)   [DWARF, STRONG]
+// specialize_and_call(self, boundargs) -> (kernel_return, has_collectives, ...)   [DWARF]
 result specialize_and_call(TraceKernel *self, BoundArguments boundargs) {
     fn  = Function_new(self.func_name);            // penguin.ir.Function — seed an IR function
     cg  = GeneratedNeuronCodegen(fn, self.opts);   // the forward builder (nl -> penguin.ir; P01)
@@ -141,10 +139,10 @@ grid-expansion entry. It destructures a `(grid, ctx)`-style tuple (the
 (`GetModuleGlobalName @0x2c61f`, k-string `0x561b0`), maps args→IR parameters, runs the
 body (`trace_kernel_impl`, k `0x56190`), flushes deferred SBUF/PSUM allocs
 (`allocate_pending_tensors`, k `0x55d30`), validates the return, and finalizes.
-`NKIFinalizeException` is the recompile/finalize control signal. [DWARF, STRONG.]
+`NKIFinalizeException` is the recompile/finalize control signal. [DWARF]
 
 ```c
-// expand_kernel_with_ctx(self, ctx, boundargs)  [DWARF, STRONG]
+// expand_kernel_with_ctx(self, ctx, boundargs)  [DWARF]
 result expand_kernel_with_ctx(...) {                      // 0x29ab0
     self.check_grid(self.grid);                           // §2.5 — platform-target SPMD guard
     with spmd_kernel_scope(self.grid):                    // 0x2c61f -> contextlib enter
@@ -180,13 +178,12 @@ Each operand must live in `shared_hbm` address space — `insert_nki_kernel` val
 `"The input and output tensor of a NKI kernel must be in shared_hbm address space"`
 (k `0x557c0`). [DWARF.]
 
-> **CORRECTION (vs an over-broad reading of the trace model).** The beta2/beta3
-> dual-frontend re-trace is **not** in `TraceKernel.so`; it lives in `BirCodeGenLoop`
-> (`codegenInternalNativeNkiKernel`). `TraceKernel.trace` is the *classic re-exec front
-> end*. The `External`/`Internal` node it emits is what the downstream bridge either
-> directly codegens (External) or re-traces (Internal). Do not attribute KLIR re-tracing
-> to this file. [DWARF §7 caveat; corroborated by the only two non-`BIRKernel` kernel-node
-> class names in the pool being `External…` / `Internal…`.]
+> **GOTCHA — the beta2/beta3 dual-frontend re-trace is not in this file.** It lives in
+> `BirCodeGenLoop` (`codegenInternalNativeNkiKernel`). `TraceKernel.trace` is the classic
+> re-exec front end; the `External`/`Internal` node it emits is what the downstream bridge
+> either codegens directly (External) or re-traces (Internal). Do not attribute KLIR
+> re-tracing here — the only two non-`BIRKernel` kernel-node class names in the pool are
+> `External…` and `Internal…`.
 
 ### 2.5 `check_grid` / `_get_platform_target` — the fallback flag
 
@@ -200,8 +197,7 @@ environment (`NEURON_PLATFORM_TARGET_OVERRIDE`) / DMI
 
 > **QUIRK — the fallback target is `trn1` and it is folded into the cache key.** The
 > verbatim warning is two adjacent literals:
-> `"Unable to read MLA target. Assuming cross compile to trn1."` (CONFIRMED via
-> `strings TraceKernel.so`). When this fires, `platform_target_is_fallback = True`,
+> `"Unable to read MLA target. Assuming cross compile to trn1."` When this fires, `platform_target_is_fallback = True`,
 > and that boolean is **part of the specialization cache key (§5) and of the
 > `backend_config` (§4)** — so a kernel traced under a guessed target is cached and
 > serialized *distinctly* from one traced with a real target. A host that later runs the
@@ -211,8 +207,8 @@ environment (`NEURON_PLATFORM_TARGET_OVERRIDE`) / DMI
 
 ## 3. `FrameworkKernel` and the public `dump_config` pipeline
 
-`FrameworkKernel` is the HLO custom-call emitter. Its class docstring (CONFIRMED,
-verbatim from `.rodata`) shows the exact mapping a framework integrator gets:
+`FrameworkKernel` is the HLO custom-call emitter. Its class docstring, verbatim from
+`.rodata`, shows the exact mapping a framework integrator gets:
 
 ```
 NKI kernels are represeted as XLA CustomCall instructions in HLO. This class
@@ -227,7 +223,7 @@ should be mapped to:
     backend_config= # ...omitted
 ```
 
-Two seams worth pinning [CONFIRMED, verbatim]:
+Two seams worth pinning, both verbatim from that docstring:
 
 - The **HLO instruction returns the output tensor** even though Python NKI is
   pass-by-reference ("the corresponding HLO instruction returns the output tensor").
@@ -238,7 +234,7 @@ Two seams worth pinning [CONFIRMED, verbatim]:
   `custom_call_target` "should always be `AwsNeuronCustomNativeKernel`".
 
 Framework integrators subclass `FrameworkKernel` and implement exactly three abstract
-hooks [CONFIRMED docstrings + symbols]:
+hooks, each with its own docstring and symbol:
 
 | hook | contract |
 |---|---|
@@ -249,13 +245,12 @@ hooks [CONFIRMED docstrings + symbols]:
 `__init__` kwargs: `func`, `func_name` (default `func.__name__`), `grid` (optional SPMD
 grid), `enable_cache` (default `True` — `"Default True. Whether to cache the
 specializations"`). It allocates the per-instance specialization cache attribute
-**`__neuron_kernel_interface_kernel_cache__`** (CONFIRMED literal). Subclasses present
-in the binary: `UnifiedKernel`, `LegacyFrameworkKernel` [CONFIRMED symbols].
+**`__neuron_kernel_interface_kernel_cache__`**. Subclasses present in the binary:
+`UnifiedKernel`, `LegacyFrameworkKernel`.
 
 ### 3.1 `dump_config` — the public generator
 
-`dump_config(*args, **kwargs)` is the public config generator (CONFIRMED docstring,
-verbatim):
+`dump_config(*args, **kwargs)` is the public config generator; its docstring, verbatim:
 
 ```
 Returns the `backend_config`, the list of input names and the list of the output name,
@@ -269,7 +264,7 @@ other kernel attributes as key to identify the identical backend_config. Otherwi
 `dump_config` (decompiled `@0x18860`) just binds and delegates:
 
 ```c
-// dump_config(self, *args, **kwargs)  [CONFIRMED refs: bind_arguments, dump_config_with_boundargs]
+// dump_config(self, *args, **kwargs)  — refs: bind_arguments, dump_config_with_boundargs
 tuple dump_config(FrameworkKernel *self, PyObject *args, PyObject *kwargs) {  // 0x18860
     boundargs = self.bind_arguments(args, kwargs);          // inspect.BoundArguments
     return self.dump_config_with_boundargs(boundargs);
@@ -278,7 +273,7 @@ tuple dump_config(FrameworkKernel *self, PyObject *args, PyObject *kwargs) {  //
 
 ### 3.2 `dump_config_with_boundargs` — the ordered pipeline
 
-This is the core of the page. The method's call vocabulary is CONFIRMED via `strings`
+This is the core of the page. The method's call vocabulary sits in the string pool
 (`bind/apply`, `map_args`, `specialize_and_call`, `translate_return_types`,
 `generate_operand_output_aliases`, `_generate_hash_key` + cache get,
 `encode_backend_config`, `assemble_result`, `has_collectives`, `enable_cache`,
@@ -323,7 +318,7 @@ tuple dump_config_with_boundargs(FrameworkKernel *self, BoundArguments b) {
 > constant_values, return_types, has_collectives, cache_key, kernel_return,
 > result_is_sequence)` and *that whole tuple* is stored under `cache_key`. A cache hit
 > therefore reuses the alias table and the return-type metadata too — not merely the
-> serialized string. [CONFIRMED refs in `assemble_result`.]
+> serialized string.
 
 ---
 
@@ -332,10 +327,10 @@ tuple dump_config_with_boundargs(FrameworkKernel *self, BoundArguments b) {
 ### 4.1 `_map_args` — the only framework-specific surface
 
 `_map_args(boundargs)` iterates the bound arguments and calls
-`_map_to_decltensor_or_passthrough` on each [CONFIRMED symbols]:
+`_map_to_decltensor_or_passthrough` on each:
 
 ```c
-// _map_to_decltensor_or_passthrough(self, t)  [CONFIRMED refs]
+// _map_to_decltensor_or_passthrough(self, t)
 PyObject* _map_to_decltensor_or_passthrough(FrameworkKernel *self, PyObject *t) {
     if (self.is_framework_tensor(t)) {                  // subclass hook
         shape, dt = self.map_framework_tensor(t);       // subclass hook -> (shape,dtype)
@@ -354,9 +349,9 @@ three hooks; the rest of the pipeline is framework-agnostic.
 
 For each output that aliases an input buffer (the Python "write into the last arg"
 outputs), emit an `(operand_index → output_index)` pair so XLA *donates* the input
-buffer to the output and skips the copy. [CONFIRMED refs: `findAliasTensor`,
-`hasAliasedTensor`, `get_alias_output_index`; the nested closure
-`generate_operand_output_aliases.get_alias_output_index` is a real symbol.]
+buffer to the output and skips the copy. The referenced helpers `findAliasTensor`,
+`hasAliasedTensor` and `get_alias_output_index` are all real symbols, the last as the
+nested closure `generate_operand_output_aliases.get_alias_output_index`.
 
 ```c
 // generate_operand_output_aliases(inputs, outputs) -> [(operand_idx, output_idx), ...]
@@ -378,10 +373,10 @@ produced once here.
 ### 4.3 `encode_backend_config` — the base64-JSON dict
 
 `encode_backend_config` (decompiled `@0x296d0`) builds a Python dict then
-`base64.b64encode(json.dumps(cfg).encode()).decode()` [CONFIRMED refs: `json`, `dumps`,
-`base64`, `b64encode`, `encode`, `decode`]. The **complete key schema** — every key
-below was confirmed present as an interned `__pyx_n_u_*` string in `FrameworkKernel.so`'s
-`.rodata`:
+`base64.b64encode(json.dumps(cfg).encode()).decode()` (the referenced names `json`,
+`dumps`, `base64`, `b64encode`, `encode`, `decode` are all in the pool). The **complete
+key schema** — every key below appears as an interned `__pyx_n_u_*` string in
+`FrameworkKernel.so`'s `.rodata`:
 
 ```jsonc
 // backend_config (decoded from base64; this dict is json.dumps'd then b64encoded)
@@ -408,17 +403,17 @@ below was confirmed present as an interned `__pyx_n_u_*` string in `FrameworkKer
 > hand XLA a symbol to compile later; it base64-embeds the *whole IR* in the
 > `backend_config`. The Neuron compiler backend that consumes the HLO re-reads this
 > string to rebuild the kernel. (Wire details of that IR: [Part 7
-> BIR](../bir/inst-hierarchy.md).) [CONFIRMED — `serialize_ir_string` is an interned
-> key string and a `TraceKernel` insert-path vocabulary word, `0x56030`.]
+> BIR](../bir/inst-hierarchy.md).) `serialize_ir_string` is both an interned key string
+> and a `TraceKernel` insert-path vocabulary word, at `0x56030`.
 
 > **QUIRK — `KERNEL_VERSION` is a module global, not a literal in `.rodata`.** Grepping
 > the binary finds the *key name* `kernel_version`/`KERNEL_VERSION` (both an interned
 > Unicode key `__pyx_n_u_kernel_version` and the module-global reference
 > `__pyx_n_s_KERNEL_VERSION`) but **no version literal**. It is computed/imported at
 > module init and emitted by value — i.e. the schema *version* of the `backend_config`
-> contract, distinct from the wheel version `2.24.5133.0+58f8de22`. Tagged **INFERRED**
-> as "a config-schema version constant"; the exact value is not statically recoverable
-> from `FrameworkKernel.so` alone.
+> contract, distinct from the wheel version `2.24.5133.0+58f8de22`. [INFERRED] Reading it
+> as a config-schema version constant is the best available interpretation; the value
+> itself is not statically recoverable from `FrameworkKernel.so` alone.
 
 > **NOTE — `matmul_mac_count` is a cost annotation, not a correctness field.**
 > `TraceKernel.matmul_mac_count` (L436, `@0x28a20`) walks the emitted instructions
@@ -431,9 +426,8 @@ below was confirmed present as an interned `__pyx_n_u_*` string in `FrameworkKer
 ## 5. The specialization cache
 
 The cache is a per-instance `OrderedDict` named `__neuron_kernel_interface_kernel_cache__`
-(CONFIRMED literal), holding **one traced+compiled specialization per distinct call
-signature**. The lookup key is built by `_arg_hash_key` →
-`_generate_hash_key` [CONFIRMED symbols]:
+holding **one traced+compiled specialization per distinct call signature**. The lookup
+key is built by `_arg_hash_key` → `_generate_hash_key`:
 
 ```c
 // _arg_hash_key(args, kwargs)  -> cache key for one call
@@ -463,10 +457,9 @@ key _return_shape_dtype_or_hashable(self, t) {
 > a tuple of strides) is hashed *by value* and stored in the key — so each distinct value
 > produces a **separate traced specialization**, and a non-hashable arg (e.g. a `list`)
 > raises `err_nki_param_not_hashable` rather than being silently ignored.
-> [CONFIRMED — `_return_shape_dtype_or_hashable` is a real symbol with a `.genexpr`
-> scope struct.]
+> (`_return_shape_dtype_or_hashable` is a real symbol carrying a `.genexpr` scope struct.)
 
-**Key components, and why each is in the key** [CONFIRMED refs]:
+**Key components, and why each is in the key:**
 
 | component | reason |
 |---|---|
@@ -483,7 +476,7 @@ key _return_shape_dtype_or_hashable(self, t) {
 > **GOTCHA — the JAX lowering can desync from this cache.** `_jax.so` carries the
 > verbatim message *"NKI trace is not properly cached, use `export
 > NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING=TRUE` to workaround the issue"* and reads
-> `NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING` (CONFIRMED in `_jax.so`). Setting it forces a
+> `NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING`, both in `_jax.so`. Setting it forces a
 > re-trace at lowering time instead of trusting the cached `JaxTraceResult`. This is the
 > JAX-side seam onto the same cache (full bridge: [3.13](../frontend/framework-bindings.md)).
 
@@ -521,50 +514,28 @@ differ (6.0.2 / 3.13).
 
 ---
 
-## 7. Adversarial self-verification
+## 7. Limits of this reading
 
-The five strongest claims on this page, re-challenged against the binary:
+All fourteen `backend_config` keys are interned key strings in `FrameworkKernel.so`
+(`kernel_version`, `func_name`, `grid`, `has_collectives`, `matmul_mac_count`,
+`platform_target`, `opts`, `serialize_dims`, `serialize_ir_string`, `tiled`,
+`constant_values`, `kernel_return`, `result_is_sequence`, plus
+`platform_target_is_fallback`, which appears both as `__pyx_n_s_platform_target_is_fallback`
+and as the `_platform_target_is_fallback` attribute — it is both a config key and a
+cache-key component). The custom-call target `"AwsNeuronCustomNativeKernel"`, the
+`"Unable to read MLA target. Assuming cross compile to trn1."` warning, and the cache
+attribute name are likewise verbatim literals.
 
-1. **The 14 `backend_config` keys.** Re-grepped
-   `strings FrameworkKernel.so | rg '^(kernel_version|func_name|grid|has_collectives|…)$'`
-   — all present as interned key strings (`kernel_version`, `func_name`, `grid`,
-   `has_collectives`, `matmul_mac_count`, `platform_target`, `opts`, `serialize_dims`,
-   `serialize_ir_string`, `tiled`, `constant_values`, `kernel_return`,
-   `result_is_sequence`; plus `KERNEL_VERSION` as a module global). **HOLDS.**
-   `platform_target_is_fallback` appears as `__pyx_n_s_platform_target_is_fallback`
-   and `_platform_target_is_fallback` (attribute) — present, **HOLDS** (it is both a
-   config key and a cache-key component).
+Three things are weaker:
 
-2. **`KERNEL_VERSION` value.** Challenge: is there a version literal? Grep found only the
-   *names*, no value string. **Down-graded to INFERRED** (a config-schema constant
-   computed at module init) and flagged as such in §4.3 — not fabricated.
-
-3. **The pipeline order in `dump_config_with_boundargs`.** The method bodies for the
-   `FrameworkKernel` pipeline are Cython; the *order* is reconstructed from the call
-   vocabulary + the data dependency (you cannot alias outputs before you have outputs;
-   you cannot encode before you have `has_collectives`). Tagged **STRONG**, the
-   individual method names are **CONFIRMED** symbols. **HOLDS as STRONG.**
-
-4. **The trace is re-execution.** Challenge: could `call_impl` replay a stored AST? The
-   base `Kernel.call_impl` raises `"call_impl not implemented for base kernel"` and the
-   `TraceKernel` override is a compact dispatcher that copies args, enters a context, and
-   invokes `py_func`. `GeneratedNeuronCodegen` is imported and seeded in
-   `specialize_and_call`. **HOLDS [DWARF, STRONG].** Correctly scoped: KLIR re-trace is
-   *not* here (CORRECTION in §2.4).
-
-5. **The custom-call target string + fallback warning.** `strings` confirms
-   `custom_call_target="AwsNeuronCustomNativeKernel"` verbatim in the docstring, and
-   `"Unable to read MLA target. Assuming cross compile to trn1."` in `TraceKernel.so`.
-   The report quoted a fragment `'. Assuming cross compile to trn1.'`; the full literal
-   is the two-part string above — refined in §2.5 (no contradiction). **HOLDS.**
-
-Open / under-pinned items, tagged honestly:
-
-- **[INFERRED]** the precise value/derivation of `KERNEL_VERSION`.
-- **[STRONG, not CONFIRMED]** the exact statement *order* inside
-  `dump_config_with_boundargs` (data-flow-reconstructed; method identities confirmed).
-- **[DWARF]** all `TraceKernel` method bodies (`specialize_and_call`,
-  `expand_kernel_with_ctx`, `call_impl`) — disassembled + DWARF-line-keyed, not
+- **The value of `KERNEL_VERSION`.** [INFERRED] Only the names are in the binary; there is
+  no version literal (§4.3).
+- **The statement *order* inside `dump_config_with_boundargs`.** The individual method
+  names are real symbols, but the sequence is reconstructed from the call vocabulary plus
+  data dependency — you cannot alias outputs before you have outputs, and you cannot
+  encode before you have `has_collectives`.
+- **Every `TraceKernel` method body** (`specialize_and_call`, `expand_kernel_with_ctx`,
+  `call_impl`) is [DWARF]-reconstructed: disassembled and line-table-keyed rather than
   IDA-decompiled.
 
 ---
