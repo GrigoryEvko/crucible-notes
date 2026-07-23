@@ -206,6 +206,7 @@ This is the silicon realization of "`axis = C` ⇒ cross-lane reduce." The two d
 | Reduce command | full `AluOp → ALU_OP` convert @ `+0x24` | inline 6-entry switch @ `+0x23` |
 | Axis byte | `AxisListType + 2` @ `+0x25` | `CROSS_LANE` flag @ `+0x24` |
 | Negate | post-reduce negate @ `+0x23` | **none** (verifier-banned) |
+| Byte `+0x23` means | negate flag | reduce command |
 | Mean (Avg) | datapath `1/N` functor | `1/N` @ `+0x28` |
 | Indirection | allowed only for `AxisListType::X` | not yet ISA-legal |
 
@@ -262,7 +263,7 @@ switch (I.reduce_op):                  // inline; sourced into mov %al,0x23(%r13
 
 ### The Dormant ReduceCmdType
 
-`libBIR` defines an enum `ReduceCmdType {Idle, Reset, Reduce, ResetReduce}` with complete `2string` / `string2` / `from_json` / `to_json` bodies — everything a live field would have except a consumer. No `Instruction` reads it. `InstTensorReduce::readFields` @ `0x41a7c0` reads exactly `{axis, op, negate, apply_transpose}`, and the only reduce-command modifiers that reach the wire are the two already described: the inline 6-entry cross-lane switch at `+0x23` and the free-axis negate at `+0x23`. `ReduceCmdType` is a sim/runtime RMW-phase enum, dormant on the encode path.
+`libBIR` defines an enum `ReduceCmdType {Idle, Reset, Reduce, ResetReduce}` with complete `2string` / `string2` / `from_json` / `to_json` bodies — everything a live field would have except a consumer. No `Instruction` reads it. `InstTensorReduce::readFields` @ `0x41a7c0` reads exactly `{axis, op, negate, apply_transpose}`, and the only reduce-command modifiers that reach the wire are the two already described — the inline 6-entry cross-lane switch and the free-axis negate, which share byte `+0x23` because they belong to two mutually exclusive opcodes ([below](#byte-0x23-is-opcode-dependent)). `ReduceCmdType` is a sim/runtime RMW-phase enum, dormant on the encode path.
 
 The name collision is what makes this trap sharp. A JSON key `"reduce_cmd"` *does* exist in BIR — on `InstExponential` and `InstRangeSelect` — but it deserializes to `EngineAccumulationType`, an unrelated enum, and it never appears on `InstTensorReduce` at all.
 
@@ -343,6 +344,19 @@ function visitInstTensorReduce(InstTensorReduce &I):
 | `+0x24` | **CROSS_LANE flag** | `axis==5→1`, `axis==4→0` | CERTAIN |
 | `+0x28` | mean `1/N` | avg → `1.0f/(p?.num·numElemPerPart)` | CERTAIN |
 | `+0x2C` | out `TENSOR4D` | `assignAccess(out)` | CERTAIN |
+
+#### Byte `+0x23` is opcode-dependent
+
+The two tables above assign different fields to `+0x23` because the byte is genuinely reused: which datapath's meaning applies is decided by the opcode already written at `+0x00`, and the two arms are the two sides of the `axis <= XYZW(3)` fork. Both stores are in `CoreV2GenImpl::visitInstTensorReduce` (`0x12383a0`) and neither arm can reach the other's:
+
+| Arm | Store | Source |
+|---|---|---|
+| free-axis (124/125) | `mov BYTE PTR [r15+0x23],al` @ `0x12393e9` | `movzx eax,BYTE PTR [r13+0x120]` @ `0x12393e1` — `InstTensorReduce.negate` |
+| cross-lane (66/82/131/132) | `mov BYTE PTR [r13+0x23],al` @ `0x1238ae3` | `movzx eax,BYTE PTR [rbp-0x300]` @ `0x1238adc` — the 6-entry `reduce_op` switch result, materialized earlier in the block |
+
+The neighbouring bytes disambiguate the two encodings the same way: the free-axis arm writes the converted `AluOp` at `+0x24` (`0x123938b`, from `reduce_op@+0xF0` via `sub_12039C0`) and the ISA axis code at `+0x25` (`0x12393a2`, from `axis@+0xF4` via `sub_120EAB0`), while the cross-lane arm writes the `CROSS_LANE` flag at `+0x24` as a bare `0`/`1` immediate (`0x1239650` / `0x12397c0`) and no `+0x25` at all.
+
+> **GOTCHA — do not merge the two field maps.** A single flat "TensorReduce bundle layout" that lists `+0x23` once will be wrong for one of the two opcode families, and `+0x24`/`+0x25` diverge with it. Decode `+0x23`..`+0x25` only after reading the opcode at `+0x00`.
 
 ### Datapath Semantics (reference model)
 
