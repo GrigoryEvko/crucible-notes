@@ -611,7 +611,7 @@ outward. The completion + error structure, reconciled with the register map:
   taxonomy and the apex bit-reversal hazard. [CARRIED — final apex→core hop is
   firmware-owned, MED]
 
-**Cross-generation register deltas** (Sunda v3 → Cayman → Mariana → Maverick).
+**Cross-generation register deltas** (Sunda v2 → Cayman → Mariana → Maverick).
 The per-queue ring offsets (`0x28 TDRBP` … `0x38 TDRTP_inc` … `0x44 TCRBP`) are
 arch-stable; the deltas observed in the regdef JSON:
 
