@@ -16,7 +16,7 @@ multiply, and resolves the central reverse-engineering question — *where does 
 This is the **Cadence Tensilica Vision-Q7 *Cairo* (`ncore2gp`) GPSIMD compute core's** own
 firmware — windowed-ABI Xtensa code in the `ncore2gp` (Xtensa24, RI-2022.9, NX1.1.4, 32-byte
 FLIX/VLIW) configuration — plus its NX/SEQ sequencer dispatch. Every device fact below is
-byte-pinned to a carve re-derived **this pass** from `libnrtucode_internal.so` with the native
+byte-pinned to a carve derived from `libnrtucode_internal.so` with the native
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); every host-ISA fact is read out of the
 `aws_neuron_isa_tpb_*.h` arch-isa headers shipped in the same customop-lib package; the seed
 *value semantics* are proven by executing the in-package `libfiss-base.so` ISS value oracle.
@@ -24,9 +24,9 @@ The `extracted/` tree is gitignored — reach it with `fd --no-ignore` or absolu
 Confidence and evidence tags follow the project
 [Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
 read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]`
-= re-used at a cited sibling report's confidence without re-reading the artifact this pass.
+= re-used at a cited sibling report's confidence without re-reading the artifact.
 
-> **NOTE — what was carved this pass, and the exact objects used.** The firmware container is
+> **NOTE — the carve, and the exact objects used.** The firmware container is
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (`10,276,288 B`, sha256
 > `b7c67e898a116454…`). The DVE images are `.rodata`-resident (so **file offset == device
 > VA** for `.text`/`.rodata`; no `.data` delta applies to these carves). Carved with `dd`,
@@ -42,9 +42,9 @@ read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
 > | `DVE_PERF_DRAM` | `0x85220` / `0x2fc0` | `eb980f98` | the production dispatch table |
 >
 > Reset vector (DEBUG IRAM byte 0): `06 76 00 00` = `j 0x1dc` (the SEQ boot path,
-> byte-identical across all five engines); secondary `86 77 00 00` = `j 0x1e8`. `objdump`
-> exit 0, empty stderr; `DVE_DEBUG_IRAM.dis` = 44,989 lines, `DVE_PERF_IRAM.dis` = 35,342
-> lines. The four sha256 reproduce the SX-IMG-04 anchor exactly. `[HIGH/OBSERVED]`
+> byte-identical across all five engines); secondary `86 77 00 00` = `j 0x1e8`.
+> `DVE_DEBUG_IRAM.dis` = 44,989 lines, `DVE_PERF_IRAM.dis` = 35,342 lines. The four sha256
+> reproduce the published image-carve anchors exactly. `[HIGH/OBSERVED]`
 
 > **CORRECTION — this page corrects two task premises.** (1) "BatchNormalize forward apply"
 > — there is **no** `γ·x+β` apply kernel on DVE; `S: BatchNormalize` is the **statistics**
@@ -52,7 +52,7 @@ read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
 > is **no `ivp_rsqrt0` anywhere in the DVE firmware** (grep count `0` in both DEBUG and
 > PERF). `1/√(var+ε)` is **forward/host-precomputed** and handed to the back-prop kernels as
 > a pointer-immediate. The only seed→Newton the DVE batch-norm path runs is **reciprocal
-> division** for `sum ÷ count`. Both corrections are byte-grounded below. `[HIGH/OBSERVED]`
+> division** for `sum ÷ count`. Both corrections are byte-grounded below.
 
 ---
 
@@ -69,11 +69,11 @@ read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
    header mandates the DVE Parameter RAM be preloaded with `1, 1/2, 1/3, … 1/255` in fp32;
    `mean = sum × recip_RAM[N]`. The RAM is a dedicated HW bank,
    `TPB_0_DVE_BANK_PARAMETER_RAM @ 0x2802B87000`, size `0x400` = exactly 256 × fp32.
-   `[HIGH/OBSERVED — header text + RTL address map; the "sum×recip" realisation MED/INFERRED]`
+   `[HIGH/OBSERVED header + RTL map; MED "sum×recip" realisation]`
 4. **No `rsqrt` on DVE.** `1/√(var+ε)` (`σb-0.5`) is the **immediate `imm1`** of
    `BatchNormGradAccumulate`, header-verbatim *"saved from forward propagation"*, supplied as
    a pointer-immediate. `grep` finds zero `ivp_rsqrt0`/`ivp_sqrt0`/`ivp_recip0` in either
-   build. `[HIGH/OBSERVED]`
+   build.
 5. **The DVE's only seed→Newton is reciprocal *division*.** The PERF IRAM issues
    `ivp_div0nxf16t` (fp16 reciprocal SEED), `ivp_divnn_2xf32t` (fp32 Newton refine), and
    `ivp_mulsonenxf16t`/`ivp_mulsonen_2xf32t` (the fused `(1−d·x)` helper) — the machinery for
@@ -81,16 +81,14 @@ read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
    bundles in PERF]`
 6. **fp32 compute hub.** Every input dtype (fp16/bf16/fp32, or i32 on the grad srcs) is
    **converted to fp32 before computation**; the accumulator and all stats math are fp32;
-   output is one of `{fp32, bf16, fp16}`. `[HIGH/OBSERVED — S4D2_BN/S3S3D1_BN validity
-   predicates]`
+   output is one of `{fp32, bf16, fp16}`. `[HIGH/OBSERVED — validity predicates]`
 7. **Even/odd lane split.** `even` = `in[0],in[2],in[4],…`; `odd` = `in[1],in[3],…`. The
    split exists purely so `Aggregate` can recombine the two partial sums with no precision
    loss. `[HIGH/OBSERVED header worked-example]`
 8. **The forward affine lives on ACTIVATION, not DVE.** `scale = γ·rsqrt(var+ε)`,
    `offset = β − γ·μ·rsqrt(var+ε)`, applied as one Activate/TensorScalar
    `OUT = func(scale·IN + bias)`. DVE produces the *inputs* to that fusion; it never applies
-   it. `[INFERRED-HIGH — Aggregate header ("required to generate the batchnorm scale/offset")
-   + the absence of a DVE apply kernel]`
+   it. `[INFERRED-HIGH — Aggregate header + no DVE apply kernel]`
 
 ---
 
@@ -114,14 +112,13 @@ The DVE carries **six** batch-norm handlers (plus `LOAD_PARAMETER_RAM`) that the
 | `0x8e` | `BATCH_NORM_PARAM_LOAD2` | `S2_BNPL2` | **Y** | `0x230c` `…ParamLoad2` |
 | `0x94` | `BATCH_NORM_GRAD_ACCUMULATE2` | `S3S3D1_BN2` | **Y** | `0x22bc` `…GradAccum2` |
 
-`[HIGH/OBSERVED — opcode enum, struct2opcode, and all six S: strings re-read this pass at DRAM
-0x2261/0x22a0/0x22bc/0x22f0/0x230c/0x2350 via strings -t x DVE_DEBUG_DRAM.bin]`
+`[HIGH/OBSERVED — opcode enum + struct2opcode + the six `S:` strings]`
 
 > **NOTE — the `S:` name is the *family* name, not the opcode name.** The firmware logs
 > `S: BatchNormalize` for the **whole** `S4D2_BN` family entry; the arch-isa opcode behind it
 > is `BATCH_NORM_STATS2`. `Stats`, `Aggregate`, and `TransposeStats2` share the *same* struct
 > and the same decode trampoline, branching internally on the opcode byte — the "one struct,
-> many opcodes" pattern the rest of the DVE ISA uses. `[HIGH/OBSERVED]`
+> many opcodes" pattern the rest of the DVE ISA uses.
 
 **`struct2opcode` (the shared-wire-format truth, `jq` from `instruction_mapping.json`):**
 
@@ -184,7 +181,7 @@ typedef struct NEURON_ISA_TPB_S4D2_BN_STRUCT {
 `TENSOR4D` (20 B) = `{ADDR4 start_addr; int16 step_elem[4]; uint16 num_elem[4]}`; `TENSOR2D`
 (12 B) = `{ADDR4 start_addr; int16 step_elem[2]; uint16 num_elem[2]}`. `start_addr` (`ADDR4`)
 carries the SBUF/PSUM partition-offset encoding; both src and dst are
-`AllowedInPSUM=True, AllowedInSBUF=True`. `[HIGH/OBSERVED common.h TENSOR4D/TENSOR2D]`
+`AllowedInPSUM=True, AllowedInSBUF=True`. `[HIGH/OBSERVED — `common.h`]`
 
 ### 2.1 Device-side struct-read proof — handler `@IRAM 0xb380`
 
@@ -214,15 +211,13 @@ The byte-precise offsets (`32 = in_dtype`, `34 = num_active_channels`, `35 = res
 the `S4D2_BN` layout exactly, confirming the handler decodes *this* struct. These are clean
 scalar Xtensa instructions, **above** the FLIX-desync line — the heavy lane math that follows
 is FLIX-scheduled and mis-decodes under stock linear sweep, so it is **not** quoted as
-instructions here. `[HIGH/OBSERVED — entry/l8ui/s8i/const16/call8 read directly; the compute
-body MED/INFERRED across the FLIX desync]`
+instructions here. `[HIGH/OBSERVED scalar prologue; MED compute body (FLIX desync)]`
 
 > **GOTCHA — `S: BatchNormalize` is preceded by NOTIFY-class preamble logs.** The Stats2
 > handler emits `S: sending interrupt` (`0x2227`), `S: sending notification` (`0x223d`), and
 > `S: NOTIFY` (`0x2256`) *before* the `S: BatchNormalize` self-name (`0x2261`). A reader
 > grepping for the first `const16 a10, 0x22xx` in the body lands on the **event/semaphore**
-> preamble, not the kernel name. The kernel name is the one at `0xb4fc`. `[HIGH/OBSERVED —
-> DRAM strings 0x2227/0x223d/0x2256/0x2261]`
+> preamble, not the kernel name. The kernel name is the one at `0xb4fc`.
 
 ### 2.2 What Stats2 actually computes (header semantics, verbatim sense)
 
@@ -237,12 +232,11 @@ Where `even = in[0],in[2],in[4],…` and `odd = in[1],in[3],…` (the header's o
 worked example: 3 even, 2 odd; `even_count = 3.0`, `odd_count = 2.0`). The `*_count`
 immediates are **passed through verbatim** to the output (the kernel does not recount them —
 the host supplies the element counts as fp32, and they must be finite: `pos_inf/neg_inf/NaN`
-forbidden by `has_bns_finite_even_count`/`…_odd_count`). `[HIGH/OBSERVED header + validity
-predicates]`
+forbidden by `has_bns_finite_even_count`/`…_odd_count`). `[HIGH/OBSERVED header + predicates]`
 
-**Constraints (validity predicates, OBSERVED):** `src` num-elems ≤ 512; `dst` num-elems == 6;
-`out_dtype ∈ {fp32, bf16, fp16}`. `[HIGH/OBSERVED has_bnstats2_src_element_cnt (≤ 512),
-has_bnstats2_dst_element_cnt (== 6), s4d2_bn_stats_out_type]`
+**Constraints (validity predicates):** `src` num-elems ≤ 512; `dst` num-elems == 6;
+`out_dtype ∈ {fp32, bf16, fp16}`. `[HIGH/OBSERVED — `has_bnstats2_src_element_cnt` /
+`has_bnstats2_dst_element_cnt` / `s4d2_bn_stats_out_type`]`
 
 > **QUIRK — `even_count`/`odd_count` are zero for the *siblings* of Stats2.** For
 > `Aggregate`, `Max8`, and `FindIndex8` the validity gate is `s4d2_bn_zero_counts`:
@@ -258,8 +252,8 @@ has_bnstats2_dst_element_cnt (== 6), s4d2_bn_stats_out_type]`
 ≤ 256 source bound mirrors the 256-entry reciprocal RAM (§3) — a single Stats stream consumes
 one reciprocal table per set. `TransposeStats2` (`0x82`) is *identical* to Stats2 with two
 extra constraints — `num_active_channels % 32 == 0` and `src_num_elems % 32 == 0` — and shares
-trampoline `0x308e`. `[HIGH/OBSERVED has_bnstats_*_element_cnt (≤ 256, == 3) +
-is_valid_transpose_batchnorm_stats2]`
+trampoline `0x308e`. `[HIGH/OBSERVED — `has_bnstats_*_element_cnt` +
+`is_valid_transpose_batchnorm_stats2`]`
 
 ### 2.4 `BatchNormAggregate` (`0x62`) — folding subsets into the final variance
 
@@ -275,8 +269,8 @@ output shape of Stats); `dst` == 2 elements: `{mean_full, variance_full}`.
 That last clause is the decisive forward-affine evidence (§7): the DVE produces the
 **inputs** to the `scale`/`offset` fusion; it never forms the affine. **All** elements of an
 `Aggregate` `src` (including the `count`) must be the same dtype, *"which is nonintuitive,
-because all will go through the same type conversion."* `[HIGH/OBSERVED header +
-has_bnstats_agg_*_element_cnt (%3==0, ==2) + s4d2_bn_agg_in_type/…_out_type]`
+because all will go through the same type conversion."* `[HIGH/OBSERVED —
+`has_bnstats_agg_*_element_cnt` + `s4d2_bn_agg_in_type`/`…_out_type`]`
 
 ---
 
@@ -299,7 +293,7 @@ This is a dedicated hardware bank in the RTL address map (`address_map_flat.yaml
 | `TPB_0_DVE_NX_IRAM` / `NX_DRAM` | `0x2802B20000` / `0x2802B40000` | — | the carved firmware |
 
 `0x400` bytes ÷ 4 (fp32) = exactly **256 entries** — the size *is* the proof of the layout.
-`[HIGH/OBSERVED — header text + RTL map; both re-read this pass]`
+`[HIGH/OBSERVED — header text + RTL map]`
 
 The RAM is loaded by a **separate** opcode, `LOAD_PARAMETER_RAM` (`0x66`), issued once before
 a batch of Stats instructions; the reciprocal table is **resident HW state**, not part of the
@@ -325,24 +319,21 @@ float n_var   = sumsq - (float)N * (mean * mean);   /* still scaled by N — NOT
 The 256-entry bound (`1 … 1/255`) caps a single Stats2 even/odd half at ≤ 256 elements (512
 total), which is *why* the source bound is ≤ 512 and the deprecated single-set `Stats` is
 ≤ 256: each half indexes one reciprocal-table slot. `[header semantics + RAM size + element
-bounds HIGH/OBSERVED; the sum×recip / sumsq−N·mean² finalisation MED/INFERRED — the IVP fold
-schedule desyncs under stock objdump]`
+bounds HIGH/OBSERVED; the sum×recip / sumsq−N·mean² finalisation MED/INFERRED]`
 
 > **NOTE — why `n·var` and not `var`.** Emitting `population_variance × N` (rather than the
 > finished variance) makes `Aggregate` a *linear* fold: it sums the per-subset `count`,
 > `count·mean`, and `n_pvar` contributions and divides **once** at the end. Dividing each
 > subset's variance early would force `Aggregate` to re-weight by count and lose the exact
 > recombination. This is the standard Welford/Chan parallel-variance trick, lowered onto the
-> reciprocal-RAM datapath. `[INFERRED-HIGH — header "n_pvar → variance" + the parallel-merge
-> structure]`
+> reciprocal-RAM datapath. `[INFERRED-HIGH — header + parallel-merge structure]`
 
 ### 3.2 When a *true* divide is needed (no table entry / fp normalisation)
 
 If `N > 255` for a fused stream, or an fp normalisation falls outside the table, the kernel
 falls back to the reciprocal/Newton **division** machinery (§4) rather than the table. This is
-the only place the DVE batch-norm path runs a seed→Newton iteration. `[HIGH/OBSERVED — the
-div0/divn/mulsone ops are present in PERF (§4); MED/INFERRED that the Stats fallback is the
-caller]`
+the only place the DVE batch-norm path runs a seed→Newton iteration. `[HIGH/OBSERVED
+div0/divn/mulsone in PERF (§4); MED the Stats-fallback caller]`
 
 ---
 
@@ -362,7 +353,7 @@ This is the section the task's premise turns on. The honest, byte-grounded split
 | `ivp_divnn_2xf32t` | 0 | 1 | fp32 Newton **division refine** |
 | `ivp_mulsonenxf16t` / `ivp_mulsonen_2xf32t` | 0 | 3 | the fused `(1 − d·x)` Newton helper |
 
-Real FLIX bundles (PERF, well-formed with `vbool` predicates), addresses re-read this pass:
+Real FLIX bundles (PERF, well-formed with `vbool` predicates):
 
 ```
 517e:  { bne.w15 a0,a0,0x86c2; ivp_lvn_2x16s_i v2,a6,0x18c0; ivp_mulnx16 wv0,v23,v16;
@@ -372,8 +363,7 @@ e173:  { ...; ivp_mulsonen_2xf32t v30,v0,v30,vb3; ... }                         
 12219: { ...; ivp_div0nxf16t v26,v6,vb5; ... }                                  ; fp16 recip seed
 ```
 
-`[HIGH/OBSERVED — counts grep-verified 0/0 for rsqrt/recip, 6 div/mulsone in PERF; the quoted
-bundles read directly]`
+`[HIGH/OBSERVED — 0/0 rsqrt/recip, 6 div/mulsone in PERF]`
 
 The reciprocal-division Newton step the DVE issues is the standard fixed-point recurrence
 `x_{n+1} = x_n·(2 − d·x_n)`, expressed with the `mulsone` "one-minus" helper:
@@ -391,8 +381,7 @@ for (int it = 0; it < N_ITERS; ++it) {
 /* mean = sum * x   when the reciprocal RAM has no 1/N entry (N>255) or an fp norm is needed. */
 ```
 
-`[HIGH/OBSERVED — the three ops present; the iteration *form* INFERRED from the
-seed/mulsone/divn triple and the executable oracle §4.3]`
+`[HIGH/OBSERVED the three ops; INFERRED iteration form (oracle §4.3)]`
 
 ### 4.2 The rsqrt SOURCE — a forward-saved immediate, header-verbatim
 
@@ -407,8 +396,7 @@ seed/mulsone/divn triple and the executable oracle §4.3]`
 So `μb` (`imm0 @ off 12`) and `σb-0.5` (`imm1 @ off 56`) are both **pointer-immediates** read
 from SBUF/PSUM, *"saved from forward propagation."* The DVE never recomputes either. The `+ε`
 is folded into the host's variance **before** the rsqrt — it is **not** a DVE instruction
-field anywhere in the BN structs. `[HIGH/OBSERVED — header verbatim; this is the decisive
-evidence that rsqrt(var) is forward/host-precomputed]`
+field anywhere in the BN structs. `[HIGH/OBSERVED — header verbatim]`
 
 > **CORRECTION — the header spells it `σb-0.5`, not `σb^-0.5`.** The arch-isa comment uses
 > plain text `σb-0.5` (no caret); it denotes `(σb²)^(−1/2)` = the reciprocal square root of
@@ -446,22 +434,22 @@ by the `divn`/`mulsone` Newton step — see
 [B15 fp32 transcendental seeds](../../isa/ref/b15-sp-lookup.md) for the bit-exact seed value
 semantics. The `div0`/`divn`/`mulsone` siblings **are** the ops the DVE issues (§4.1), so the
 DVE's reciprocal-division Newton math is pinned by these oracle bodies; the `rsqrt0` body is
-reference-only here. `[HIGH/OBSERVED — symbol addresses + the shr/and field-extract shape; the
-DVE-issues-div-not-rsqrt split HIGH/OBSERVED from §4.1; the seed accuracy CARRIED from B15]`
+reference-only here. `[HIGH/OBSERVED symbols + field-extract shape; CARRIED seed accuracy
+(B15)]`
 
 > **WALL — the exact `rsqrt0`/`div0` seed-table coefficients are not enumerated here.** The
 > named SEED primitives and the field-extract shape are OBSERVED; the full 128-entry seed LUT
 > is *callable* via the libfiss oracle but not transcribed on this page (it is owned by
 > [B15](../../isa/ref/b15-sp-lookup.md)). This is a closable wall — drive the
 > `module__xdref_rsqrt0_…` leaf live via `ctypes` to extract any single seed value.
-> `[LOW/CARRIED — consistent with the B15/ISS-13 seed-LUT scope]`
+> `[LOW/CARRIED — B15 seed-LUT scope]`
 
 ---
 
 ## 5. The SIMD loop + dtype handling
 
 The DVE NX core carries the full Vision-Q7 IVP vector datapath. The BN-relevant IVP
-vocabulary, harvested across `DVE_PERF_IRAM.dis` (OBSERVED counts, top families):
+vocabulary, harvested across `DVE_PERF_IRAM.dis` (top families):
 
 | IVP family | count | role in the stats loop |
 |---|---|---|
@@ -475,7 +463,7 @@ vocabulary, harvested across `DVE_PERF_IRAM.dis` (OBSERVED counts, top families)
 | `ivp_bmax*`/`ivp_bmin*` | ~140 | the `Max8`/`FindIndex8` siblings (same struct) |
 | `ivp_div0nxf16t`/`ivp_divnn_2xf32t`/`ivp_mulsone*` | 6 | reciprocal-division Newton (§4) |
 
-`[HIGH/OBSERVED vocabulary; the exact per-op FLIX schedule desyncs under stock objdump → MED]`
+`[HIGH/OBSERVED vocab; MED per-op FLIX schedule]`
 
 ### 5.1 The streaming loop (structure)
 
@@ -505,8 +493,7 @@ for (int ch = 0; ch < num_active_channels; ++ch) {        /* partitioned across 
 
 The cross-element fold reuses the [cross-lane reduce](cross-lane-reduce.md) machinery (the
 `ivp_r*` reduce ops fold a vector register to a scalar; fp32-math accumulator, no widening for
-floats). `[struct + IVP vocab HIGH/OBSERVED; the exact fold/loop bounds MED across FLIX
-desync]`
+floats). `[HIGH/OBSERVED struct + vocab; MED fold/loop bounds]`
 
 ### 5.2 dtype handling
 
@@ -518,9 +505,8 @@ desync]`
 
 For the grad path (`S3S3D1_BN`): `src0`/`src1` ∈ `{fp16, bf16, fp32, i32}` → fp32; immediate
 dtype ∈ `{fp16, bf16, fp32}` or `Invalid (0x0) ⇒ fp32 default`. See the
-[unified dtype model](dtype-model.md) for the full code space. `[HIGH/OBSERVED — the
-s4d2_bn/s3s3d1_bn validity predicates: is_valid_dtype(…, AllowFP32R::False/True),
-bnga_valid_input_type, the immediate_dtype == Invalid ⇒ fp32 rule]`
+[unified dtype model](dtype-model.md) for the full code space. `[HIGH/OBSERVED —
+`is_valid_dtype(…, AllowFP32R::False/True)` / `bnga_valid_input_type`]`
 
 ---
 
@@ -528,7 +514,7 @@ bnga_valid_input_type, the immediate_dtype == Invalid ⇒ fp32 rule]`
 
 The six BN opcodes route through the SEQ direct-indexed DRAM jump table: `key = opcode − 0x41`,
 table1 base at DRAM file offset `0x814` (device VA `0x80814`). The trampoline targets read
-**byte-exact** this pass from `DVE_DEBUG_DRAM.bin` (LE32 words at `0x814 + 4·idx`):
+**byte-exact** from `DVE_DEBUG_DRAM.bin` (LE32 words at `0x814 + 4·idx`):
 
 | opcode | idx | table off | LE32 word | trampoline |
 |---|---|---|---|---|
@@ -544,10 +530,10 @@ Raw bytes (`xxd -s 0x890 -l 0x20`): `8e30 0000 8e30 0000 8e30 0000 9e30 0000 / b
 `TransposeStats2`/`Max8`) converges on trampoline `0x308e` — one decode entry for the one
 shared struct, branching internally on the opcode. The trampolines are FLIX-desynced under
 linear sweep but each carries `… call8 <invoke thunk> ; j 0x3212`, converging to the common
-Handler-object `execute()` invocation at IRAM `0x3212`. `[HIGH/OBSERVED — dispatch words read
-directly; the per-tramp call8 target MED across the FLIX desync]`
+Handler-object `execute()` invocation at IRAM `0x3212`. `[HIGH/OBSERVED dispatch words; MED
+per-tramp `call8` target]`
 
-**Handler entry prologues** (`DVE_DEBUG_IRAM.dis`, OBSERVED `entry` widths):
+**Handler entry prologues** (`DVE_DEBUG_IRAM.dis`, `entry` widths):
 
 | handler | entry | frame | self-name log |
 |---|---|---|---|
@@ -562,12 +548,12 @@ directly; the per-tramp call8 target MED across the FLIX desync]`
 > 48`; only Stats2 allocates `entry a1, 96`. The extra 48 bytes hold the 512-bit vector spills
 > of the even/odd sum/sum-of-squares fold — independent confirmation that Stats2 is the only
 > *heavy compute* handler in the family (ParamLoad/GradAccum mostly stage immediates).
-> `[HIGH/OBSERVED — entry widths re-read this pass]`
+> `[HIGH/OBSERVED — entry widths]`
 
 The PERF (production) build confirms the same routing (`0x61 → 0x835a`, `0x62 → 0x8363`; the
 three deprecated variants `0x63/0x64/0x65 → 0x9090` share one handler). `[HIGH for
-0x61/0x62; MED for the obscured high-idx PERF rows where the tiny 0x2fc0 PERF DRAM overlaps
-the assertion string pool]`
+0x61/0x62; MED the obscured high-idx PERF rows (the tiny `0x2fc0` PERF DRAM overlaps the
+assertion string pool)]`
 
 ---
 
@@ -588,12 +574,11 @@ The DVE's role is **statistics** (Stats2 → mean, n·var; Aggregate → varianc
 *"required to generate the batchnorm scale/offset"* — names the handoff: DVE produces the
 inputs, the host/compiler fuses `scale`/`offset` and emits an Activate/TensorScalar to apply
 it. This is precisely why **no** `γ`/`β`/`sqrt` apply-kernel exists on DVE. `[INFERRED-HIGH —
-Aggregate header + the affine-apply pattern on ACT + the *absence* of a DVE apply kernel; the
-per-op host fusion sequence is not in this firmware image]`
+Aggregate header + the *absence* of a DVE apply kernel]`
 
 This statistics→apply split mirrors the forward-image flow in
 [the MARIANA × DVE image walkthrough](../../images/mariana-dve.md) — *forward-link; that page
-is planned for Part 6 and not yet authored.* `[NOTE — planned cross-link]`
+is planned for Part 6 and not yet authored.*
 
 ---
 
@@ -601,21 +586,20 @@ is planned for Part 6 and not yet authored.* `[NOTE — planned cross-link]`
 
 The five BN operand structs (`s4d2_bn`, `s3s3d1_bn`, `s3s3d1_bn2`, `s2_bn`, `s2_bnpl2`) and
 the opcode enum are present across the `cayman / mariana / mariana_plus / maverick / sunda`
-arch-isa header trees (each header file exists per gen, fd-verified). The DVE firmware is the
+arch-isa header trees (each header file exists per gen). The DVE firmware is the
 same `cayman/seq/` NX SEQ engine; the BN handler subset and the 256-reciprocal Parameter-RAM
 model are stable across the Trainium-class generations that ship the DVE engine.
 
 | GEN | `S4D2_BN`/BN struct headers | DVE BN handler bodies | Parameter-RAM model |
 |---|---|---|---|
-| **SUNDA** (v2) | present (per-gen header) | not separately diffed this pass | header-stated `256×fp32` |
+| **SUNDA** (v2) | present (per-gen header) | not separately diffed | header-stated `256×fp32` |
 | **CAYMAN** (v3) | present — **the carve substrate** (handler `@0xb380` decoded byte-exact) | **OBSERVED** (Stats2 entry + struct reads + dispatch) | **OBSERVED** (`0x2802B87000`/`0x400`) |
 | **MARIANA** (v4) | present (per-gen header) | structurally identical SEQ engine | header-stated |
 | **MARIANA_PLUS** (v4+) | present (per-gen header) | structurally identical SEQ engine | header-stated |
 | **MAVERICK** (v5) | present (per-gen header) | **header-OBSERVED → interior INFERRED** | header-stated |
 
-`[HIGH/OBSERVED — per-gen header presence (fd-verified) + the CAYMAN DVE carve decoded this
-pass; MED/INFERRED for the non-CAYMAN handler-body byte-equality, which was not exhaustively
-diffed]`
+`[HIGH/OBSERVED per-gen headers + the CAYMAN DVE carve; MED/INFERRED the non-CAYMAN
+handler-body byte-equality]`
 
 > **MAVERICK (v5) interior — header-OBSERVED only → INFERRED.** Per the
 > [generation-grounding policy](../../reference/confidence-model.md), the v5 BN struct/opcode
@@ -629,10 +613,10 @@ diffed]`
 
 ## 9. Confidence ledger
 
-**HIGH / OBSERVED (disassembly, byte read, header read, or oracle execution this pass):**
+**HIGH / OBSERVED (disassembly, byte read, header read, or oracle execution):**
 
-* The four carves reproduce SX-IMG-04 byte-identically (sha256 `259769ff`/`c106642d`/
-  `9fa066f4`/`eb980f98`); reset vector `06 76 00 00` (`j 0x1dc`); `objdump` exit 0.
+* The four carves reproduce the published image anchors byte-identically (sha256 `259769ff`/
+  `c106642d`/`9fa066f4`/`eb980f98`); reset vector `06 76 00 00` (`j 0x1dc`).
 * The six BN `S:` handler names at DRAM `0x2261`/`0x22a0`/`0x22bc`/`0x22f0`/`0x230c`/`0x2350`;
   the Stats2 self-name `const16 a10, 0x2261` @`0xb4fc` + `call8 0x18010` @`0xb4ff`.
 * The Stats2 handler `@0xb380` (`entry a1, 96`) decoding `in_dtype@32`/`num_active_channels@34`/

@@ -25,14 +25,14 @@ presence.
 
 Confidence convention on this page: `[HIGH/OBSERVED]` = read directly from byte / header /
 compile / native disasm; `[MED/INFERRED]` = reasoned over an OBSERVED fact; `[…/CARRIED]` =
-re-used from a sibling report at its stated confidence without re-reading the artifact this
-pass. Every count is re-grounded to `nm` / `rg -c` on the shipped binary, never the decompile.
+re-used from a sibling report at its stated confidence without re-reading the artifact.
+Every count is grounded to `nm` / `rg -c` on the shipped binary, never the decompile.
 
 > **NOTE — provenance.** Every primary fact below derives from the shipped customop-lib package
 > `aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64`: the in-package arch-isa C interface headers
 > `…/c10/include/neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/` (the authoritative
 > opcode / operand-struct / enum / validity contract), a struct compile-verify against those
-> headers (`gcc -I<tpb>`, this pass), the `ncore2gp` ISA encode table
+> headers (`gcc -I<tpb>`), the `ncore2gp` ISA encode table
 > `tools/ncore2gp/config/libisa-core.so` read with `nm`, and the native device disassembler
 > `gpsimd_tools/tools/XtensaTools/bin/xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) for the
 > convert/move datapath. The `kernel_info_table` opcode→funcVA bytes, the FLIX trampoline
@@ -46,15 +46,15 @@ pass. Every count is re-grounded to `nm` / `rg -c` on the shipped binary, never 
 
 1. **`Copy = 0x46`, `Cast = 0x47`**, byte-exact in `aws_neuron_isa_tpb_common.h:175-176`
    (`OPCODE_COPY = 0x46 // Y`, `OPCODE_CAST = 0x47 // Y`), all four gens. `[HIGH/OBSERVED — §2]`
-2. **One operand struct: `NEURON_ISA_TPB_S4D4_TR_STRUCT`, 64 B, compile-verified this pass.**
+2. **One operand struct: `NEURON_ISA_TPB_S4D4_TR_STRUCT`, 64 B, compile-verified.**
    `instruction_mapping.json` binds **both** `COPY` and `CAST` (plus nine reduce/cumulative/
    reciprocal/stream-transpose/shuffle opcodes — eleven total) to this single struct.
    `[HIGH/OBSERVED — §3]`
 3. **Dispatch surface = Q7-POOL software kernel.** The POOL `kernel_info_table` routes
    `0x46 → pool_copy` (funcVA `0x010040c0`) and `0x47 → pool_cast` (funcVA `0x01004160`); both
    are inline FLIX trampoline+body blocks, **byte-near-identical** (they differ only in one
-   selector immediate `0x34`/`0x3f` plus `cast`'s extra convert-mode setup). `[opcodes
-   HIGH/OBSERVED; funcVA route HIGH/OBSERVED from carve / MED through the FLIX trampoline — §2]`
+   selector immediate `0x34`/`0x3f` plus `cast`'s extra convert-mode setup).
+   `[HIGH/OBSERVED opcodes + funcVA route; MED through the FLIX trampoline — §2]`
 4. **The copy/cast distinction is one validity clause.** `is_valid_copy` and `is_valid_cast`
    are **identical** except `is_valid_copy` adds `s4d4_tr_same_src_dst_type` (`out_dtype ==
    in_dtype`), which `is_valid_cast` omits. Both pin `op == Bypass(0x00)`, `op_dim`
@@ -62,7 +62,7 @@ pass. Every count is re-grounded to `nm` / `rg -c` on the shipped binary, never 
    count. `[HIGH/OBSERVED — header verbatim, §3]`
 5. **`Copy` = dtype-preserving bit-accurate lane MOVE.** Because `out == in` is enforced, the
    element width is identical on both ends and the kernel is a raw `ivp_dsel*` lane move — **no
-   convert datapath is touched**. `[HIGH/OBSERVED gate forces it; MED on the exact in-body slot — §5]`
+   convert datapath is touched**. `[HIGH/OBSERVED gate; MED the in-body slot — §5]`
 6. **`Cast` = dtype CONVERT through an FP32 hub** (`in → fp32 → out`), numpy-`astype` semantics:
    round-to-nearest-even for float targets, round-toward-zero for int targets. There is **no
    per-pair convert matrix** — FP32 is the universal pivot. `[model HIGH/OBSERVED; RNE/sat
@@ -117,17 +117,16 @@ Over the first `0xa0` bytes the two kernels differ only in (i) the `s8i` selecto
 `0x34` (copy) vs `0x3f` (cast); (ii) `cast`'s extra `const16` + `s8i` pair (the
 dtype-convert-mode configuration — the 4-byte length delta that makes `cast` longer than
 `copy`); (iii) a 4-byte phase shift of the shared tail. Both end in `retw.n`. **The two kernels
-are the same body, with `cast` prepending the dtype-convert setup.** `[HIGH that they differ only
-by a selector const + cast's extra convert-setup; MED on the exact mid-bundle semantics —
-FLIX-literal desync, §10.]`
+are the same body, with `cast` prepending the dtype-convert setup.** `[HIGH the selector-const +
+convert-setup delta; MED the mid-bundle semantics — FLIX-literal desync, §10.]`
 
 > **CORRECTION — the "j 0x100ce56" in the cast trampoline is a disassembler artifact.** An
 > earlier survey reported the cast trampoline branching to `0x0100ce56`. That address is
 > **outside** `.text` (which ends at `0x01006f1e`), so the `j` is a stock-objdump FLIX-desync
 > mis-decode, **not** a real branch target. The HIGH facts are the `kernel_info_table` bytes
 > (§2.2), the entry prologues, and the byte-level copy-vs-cast delta (§2.3); the mid-bundle
-> dispatch arms are MED, reported structurally and never fabricated. `[HIGH/OBSERVED that the
-> target is out-of-range; the corrected reading MED.]`
+> dispatch arms are MED, reported structurally and never fabricated. `[HIGH/OBSERVED
+> out-of-range target; MED the corrected reading.]`
 
 > **NOTE — there is no standalone `pool_copy`/`pool_cast` symbol.** A full `.xt.prop`
 > function-start sweep of the carved POOL image (`xtensa-elf-readelf -S`, c++filt-demangled)
@@ -146,7 +145,7 @@ self-named `"P%i: Decode : ExtendedInstCopy"` `@0x193a`). It is the **EXTENDED-I
 of `Copy` on a different struct — *not* the plain `Copy(0x46)`. Its FLIX body (recovered in
 merged-prop code-mode) uses `ivp_dselnx16t` + `ivp_dseln_2x32t` (the dual-select lane MOVE),
 confirming that `ivp_dsel*` is the GPSIMD copy/move datapath that the plain `Copy(0x46)`/`Cast(0x47)`
-reuse (§5). `[HIGH func-start / HIGH ivp set — OBSERVED.]`
+reuse (§5). `[HIGH/OBSERVED func-start + ivp set]`
 
 ---
 
@@ -178,7 +177,7 @@ typedef struct NEURON_ISA_TPB_S4D4_TR_STRUCT {
 ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_S4D4_TR_STRUCT) == 64, "Error: …is NOT 64B.");
 ```
 
-### 3.1 Compile-verify (this pass)
+### 3.1 Compile-verify
 
 Built against the shipped CAYMAN tpb header with `gcc -I<cayman tpb dir>`, `offsetof`/`sizeof`:
 
@@ -191,8 +190,8 @@ sizeof: TENSOR4D=20  DTYPE=1  SUBDIM=1  ALU_OP=1
 Every offset matches the header annotation exactly; `ISA_STATIC_ASSERT(… == 64)` holds.
 This is byte-identical to the S4D4_TR layout documented on [stream-transpose](./stream-transpose.md)
 §4 and [tensor-reduce](./tensor-reduce.md) §6 (`negated@35`, `op@36`=ALU_OP, `op_dim@37`,
-`mask_enable@38`, `reserved1[5]@39-43`, `dst@44-63`). `[HIGH/OBSERVED — gcc `-Wall` clean, struct
-executed this pass; cross-checked against both sibling pages.]`
+`mask_enable@38`, `reserved1[5]@39-43`, `dst@44-63`). `[HIGH/OBSERVED — gcc `-Wall` clean;
+cross-checked against both sibling pages.]`
 
 `NEURON_ISA_TPB_TENSOR4D` (20 B, `common.h:660`) is `{ NEURON_ISA_TPB_ADDR4 start_addr (4);
 int16_t step_elem[4] (8); uint16_t num_elem[4] (8) }` — base address (carrying the SBUF
@@ -206,8 +205,7 @@ is `{ opcode; inst_word_len; debug_cmd; debug_hint }`. `[HIGH/OBSERVED.]`
 
 ### 3.2 Struct → opcode binding
 
-`instruction_mapping.json`'s `struct2opcode` map binds **eleven** opcodes to `S4D4_TR_STRUCT`
-(`jq` this pass):
+`instruction_mapping.json`'s `struct2opcode` map binds **eleven** opcodes to `S4D4_TR_STRUCT`:
 
 ```
 TENSOR_REDUCE_ARITH_OP   TRANSPOSE_TENSOR_REDUCE_ARITH_OP   TENSOR_REDUCE_BITVEC_OP
@@ -217,7 +215,7 @@ COPY   CAST   RECIPROCAL   STREAM_SHUFFLE   STREAM_TRANSPOSE
 
 So `COPY(0x46)` and `CAST(0x47)` share one wire-format with the Tensor-Reduce / Cumulative /
 Reciprocal / Stream families; the decoder sub-selects by opcode through the `is_valid_*`
-disjunction. `[HIGH/OBSERVED — `jq` over `neuron_cayman_arch_isa/tpb/instruction_mapping.json`.]`
+disjunction. `[HIGH/OBSERVED — `instruction_mapping.json`.]`
 
 ### 3.3 The copy-vs-cast distinction — one validity clause
 
@@ -261,8 +259,8 @@ fn has_zero_negated_field(i)   { i.s4d4_tr.negated == 0 }
 ```
 
 So **`Copy` = `Bypass` + same-dtype** ⇒ a dtype-preserving bit-accurate move; **`Cast` =
-`Bypass` + dtype-may-differ** ⇒ convert via FP32 intermediate. `[HIGH/OBSERVED — every predicate
-body read verbatim from the CAYMAN `s4d4_tr.h` + `common.h` this pass.]`
+`Bypass` + dtype-may-differ** ⇒ convert via FP32 intermediate. `[HIGH/OBSERVED — the CAYMAN
+`s4d4_tr.h` + `common.h` predicate bodies verbatim.]`
 
 > **GOTCHA — the ISA struct allows PSUM, but the GPSIMD engine cannot reach it.** Both
 > `tensor4d_valid` calls pass `AllowedInPSUM::True, AllowedInSBUF::True`, so at the *wire-format*
@@ -270,15 +268,15 @@ body read verbatim from the CAYMAN `s4d4_tr.h` + `common.h` this pass.]`
 > access PSUM** (the NKI engine layer asserts *"GpSimd engine cannot access PSUM"*), so a
 > PSUM-resident `Copy`/`Cast` routes to the Vector/Scalar engine, and the **GPSIMD** `pool_copy`/
 > `pool_cast` operate **SBUF-only**. The constraint is engine-physical, not a struct field. This
-> is the one struct-vs-engine nuance on this page. `[struct-allows-PSUM HIGH/OBSERVED; GPSIMD
-> SBUF-only HIGH/OBSERVED from the NKI engine assert.]`
+> is the one struct-vs-engine nuance on this page. `[HIGH/OBSERVED — struct-allows-PSUM +
+> GPSIMD-SBUF-only (the NKI engine assert).]`
 
 > **NOTE — `Copy`/`Cast` accept any 1..128 active channels, unlike `StreamTranspose`.** Where
 > [`StreamTranspose`](./stream-transpose.md) adds `has_multiple_32_channels` (so
 > `num_active_channels` in `{32,64,96,128}`), `Copy`/`Cast` use only
 > `has_valid_active_channel_range(…, 128)` = `1..128` — any partition count is legal. Do not
-> carry StreamTranspose's multiple-of-32 rule onto Copy/Cast. `[HIGH/OBSERVED — both validators
-> read this pass.]`
+> carry StreamTranspose's multiple-of-32 rule onto Copy/Cast. `[HIGH/OBSERVED — both
+> validators.]`
 
 ---
 
@@ -287,7 +285,7 @@ body read verbatim from the CAYMAN `s4d4_tr.h` + `common.h` this pass.]`
 `in_dtype` (off 32) and `out_dtype` (off 33) are each a **full byte** of the one-byte packed
 `NEURON_ISA_TPB_DTYPE` enum — *not* a 4-bit nibble pair (contrast the predicated sibling
 [`CastPredicated`](./castpredicated.md), whose `DTYPE_PAIR` packs src dtypes into nibbles). The
-base 16-code enum, read verbatim from `aws_neuron_isa_tpb_common.h:723-738` this pass, matching
+base 16-code enum, read verbatim from `aws_neuron_isa_tpb_common.h:723-738`, matching
 [the dtype model](./dtype-model.md) exactly:
 
 | code | name | width | sign | role for Cast/Copy |
@@ -309,9 +307,8 @@ base 16-code enum, read verbatim from `aws_neuron_isa_tpb_common.h:723-738` this
 | `0xE` | `FP8_EXP4` | 1 B | s | in & out — FP8 E4M3 (via FP32 hub) |
 | `0xF` | `FP8_EXP5` | 1 B | s | in & out — FP8 E5M2 (via FP32 hub) |
 
-`[HIGH/OBSERVED — `rg 'NEURON_ISA_TPB_DTYPE_… = 0x'` over the CAYMAN `common.h` this pass; the
-per-gen 16/16/24/30 enumerator counts and the `0x10..0x1F` extension codes are owned by [the
-dtype model](./dtype-model.md).]`
+`[HIGH/OBSERVED — the CAYMAN `common.h`; the per-gen 16/16/24/30 enumerator counts and the
+`0x10..0x1F` extension codes are owned by [the dtype model](./dtype-model.md).]`
 
 > **GOTCHA — `FP8_EXPn` is the EXPONENT width and is *not* monotone with the code.**
 > `FP8_EXP3 = E3M4` (`0xD`), `FP8_EXP4 = E4M3` (`0xE`), `FP8_EXP5 = E5M2` (`0xF`). The familiar
@@ -323,7 +320,7 @@ dtype model](./dtype-model.md).]`
 > (`SFP8_E8..E5`) dtypes (`dtype_4bit_illegal_check`/`dtype_scale_illegal_check`). So a `Cast`
 > can never name a sub-byte FP4/INT4/NF4/FP6 input — those are [TensorDequantize](./tensor-dequantize.md)'s
 > `DEQUANT_FMT` micro-formats, not a Cast datapath. `Cast` consumes only the 12-code plain set.
-> `[HIGH/OBSERVED — the gate bodies; CARRIED from the dtype model for the MAVERICK additions.]`
+> `[HIGH/OBSERVED gate bodies; CARRIED the MAVERICK additions]`
 
 ---
 
@@ -367,8 +364,7 @@ void pool_copy(const NEURON_ISA_TPB_S4D4_TR_STRUCT *i)
 
 All four are confirmed present in the `ncore2gp` `libisa-core.so` encode table
 (`nm … | rg 'Opcode_ivp_(dselnx16t|dseln_2x32t)_Slot'` — `dselnx16t` ×4, `dseln_2x32t`
-present this pass). `[HIGH that copy is a `dsel`-move; MED on the exact widths chosen per
-element-size — FLIX desync, §10.]`
+present). `[HIGH the `dsel`-move; MED the exact widths per element-size — §10.]`
 
 **SIMD lanes** run along `num_active_channels` (the 128-channel partition axis,
 `POOLING_NUM_CHANNELS = 128`); each POOL core (`P%i`) handles its `get_cpu_id()` share of the
@@ -393,7 +389,7 @@ triple-witnessed:
 * **The device convert library is fp16+fp32 only.** The single native float-width converts are
   `fp16 ↔ fp32`; `bf16` and all three `fp8` formats have **no native convert op** and are
   realised *through* FP32 (a negative-control sweep finds zero bf16/fp8 convert primitives). So
-  even `bf16 → fp16` is two hops (`bf16 → fp32 → fp16`). `[HIGH/OBSERVED — CARRIED from the
+  even `bf16 → fp16` is two hops (`bf16 → fp32 → fp16`). `[HIGH/CARRIED — the
   [dtype model](./dtype-model.md) §2.3, where both witnesses are byte-grounded.]`
 * **The functional reference is numpy `astype`.** The NKI simulator reference computes
   `src.astype(dst.dtype)` on dtype mismatch and identity on match — i.e. round-to-nearest-even
@@ -443,8 +439,7 @@ and *can* take INT64/UINT64. `[HIGH/OBSERVED — the validity contract.]`
 
 In addition to the `ivp_dsel*` move (the lane plumbing), the cast body issues the `ncore2gp`
 convert family. The full roster, all confirmed present in `libisa-core.so`
-(`nm … | rg 'Opcode_ivp_(float16nx16t|floatn_2x32t|ufloat16nx16t|ufloatn_2x32t|trunc16nxf16t|truncn_2xf32t)_Slot'`
-this pass):
+(`nm … | rg 'Opcode_ivp_(float16nx16t|floatn_2x32t|ufloat16nx16t|ufloatn_2x32t|trunc16nxf16t|truncn_2xf32t)_Slot'`):
 
 | micro-op | direction | lanes |
 |---|---|---|
@@ -456,9 +451,8 @@ this pass):
 | `ivp_truncn_2xf32t` | FP32 → INT32 | 16×f32 |
 
 The narrowing fp pack (`fp32 → fp16/bf16/fp8`) and the widening (`fp8/fp16/bf16 → fp32`) ride the
-same `float`/`trunc`/`cvt` family. `[HIGH that these convert ops exist and `ivp_float16nx16t` is
-emitted; MED on the EXACT op selected per dtype-pair — the per-pair switch sits in the
-FLIX-desynced body, reported structurally.]`
+same `float`/`trunc`/`cvt` family. `[HIGH the convert ops exist and `ivp_float16nx16t` is
+emitted; MED the exact op per dtype-pair — the per-pair switch sits in the FLIX-desynced body.]`
 
 ### 6.4 Rounding and saturation
 
@@ -469,8 +463,8 @@ path truncates per `astype`. **No explicit round-mode control opcode** was isola
 decoded cast bundles — rounding is implicit in the convert intrinsic. Out-of-range narrowing
 (e.g. `fp32 → fp8`) saturates to the representable range via the same `ivp_bmin*`/`ivp_bmax*`
 clamp idiom the dequant path uses; not separately byte-isolated in the desynced cast body.
-`[MED/INFERRED — RNE/truncate from the numpy-`astype` reference + the `ncore2gp` convert default;
-saturation from the FP32→fp8 range + the clamp idiom; no explicit round/sat opcode pinned. §10.]`
+`[MED/INFERRED — RNE/truncate from the numpy-`astype` reference + the `ncore2gp` convert
+default; no explicit round/sat opcode pinned. §10.]`
 
 ---
 
@@ -486,8 +480,8 @@ ucode:
   datapath, not the GPSIMD Q7 software kernel. The **only** `S4D4_TR` instructions reaching the
   GPSIMD POOL kernel are `Copy(0x46)` and `Cast(0x47)`. See [tensor-reduce](./tensor-reduce.md)
   (which corrects an earlier mis-attribution that `0x46`/`0x47` were reduces — they are
-  copy/cast) and [stream-transpose](./stream-transpose.md). `[HIGH for Copy/Cast being the only
-  S4D4_TR ops in the Q7 table; the HW-datapath home of the others INFERRED-HIGH from their absence.]`
+  copy/cast) and [stream-transpose](./stream-transpose.md). `[HIGH Copy/Cast as the only
+  S4D4_TR ops in the Q7 table; INFERRED the others' datapath home]`
 * **The PREDICATED Copy/Cast** (`COPY_PREDICATED = 0x72`, `CAST_PREDICATED = 0x99`) bind to a
   **different** struct (`S3S3D3_TT`, two source tensors + a predicate) and run **hardware-native
   on the DVE engine**, not POOL. They are the mirror of the plain pair, one validator-leg up:
@@ -507,7 +501,7 @@ ucode:
 > `engine` parameter of the one MLIR `tensor_copy` op (§8). This page documents the **POOL Q7
 > software kernel** specifically (the `kernel_info_table` funcVAs); the ACT-native variant is the
 > hardware Activation-engine cast. The two are not in conflict — they are the same op on
-> different engines. `[both surfaces HIGH/OBSERVED — POOL via `kernel_info_table`, ACT via the
+> different engines. `[HIGH/OBSERVED both surfaces — POOL via `kernel_info_table`, ACT via the
 > DEBUG self-name count.]`
 
 ---
@@ -543,10 +537,9 @@ validity predicate (§3.3). `[HIGH/OBSERVED — the chain `tensor_copy → emit 
 
 The `S4D4_TR` struct (64 B), the `COPY=0x46`/`CAST=0x47` opcodes, the `DTYPE` enum, and the
 `COPY+CAST → S4D4_TR` `instruction_mapping` binding are **byte-identical** across the
-cayman/mariana/maverick/sunda arch-isa headers (verified this pass: same opcodes, same 64-B
-static-assert, same binding; mariana/maverick only rename the field type `TENSOR4D →
-MEM_PATTERN4D`, same 20-B layout). `[HIGH/OBSERVED — header diff; the per-gen funcVAs carried
-from the firmware-carve survey.]`
+cayman/mariana/maverick/sunda arch-isa headers (same opcodes, same 64-B static-assert, same
+binding; mariana/maverick only rename the field type `TENSOR4D → MEM_PATTERN4D`, same 20-B
+layout). `[HIGH/OBSERVED header diff; CARRIED the per-gen funcVAs]`
 
 > **v5/MAVERICK caution.** The MAVERICK opcode line, struct, and binding are **header-OBSERVED**;
 > the MAVERICK device funcVAs are OBSERVED in the stripped ET_DYN as relative offsets, but the v5
@@ -572,17 +565,17 @@ rounding/saturation opcodes. The mis-decoded `j 0x100ce56` is a desync artifact 
 `.text`), not trusted (§2.3). The **model** — the `S4D4_TR` struct, `Bypass`, the copy/cast
 validity delta, the dtype matrix, the FP32-intermediate cast — is HIGH/OBSERVED from the
 in-package arch-isa header + `instruction_mapping.json` + the NKI public-API docstring + the
-simulator numpy reference: a multi-source agreement, not a fragile single decode. `[NOTE]`
+simulator numpy reference: a multi-source agreement, not a fragile single decode.
 
 ---
 
 ## 11. Adversarial self-verification — five strongest claims re-challenged
 
 1. **`Copy=0x46`/`Cast=0x47` dispatch.** `OPCODE_COPY = 0x46`, `OPCODE_CAST = 0x47`
-   (`common.h:175-176`) — re-read this pass with `rg`. The `kernel_info_table` idx12/idx13 →
+   (`common.h:175-176`). The `kernel_info_table` idx12/idx13 →
    funcVA `0x010040c0`/`0x01004160` is carried from the firmware carve (sha256-verified vs the
    manifest) — opcodes are OBSERVED here; the funcVA route through the FLIX trampoline is MED. ✓
-2. **The shared `S4D4_TR` offsets.** Compile-verified independently this pass
+2. **The shared `S4D4_TR` offsets.** Compile-verified independently
    (`gcc -I<cayman tpb>`): `sizeof = 64`, all 12 offsets exact, and byte-identical to
    stream-transpose.md / tensor-reduce.md (`negated@35`, `op@36`, `op_dim@37`, `mask_enable@38`,
    `reserved1@39`, `dst@44`). ✓ HIGH/OBSERVED.
@@ -594,11 +587,9 @@ simulator numpy reference: a multi-source agreement, not a fragile single decode
    (`out_dtype == in_dtype`), read verbatim — a dtype change is impossible by construction, so the
    element width is identical and no convert op is needed; the cast-only convert-mode setup is
    absent from `copy`'s trampoline. ✓ HIGH/OBSERVED.
-5. **The `DTYPE` ordinals.** Re-read `common.h:723-738` with `rg` this pass: `INVALID 0x0 …
+5. **The `DTYPE` ordinals.** `common.h:723-738`: `INVALID 0x0 …
    FP8_EXP5 0xF` — matches [the dtype model](./dtype-model.md) exactly, including the canonical
    `FP8_EXP3/4/5` names. ✓ HIGH/OBSERVED.
-
-All five survive re-challenge.
 
 ---
 

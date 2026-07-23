@@ -25,7 +25,7 @@ This is the **Cadence Tensilica Vision-Q7 *Cairo* (`ncore2gp`) GPSIMD compute co
 firmware — windowed-ABI Xtensa code in the `ncore2gp` (Xtensa24, RI-2022.9, NX1.1.4,
 32-byte FLIX/VLIW) configuration — plus its NX/SEQ sequencer dispatch. Every device fact
 below is byte-pinned to the same `.rodata`-resident DVE carve the
-[forward-statistics sibling](batchnorm-forward.md) uses, re-derived this pass from
+[forward-statistics sibling](batchnorm-forward.md) uses, derived from
 `libnrtucode_internal.so` with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`);
 every host-ISA fact is read out of the `aws_neuron_isa_tpb_s3s3d1_bn{,2}.h` arch-isa headers
 shipped in the same customop-lib package, and the **struct offsets were compile-verified**
@@ -36,16 +36,16 @@ Confidence/evidence tags follow the project
 read-from-byte / proven-by-compile, `[MED/INFERRED]` = reasoned over OBSERVED,
 `[…/CARRIED]` = re-used at a cited sibling's confidence without re-reading the artifact.
 
-> **NOTE — what was carved this pass, and the exact objects used.** The firmware container
+> **NOTE — the carve, and the exact objects used.** The firmware container
 > is `…/custom_op/c10/lib/libnrtucode_internal.so`. The DVE images are `.rodata`-resident,
 > so **file offset == device VA** for `.text`/`.rodata`; no `.data` delta applies to these
 > carves. The DEBUG carve `DVE_DEBUG_IRAM` (`0x16f660` / `0x1bcc0`, sha256 `259769ff…`,
 > 44,989 disasm lines) holds the handler bodies + `S:` logs; `DVE_DEBUG_DRAM` (`0x18b320` /
 > `0x6d60`, sha256 `c106642d…`) holds the `S:` strings, the SEQ dispatch table, and the
-> staged descriptors. Both sha256 reproduce the forward-page anchor exactly; `objdump`
-> exit 0, empty stderr. The two self-name strings sit at .so file offset `0x18d5c0`
-> (`S: BatchNormalizeGradAccum`) and `0x18d5dc` (`…GradAccum2`) — with carve base `0x18b320`
-> that is DRAM `0x22a0` / `0x22bc`. `[HIGH/OBSERVED — all re-read this pass]`
+> staged descriptors. Both sha256 reproduce the forward-page anchor exactly. The two
+> self-name strings sit at .so file offset `0x18d5c0` (`S: BatchNormalizeGradAccum`) and
+> `0x18d5dc` (`…GradAccum2`) — with carve base `0x18b320` that is DRAM `0x22a0` / `0x22bc`.
+> `[HIGH/OBSERVED]`
 
 > **CORRECTION — three task-premise corrections.** (1) "GradAccum2 is a second-moment /
 > variance / fused / different-dtype / cross-microbatch accumulator." **No.** It computes
@@ -56,7 +56,7 @@ read-from-byte / proven-by-compile, `[MED/INFERRED]` = reasoned over OBSERVED,
 > near-absent on DVE — count `1`; §6). (3) There is **no `÷N` / bias-correction divide**
 > inside GradAccum: it emits raw **sums**; the `1/N` and the `γ·σb-0.5/N` prefactor are
 > [Back-Prop](batchnorm-backprop.md)/[ParamLoad](batchnorm-paramload.md)'s job. All three
-> are byte-grounded below. `[HIGH/OBSERVED]`
+> are byte-grounded below.
 
 ---
 
@@ -65,29 +65,28 @@ read-from-byte / proven-by-compile, `[MED/INFERRED]` = reasoned over OBSERVED,
 1. **`BatchNormGradAccumulate` = opcode `0x63`, struct `S3S3D1_BN`; `…GradAccumulate2` =
    opcode `0x94`, struct `S3S3D1_BN2`.** Both decode `imm0=μb`, `imm1=σb-0.5`, `src0=Om`,
    `src1=∇O'm`, and write **three** fp32-class sums to a `dst` of **exactly 3 elements**.
-   `[HIGH/OBSERVED — header opcode enum `0x63`/`0x94`; struct2opcode 1:1; both sizeof==64]`
+   `[HIGH/OBSERVED — opcode enum + struct2opcode + `sizeof==64`]`
 2. **`0x63` is deprecated; `0x94` is the maintained variant.** The opcode enum tags `0x63`
    *"n, use BatchNormGradAccumulate2 instead"* and `0x94` *"Y"*; the v1 header itself says
    *"Need immediate from reg? Use s3s3d1_bn2/BatchNormGradAccumulate2 instead."*
-   `[HIGH/OBSERVED — common.h enum comments + s3s3d1_bn.h]`
+   `[HIGH/OBSERVED — enum comments + `s3s3d1_bn.h`]`
 3. **`dst` is exactly 3 elements — the dst-count contract, doubly witnessed.** The header
    predicate `bnga_dst_element_cnt_check` requires `dst.num_elem[0] == 3`; both staged
    in-firmware descriptors carry `word[0] = 0x00000003` (DRAM `0x2290` for v1, `0x22e0` for
-   v2). `[HIGH/OBSERVED — predicate + descriptor bytes read this pass]`
+   v2). `[HIGH/OBSERVED — predicate + descriptor bytes]`
 4. **The three sums = the Σ_batch for the BN backward.** `d_beta = Σ(d_y)`,
    `d_gamma = Σ(d_y·x_norm)` with `x_norm = (Om − μb)·σb-0.5` formed on the fly from
-   `imm0`/`imm1`, plus a third mean-coupling sum feeding the `d_x` term. `[d_beta/d_gamma
-   HIGH from the header+algebra; the exact 3rd accumulator INFERRED-HIGH — the header cites
-   an internal spec not in the binary]`
+   `imm0`/`imm1`, plus a third mean-coupling sum feeding the `d_x` term.
+   `[HIGH d_beta/d_gamma; INFERRED the 3rd accumulator]`
 5. **The accumulate is a stream-fold into the wide `wvec` MAC accumulator.** The
    `d_y·x_norm` product folds into the dedicated 1536-bit `wv0..wv3` accumulator via the
    unsigned sum-of-products MAC family (`ivp_mulusp*`/`ivp_muluupan16xr16` — the last
    OBSERVED live in a FLIX bundle at `0xb5ab`); the running `Σ d_y` folds via the
-   add-normalize accumulate `ivp_baddnormnx16` (×8). `[HIGH vocab + wvec model OBSERVED; the
-   per-term schedule MED across the FLIX desync]`
+   add-normalize accumulate `ivp_baddnormnx16` (×8). `[HIGH vocab + wvec model; MED per-term
+   schedule]`
 6. **fp32 compute hub.** `src0`/`src1` ∈ `{fp16, bf16, fp32, i32}` are **converted to fp32
    before computation** (header verbatim); the accumulator and all math are fp32; output ∈
-   `{fp32, bf16, fp16}`. `[HIGH/OBSERVED — header constraint + bnga_valid_* predicates]`
+   `{fp32, bf16, fp16}`. `[HIGH/OBSERVED — `bnga_valid_*` predicates]`
 7. **No rsqrt on DVE; `σb-0.5` is forward-precomputed.** `imm1` is *"the reciprocal of the
    square root of the mini-batch variance (σb-0.5), saved from forward propagation"* — a
    pointer immediate, not a computed value. `grep` finds zero `ivp_rsqrt0`/`recip0` on DVE
@@ -97,11 +96,11 @@ read-from-byte / proven-by-compile, `[MED/INFERRED]` = reasoned over OBSERVED,
    via the new `imm0_imm1_src` `IMM_SRC_PAIR` `@62`, and packs `(imm_dtype, out_dtype)` into
    `immediate_out_dtype` `@61`. Witnessed: v1 body has a lone `movi.n a2,10` (FP32 default);
    v2 body has `extui …,0,4` + `extui …,4,4` + two `bnei a2,2` → reg-fetch sub-handlers.
-   `[HIGH/OBSERVED — compile-verified structs + handler bytes]`
+   `[HIGH/OBSERVED — structs + handler bytes]`
 9. **DVE-only, stable cayman→sunda.** Both opcodes and both structs are present in
    cayman/mariana/mariana_plus/maverick/sunda; the `bn2` struct body is byte-identical
-   cayman==sunda. POOL carries no batch-norm opcode in any gen. `[HIGH/OBSERVED — header
-   presence + struct body diff; v5 interior INFERRED]`
+   cayman==sunda. POOL carries no batch-norm opcode in any gen. `[HIGH/OBSERVED headers +
+   struct diff; INFERRED v5 interior]`
 
 ---
 
@@ -115,8 +114,8 @@ structs; the forward-statistics page enumerates the whole table. The two rows th
 | `0x63` | `BATCH_NORM_GRAD_ACCUMULATE` | `S3S3D1_BN` | `n` (deprecated) | `0x22a0` `S: BatchNormalizeGradAccum` | `0xb518` |
 | `0x94` | `BATCH_NORM_GRAD_ACCUMULATE2` | `S3S3D1_BN2` | **Y** (maintained) | `0x22bc` `S: BatchNormalizeGradAccum2` | `0xb55c` |
 
-`[HIGH/OBSERVED — opcode enum at common.h:191 (`0x63`, `"n, use …2"`) and :228 (`0x94`,
-`"Y"`); both `S:` strings re-read at .so off `0x18d5c0`/`0x18d5dc` ⇒ DRAM `0x22a0`/`0x22bc`]`
+`[HIGH/OBSERVED — opcode enum at `common.h:191` (`0x63`, `"n, use …2"`) and `:228` (`0x94`,
+`"Y"`); both `S:` strings at .so off `0x18d5c0`/`0x18d5dc` ⇒ DRAM `0x22a0`/`0x22bc`]`
 
 **`struct2opcode` (1:1 — the wire format is bespoke per op, `jq` from
 `instruction_mapping.json`):**
@@ -133,7 +132,7 @@ body are dedicated, not a shared Tensor-Tensor reuse.
 > **NOTE — the `S:` name is the *kernel* name here, not a family name.** Stats2 logs the
 > *family* name `S: BatchNormalize`; GradAccum and GradAccum2 each have their **own**
 > distinct self-name (`…GradAccum` / `…GradAccum2`) because they each have a dedicated
-> handler body (`0xb518` / `0xb55c`) — no shared trampoline. `[HIGH/OBSERVED]`
+> handler body (`0xb518` / `0xb55c`) — no shared trampoline.
 
 ---
 
@@ -180,8 +179,8 @@ typedef struct NEURON_ISA_TPB_S3S3D1_BN_STRUCT {
 4-byte union `{PARTITION_OFFSET imm_ptr; IMM_REG imm_reg; float imm_arith_fp32; …}` — for
 GradAccum the `imm_ptr` arm is the only legal one (the v1 validity gate tests `imm_ptr`).
 All three tensors are `AllowedInPSUM=True, AllowedInSBUF=True`; both srcs are
-`WriteTensor=False`, the dst is `WriteTensor=True`. `[HIGH/OBSERVED — common.h TENSOR3D@649,
-TENSOR1D@637, IMM_VAL_INST_FIELD@866; tensor3d_valid/tensor1d_valid predicate args]`
+`WriteTensor=False`, the dst is `WriteTensor=True`. `[HIGH/OBSERVED — `common.h`
+`TENSOR3D`@649, `TENSOR1D`@637, `IMM_VAL_INST_FIELD`@866]`
 
 > **GOTCHA — `imm0`/`imm1` are *pointers*, not values.** The 4-byte `IMM_VAL_INST_FIELD`
 > holds a **`PARTITION_OFFSET` pointer into SBUF/PSUM**, not the fp32 mean/inv-std value
@@ -189,8 +188,7 @@ TENSOR1D@637, IMM_VAL_INST_FIELD@866; tensor3d_valid/tensor1d_valid predicate ar
 > kernel dereferences `imm0`→`μb` and `imm1`→`σb-0.5` per channel from memory. A
 > reimplementer must **not** stuff the fp32 mean/inv-std into the instruction word — that
 > is what the `InstructionImmediate` source (absent here in v1) would mean.
-> `[HIGH/OBSERVED — bnga_imm_check tests `imm.imm_ptr` + `addr_aligned_dtype` + the header
-> "immediate pointers only" clause]`
+> `[HIGH/OBSERVED — `bnga_imm_check` + `addr_aligned_dtype`]`
 
 ### 2.1 The validity predicates (the wire contract, header-verbatim)
 
@@ -222,13 +220,12 @@ Three constraints carry weight:
 * **`bnga_src_element_cnt_check`** — `prod(src0.num_elem[0..2]) == prod(src1.num_elem[0..2])`
   (or the shape comes from a register). `Om` and `∇O'm` must have the **same element count**
   — this product **is** the batch extent over which the three sums reduce. The sum extent is
-  tied to the **src** stream, not to the dst. `[HIGH/OBSERVED]`
+  tied to the **src** stream, not to the dst.
 * **`bnga_dst_element_cnt_check`** — `dst.num_elem[0] == 3`. Exactly three outputs.
-  `[HIGH/OBSERVED]`
 * **`bnga_imm_check`** — `addr_aligned_dtype(imm.imm_ptr, imm_dtype)` **OR**
   `(imm_dtype == Invalid && addr_aligned_dtype(imm.imm_ptr, FP32))`, **and**
   `tpb_addr_active_channels(imm.imm_ptr, num_channels)`. This is exactly the
-  `Invalid ⇒ fp32 default` rule made explicit. `[HIGH/OBSERVED]`
+  `Invalid ⇒ fp32 default` rule made explicit.
 
 > **QUIRK — the `immediate_dtype` field is a 2022 retrofit over a `reserved0` byte.** The
 > v1 header documents the change verbatim (*"Change 7/19/22: the 'immediate_dtype' field is
@@ -236,7 +233,7 @@ Three constraints carry weight:
 > represent the data type of *both* immediates; to avoid breaking existing code 0x0
 > (Dtype::Invalid) is allowed and means fp32"*). That is **why** the handler body's default
 > path is a literal `movi.n a2,10` (`Dtype::FP32 = 0xA`) — see §3.5. A reimplementer
-> encoding v1 may leave `@61 = 0` and get fp32 immediates for free. `[HIGH/OBSERVED — header
+> encoding v1 may leave `@61 = 0` and get fp32 immediates for free. `[HIGH/OBSERVED —
 > change-note + the byte at `0xb54d`]`
 
 ### 2.2 What the op computes — header semantics, verbatim sense
@@ -261,7 +258,7 @@ the three and INFERRED-HIGH for the coupling term (§6.1).
 
 Both opcodes route through the SEQ direct-indexed DRAM jump table:
 `key = opcode_byte − 0x41`, table1 base at DRAM file offset `0x814` (device VA `0x80814`),
-word = LE32 at `0x814 + 4·key`. Read **byte-exact this pass** from `DVE_DEBUG_DRAM.bin`:
+word = LE32 at `0x814 + 4·key`. Read **byte-exact** from `DVE_DEBUG_DRAM.bin`:
 
 | opcode | idx | table off | word | trampoline |
 |---|---|---|---|---|
@@ -274,11 +271,9 @@ word = LE32 at `0x814 + 4·key`. Read **byte-exact this pass** from `DVE_DEBUG_D
 | `0x8e` ParamLoad2 | `0x4d` | `0x948` | `0x30be` | `0x30be` |
 | **`0x94` GradAccum2** | **`0x53`** | **`0x960`** | **`0x30a6`** | **`0x30a6`** |
 
-`[HIGH/OBSERVED — dispatch words read via `struct.unpack_from('<I', dram, 0x814+4*key)`,
-reproduced this pass]`
+`[HIGH/OBSERVED — dispatch words]`
 
-The trampolines, register-handler thunks, and handler bodies were re-disassembled with the
-native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) directly from the carved IRAM:
+The trampolines, register-handler thunks, and handler bodies, from the carved IRAM:
 
 ```
 ;; ---- op 0x63 GradAccum ----
@@ -304,7 +299,7 @@ native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) directly from the carved IR
 1fde:  900000   retw
 ```
 
-`[HIGH/OBSERVED — every byte above read by the native objdump this pass]` Both chains
+`[HIGH/OBSERVED — read directly]` Both chains
 converge on the common Handler invoke at IRAM `0x3212` (`j 0x2e87`, the C++
 `Handler::execute()` path). The thunk's `const16 a2,<body VA>` + `s32i a2,a1,12` is the
 "stage the handler body pointer into the Handler object frame at offset 12, then call the
@@ -323,7 +318,7 @@ GradAccum2 @0xb577:  const16 a2, 0x22e0    DRAM 0x22e0 = 0x00000003 0x78000000 0
 encoded redundantly in the firmware descriptor as well as the `bnga_dst_element_cnt_check`
 predicate. The descriptors differ only in `word[2]` (`0xffcfbfa6` vs `0xffc00026`) — the
 per-opcode decode-spec / inst-word-len flags; `word[3] = 0x0f421061` is shared.
-`[HIGH/OBSERVED — both 4-word descriptors read this pass]`
+`[HIGH/OBSERVED — both 4-word descriptors]`
 
 ### 3.2 Handler bodies + entry frame sizes
 
@@ -336,14 +331,14 @@ per-opcode decode-spec / inst-word-len flags; `word[3] = 0x0f421061` is shared.
 | `ParamLoad2` | `0xb694` | `entry a1, 48` | `…ParamLoad2` (`0x230c`) |
 | `BackProp` | `0xb6f0` | `entry a1, 32` | `…BackProp` (`0x2350`) |
 
-`[HIGH/OBSERVED — `entry` widths re-read this pass]`
+`[HIGH/OBSERVED — `entry` widths]`
 
 > **NOTE — GradAccum2's frame is 16 bytes deeper than GradAccum's (`a1,64` vs `a1,48`).**
 > Every other v1 BN handler (Stats2 excepted) is `entry a1,48`; GradAccum2 is the **only**
 > grad handler with a 64-byte frame. Those extra 16 bytes hold the unpacked
 > `(imm_dtype, out_dtype, imm0_src, imm1_src)` nibble spills + the two register-pointer-fetch
 > sub-handler call frames (§8). The frame delta is itself a fingerprint of the v2
-> per-immediate src-dispatch machinery. `[HIGH/OBSERVED]`
+> per-immediate src-dispatch machinery.
 
 ### 3.3 The v1 handler body — `GradAccum @0xb518` (68 B window)
 
@@ -361,9 +356,8 @@ b54d:  0ca2     movi.n  a2, 10           ; *** Dtype::FP32 (0xA) — the SINGLE 
 b559:  1df0     retw.n
 ```
 
-`[HIGH/OBSERVED — the `entry`/log/`const16`-descriptor/`movi.n a2,10`/`retw.n` are clean
-scalar instructions, read directly; the FLIX-VLIW compute region past `0xb536` desyncs under
-stock linear sweep and is reported structurally (§6), not byte-quoted]`
+`[HIGH/OBSERVED scalar instructions; the FLIX-VLIW region past `0xb536` desyncs under stock
+linear sweep and is reported structurally (§6), not byte-quoted]`
 
 ### 3.4 The v2 handler body — `GradAccum2 @0xb55c` (208 B window)
 
@@ -387,15 +381,14 @@ b5e4:  366100   entry   a1, 48 …                    ; imm0 reg-pointer-fetch s
 b608:  366100   entry   a1, 48 …                    ; imm1 reg-pointer-fetch sub-handler
 ```
 
-`[HIGH/OBSERVED — `entry`/log/descriptor/`extui ,0,4`/`extui ,4,4`/two `bnei a2,2`/the two
-`call8` sub-handler targets + both sub-handler `entry a1,48` prologues read directly; the
-`b5ab` FLIX MAC bundle decodes live but sits at the FLIX/literal boundary → MED]`
+`[HIGH/OBSERVED scalar prologue + `extui`/`bnei`/both sub-handlers; MED the `0xb5ab` FLIX MAC
+bundle — it decodes live but sits at the FLIX/literal boundary]`
 
 The two reg-pointer-fetch sub-handlers `0xb5e4` (imm0) and `0xb608` (imm1) are
 near-identical `entry a1,48` stubs that differ only in which register slot they read the
 pointer from (`movi.n a4,29` at `0xb5e8` vs the analogous constant in the imm1 stub) — i.e.
-which of the two `imm_reg` slots feeds `μb` vs `σb-0.5`. `[HIGH/OBSERVED bytes; the precise
-reg-encoding LOW — it lives in the FLIX-desynced body]`
+which of the two `imm_reg` slots feeds `μb` vs `σb-0.5`. `[HIGH/OBSERVED bytes; LOW the
+precise reg-encoding (FLIX desync)]`
 
 ### 3.5 PERF (production) build
 
@@ -405,7 +398,7 @@ deprecated-cluster** handler that the three deprecated variants `0x63/0x64/0x65`
 consistent with GradAccum being marked *"n, use v2"*. `op 0x94 GradAccum2 → 0x000c`, which
 is **not** a trustworthy VA: idx `0x53` past ~`0x40` overlaps the assertion string pool in
 the tiny `0x2fc0` PERF DRAM. **The DEBUG dispatch is the reliable substrate for GradAccum2.**
-`[HIGH for `0x61`/`0x63`; the `0x94` PERF row MED/unusable — flagged honestly]`
+`[HIGH `0x61`/`0x63`; MED/unusable the `0x94` PERF row]`
 
 ---
 
@@ -426,9 +419,8 @@ The `d_x` formula needs three batch reductions: `Σ d_y` (= `d_beta`),
 `Σ(d_y·x_norm)` (= `d_gamma`), and a third coupling sum. GradAccum produces exactly **three**
 batch sums (`dst.num_elem[0] == 3`); the two named gradients are `d_beta` and `d_gamma`, and
 the third is the mean-coupling term the [Back-Prop](batchnorm-backprop.md) apply combines
-into `d_x`. `[d_beta/d_gamma HIGH from the header+algebra; the exact 3rd accumulator
-INFERRED-HIGH — the header's per-sum definition points at an internal spec absent from the
-binary]`
+into `d_x`. `[HIGH d_beta/d_gamma; INFERRED the 3rd accumulator — the header's per-sum
+definition points at an internal spec absent from the binary]`
 
 ```c
 /* BatchNormGradAccumulate — the Σ_batch reduce (per channel, num_active_channels lanes).
@@ -455,8 +447,7 @@ for (i = 0; i < N; ++i) {                       /* stream fold over the batch ax
 store3(dst, sum_dy /*d_beta*/, sum_dy_xnorm /*d_gamma*/, sum_coupling);
 ```
 
-`[the d_beta/d_gamma fold HIGH from header+algebra+vocab; the per-term schedule MED across
-the FLIX desync; the coupling term INFERRED-HIGH]`
+`[HIGH the d_beta/d_gamma fold; MED the per-term schedule; INFERRED the coupling term]`
 
 > **NOTE — no `÷N` and no `γ·σb-0.5/N` prefactor inside GradAccum.** GradAccum emits raw
 > **sums**, not means. The `1/N` normalization and the `γ·σb-0.5/N` prefactor in the `d_x`
@@ -464,8 +455,7 @@ the FLIX desync; the coupling term INFERRED-HIGH]`
 > which uses the `N` staged by [ParamLoad](batchnorm-paramload.md) plus the 256-entry fp32
 > reciprocal Parameter-RAM the forward page documents. The `+ε` is folded into `σb-0.5`
 > host-side **before** it arrives as `imm1`. So there is **no per-element divide inside
-> GradAccum**. `[HIGH — the no-divide-here from the header (sums, not means) + the divide
-> machinery living on the apply/forward side]`
+> GradAccum**. `[HIGH — the header says sums, not means]`
 
 ### 4.2 The fold — stream-accumulate into the wide `wvec`, not a partition reduce
 
@@ -474,14 +464,13 @@ TENSOR3D element stream (the batch extent = `src0`/`src1` `num_elem` product), f
 
 * **`d_gamma = Σ(d_y·x_norm)`** — the unsigned sum-of-products MAC into the **dedicated
   1536-bit wide-vector accumulator** `wv0..wv3`. The MAC vocabulary harvested from
-  `DVE_DEBUG_IRAM.dis` (rg counts, this pass): `ivp_mulusp2n8xr16` (5),
+  `DVE_DEBUG_IRAM.dis`: `ivp_mulusp2n8xr16` (5),
   `ivp_muluspn16xr16` (2), `ivp_muluspa2n8xr16` (4, `A`=accumulate),
   `ivp_muluupan16xr16` (3, OBSERVED live in the `0xb5ab` bundle), `ivp_muluupn16xr16` (1).
   Wide-accumulator references `wv0`/`wv1`/`wv2`/`wv3` = 43/32/23/17 = **115** total — the
-  1536-bit MAC regfile. `[HIGH/OBSERVED — counts re-grepped this pass]`
+  1536-bit MAC regfile. `[HIGH/OBSERVED — counts]`
 * **`d_beta = Σ(d_y)`** — the running add-normalize accumulate `ivp_baddnormnx16`
   (DEBUG **8**), the same fold geometry the forward page found for Stats2's sum.
-  `[HIGH/OBSERVED]`
 
 The partition-reduce family (`ivp_radd*`) is **near-absent** on the whole DVE image —
 `ivp_radd` count = **1** (a single `ivp_raddu2nx8t`). That count is the proof: GradAccum is
@@ -489,8 +478,7 @@ a **stream fold over the batch (element) axis**, not a cross-**partition** fold.
 engine's `CrossLaneReduce` (`0x7c`/`0x7d`) and `tensor_partition_reduce` fold the SBUF/PSUM
 **partition** axis on a **different engine**; the BN batch reduce folds the **streamed
 element** axis on the **DVE** inside GradAccum. Distinct mechanisms, distinct engines,
-distinct axes. `[HIGH the IVP vocab + `radd`-near-absent count OBSERVED; the
-GradAccum-internal-reduce attribution INFERRED-HIGH — the fold schedule is FLIX-desynced]`
+distinct axes. `[HIGH the IVP vocab + `radd` count; INFERRED the reduce attribution]`
 
 ```c
 /* The DVE wide-MAC fold for d_gamma = Σ(d_y · x_norm) (ISS-grounded vocabulary).
@@ -503,24 +491,23 @@ for (each 16-element FLIX chunk of the d_y / x_norm streams)
 float d_gamma = wvec_to_fp32(wv);             /* finalize cast (FLIX-desynced in-body)        */
 ```
 
-`[HIGH the MAC op + wvec model OBSERVED; the exact per-chunk schedule + the wvec→fp32
-finalize cast MED across the FLIX desync]`
+`[HIGH the MAC op + wvec model; MED the per-chunk schedule + the wvec→fp32 finalize cast]`
 
 ### 4.3 Accumulator precision and persistence
 
 * **Precision.** The accumulator is **fp32-internal** (header: *"both [srcs] will be
   converted to fp32 before computation"*); the integer MAC products land in the wide
   1536-bit `wvec`, then are reduced/cast to the fp32 sum (`ivp_*_2xf32t` fp32 finalize). No
-  fp64, no hardware FP — soft-float bodies, consistent with the forward page. `[HIGH the
-  fp32-internal via header + vocab; the wvec→fp32 finalize INFERRED-HIGH across the desync]`
+  fp64, no hardware FP — soft-float bodies, consistent with the forward page. `[HIGH
+  fp32-internal (header + vocab); INFERRED the wvec→fp32 finalize]`
 * **Persistence.** The `dst` is a 3-element TENSOR1D in SBUF/PSUM. GradAccum is a
   **single-instruction reduce** over the streamed `src`: the sum extent is tied to the src
   element count (`bnga_src_element_cnt_check`), **not** to a prior `dst` value. The dst is
   `WriteTensor=True` and there is **no read-modify-write of dst** in the validity contract —
   i.e. GradAccum does **not** add into a prior dst accumulator across calls. Cross-microbatch
   gradient accumulation, if needed, is a **host/compiler-orchestrated** add of successive
-  `dst` tensors — not a feature of this opcode. `[HIGH the WriteTensor + src-count-bound
-  contract; the "no in-place accumulate-to-prior" INFERRED-HIGH from the contract]`
+  `dst` tensors — not a feature of this opcode. `[HIGH the WriteTensor + src-count contract;
+  INFERRED the "no in-place accumulate-to-prior" negative]`
 
 > **GOTCHA — the three sums are *plain sums*, not running state.** A reimplementer must
 > **not** model GradAccum as an in-place `dst += …` accumulator. Each instruction reduces
@@ -534,8 +521,7 @@ GradAccum does **not** recompute the mean or the inv-std. `imm0 = μb` and `imm1
 arrive *"saved from forward propagation"* (header verbatim). There is **no `ivp_rsqrt0` on
 DVE** (the forward page's grep is `0` in both builds; the only seed→Newton the DVE BN path
 runs is reciprocal **division** for means). `σb-0.5` is forward/host-precomputed and handed
-to GradAccum as a pointer immediate. `[HIGH/OBSERVED — header + CARRIED grep from the
-forward page]`
+to GradAccum as a pointer immediate. `[HIGH/OBSERVED header; CARRIED grep]`
 
 ---
 
@@ -554,8 +540,7 @@ DTYPE ordinals (`common.h`): `INVALID 0x0`, `INT8 0x2`, `UINT8 0x3`, `INT16 0x4`
 | imm source | implicit `PointerImmediate` only | `imm0_imm1_src @62`: per-imm `{PointerImmediate, RegPtrImmediate}` |
 | compute | fp32 throughout; `dst` = 3 elements | fp32 throughout; `dst` = 3 elements |
 
-`[HIGH/OBSERVED — read from the `bnga_valid_*` / `bnga2_valid_*` predicate comments,
-compile-verified]`
+`[HIGH/OBSERVED — `bnga_valid_*` / `bnga2_valid_*` predicates]`
 
 > **CORRECTION — the v1 `immediate_dtype` `Invalid⇒fp32` default does NOT carry to v2.** In
 > v1, `@61` is a **scalar** `Dtype` and `0x0` (`Invalid`) is legal, meaning fp32. In v2,
@@ -563,8 +548,8 @@ compile-verified]`
 > nibble is `bnga2_valid_input_type`-gated to `{FP16, BF16, FP32, INT32}` (`AllowFP32R::
 > False`), with **no `Invalid⇒fp32` escape**. So a v2 encoder must set a real imm dtype in
 > the low nibble; it cannot leave `@61 = 0` and expect fp32. The fp32-default convenience is
-> a v1-only legacy affordance. `[HIGH/OBSERVED — v1 `bnga_valid_immediate_type` lists
-> `Invalid`; v2 `bnga2_valid_input_type` does not]`
+> a v1-only legacy affordance. `[HIGH/OBSERVED — `bnga_valid_immediate_type` lists
+> `Invalid`; `bnga2_valid_input_type` does not]`
 
 ---
 
@@ -582,10 +567,10 @@ is eliminated by direct evidence:
   layouts]`
 * **NOT a different dtype path.** Both allow `src ∈ {fp16, bf16, fp32, i32}`,
   `out ∈ {fp32, fp16, bf16}`; `bn2` merely **packs** `(imm_dtype, out_dtype)` into one byte
-  — the allowed **set** is the same. `[HIGH/OBSERVED — compile-verified predicates]`
+  — the allowed **set** is the same. `[HIGH/OBSERVED — predicates]`
 * **NOT a cross-microbatch add-to-prior accumulator.** Neither op read-modify-writes a prior
   `dst`; the sum extent ties to the **src** element count, not a prior dst value (§4.3).
-  `[HIGH/OBSERVED contract; the negative INFERRED-HIGH]`
+  `[HIGH/OBSERVED contract; INFERRED the negative]`
 
 **The actual difference — immediate-source flexibility + field packing.** The `S3S3D1_BN2`
 struct (§2 layout, `@60` unchanged) differs from `S3S3D1_BN` in exactly two bytes:
@@ -628,14 +613,14 @@ if (imm1_src == 2 /*RegPtrImmediate*/) call(sub_0xb608);   /* fetch imm1 pointer
 The body/frame delta is the whole story: v2 is **208 B / `entry a1,64`**; v1 is
 **68 B / `entry a1,48`** — and the entire 140-byte / 16-byte-frame difference is the
 nibble-unpack + the two register-pointer-fetch sub-handlers (`0xb5e4`, `0xb608`). v1 has
-neither. `[HIGH/OBSERVED — every instruction above read this pass via the native objdump]`
+neither. `[HIGH/OBSERVED — read directly]`
 
 **Why v2 exists.** GradAccum (`0x63`) is deprecated (*"n, use BatchNormGradAccumulate2"*);
 GradAccum2 (`0x94`) is the maintained replacement. The register-pointer immediates let the
 compiler feed `μb`/`σb-0.5` from a **register** (e.g. a loop-carried pointer) instead of a
 fixed instruction-encoded SBUF/PSUM pointer — the same v1→v2 evolution
 [ParamLoad → ParamLoad2](batchnorm-paramload.md) makes. `[HIGH/OBSERVED — enum status
-markers + the v1 header's own "use s3s3d1_bn2 for reg immediates" note]`
+markers + the v1 header note]`
 
 ---
 
@@ -651,15 +636,14 @@ markers + the v1 header's own "use s3s3d1_bn2 for reg immediates" note]`
 
 Both opcodes (`0x63`, `0x94`) and both structs (`S3S3D1_BN`, `S3S3D1_BN2`) are present in
 the `cayman / mariana / mariana_plus / maverick / sunda` arch-isa header trees (each
-`aws_neuron_isa_tpb_s3s3d1_bn{,2}.h` exists per gen, fd-verified). The `bn2` struct **body**
+`aws_neuron_isa_tpb_s3s3d1_bn{,2}.h` exists per gen). The `bn2` struct **body**
 is byte-identical cayman==sunda (the struct-field lines diff is empty; per-file sha differs
 only in copyright/comment text). The DVE DEBUG dispatch (both chains
 `0x63→0x309e→0x1fac→0xb518` and `0x94→0x30a6→0x1fc8→0xb55c`) + both self-names are in the
 `cayman/seq` NX DVE firmware. The POOL engine carries **no** batch-norm opcode in **any**
 carved gen (the POOL EXTISA image strings are empty for `batch`/`grad`). GradAccum is a
-**DVE-only** kernel. `[HIGH/OBSERVED — per-gen header presence + the cayman DVE carve
-decoded this pass + the cayman==sunda `bn2`-body diff; MED/INFERRED for non-cayman
-handler-body byte-equality, not exhaustively diffed]`
+**DVE-only** kernel. `[HIGH/OBSERVED per-gen headers + the cayman DVE carve + the
+cayman==sunda `bn2`-body diff; MED/INFERRED non-cayman handler-body byte-equality]`
 
 > **MAVERICK (v5) interior — header-OBSERVED only → INFERRED.** Per the
 > [generation-grounding policy](../../reference/confidence-model.md), the v5 grad
@@ -682,23 +666,22 @@ BN-backward:
   into the DVE per-lane datapath flops. The `1/N` normalization and the `γ·σb-0.5/N`
   prefactor the backward applies use the **ParamLoad-staged `N`** + the 256-entry reciprocal
   Parameter-RAM — **not** a GradAccum field. GradAccum's only immediates are `μb`/`σb-0.5`.
-  `[boundary stated]`
 * **[Back-Prop](batchnorm-backprop.md)** (`0x65`, `S3S3D3_TT`) is the per-element `d_x`
   **apply** that **consumes** the three sums this op produces, multiply-subtract-scaling them
   with the `γ·σb-0.5/N` prefactor on the shared Tensor-Tensor ALU datapath. GradAccum = the
-  **sums**; Back-Prop = the per-element **apply**. `[boundary stated]`
+  **sums**; Back-Prop = the per-element **apply**.
 
 The forward producer of `μb`/`σb-0.5` and the `n·var` aggregation is documented at the
-[forward-statistics page](batchnorm-forward.md). `[NOTE — composition map]`
+[forward-statistics page](batchnorm-forward.md).
 
 ---
 
 ## 9. Confidence ledger
 
-**HIGH / OBSERVED (disasm / byte read / header read / compile-verify this pass):**
+**HIGH / OBSERVED (disasm / byte read / header read / compile-verify):**
 
 * The DVE carves reproduce the forward-page anchor byte-identically (sha256 IRAM
-  `259769ff…`, DRAM `c106642d…`); `objdump` exit 0; `.dis` = 44,989 lines.
+  `259769ff…`, DRAM `c106642d…`); `.dis` = 44,989 lines.
 * The two opcodes `0x63` (`"n, use …2"`) / `0x94` (`"Y"`); the 1:1 `struct2opcode`
   (`S3S3D1_BN→0x63`, `S3S3D1_BN2→0x94`); both `S:` self-names at .so off
   `0x18d5c0`/`0x18d5dc` ⇒ DRAM `0x22a0`/`0x22bc`.

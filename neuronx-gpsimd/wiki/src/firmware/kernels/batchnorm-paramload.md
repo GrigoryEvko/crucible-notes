@@ -18,34 +18,34 @@ the DVE at all.**
 This is the **Cadence Tensilica Vision-Q7 *Cairo* (`ncore2gp`) GPSIMD compute core's** own
 firmware — windowed-ABI Xtensa code in the `ncore2gp` (Xtensa24, RI-2022.9, NX1.1.4, 32-byte
 FLIX/VLIW) configuration — plus its NX/SEQ sequencer dispatch. Every device fact below is
-byte-pinned to a DVE carve re-derived **this pass** from `libnrtucode_internal.so` with the
+byte-pinned to a DVE carve derived from `libnrtucode_internal.so` with the
 native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); every host-ISA fact is read out of the
 `aws_neuron_isa_tpb_*.h` arch-isa headers shipped in the same customop-lib package and
-**compile-verified with `gcc`** (`sizeof`/`offsetof`) this pass. The `extracted/` tree is
+**compile-verified with `gcc`** (`sizeof`/`offsetof`). The `extracted/` tree is
 gitignored — reach it with `fd --no-ignore` or absolute paths. Confidence and evidence tags
 follow the project [Confidence & Walls model](../../reference/confidence-model.md):
 `[HIGH/OBSERVED]` = read-from-byte / proven-by-compile, `[MED/INFERRED]` = reasoned over
 OBSERVED, `[…/CARRIED]` = re-used at a cited sibling report's confidence without re-reading the
-artifact this pass.
+artifact.
 
-> **NOTE — what was carved this pass, and the exact objects used.** The DVE firmware is the
+> **NOTE — the carve, and the exact objects used.** The DVE firmware is the
 > same `.rodata`-resident carve as [Stats2](batchnorm-forward.md) (so **file offset == device
 > VA** for `.text`/`.rodata`; no `.data` delta applies to these carves), sha256-verified
-> **identical** this pass: `DVE_DEBUG_IRAM` `259769ff…` (handler bodies + self-name logs),
+> **identical**: `DVE_DEBUG_IRAM` `259769ff…` (handler bodies + self-name logs),
 > `DVE_DEBUG_DRAM` `c106642d…` (`S:` strings + dispatch table), `DVE_PERF_IRAM` `9fa066f4…`,
 > `DVE_PERF_DRAM` `eb980f98…`. IRAM offsets == device IRAM VA (reset vector at byte 0); DRAM
 > string offset == device DRAM VA − `0x80000`. The two operand structs were read field-exact
-> from `aws_neuron_isa_tpb_s2_bn.h` / `…s2_bnpl2.h` and **compile-checked this pass** (`gcc`
-> `offsetof`/`sizeof` reproduced in §3). `objdump` exit 0, empty stderr. `[HIGH/OBSERVED]`
+> from `aws_neuron_isa_tpb_s2_bn.h` / `…s2_bnpl2.h` and **compile-checked** (`gcc`
+> `offsetof`/`sizeof` reproduced in §3). `[HIGH/OBSERVED]`
 
 > **CORRECTION — this page corrects a sibling-report premise.** An earlier survey
-> (`SX-FW-37 §5.2`) placed `ParamLoad2`'s `src_mem_pattern` at **offset 16** (assuming it
+> placed `ParamLoad2`'s `src_mem_pattern` at **offset 16** (assuming it
 > shares `S2_BN`'s leading `reserved0[4]`@12 + `src`@16 layout). The **compile-verified truth**
 > is `src_mem_pattern`@**12** — `S2_BNPL2` **drops** the leading 4-byte reserved field and puts
 > the src tensor first, pushing its `reserved0[4]` to @24 and `element_count` to @28. The
 > `imm0_ptr`@40 / `imm1_ptr`@44 / `imm0_src`@48 / `imm1_src`@49 offsets the earlier survey cited
 > **are** correct; only the `src` base was off by 4. The `S2_BN` (`ParamLoad`) layout was always
-> correct. Both are re-proven by `gcc` below. `[HIGH/OBSERVED — gcc offsetof this pass]`
+> correct. Both are re-proven by `gcc` below. `[HIGH/OBSERVED — gcc `offsetof`]`
 
 ---
 
@@ -54,7 +54,7 @@ artifact this pass.
 1. **Two ops, one staging step.** `BatchNormParamLoad` (`0x64`, struct `S2_BN`) and
    `BatchNormParamLoad2` (`0x8e`, struct `S2_BNPL2`) both **load five precomputed back-prop
    parameters** into the DVE per-lane datapath flops. `ParamLoad2` is the maintained refactor of
-   `ParamLoad`. `[HIGH/OBSERVED — both 64-B headers + both handler bodies decoded]`
+   `ParamLoad`. `[HIGH/OBSERVED — both headers + both bodies]`
 2. **The five values** (`s2_bn.h`, verbatim): `N` (an fp32 **instruction** immediate),
    `batch_mean` (μb — an fp32 **pointer** immediate read from psum/sbuf), and `A`/`B`/`C`
    (the three back-prop affine coefficients, in that order in the `src_mem_pattern`,
@@ -68,14 +68,14 @@ artifact this pass.
 4. **`rsqrt` is in FORWARD, not here.** Neither op computes `inv_std = 1/√(var+ε)`.
    `rg ivp_(rsqrt0|recip0|sqrt0)` over **both** DVE builds = **0**. `σb-0.5` is
    forward/host-precomputed and **folded into `A`/`B`/`C`** (and threaded to GradAccum as its
-   `imm1`). `[HIGH/OBSERVED — grep 0/0 both builds + the no-compute bodies]`
+   `imm1`). `[HIGH/OBSERVED — grep 0/0 + the no-compute bodies]`
 5. **Dispatch (byte-exact, both chains).** `0x64` → DRAM `table1[0x8a0]=0x30b6`; `0x8e` →
    `table1[0x948]=0x30be`; each a `call8 <thunk> ; j 0x3212` converging to the common Handler
-   invoke @`0x3212`. `[HIGH/OBSERVED — bytes read this pass]`
+   invoke @`0x3212`. `[HIGH/OBSERVED — bytes read]`
 6. **Structs (compile-verified, both 64 B).** `S2_BN`: `src`@16 (3 elems), `imm1=N`@28,
    `dtype`@32, `num_active_channels`@34, `imm0_ptr=batch_mean`@44, `imm0_src`@48. `S2_BNPL2`:
    `src`@12 (2 elems), `element_count`@28, `src_dtype`@32, `immediate_dtype`@33, `imm0_ptr`@40,
-   `imm1_ptr`@44, `imm0_src`@48, `imm1_src`@49. `[HIGH/OBSERVED — gcc this pass]`
+   `imm1_ptr`@44, `imm0_src`@48, `imm1_src`@49. `[HIGH/OBSERVED — gcc]`
 7. **The v1→v2 distinction is *repackaging*, not "add reg-ptr".** Unlike Stats→Stats2 or
    GradAccum→GradAccum2 (where v2 *added* register-pointer immediates), `S2_BN` (v1) **already**
    supports `RegPtrImmediate`. `ParamLoad2` instead **moves one param out of the src tensor into
@@ -89,7 +89,7 @@ artifact this pass.
 9. **Per-gen presence.** Both opcodes (`0x64`/`0x8e`) and both structs present in
    `cayman / mariana / maverick / sunda`; the `S2_BN`/`S2_BNPL2` **typedef bodies are
    byte-identical cayman==sunda**. `S2_BN` is a **shared** wire format (4 opcodes); `S2_BNPL2`
-   is bespoke (1:1). POOL carries no batch-norm opcode in any gen. `[HIGH/OBSERVED]`
+   is bespoke (1:1). POOL carries no batch-norm opcode in any gen.
 
 ---
 
@@ -104,8 +104,8 @@ NEURON_ISA_TPB_OPCODE_BATCH_NORM_PARAM_LOAD   = 0x64,   // n, use BatchNormParam
 NEURON_ISA_TPB_OPCODE_BATCH_NORM_PARAM_LOAD2  = 0x8e,   // Y
 ```
 
-`[HIGH/OBSERVED — common.h opcode enum, lines 192 / 225; the `n`/`Y` markers are the verbatim
-comment text]`. The `n` marker on `0x64` is the same deprecation pattern the whole family uses
+`[HIGH/OBSERVED — `common.h` opcode enum, lines 192 / 225]`. The `n`/`Y` markers are the
+verbatim comment text. The `n` marker on `0x64` is the same deprecation pattern the family uses
 (`Stats`→`Stats2`, `GradAccum`→`GradAccum2`), and §6 shows the PERF build acts on it: `0x64`
 collapses onto a shared deprecated-cluster handler.
 
@@ -117,7 +117,7 @@ S2_BN_STRUCT    -> { BATCH_NORM_PARAM_LOAD, MATCH_VALUE_LOAD,
 S2_BNPL2_STRUCT -> { BATCH_NORM_PARAM_LOAD2 }                                    (bespoke — 1:1)
 ```
 
-`[HIGH/OBSERVED — jq this pass]`. `S2_BN` is the DVE's generic *"load N values into the engine's
+`[HIGH/OBSERVED — `instruction_mapping.json`]`. `S2_BN` is the DVE's generic *"load N values into the engine's
 storage flops"* wire format: the **same 64-byte layout** is the operand of `MatchValueLoad`
 (which loads `mv[0..7]` for `FindIndex8`/`MatchReplace8`) and of `TensorScalarImmLd[Arith/Bitvec]`
 (which loads ≤ 8 per-channel scalars for a following `TensorScalarPtrMulti`). The **opcode byte
@@ -132,17 +132,16 @@ by contrast, exists **only** for `ParamLoad2`.
 > (`has_s2_bn_zero_immediates`); for `TensorScalarImmLd*` the src is **1..8 elements** and the
 > immediates again must be zero. A reimplementer reusing the `S2_BN` encoder across these four
 > opcodes **must** clear `imm1`/`imm0_ptr` for the non-BN ops — leaving the BN immediates in
-> place fails the `…zero_immediates` gate. `[HIGH/OBSERVED — the three `is_valid_*` predicate
-> bodies in `s2_bn.h`]`
+> place fails the `…zero_immediates` gate. `[HIGH/OBSERVED — the `is_valid_*` predicates in
+> `s2_bn.h`]`
 
 | opcode | name | struct | status | `S:` self-name (DRAM off) | body (entry) |
 |---|---|---|---|---|---|
 | `0x64` | `BATCH_NORM_PARAM_LOAD` | `S2_BN` | `n` (use v2) | `0x22f0` `S: BatchNormalizeParamLoad` | `0xb62c` (`entry a1, 48`) |
 | `0x8e` | `BATCH_NORM_PARAM_LOAD2` | `S2_BNPL2` | **Y** | `0x230c` `S: BatchNormalizeParamLoad2` | `0xb694` (`entry a1, 48`) |
 
-`[HIGH/OBSERVED — opcode enum + struct2opcode + both `S:` strings re-read this pass at DRAM
-0x22f0/0x230c via `strings -t x DVE_DEBUG_DRAM.bin`; both `entry` widths read from
-`DVE_DEBUG_IRAM`]`. The self-name bytes at `0x22f0` are
+`[HIGH/OBSERVED — opcode enum + struct2opcode + both `S:` strings + both `entry` widths]`. The
+self-name bytes at `0x22f0` are
 `53 3a 20 42 61 74 63 68 4e 6f 72 6d 61 6c 69 7a 65 50 61 72 61 6d 4c 6f 61 64 0a`
 = `"S: BatchNormalizeParamLoad\n"`; `0x230c` is the same prefix with `…ParamLoad2\n`; the
 [Back-Prop](batchnorm-backprop.md) self-name `S: BatchNormalizeBackProp` follows at `0x2350`.
@@ -177,10 +176,10 @@ address map:
 | `TPB_0_DVE_BANK_DATAPATH_RAM` | `0x2802B82000` | `0x4000` | **the ParamLoad target** — per-lane datapath flops |
 | `TPB_0_DVE_BANK_PARAMETER_RAM` | `0x2802B87000` | `0x400` | the 256×fp32 reciprocal RAM (Stats2's mean divide; *not* ParamLoad's) |
 
-`[HIGH/OBSERVED — header "no DST" + the `WriteTensor::False` src predicate + the RTL map
-re-read this pass; the **exact** per-lane flop addressing within `DATAPATH_RAM` is
-INFERRED-HIGH — the header says "into each of the DVE pipelines" but does not enumerate a
-slot map]`. The [Back-Prop](batchnorm-backprop.md) apply (`op 0x65`, `S3S3D3_TT`) is what
+`[HIGH/OBSERVED "no DST" + `WriteTensor::False` + the RTL map; INFERRED the per-lane flop
+addressing within `DATAPATH_RAM` — the header says "into each of the DVE pipelines" but does
+not enumerate a slot map]`. The [Back-Prop](batchnorm-backprop.md) apply (`op 0x65`,
+`S3S3D3_TT`) is what
 **reads** this staged per-channel state back out.
 
 > **NOTE — "five values into *each* pipeline" is per-lane broadcast, not a tensor write.** The
@@ -188,8 +187,7 @@ slot map]`. The [Back-Prop](batchnorm-backprop.md) apply (`op 0x65`, `S3S3D3_TT`
 > ParamLoad does not write SBUF/PSUM at all. It distributes the five scalars across the
 > `num_active_channels` active lanes' datapath flops — internal engine state that the next BN
 > instruction in the same datapath consumes. This is why the body has no store-to-tensor and no
-> `dst` field. `[HIGH/OBSERVED — "no DST" + the absence of a dst tensor; the per-lane
-> distribution mechanism INFERRED from the header wording]`
+> `dst` field. `[HIGH/OBSERVED "no DST"; INFERRED the per-lane distribution]`
 
 ### 2.2 The `A`/`B`/`C` terms = the precomputed BN-backprop affine coefficients
 
@@ -203,12 +201,9 @@ is realised on Neuron as a **per-element affine** in the saved ofmap and incomin
 **three host-precomputed coefficients** — the `A`/`B`/`C` ParamLoad stages (a 3-element src),
 **plus** the count `N` and the mean `μb`. The DVE does **not** derive `A`/`B`/`C`: the
 host/compiler folds `γ`, `inv_std = σb-0.5`, `N`, and the GradAccum sums into them and ships
-them ready-made. `[the `A`/`B`/`C`-are-the-backprop-affine-coefficients identity is
-INFERRED-HIGH — from the header naming ("supply parameters to the batchnorm back propagation
-operation") + the standard BN-backward algebra + the [Back-Prop](batchnorm-backprop.md) apply
-that consumes them; the header references an internal design doc (a `quip-amazon.com` link, not
-in the binary) for the exact `A=…`/`B=…`/`C=…` definitions, so the precise algebraic form of
-each coefficient is INFERRED]`
+them ready-made. `[INFERRED-HIGH the `A`/`B`/`C` identity — the header references an internal
+design doc (a `quip-amazon.com` link, not in the binary) for the exact `A=…`/`B=…`/`C=…`
+definitions, so the precise algebraic form of each coefficient is INFERRED]`
 
 ### 2.3 The `rsqrt` determination — it is **not** here
 
@@ -217,18 +212,16 @@ This is the question the BN family turns on. The answer for ParamLoad is the sam
 
 * **Neither op computes `inv_std`.** The bodies are 104 / 92-byte decode+stage routines with
   **no MAC and no reciprocal machinery** (§4). `[OBSERVED — body disasm]`
-* **`rg ivp_(rsqrt0|recip0|sqrt0)` over both DVE builds = 0** (re-confirmed this pass: `0` in
-  DEBUG, `0` in PERF). The DVE's *only* seed→Newton is reciprocal **division** —
-  `ivp_div0nxf16t ×2`, `ivp_divnn_2xf32t ×1`, `ivp_mulsonen_2xf32t ×1`, `ivp_mulsonenxf16t ×2`
-  in PERF — used for `sum ÷ count`, **not** `rsqrt`. `[HIGH/OBSERVED — grep counts re-run this
-  pass]`
+* **`rg ivp_(rsqrt0|recip0|sqrt0)` over both DVE builds = 0** (`0` in DEBUG, `0` in PERF). The
+  DVE's *only* seed→Newton is reciprocal **division** — `ivp_div0nxf16t ×2`,
+  `ivp_divnn_2xf32t ×1`, `ivp_mulsonen_2xf32t ×1`, `ivp_mulsonenxf16t ×2` in PERF — used for
+  `sum ÷ count`, **not** `rsqrt`. `[HIGH/OBSERVED — grep counts]`
 * **`σb-0.5` is forward/host-precomputed.** It arrives downstream as
   [GradAccum](batchnorm-gradaccum.md)'s `imm1` (*"saved from forward propagation"*, the
   `s3s3d1_bn.h` header), and it is **folded into ParamLoad's `A`/`B`/`C`** host-side. So
   `inv_std` is computed **exactly once, host-side in forward** — never in Stats2 (which emits
-  `mean` + `n·var` only), never in ParamLoad, never in GradAccum. `[HIGH/OBSERVED — the grep +
-  the headers + the no-compute body; the exact forward locus (ACT-PWL rsqrt table vs host CPU)
-  is INFERRED, external to the DVE image]`
+  `mean` + `n·var` only), never in ParamLoad, never in GradAccum. `[HIGH/OBSERVED grep +
+  headers + body; INFERRED the exact forward locus (ACT-PWL rsqrt table vs host CPU)]`
 
 ---
 
@@ -236,7 +229,7 @@ This is the question the BN family turns on. The answer for ParamLoad is the sam
 
 Both headers ship in this checkout (`aws_neuron_isa_tpb_s2_bn.h`,
 `aws_neuron_isa_tpb_s2_bnpl2.h`), each with an `ISA_STATIC_ASSERT(sizeof == 64)`. A standalone
-`gcc` `offsetof`/`sizeof` probe over the CAYMAN headers **passed** this pass — output:
+`gcc` `offsetof`/`sizeof` probe over the CAYMAN headers **passes** — output:
 
 ```
 S2_BN sizeof=64
@@ -247,7 +240,7 @@ S2_BNPL2 sizeof=64
 TENSOR2D=12 IMM_VAL=4 IMM_SRC=1
 ```
 
-`[HIGH/OBSERVED — gcc `offsetof`/`sizeof` over the shipped CAYMAN headers, run this pass]`
+`[HIGH/OBSERVED — gcc `offsetof`/`sizeof` over the shipped CAYMAN headers]`
 
 ### 3.1 `NEURON_ISA_TPB_S2_BN_STRUCT` (op `0x64`, ParamLoad) — *"one 2d SRC, no DST"*
 
@@ -343,7 +336,7 @@ typedef struct NEURON_ISA_TPB_S2_BNPL2_STRUCT {
 `imm0_ptr`/`imm1_ptr` is validated by the **same** `has_valid_s2_bnpl2_imm_ptr` helper against
 its own `imm{0,1}_src` and the **shared** `immediate_dtype`: pointer (or `0`) → must be
 dtype-aligned and address an active channel; `RegPtrImmediate` → must be a valid register.
-**Two** independent `imm_src` fields. `[HIGH/OBSERVED]`
+**Two** independent `imm_src` fields.
 
 ### 3.3 Component types (compile-verified)
 
@@ -351,8 +344,8 @@ dtype-aligned and address an active channel; `RegPtrImmediate` → must be a val
 `IMM_VAL_INST_FIELD` = a **4-B** union `{uint32 imm_ptr; IMM_REG imm_reg; float imm_arith_fp32}`
 — `imm_ptr` when `PointerImmediate`, `imm_reg` when `RegPtrImmediate`, `imm_arith_fp32` when
 `InstructionImmediate`. `IMM_SRC` = **1-B** enum `{INSTRUCTION_IMMEDIATE=0,
-POINTER_IMMEDIATE=1, REG_PTR_IMMEDIATE=2}`. `[HIGH/OBSERVED — gcc sizeof + the enum body in
-common.h lines 1207-1211]`
+POINTER_IMMEDIATE=1, REG_PTR_IMMEDIATE=2}`. `[HIGH/OBSERVED — gcc `sizeof` + the enum body at
+`common.h` lines 1207-1211]`
 
 ---
 
@@ -360,7 +353,7 @@ common.h lines 1207-1211]`
 
 Both opcodes route through the SEQ direct-indexed DRAM jump table: `key = opcode − 0x41`,
 `table1` base at DRAM file offset `0x814` (device VA `0x80814`), word = LE32 at `0x814 + 4·key`.
-Read **byte-exact** this pass (`python3 struct.unpack_from`):
+Read **byte-exact**:
 
 | opcode | idx | table off | LE32 word | trampoline |
 |---|---|---|---|---|
@@ -370,7 +363,7 @@ Read **byte-exact** this pass (`python3 struct.unpack_from`):
 *(context: `0x63` GradAccum → `0x309e`; `0x65` BackProp → `0x30ae`; `0x66` LoadParameterRAM →
 `0x30e6`; `0x94` GradAccum2 → `0x30a6`.)* `[HIGH/OBSERVED — bytes read from `DVE_DEBUG_DRAM.bin`]`
 
-### 4.1 Trampolines → register-handler thunks (OBSERVED byte-exact this pass)
+### 4.1 Trampolines → register-handler thunks (byte-exact)
 
 ```
 0x30b6 ParamLoad : a5 f4 fe   call8 0x2000 ;  46 55 00   j 0x3212
@@ -387,8 +380,8 @@ into the Handler object frame at off 12 via the Xtensa `const16`-hi/`const16`-lo
                     [cf] l32r a1,_ ; l32r a10,_ ; call8 0x951c ; retw
 ```
 
-`[HIGH/OBSERVED — disassembled natively this pass; the `cf`-prefixed `l32r` pair is a FLIX
-bundle, the `const16`/`s32i`/`call8` are clean scalar]`
+`[HIGH/OBSERVED — the `cf`-prefixed `l32r` pair is a FLIX bundle; the `const16`/`s32i`/`call8`
+are clean scalar]`
 
 ### 4.2 The ParamLoad body @`0xb62c` (104 B) — one `imm0_src` test
 
@@ -407,9 +400,8 @@ b66c:  1df0     retw.n                  ;     (the inst/ptr path falls through)
 b670:  366100   entry    a1, 48         ; *** the inline reg-pointer-fetch sub-routine
 ```
 
-`[HIGH through the log + the `const16 0x2340` descriptor + the single `bnei a2,2`@0xb65c + the
-inline reg-fetch `entry`@0xb670; the interior FLIX literal interleave @0xb64a is MED — reported
-structurally only]`
+`[HIGH the log + the `const16 0x2340` descriptor + the single `bnei a2,2`@`0xb65c` + the inline
+reg-fetch `entry`@`0xb670`; MED the FLIX literal interleave @`0xb64a`]`
 
 ### 4.3 The ParamLoad2 body @`0xb694` (92 B) — **two** `imm{0,1}_src` tests
 
@@ -424,9 +416,9 @@ b6de:  66220a   bnei     a2, 2, 0xb6ec  ; *** imm1_src == 2 ?  ->  b6e4: call8 0
 
 The two reg-fetch sub-handlers `0x9d48` (imm0) / `0x9d6c` (imm1) are near-identical (stride
 `0x24`, `entry a1,48`), differing at byte +4 (`18 d6` `l32i.n a1,a6,52` vs `1c d6`
-`movi.n a6,29`) — which register slot the immediate pointer is read from. `[HIGH/OBSERVED —
-the self-name + descriptor + the **two** `bnei a2,2` tests + the two `call8` reg-fetch targets,
-disassembled natively this pass; the interior FLIX literal MED]`
+`movi.n a6,29`) — which register slot the immediate pointer is read from. `[HIGH/OBSERVED
+self-name + descriptor + both `bnei a2,2` tests + both reg-fetch targets; MED the interior
+FLIX literal]`
 
 > **GOTCHA — the FLIX literal interleave desyncs the *count* of `bnei a2,2` under stock
 > objdump.** A linear `rg -c 'bnei a2,2'` over the ParamLoad body returns **2**, not 1 — because
@@ -434,12 +426,12 @@ disassembled natively this pass; the interior FLIX literal MED]`
 > pattern. The **byte-grounded** truth is the single clean `bnei a2,2`@`0xb65c` (the `66 22 0c`
 > at a real instruction boundary). The doubled-test signature is real **only** for `ParamLoad2`,
 > where both `0xb6cd` and `0xb6de` are clean boundaries with distinct `call8` targets. Trust the
-> boundary-aligned bytes, not the linear count. `[HIGH/OBSERVED — both decodes run this pass]`
+> boundary-aligned bytes, not the linear count. `[HIGH/OBSERVED — both decodes]`
 
 ### 4.4 The staged per-op descriptors
 
 Each body `const16`-stages a 16-byte decode-spec block from the DRAM string-table region
-(read byte-exact this pass):
+(read byte-exact):
 
 ```
 ParamLoad  @0x2340 = [ 0x00000001  0x5c000000  0x16015c36  0x02820001 ]   word[0]=1
@@ -449,13 +441,13 @@ ParamLoad2 @0x2330 = [ 0x0000000b  0x6c000000  0x160c2034  0x02818001 ]   word[0
 `word[0]` is op-specific (`1` / `0xb`); `word[1]` high byte (`0x5c`=92 / `0x6c`=108) and
 `word[2..3]` encode the per-op inst-word-len / field-decode flags. **Unlike** the GradAccum
 descriptors (whose `word[0]=3` is the dst element count), ParamLoad has **no dst**, so `word[0]`
-here is a decode-class / inst-word-len flag, **not** a dst count. `[HIGH/OBSERVED bytes; the
-precise field semantics of `word[0..3]` are INFERRED — they are the op's decode-spec]`
+here is a decode-class / inst-word-len flag, **not** a dst count. `[HIGH/OBSERVED bytes;
+INFERRED the `word[0..3]` field semantics]`
 
 ### 4.5 Convergence
 
 Both chains converge at the common Handler invoke @`0x3212` = `j 0x2e87` (the C++
-`Handler::execute()` path, shared by every BN op). `[HIGH/OBSERVED]`
+`Handler::execute()` path, shared by every BN op).
 
 ---
 
@@ -477,7 +469,7 @@ Eliminating the wrong hypotheses by evidence:
   `imm0_src`@48 with `RegPtrImmediate` support, and the v1 body @`0xb62c` **already** has a
   `bnei a2,2` reg-ptr test (@`0xb65c`). Register-sourcing is **not** the v2 novelty here.
   `[HIGH/OBSERVED — struct + body]`
-* **NOT a dtype-path change.** Both allow src/imm ∈ `{FP32,FP16,BF16}`. `[HIGH/OBSERVED]`
+* **NOT a dtype-path change.** Both allow src/imm ∈ `{FP32,FP16,BF16}`.
 
 **The actual difference — parameter packaging + pointer-immediate count:**
 
@@ -495,7 +487,7 @@ pointer-immediate its own inst/ptr/reg source selector — so *"the compiler can
 optimizations on the parameter values more easily."* The firmware witnesses this **byte-exact**:
 the **doubled** `bnei a2,2` machinery in the `ParamLoad2` body (two tests → two distinct
 reg-fetch sub-handlers `0x9d48`/`0x9d6c`) is the signature of the second pointer-immediate's
-src selector. `[HIGH/OBSERVED — compile-verified structs + both body disasms]`
+src selector. `[HIGH/OBSERVED — structs + both body disasms]`
 
 **Why v2 exists:** `0x64` is marked `n, use BatchNormParamLoad2 instead` and `0x8e` is `Y` — the
 same deprecation pattern as `Stats`→`Stats2` and `GradAccum`→`GradAccum2`. `[HIGH/OBSERVED —
@@ -522,7 +514,7 @@ common.h markers]`
 | | `imm0_src` @48 / `imm1_src` @49 | `{0,1,2}` per-immediate | enum gate |
 
 All src dtypes are **converted to fp32 in the DVE** before use. `[HIGH/OBSERVED — the
-`s2_bn`/`s2_bnpl2` validity predicate comment bodies]`
+`s2_bn`/`s2_bnpl2` predicates]`
 
 > **NOTE — ParamLoad's dtype set is NARROWER than GradAccum's.** ParamLoad src ∈
 > `{FP32,FP16,BF16}` **only** — **no `INT32`** — whereas [GradAccum](batchnorm-gradaccum.md)'s
@@ -535,7 +527,7 @@ All src dtypes are **converted to fp32 in the DVE** before use. `[HIGH/OBSERVED 
 
 ### 6.2 The PERF build
 
-PERF strips the `S:` logs. Its DRAM dispatch (table @ `0x814`, read this pass) confirms the
+PERF strips the `S:` logs. Its DRAM dispatch (table @ `0x814`) confirms the
 deprecation collapse:
 
 | opcode | idx | PERF off | word | note |
@@ -548,8 +540,8 @@ deprecation collapse:
 The three deprecated variants `0x63`/`0x64`/`0x65` all route to **one** handler `0x9090` in
 PERF; the `0x8e` PERF row overlaps the tiny `0x2fc0` PERF DRAM's assertion string pool and is
 **not** a trustworthy handler VA — the DEBUG dispatch (§4) is the reliable substrate for
-ParamLoad2. `[HIGH for `0x63`/`0x64`/`0x65` — bytes read this pass; the `0x8e` PERF row is
-MED/unusable, flagged honestly — same caveat as GradAccum2's PERF row]`
+ParamLoad2. `[HIGH `0x63`/`0x64`/`0x65`; MED/unusable the `0x8e` PERF row — same caveat as
+GradAccum2's PERF row]`
 
 ---
 
@@ -562,9 +554,9 @@ MED/unusable, flagged honestly — same caveat as GradAccum2's PERF row]`
 | **MARIANA** (v4) | present | present | structurally identical | not separately diffed |
 | **MAVERICK** (v5) | present | present | **header-OBSERVED → interior INFERRED** | not carved |
 
-`[HIGH/OBSERVED — per-gen opcode + header presence (`rg`/`fd`-verified this pass: `0x64`/`0x8e`
-in `common.h` and both struct headers exist in all four gens); the CAYMAN DVE bodies decoded
-this pass; the cayman==sunda typedef-body equality verified this pass]`
+`[HIGH/OBSERVED — per-gen opcode + header presence (`0x64`/`0x8e` in `common.h` and both struct
+headers exist in all four gens); the CAYMAN DVE bodies; the cayman==sunda typedef-body
+equality]`
 
 > **CORRECTION — "byte-identical cayman==sunda" applies to the *typedef body*, not the whole
 > file.** A `diff` of the full `s2_bn.h` between CAYMAN (v3) and SUNDA (v2) is **non-empty**: the
@@ -574,7 +566,7 @@ this pass; the cayman==sunda typedef-body equality verified this pass]`
 > byte-identical** across the two (the wire layout is stable; only the surrounding comment-form
 > validity rules grew). So the **operand layout is portable v2→v3**; the *predicate set* is not.
 > `[HIGH/OBSERVED — `diff` of the typedef bodies (empty) vs the full files (header tag + 3
-> predicate hunks), run this pass]`
+> predicate hunks)]`
 
 > **MAVERICK (v5) interior — header-OBSERVED only → INFERRED.** Per the
 > [generation-grounding policy](../../reference/confidence-model.md), the v5 `0x64`/`0x8e`
@@ -585,8 +577,7 @@ this pass; the cayman==sunda typedef-body equality verified this pass]`
 > carved and diffed. `[HIGH/OBSERVED header; MED/INFERRED interior]`
 
 POOL engine carries **no** batch-norm opcode in any gen — ParamLoad is a **DVE-only** kernel.
-`[HIGH/CARRIED — the POOL `kernel_info_table` enumeration from the Back-Prop/GradAccum surveys;
-the POOL ExtISA `.so` was not re-located by name this pass]`
+`[HIGH/CARRIED — the POOL `kernel_info_table` enumeration]`
 
 ---
 
@@ -606,8 +597,7 @@ the forward affine that is **not** a DVE kernel:
 | `0x94` | `BatchNormGradAccum2` | `S3S3D1_BN2` | v2: per-imm RegPtr + DTYPE_PAIR packing | `0xb55c` (`entry a1,64`) |
 | `0x65` | `BatchNormBackProp` | `S3S3D3_TT` | the per-element `d_x` APPLY (reuses Tensor-Tensor) | `0xb6f0` (`entry a1,32`) |
 
-`[HIGH/OBSERVED — opcode enum + struct2opcode + the `entry` widths; the per-op body addresses
-re-read across this and the sibling surveys]`
+`[HIGH/OBSERVED — opcode enum + struct2opcode + the `entry` widths]`
 
 **How the four ops compose for one training-backward step:**
 
@@ -625,14 +615,12 @@ re-read across this and the sibling surveys]`
 The `inv_std = σb-0.5` is computed **exactly once, host-side in forward**, and threaded through
 as GradAccum's `imm1` **and** folded into ParamLoad's `A`/`B`/`C` — the single shared piece of
 state binding forward to backward. **The DVE never recomputes it** (no `ivp_rsqrt0` anywhere).
-`[engine + dispatch + the rsqrt-once verdict HIGH/OBSERVED; the apply-side algebra binding the
-four ops INFERRED-HIGH from the headers + the standard BN-backward algebra]`
+`[HIGH/OBSERVED engine + dispatch + the rsqrt-once verdict; INFERRED the apply-side algebra]`
 
 **The forward affine** `y = γ·(x−μ)·σ-0.5 + β` is **not** a DVE kernel — it is fused
 (`scale = γ·σ-0.5`, `offset = β − γ·μ·σ-0.5`) and run on the **ACTIVATION** engine's
 Activate/TensorScalar datapath. DVE produces the *inputs* (stats, gradients, staged params); it
-never forms the affine. `[INFERRED-HIGH — the Aggregate header "required to generate the
-batchnorm scale/offset" + the absence of a DVE apply kernel]`
+never forms the affine. `[INFERRED-HIGH — the Aggregate header + no DVE apply kernel]`
 
 **The uniform v1/v2 deprecation pattern:** every un-suffixed op is deprecated for its `2`
 successor — `Stats(0x60,n)→Stats2(0x61,Y)`, `GradAccum(0x63,n)→GradAccum2(0x94,Y)`,
@@ -651,12 +639,12 @@ decoded instruction/struct-exact — six DVE handlers, five 64-byte structs, the
 
 ## 9. Confidence ledger
 
-**HIGH / OBSERVED (disassembly, byte read, header read, or compile-verify this pass):**
+**HIGH / OBSERVED (disassembly, byte read, header read, or compile-verify):**
 
 * DVE carves reproduce the sibling anchors byte-identically (sha256 `259769ff`/`c106642d`/
-  `9fa066f4`/`eb980f98`); `objdump` exit 0.
+  `9fa066f4`/`eb980f98`).
 * Self-names `S: BatchNormalizeParamLoad` @DRAM `0x22f0`, `…ParamLoad2` @`0x230c` (full bytes
-  read this pass).
+  read).
 * Both dispatch chains byte-exact: `0x64` → `table1[0x8a0]=0x30b6` → `call8 0x2000` (thunk
   `const16 a2,0xb62c`) → body `0xb62c` (`entry a1,48`; `const16 a10,0x22f0`; `call8 0x18010`);
   `0x8e` → `table1[0x948]=0x30be` → `call8 0x201c` (`const16 a2,0xb694`) → body `0xb694`
@@ -674,7 +662,7 @@ decoded instruction/struct-exact — six DVE handlers, five 64-byte structs, the
   truth `@12` for `S2_BNPL2`.)
 * Opcode markers `0x64`=`n`/`0x8e`=`Y`; `struct2opcode` (`S2_BN` shared by 4 opcodes; `S2_BNPL2`
   1:1); `POOLING_NUM_CHANNELS = 128`; `IMM_SRC {0,1,2}`; DTYPE ordinals.
-* **No** `ivp_rsqrt0`/`recip0`/`sqrt0` in DVE (grep `0` both builds, re-run this pass); the
+* **No** `ivp_rsqrt0`/`recip0`/`sqrt0` in DVE (grep `0` both builds); the
   reciprocal-**division** ops present in PERF (`div0nxf16t ×2`, `divnn_2xf32t ×1`,
   `mulsonen_2xf32t ×1`, `mulsonenxf16t ×2`); the 104/92-B bodies are decode+stage (no MAC).
 * Per-gen opcode + struct presence (`cayman`/`mariana`/`maverick`/`sunda`); cayman==sunda

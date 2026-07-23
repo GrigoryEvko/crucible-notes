@@ -21,7 +21,7 @@ Reduce does the opposite.
 
 Confidence convention on this page: `[HIGH/OBSERVED]` = read directly from byte / header / compile;
 `[MED/INFERRED]` = reasoned over an OBSERVED fact; `[…/CARRIED]` = re-used from a sibling report at
-its stated confidence without re-reading the artifact this pass. Every count is re-grounded to
+its stated confidence without re-reading the artifact. Every count is grounded to
 `nm`/`rg -c` on the shipped binary, never the decompile.
 
 > **NOTE — provenance.** Every primary fact below derives from the shipped customop-lib package
@@ -40,7 +40,7 @@ its stated confidence without re-reading the artifact this pass. Every count is 
    line. `COPY_PREDICATED = 0x72 // Y` is the dtype-preserving sibling.
    `[HIGH/OBSERVED — §2]`
 2. **Operand struct = `NEURON_ISA_TPB_S3S3D3_TT_STRUCT`**, the two-source tensor-tensor struct,
-   **64 B, compile-verified this pass** (`gcc -I<cayman tpb hdr>`, `sizeof == 64`, every offset
+   **64 B, compile-verified** (`gcc -I<cayman tpb hdr>`, `sizeof == 64`, every offset
    matches the header). `instruction_mapping.json` binds `CAST_PREDICATED` + `COPY_PREDICATED` to
    `S3S3D3_TT` — one of **five** opcodes on that struct. `[HIGH/OBSERVED — §3]`
 3. **Dispatch surface = DVE engine, hardware-native** — *not* a POOL software kernel. Proven two
@@ -61,13 +61,11 @@ its stated confidence without re-reading the artifact this pass. Every count is 
    integer predicate becomes a `vbool` and the predicated write commits through the `bitkillt`
    write-enable guard, which raises an all-ones mask in *killed* lanes so they retain their
    destination — "merge, not zero". `op` **must** be `AluOp::Bypass (0x00)` — no arithmetic.
-   `[merge polarity HIGH/OBSERVED from the ISS predicate model; that THIS op uses that path
-   MED/INFERRED — §7]`
+   `[HIGH/OBSERVED merge polarity (ISS predicate model); MED that THIS op uses it — §7]`
 7. **Present in all four gens** (opcode + full validator OBSERVED byte-identical in every header,
    already at SUNDA — unlike RangeSelect which is CAYMAN+). The device self-name string is in the
    CAYMAN/MARIANA/MARIANA_PLUS/MAVERICK DVE *DEBUG* blobs; its absence in SUNDA is a RELEASE-build
-   artifact, not kernel absence. `[opcode+validator HIGH/OBSERVED; SUNDA string-absence
-   MED/INFERRED — §8]`
+   artifact, not kernel absence. `[HIGH/OBSERVED opcode+validator; MED SUNDA string-absence — §8]`
 
 ---
 
@@ -85,8 +83,8 @@ NEURON_ISA_TPB_OPCODE_SELECT_REDUCE         = 0xea,   // Y    (device self-name 
 The `// Y` trailer is the header legend's "tested / maintained / not-deprecated" flag — every
 predicated-family opcode is actively maintained.
 
-Per-gen line numbers for `CAST_PREDICATED = 0x99 // Y` (read this pass; the enum line is
-**byte-identical** across all four):
+Per-gen line numbers for `CAST_PREDICATED = 0x99 // Y` (the enum line is **byte-identical**
+across all four):
 
 | gen | header line | enum byte |
 |---|---|---|
@@ -95,7 +93,7 @@ Per-gen line numbers for `CAST_PREDICATED = 0x99 // Y` (read this pass; the enum
 | MARIANA (NC-v4)  | `:237` | `0x99 // Y` |
 | MAVERICK (NC-v5) | `:240` | `0x99 // Y` |
 
-`[HIGH/OBSERVED — `rg -n 'CAST_PREDICATED.*0x99'` over all four `common.h` this pass.]`
+`[HIGH/OBSERVED — all four `common.h`.]`
 
 > **GOTCHA — `0x98 TENSOR_SCALAR_SELECT` sits immediately below `0x99` and carries the comment
 > `SortMerge wip 0x97`.** That neighbour is a *different* op (tensor-scalar select, a DVE
@@ -136,7 +134,7 @@ ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_S3S3D3_TT_STRUCT) == 64,
 > extended `0x10..0x1F` dtypes (FP4 / INT4 / SFP8 / CPTC) cannot ride a `DTYPE_PAIR` nibble. See
 > the [dtype model](./dtype-model.md). `[HIGH/OBSERVED — header bitfield + comment.]`
 
-### 3.1 Compile-verify (this pass)
+### 3.1 Compile-verify
 
 Built the struct against the shipped CAYMAN tpb header with `gcc -I<cayman tpb dir>`:
 
@@ -148,7 +146,7 @@ sizeof: TENSOR3D=16  DTYPE_PAIR=1  DTYPE=1  ALU_OP=1
 ```
 
 Every offset matches the header annotation exactly; the `ISA_STATIC_ASSERT(… == 64)` holds.
-`[HIGH/OBSERVED — `gcc -Wall` clean, struct executed this pass.]`
+`[HIGH/OBSERVED — `gcc -Wall` clean.]`
 
 ### 3.2 Struct → opcode binding (`instruction_mapping.json`)
 
@@ -166,8 +164,8 @@ The CAYMAN `struct2opcode` map binds **five** opcodes to `S3S3D3_TT`, verbatim:
 
 So `CAST_PREDICATED` + `COPY_PREDICATED` share the struct with the two element-wise
 tensor-tensor ALU ops and BatchNormBackProp — they all carry two source tensors + one
-destination, and the validator (§5) sub-selects by opcode. `[HIGH/OBSERVED — `jq` over
-`neuron_cayman_arch_isa/tpb/instruction_mapping.json` this pass.]`
+destination, and the validator (§5) sub-selects by opcode. `[HIGH/OBSERVED —
+`instruction_mapping.json`.]`
 
 > **CORRECTION — `CopyPredicatedScalar (0xe8)` is on a *different* struct, and `0xea` is on a
 > third.** `COPY_PREDICATED_SCALAR (0xe8)` binds to a separate scalar-source struct, and
@@ -185,7 +183,7 @@ engine (NX_DVE, NX_ACT, Q7_POOL, …). Each DEBUG image carries a device self-na
 `"S: <KernelName>\n"` entries. The **count** of a given self-name across the whole file selects
 the engine family by the blob-multiplicity rule: **16 = iTPB SEQUENCER, 4 = DVE, 3 = ACT/PE/POOL**.
 
-### 4.1 POOL-absence — direct byte scan (this pass)
+### 4.1 POOL-absence — direct byte scan
 
 Scanning the entire CAYMAN POOL territory — the POOL PERF/TEST/DEBUG/DYNAMIC IRAM+DRAM images
 (`CAYMAN_Q7_POOL_PERF_DRAM_get.data @0x20abc0 + 0x13200`) plus all four
@@ -198,10 +196,10 @@ For contrast, the plain `Cast (0x47)` / `Copy (0x46)` base ops **are** POOL kern
 `kernel_info_table` entries and POOL funcVAs are documented on [Cast / Copy](./cast-copy.md)) —
 confirming the surface split: **plain = POOL, predicated = DVE**. `[HIGH/OBSERVED.]`
 
-### 4.2 DVE-presence — the self-name tag (this pass)
+### 4.2 DVE-presence — the self-name tag
 
 `"S: CastPredicated\n"` appears **exactly 4 times** in `libnrtucode_internal.so`
-(`rg -c -a 'S: CastPredicated'` → **4** this pass), at file offsets:
+(`rg -c -a 'S: CastPredicated'` → **4**), at file offsets:
 
 | file offset | enclosing blob | range (`nm -S`) |
 |---|---|---|
@@ -211,15 +209,15 @@ confirming the surface split: **plain = POOL, predicated = DVE**. `[HIGH/OBSERVE
 | `0x8affe3` | `MAVERICK_NX_DVE_DEBUG_DRAM_get.data`     | `0x8ad5c0 .. 0x8b3540` |
 
 The "×4" is the **four generations'** DVE DEBUG images (one CastPredicated per gen-DVE blob), not
-four lanes. Count 4 ⇒ DVE family. The CAYMAN offset `0x18dc33` is confirmed inside the DVE blob
-range `[0x18b320, 0x192080)` (verified arithmetically this pass).
+four lanes. Count 4 ⇒ DVE family. The CAYMAN offset `0x18dc33` is inside the DVE blob
+range `[0x18b320, 0x192080)`.
 
 > **NOTE — the DVE blob lives in `.rodata`, so the offset *is* the file offset (no `.data`
 > delta).** `readelf -SW` shows `.rodata` at VMA `0x46b0` == file offset `0x46b0`
 > (`PROGBITS … AMS`), and `nm` types `CAYMAN_NX_DVE_DEBUG_DRAM_get.data` as `r` (read-only). The
 > `0x200000` `.data`/`.data.rel.ro` delta that bites the ncore2gp *config* DLLs does **not** apply
 > here — these blobs are `.rodata`-resident, so `dd skip=<offset>` reads them directly.
-> `[HIGH/OBSERVED — `readelf -SW`, `nm` symbol class this pass.]`
+> `[HIGH/OBSERVED — `readelf -SW` + `nm` symbol class.]`
 
 The context bytes at `0x18dc00` dump (printable-filtered) read:
 
@@ -237,7 +235,7 @@ S: RangeSelect      S: TensorScalarSelect   S: DveReadAccumulator  S: DveReadInd
 S: FindIndex8       S: MatchReplace      S: TensorTensorScan       S: EngineNop …
 ```
 
-Self-name counts re-grounded this pass (`rg -c -a 'S: <name>' libnrtucode_internal.so`):
+Self-name counts (`rg -c -a 'S: <name>' libnrtucode_internal.so`):
 
 | self-name | count | family |
 |---|---|---|
@@ -254,7 +252,7 @@ Self-name counts re-grounded this pass (`rg -c -a 'S: <name>' libnrtucode_intern
 The plain `Cast`/`Copy` self-names (**count 3 = ACT family**) live in the *ACT* engine DEBUG blob
 (`CAYMAN_NX_ACT_DEBUG_DRAM_get.data @0x169400`), the hardware Activation-engine native cast path.
 This 3-vs-4 split is exactly the blob-multiplicity rule and independently corroborates
-`CastPredicated = DVE`. `[HIGH/OBSERVED — every count re-run this pass.]`
+`CastPredicated = DVE`. `[HIGH/OBSERVED — the counts.]`
 
 **Verdict: `CastPredicated` dispatches on the DVE engine, hardware-native.** `[HIGH/OBSERVED]`
 
@@ -335,7 +333,7 @@ fn is_valid_int_dtype_datapath(dtype: Dtype) -> bool {
 > predicate mask **cannot** be a 64-bit int, an `INT4`, an `FP4`, or any float. The mask is read
 > as a plain 8/16/32-bit signed-or-unsigned integer and any nonzero value is "true". This is the
 > *same* int-datapath set CopyPredicatedReduce uses for its mask. `[HIGH/OBSERVED — both gate
-> bodies read this pass.]`
+> bodies.]`
 
 ### 5.2 The `op == Bypass` gate
 
@@ -346,7 +344,7 @@ fn s3s3d3_tt_is_zero_op(i: Inst) -> bool {
 ```
 
 `NEURON_ISA_TPB_ALU_OP_BYPASS = 0x00` (CAYMAN `common.h:940`). There is **no arithmetic** — the
-op field must be Bypass; the only work is convert + predicated select. `[HIGH/OBSERVED]`
+op field must be Bypass; the only work is convert + predicated select.
 
 ### 5.3 The shape rule
 
@@ -392,7 +390,7 @@ predicated cast target). Both source dtypes are likewise `AllowFP32R::False` (li
 
 ### 6.1 The dtype matrix
 
-`[HIGH/OBSERVED for the gate predicates; the FP32-hub routing CARRIED from the dtype model.]`
+`[HIGH/OBSERVED gate predicates; CARRIED the FP32-hub routing]`
 
 | field | role | legal set |
 |---|---|---|
@@ -412,14 +410,14 @@ float crossing goes through FP32.
 > (`+FP8_EXP2 0x11`, `+INT4 0x12`, `+SFP8_E8..E5 0x13..0x16`). But the `≤ 0xF`
 > nibble-packing of `DTYPE_PAIR` means the *predicated* `src1`/`out` cast domain is effectively
 > the BASIC subset regardless of gen, and the 6-int **predicate** set is **invariant** across all
-> four. `[HIGH/OBSERVED for the predicate set; gen superset CARRIED from the dtype model.]`
+> four. `[HIGH/OBSERVED predicate set; CARRIED the gen superset]`
 
 ---
 
 ## 7. Algorithm — the decoded behavior
 
 The contract (validator + struct) is OBSERVED; the device body byte-trace is the one MED piece
-(the DVE IRAM was not disassembled this pass — see §10).
+(the DVE IRAM is not disassembled here — see §10).
 
 ```c
 // Symbols: NEURON_ISA_TPB_S3S3D3_TT_STRUCT, NEURON_ISA_TPB_OPCODE_CAST_PREDICATED (0x99),
@@ -470,9 +468,8 @@ dst = selnx16t(/*killed=*/dst, /*live=*/cv, bitkillt(pr));   // "MERGE, NOT ZERO
 > into the *killed* (predicate-false) lanes, which on the DVE select retains the prior `dst`
 > contents. The op is **not** a fill (no constant on false lanes), **not** skip-with-undefined
 > (the lane keeps a defined value), and **not** a bitmask generator (it writes *values*, the cast
-> result, not a 0/1 mask). `[merge polarity HIGH/OBSERVED from the predicate ISS model; that THIS
-> op consumes that exact path MED/INFERRED from its DVE-cluster co-residence — see the
-> [predicate ISS page](../../iss/cas-predicate-boolean.md).]`
+> result, not a 0/1 mask). `[HIGH/OBSERVED merge polarity; MED that THIS op consumes that exact
+> path — see the [predicate ISS page](../../iss/cas-predicate-boolean.md).]`
 
 ---
 
@@ -497,7 +494,7 @@ only with no SUNDA entry; `CastPredicated` predates it.
 > ships `SUNDA_NX_DVE_RELEASE_*` (no DEBUG variant), and RELEASE blobs of *every* gen likewise
 > lack the `"S:"` self-name tags (the tags are a DEBUG-build feature). SUNDA presence therefore
 > rests on the ISA header (opcode + full validator, OBSERVED), not the string.
-> `[opcode + validator HIGH/OBSERVED all four gens; SUNDA string-absence MED/INFERRED.]`
+> `[HIGH/OBSERVED opcode + validator all four gens; MED SUNDA string-absence]`
 
 > **v5/MAVERICK caution.** The MAVERICK opcode line and validator are **header-OBSERVED**; the
 > MAVERICK DVE DEBUG blob self-name `@0x8affe3` is OBSERVED in the binary, but the v5 device
@@ -509,7 +506,7 @@ only with no SUNDA entry; `CastPredicated` predates it.
 ## 9. Relationships & the predicated-op family
 
 `CastPredicated` is one member of a tight DVE predicate/select cluster. The exact
-**opcode ↔ name** mapping observed this pass (host ISA enum name vs device firmware self-name):
+**opcode ↔ name** mapping (host ISA enum name vs device firmware self-name):
 
 | opcode | host ISA enum (`common.h`) | device self-name (`libnrtucode_internal.so`) | operand struct | this kernel? |
 |---|---|---|---|---|
@@ -525,13 +522,12 @@ only with no SUNDA entry; `CastPredicated` predates it.
 > `NEURON_ISA_TPB_OPCODE_SELECT_REDUCE = 0xea` (no `COPY_PREDICATED_REDUCE` enumerator exists in
 > any header), and `instruction_mapping.json` binds it to `NEURON_ISA_TPB_S2S2D2_STT_STRUCT`; the
 > *device firmware kernel self-name* for that same opcode is `CopyPredicatedReduce` (count 4 in
-> the DVE blobs; `"S: SelectReduce"` count **0**, confirmed this pass). So the predicated-op
+> the DVE blobs; `"S: SelectReduce"` count **0**). So the predicated-op
 > family is **not** four members of one struct — `0x72`/`0x99` ride `S3S3D3_TT`, `0xe8` rides a
-> scalar struct, and `0xea` rides `S2S2D2_STT`. This corrects SX-FW-61's implication that
+> scalar struct, and `0xea` rides `S2S2D2_STT`. This corrects an earlier implication that
 > CopyPredicatedReduce "shares the `src0` integer-predicate machinery" *on the same struct* — it
 > shares the *engine* (DVE) and the *integer-predicate concept*, but lives on a different operand
-> struct. `[HIGH/OBSERVED — opcode enum, `instruction_mapping.json` `jq`, and self-name `rg -c`
-> all re-run this pass.]`
+> struct. `[HIGH/OBSERVED — opcode enum + `instruction_mapping.json` + self-name counts.]`
 
 **[Cast / Copy](./cast-copy.md) (`0x47` / `0x46`)** — the dtype engine the predicate wraps. The
 cast math (FP32-hub convert, RNE) is *identical*; the validator relaxation (`src1 != out` for
@@ -570,7 +566,7 @@ instruction-level body (the precise `selnx16t`/`dselnx16t`/`bitkillt` sequence) 
 device Xtensa disassembly (`gpsimd_tools/tools/XtensaTools/bin/xtensa-elf-objdump`,
 `XTENSA_CORE=ncore2gp`) of the DVE IRAM and is the standard FLIX-desync risk surface. It is left
 as MED and was **not** asserted byte-exact. Flagged for a follow-up DVE-IRAM trace if a body-level
-decode is required. `[NOTE]`
+decode is required.
 
 ---
 
@@ -591,7 +587,7 @@ decode is required. `[NOTE]`
 * `neuron_cayman_arch_isa/tpb/instruction_mapping.json` — `S3S3D3_TT_STRUCT` →
   `[…, COPY_PREDICATED, CAST_PREDICATED, …]`; `S2S2D2_STT_STRUCT` → `[…, SELECT_REDUCE]`.
 
-**Compile-verify** (this pass): `S3S3D3_TT` struct against the CAYMAN tpb header →
+**Compile-verify:** `S3S3D3_TT` struct against the CAYMAN tpb header →
 `sizeof = 64` + all offsets (§3.1).
 
 **Firmware** (in-package): `…/c10/lib/libnrtucode_internal.so`
