@@ -8,7 +8,7 @@
 
 The page has two trees and one matrix. The first tree is the **orchestrator** `moe_block_tkg` (`moe_block_tkg.py:38-349`): a 35-parameter kernel that parses dimensions, runs the four fused stages, and forwards a strategy bool plus the weight dtype to a dispatcher. It makes *no* leaf choice itself. The second tree is the **dispatcher** `moe_tkg` (`moe/moe_tkg/moe_tkg.py:43`), a pure 2×2 leaf selector over `is_all_expert × is_mx_kernel` — four compiled-Python leaves, all four wired, no `else/raise` footgun. The matrix is those four leaves: all-expert vs. selective (the report-brief "selective" maps to iterating *tokens* and gathering each token's K routed experts) crossed with MX vs. bf16/fp8. Rather than four near-duplicate walkthroughs, the leaves are one table plus shared-mechanism prose; the MX projections (`gate_up`/`down`) and the expert-affinity scale-masking are documented once because all relevant leaves share them.
 
-> **NOTE —** the readable `moe_block_tkg`/`moe_tkg` Python is the kernel-library convenience surface, not the production caller. No `moe_block_tkg(`/`moe_tkg(` call site exists anywhere in the extracted neuronx-cc tree; production NxD reaches the decode MoE through the *compiled* `neuronxcc.nki._private_kernels.{expert_mlps,router_topk,mlp}.cpython-310-x86_64-linux-gnu.so` extensions (verified present on disk). This page documents the algorithm as it reads in the shipped library source (provenance: D-O06–D-O09).
+> **NOTE —** the readable `moe_block_tkg`/`moe_tkg` Python is the kernel-library convenience surface, not the production caller. No `moe_block_tkg(`/`moe_tkg(` call site exists anywhere in the extracted neuronx-cc tree; production NxD reaches the decode MoE through the *compiled* `neuronxcc.nki._private_kernels.{expert_mlps,router_topk,mlp}.cpython-310-x86_64-linux-gnu.so` extensions (verified present on disk). This page documents the algorithm as it reads in the shipped library source.
 
 For reimplementation, the contract is:
 
@@ -296,7 +296,7 @@ function mask_expert_affinities(expert_affinities[T,E], expert_index[T,K], rank_
     if mask_unselected_experts:  _apply_expert_index_mask(...)     // :106
 ```
 
-`_apply_expert_index_mask` (`:202`) is the arithmetic heart. It walks the `E_L` local experts, and for each builds a per-token 0/1 indicator of "was this expert in the token's top-K" and multiplies the affinity column by it. Re-verified against source line-for-line:
+`_apply_expert_index_mask` (`:202`) is the arithmetic heart. It walks the `E_L` local experts, and for each builds a per-token 0/1 indicator of "was this expert in the token's top-K" and multiplies the affinity column by it:
 
 ```c
 function _apply_expert_index_mask(expert_affinities_masked[T,E_L], expert_index[T,K],
@@ -391,7 +391,9 @@ function _matmul_mx_accumulate(out_psum, weight_sb, weight_scale_sb, input_quant
 
 > **NOTE —** `_clamp_tensor` and `_matmul_mx_accumulate` are the refactored extractions in the `nkilib/core/moe/moe_tkg/` tree. The parallel `_pre_prod_kernels/mlp_tkg/*_shard_I.py` copy inlines the same logic with a self-documented "move duplicate matmul and bias add logic into sub-functions" TODO; the two are byte-equivalent in algorithm. The "2" axis of `gate_up_weights[E,128,2,H/512,I]` is the gate/up selector — `GATE_FUSED_IDX=0`, `UP_FUSED_IDX=1`; gate and up are loaded as separate SBUF tiles and matmul'd separately, so the "fused" in the name means fused *with* act/clamp/QMX into one sub-kernel, not a single matmul.
 
-> **CORRECTION (D-O08) —** there is **no** baked-in SwiGLU clamp *constant* in this kernel. The gate/up `clamp_upper/lower_limit` parameters default `None` at every level (orchestrator `:65-68`, `moe_tkg.py:63-66`, projection signatures); a tree-wide search returns zero numeric clamp defaults. The kernel ships only the clamp *mechanism* (the `tensor_scalar` min/max); any model-specific clamp value (e.g. a gpt-oss-style SwiGLU bound) is a caller/NxD-config float, not extractable from the kernel.
+What the kernel ships is the clamp *mechanism*, not a clamp *policy*. The gate and up `clamp_upper_limit` / `clamp_lower_limit` parameters default to `None` at every level — orchestrator `:65-68`, `moe_tkg.py:63-66`, and the projection signatures — and a tree-wide search finds no numeric clamp default anywhere. Any model-specific bound (a gpt-oss-style SwiGLU limit, say) arrives as a caller or NxD-config float.
+
+> **GOTCHA — there is no baked-in SwiGLU clamp constant to recover.** Every clamp limit defaults to `None`, and `_clamp_tensor` degenerates to a no-op when both bounds are absent, so the numeric bound a given model uses is not extractable from the kernel source.
 
 ### The Down Projection, POST_SCALE, and the I-Shard Reduce
 

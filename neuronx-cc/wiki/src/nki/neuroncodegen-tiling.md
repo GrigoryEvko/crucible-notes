@@ -28,7 +28,7 @@ The reimplementation contract: given a set of `K`-split matmul sub-tiles, the co
 
 ## 1. Method Roster & Source-Line Spans
 
-Every method below is confirmed in the 14.5 MB `.so` by `nm -C`. The Cython mdef ordinal (`__pyx_mdef_…_NNN<name>`) places each in source order; the DWARF `decodedline` table pins each to a `KernelBuilder.py` span.
+Every method below appears in the 14.5 MB `.so` under `nm -C`. The Cython mdef ordinal (`__pyx_mdef_…_NNN<name>`) places each in source order; the DWARF `decodedline` table pins each to a `KernelBuilder.py` span.
 
 | mdef | symbol | `pw` VA | `KernelBuilder.py` span | role |
 |---|---|---|---|---|
@@ -43,9 +43,9 @@ Every method below is confirmed in the 14.5 MB `.so` by `nm -C`. The Cython mdef
 
 The three matmul combines carry **no `NeuronCodegen` infix** — their mdef symbols are `__pyx_mdef_…_KernelBuilder_5combine_matmult_tiles`, `_7combine_trn2_double_row_matmult_tiles`, `_9combine_sparse_matmult_tiles` (`@0x2d0ca0`/`0x2d0c80`/`0x2d0c60` in `.data`). Cython emits the bare module name for free functions and `…NeuronCodegen_NNN…` for bound methods; the absence of the infix is the binary proof that these three are module-private helpers, not class methods.
 
-> **CORRECTION — combines are functions, not methods.** An earlier pass (D-P06) listed `combine_trn2_double_row_matmult_tiles` as "a tile-combine helper" without noting its layer. The binary is unambiguous: `combine_tiles` (`#295`) is the only *method*; `combine_matmult_tiles` / `combine_sparse_matmult_tiles` / `combine_trn2_double_row_matmult_tiles` are **module-level free functions** taking exactly two tiles each (the running accumulation and the new sub-tile). The matmul emitters call them as plain functions, not `self.`-dispatched methods.
+> **GOTCHA — the four combines do not share a layer.** `combine_tiles` (`#295`) is the only *method* of the four; `combine_matmult_tiles`, `combine_sparse_matmult_tiles` and `combine_trn2_double_row_matmult_tiles` are module-level free functions taking exactly two tiles each — the running accumulation and the new sub-tile. The matmul emitters call them as plain functions, so looking for them as `self.`-dispatched methods finds nothing.
 
-The method-number adjacency `295 / 297 / 301` (`combine_tiles` / `insert` / `process_new_neuroninst`) is not incidental — these three sit side-by-side in source and form the **emit → normalize → insert → process** spine that every per-instruction emitter funnels through. Confirmed by mdef ordinals + DWARF spans.
+The method-number adjacency `295 / 297 / 301` (`combine_tiles` / `insert` / `process_new_neuroninst`) is not incidental — the mdef ordinals and DWARF spans put these three side-by-side in source, forming the **emit → normalize → insert → process** spine that every per-instruction emitter funnels through.
 
 ---
 
@@ -86,7 +86,7 @@ PyObject *combine_tiles(self, PyObject *tiles_varargs) {
 
 The `broadcast_num_to_memset` free variable (6 hits in rodata) is the key behavioral detail: when an operand is a broadcast, `combine_tiles` rewrites it as a **memset broadcast tile** rather than a real data tile. The `PyObject_RichCompare` is the per-dimension equality/compatibility check across the tiles being merged — it is how the normalizer rejects shape-incompatible operands.
 
-> **NOTE — fold semantics are STRONG, not byte-traced.** The closure nest (`generator43` + `lambda27` + `update_tile`), the 4× `PyDict_SetItem` kwarg rebuild, and the broadcast→memset handling are byte-confirmed. Whether the per-dim fold is *concat* or *accumulate* is inferred from the `Size/Add/Append/RichCompare` mix; it was not resolved to literal comparands because the attribute names route through Cython's `__pyx_mstate_global_static` struct (one symbol `@0x2d6ce0`), which defeats direct `lea`-annotation of attr operands.
+> **NOTE — the fold semantics are reconstructed.** The closure nest (`generator43` + `lambda27` + `update_tile`), the 4× `PyDict_SetItem` kwarg rebuild, and the broadcast→memset handling all read directly off the body. Whether the per-dim fold is *concat* or *accumulate* does not: it is [INFERRED] from the `Size`/`Add`/`Append`/`RichCompare` mix, because the attribute names route through Cython's `__pyx_mstate_global_static` struct (one symbol `@0x2d6ce0`), which defeats direct `lea`-annotation of the attribute operands.
 
 ### 2.2 `combine_matmult_tiles` — the K-tile PSUM accumulate
 
@@ -146,7 +146,7 @@ PyObject *combine_trn2_double_row(PyObject *acc, PyObject *new_pair) {
 
 > **NOTE — gen3 double-row is rejected here.** The module also carries `"perf_mode=\`double_row_gen3\` is not supported on …"` (rodata, confirmed). The double-row path is gated by core generation; `double_row` (gen2/Cayman) is packed by this combine, while `double_row_gen3` is refused at this version of the builder.
 
-The lower side is `BirCodeGenLoop.cayman_matmul_double_row_ap` / `addDoubleRowAP` — both confirmed present in `BirCodeGenLoop.so` (`cayman_matmul_double_row_ap` 12 hits, `addDoubleRowAP` 15 hits). This grounds D-P06 §6's pointer: `packed_cayman_pe_tp_kernel → CaymanPackedPETranspose` is the macro emit, and this module-level combine is the helper that merges the two packed rows into the combined PSUM tile before that lower. D-P06's pointer was correct; this is the body behind it.
+The lower side is `BirCodeGenLoop.cayman_matmul_double_row_ap` / `addDoubleRowAP` — both present in `BirCodeGenLoop.so` (`cayman_matmul_double_row_ap` 12 hits, `addDoubleRowAP` 15 hits). This is the body behind the macro-emit path `packed_cayman_pe_tp_kernel → CaymanPackedPETranspose`: that pair is the macro emit, and this module-level combine is the helper that merges the two packed rows into the combined PSUM tile before it lowers.
 
 > **Cross-ref.** The PE-side double-row mechanism — de-interleave + doubled `K`-extent — is documented in [PE engine](../arch/pe-engine.md); the Penguin tiling pipeline that produces these sub-tiles is [layout-tiling-pipeline](../penguin/layout-tiling-pipeline.md); the sparse tiling is [§6.8.8](../nki/sparse-tiling.md).
 
@@ -178,7 +178,7 @@ The geometry vocabulary it reads/returns is in rodata, all confirmed (hit counts
 
 So `get_sb_and_psum_shape` computes, for a tile, the (partition × free) SBUF tile shape **and** the matching PSUM tile shape, checking PSUM-bank fit via `psum_num_banks` / `psum_par_size_in_bytes` and the 128-partition statebuf geometry via `statebuf_num_partitions`. It is the forward-builder echo of the upstream `SBSizeLegalization` geometry (128-partition SBModel, partition-dim maxbytes, free-dim roundup); it **presupposes** legal tiles and reports their two-buffer shapes — it does **not** run legalization itself (legalization is upstream, not a call inside the tiling internals).
 
-> **INFERRED — the RichCompare branch comparand.** The `PyObject_RichCompare → PyObject_IsTrue` conditional is a kwarg/flag branch (likely "is PSUM requested" or an arch/transpose flag), but the comparand routes through `mstate` and was not resolved to a literal value. The return *shape* (two lists in a tuple) and the geometry attribute roster are CONFIRMED.
+> **NOTE — the RichCompare branch comparand is [INFERRED].** The `PyObject_RichCompare → PyObject_IsTrue` conditional is a kwarg or flag branch — plausibly "is PSUM requested", or an arch/transpose flag — but the comparand routes through `mstate` and was never resolved to a literal value. The return shape (two lists in a tuple) and the geometry attribute roster are read directly.
 
 ---
 
@@ -206,7 +206,7 @@ NeuronInst *tiled_offloaded_fma_inst(self, PyObject *bundle) {
 
 Both emitters are variadic (`"at least"` + `"at most"` guards) and do **tuple unpacking** (`"too many values to unpack"` / `"need more than"`, both confirmed module-wide) — they receive a packed operand bundle (src/dst tiles + a shape-base list) and unpack it. `TiledOffloadedFMA` is a fused multiply-add executed via the offload engine on already-tiled SBUF operands; `TiledOffloadedMemCpy` is a tile-to-tile copy via the DMA engine. They are the **compute-on-DMA** counterpart to the pure `DMACopyOp` / `SBAtomLoad`/`Store` memory emitters.
 
-> **STRONG — DMA-vs-PE routing.** The variadic + operand-unpack + the two macro names are CONFIRMED in both `.so` files. The "offloaded = handed to a DMA/Pool engine, not the PE" reading is STRONG: it rests on the `Offloaded` naming and the BIR `MemCast`/`MemCpy` twin set (a cast variant only makes sense on a copy engine), not on a byte-traced engine-selection branch.
+> **NOTE — the DMA-versus-PE routing is a reading, not a traced branch.** The variadic signatures, the operand unpack, and the two macro names all appear in both `.so` files. The interpretation that "offloaded" means handed to a DMA/Pool engine rather than the PE rests on the `Offloaded` naming plus the BIR `MemCast`/`MemCpy` twin set — a cast variant only makes sense on a copy engine — and not on any byte-traced engine-selection branch.
 
 ---
 
@@ -233,7 +233,7 @@ PyObject *process_new_neuroninst(self, PyObject *inst) {
 
 `insert` (`#297`, `@0x165f00`) is the shared plumbing: variadic (`"at least"`/`"at most"`), `RichCompare`-dispatched — the Penguin-Function append + dep-edge wiring that "every emitter ends in." `process_new_neuroninst` is the per-inst stage that runs the normalize-then-insert sequence around it.
 
-> **STRONG/INFERRED — per-kind dispatch targets.** The method position and body mechanics are CONFIRMED. The precise per-kind dispatch destinations route through the `mstate` interned-name struct (Cython attr names are not direct-`lea`'d), so the exact branch targets are STRONG/INFERRED from the rodata name roster + line spans + the BIR twins, not byte-traced.
+> **NOTE — the per-kind dispatch targets are [INFERRED].** The method's position and its body mechanics read directly. The destinations of the three per-kind branches do not: they route through the `mstate` interned-name struct, so they are reconstructed from the rodata name roster, the line spans and the BIR twins rather than traced.
 
 ---
 
@@ -257,11 +257,11 @@ PyObject *finalize_kernel(self) {
 }
 ```
 
-> **ATTRIBUTION CAVEAT.** The self-only signature, the tuple/dict build + FastCall dispatch + `RichCompare` branches, and the `function`/`kernel_name`/`outputs`/`debug_kernel_function_name` vocabulary are CONFIRMED in `#379`. But `"Kernel name mismatch"` / `"Unsupported kernel name "` are stored as `mstate`/cached-value PyObjects — **not** direct-`lea`'d in the `#379` body — so they are finalization-band kernel-name contracts that were **not** byte-traced to `#379` specifically. The name-validate step is **INFERRED** from the `kernel_name` vocab + these contracts; the outputs/return-marshalling is STRONG.
+> **GOTCHA — the two kernel-name contracts are not attributable to `#379` itself.** The self-only signature, the tuple/dict build with FastCall dispatch and `RichCompare` branches, and the `function` / `kernel_name` / `outputs` / `debug_kernel_function_name` vocabulary all read directly out of `#379`. The strings `"Kernel name mismatch"` and `"Unsupported kernel name "` do not: they are stored as `mstate`/cached-value PyObjects rather than direct-`lea`'d in the body, so they are finalization-band contracts that could belong to a neighbouring method. The name-validation step shown above is therefore [INFERRED] from the `kernel_name` vocabulary plus those contracts.
 
-**`finalize` (#3)** — a small base-chain finalizer, body `0xacba0`. It calls `super().<finalize>`: the rodata `"super(): empty __class__ cell"` is present and the `super` reference is in the body window. `NeuronCodegen.finalize` delegates up to its base class's `finalize` (the `GeneratedNeuronCodegen` / `IRBuilder` base in the 820 KB generated `.so`) — a lightweight teardown / chain hook. CONFIRMED super-call.
+**`finalize` (#3)** — a small base-chain finalizer, body `0xacba0`. It calls `super().<finalize>`: the rodata `"super(): empty __class__ cell"` is present and the `super` reference is in the body window. `NeuronCodegen.finalize` delegates up to its base class's `finalize` (the `GeneratedNeuronCodegen` / `IRBuilder` base in the 820 KB generated `.so`) — a lightweight teardown / chain hook. The `super` call itself is visible in the body.
 
-**Emit-to-finalize order** (INFERRED end-to-end from method roles):
+**Emit-to-finalize order** — assembled from the roles of each method rather than traced end to end:
 
 ```text
   emit (per-family macro / per-inst)
@@ -292,18 +292,20 @@ The operand type-guard string is `"value must be a DataTile"` (1 hit). The `cano
 
 ---
 
-## 8. Adversarial Self-Verification
+## 8. Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+- **The combines' layering.** Under `nm -C` the three matmul combines carry the mdef symbols `…_KernelBuilder_5combine_matmult_tiles` / `_7combine_trn2_double_row_matmult_tiles` / `_9combine_sparse_matmult_tiles` — with no `13NeuronCodegen` infix — while `combine_tiles` is `…_13NeuronCodegen_295combine_tiles`, with it.
+- **The K-accumulate skeleton and its variants.** Counted through `objdump | rg`: `combine_matmult_tiles` has 6 `PyObject_Size`, 2 `PySlice_New`, 2 `PyNumber_Add` and 1 `PyTuple_New`; `combine_sparse_matmult_tiles` has 16 `PyObject_Size`; `combine_trn2_double_row` has 6 `PyNumber_Add`.
+- **The double-row pack contract.** Four `cmp …0x2,` sites fall in the `0xcbc90–0xce510` range, and all five contract strings appear verbatim: `"first F dim … must be 2"`, `"last dimension … size of 2"`, `"first dimension of Cayman … size of 2"`, `"only support fp8e4m3 and fp8e5m2"`, `"only support uint8"`.
+- **The geometry primitive's return shape.** `0x6ec10–0x6f720` contains 2× `PyList_New` plus 1× `PyTuple_New`, alongside the full SBUF/PSUM attribute roster (`statebuf_num_partitions`, `psum_num_banks`, `psum_par_size_in_bytes`, …).
+- **The offloaded family and its BIR twins.** `KernelBuilder.so` rodata holds `TiledOffloadedFMA` (4 hits) and `TiledOffloadedMemCpy` (4); `BirCodeGenLoop.so` holds `codegenTiledOffloadedFMA` (12), `codegenTiledOffloadedMemCpy` (12), `codegenOffloadedMemCast` (12) and `extract_offloaded_memcpy_shape_bases` (1).
 
-1. **"The three matmul combines are module-level functions, not methods."** Re-checked `nm -C`: their mdef symbols are `…_KernelBuilder_5combine_matmult_tiles` / `_7combine_trn2_double_row_matmult_tiles` / `_9combine_sparse_matmult_tiles` — **no** `13NeuronCodegen` infix. `combine_tiles` is `…_13NeuronCodegen_295combine_tiles` — **with** the infix. **CONFIRMED.** The D-P06 correction stands.
+## Limits of this reading
 
-2. **"The K-accumulate skeleton is `Size → Slice → Add → FastCall`, and sparse reads more dims than dense."** Re-counted via `objdump | rg`: `combine_matmult_tiles` = 6 `PyObject_Size`, 2 `PySlice_New`, 2 `PyNumber_Add`, 1 `PyTuple_New`; `combine_sparse_matmult_tiles` = **16** `PyObject_Size`; `combine_trn2_double_row` = **6** `PyNumber_Add`. **CONFIRMED** — exact counts match.
+The accumulate skeletons, the dtype and size contracts, the returned shapes, the macro names, the method ordering and the BIR twins are all pinned to bytes. Five things are not, and every one of them is blocked by the same mechanism — Cython routes attribute names through the `__pyx_mstate_global_static` struct (`@0x2d6ce0`), which defeats direct-`lea` annotation of attribute operands:
 
-3. **"TRN2 double-row enforces a size-2 pack via `cmp $0x2` guards and restricts dtype to fp8/uint8."** Re-counted: **4** `cmp …0x2,` in the `0xcbc90–0xce510` range; all five contract strings present verbatim (`"first F dim … must be 2"`, `"last dimension … size of 2"`, `"first dimension of Cayman … size of 2"`, `"only support fp8e4m3 and fp8e5m2"`, `"only support uint8"`). **CONFIRMED.**
-
-4. **"`get_sb_and_psum_shape` returns `(sb_shape, psum_shape)` as two lists in a tuple."** Re-counted in `0x6ec10–0x6f720`: **2× `PyList_New` + 1× `PyTuple_New`**; the full SBUF/PSUM attribute roster (`statebuf_num_partitions`, `psum_num_banks`, `psum_par_size_in_bytes`, …) present. **CONFIRMED return structure.** The RichCompare comparand remains **INFERRED**.
-
-5. **"The offloaded family emits `TiledOffloadedFMA`/`TiledOffloadedMemCpy` with BIR twins."** Re-checked: KB.so rodata `TiledOffloadedFMA` (4), `TiledOffloadedMemCpy` (4); BIR.so `codegenTiledOffloadedFMA` (12), `codegenTiledOffloadedMemCpy` (12), `codegenOffloadedMemCast` (12), `extract_offloaded_memcpy_shape_bases` (1). **CONFIRMED both `.so`.** The DMA-engine routing is **STRONG** (naming-based).
-
-No claim failed re-challenge. Items tagged INFERRED/STRONG in the body are the RichCompare comparands (`get_sb_and_psum_shape`, `process_new_neuroninst` per-kind dispatch), the `combine_tiles` concat-vs-accumulate fold semantics, the kernel-name-validate step in `finalize_kernel`, and the DMA-vs-PE engine routing — each gated by Cython's `mstate`-routed attribute interning (`__pyx_mstate_global_static` @ `0x2d6ce0`), which defeats direct-`lea` annotation of attribute operands. The accumulate skeletons, dtype/size contracts, returned shapes, macro names, method ordering, and BIR twins are byte-CONFIRMED.
+- the `RichCompare` comparand in `get_sb_and_psum_shape`;
+- the per-kind dispatch destinations in `process_new_neuroninst`;
+- whether `combine_tiles`' per-dim fold is concat or accumulate;
+- the kernel-name-validation step in `finalize_kernel`, whose contract strings are not attributable to that method specifically;
+- the DMA-versus-PE routing of the offloaded family, which rests on naming and the twin set rather than on an engine-selection branch.

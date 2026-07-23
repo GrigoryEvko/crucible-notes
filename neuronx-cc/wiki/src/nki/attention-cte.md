@@ -163,7 +163,7 @@ function _scale_reciprocal_write_back_impl(src, grp, ...): // lines 2526-2565
     _write_back_o_impl(mm2_final[grp], ...)                  // DMA to HBM o
 ```
 
-> **CORRECTION (O13-1) — the partial output is NOT kept resident in SBUF across sections.** An earlier reading might assume flash-attention holds `O` in SBUF the way it holds the running max and sum. It does not. Lines 2487/2454 DMA-**load** `mm2_prev_output` *back from HBM `o`* every section after the first, rescale it by `α`, add the new section's `O`, and DMA it back out. Only `mm1_running_max` / `exp_running_sum` / `exp_sum_reciprocal` are SBUF-resident across sections (allocated outside the section loop, lines 690–692). The HBM round-trip is the deliberate SBUF-budget tradeoff for 8K-token sections.
+> **GOTCHA — the partial output is not SBUF-resident across sections, unlike the max and sum.** Lines 2487 and 2454 DMA-*load* `mm2_prev_output` back from HBM `o` on every section after the first, rescale it by `α`, add the new section's `O`, and write it out again; only `mm1_running_max`, `exp_running_sum` and `exp_sum_reciprocal` live in SBUF across sections (allocated outside the section loop, lines 690–692). The HBM round-trip is the deliberate SBUF-budget tradeoff that makes 8K-token sections fit.
 
 ### Considerations
 
@@ -335,7 +335,7 @@ Grouped-query attention is native and replication-free. `bs_kv = k.shape[0]` may
 
 `scale` is a kernel argument (default `1.0`, line 173). It is applied **to the scores, fused into the mask/copy step** as the `op0=multiply, operand0=ac.scale` of the `tensor_scalar_reduce` that also does the row-max reduce — in the no-mask path (lines 2753–2760) and the diagonal-mask path (lines 2714–2721). So `S_scaled = scale · (Q·Kᵀ)` is computed in the same instruction as the section-max reduce; no separate scale op.
 
-> **GOTCHA — `scale` MUST be `1.0` for SWA / prefix-caching / CP.** Those modes use `range_select`, which has no scalar-multiply slot, so the kernel asserts `ac.scale == 1.0` at line 946 (mode entry) and line 2737 (the range_select call). In those modes the caller must **pre-scale Q** before invoking the kernel (docstring lines 208–210). The kernel itself never divides by `√d`; the caller passes `scale = 1/√d` (INFERRED — `scale` is an opaque float; `1/√d` is the conventional softmax temperature).
+> **GOTCHA — `scale` MUST be `1.0` for SWA / prefix-caching / CP.** Those modes use `range_select`, which has no scalar-multiply slot, so the kernel asserts `ac.scale == 1.0` at line 946 (mode entry) and line 2737 (the range_select call). In those modes the caller must **pre-scale Q** before invoking the kernel (docstring lines 208–210). The kernel itself never divides by `√d`. That the caller passes `scale = 1/√d` is [INFERRED]: to the kernel `scale` is an opaque float, and `1/√d` is simply the conventional softmax temperature.
 
 ---
 
@@ -369,17 +369,25 @@ WRITE    : dma_copy mm2_final -> HBM o                                   [HBM]  
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five highest-risk claims, re-challenged against the source.
+The signs in the recurrence are the part most worth pinning, and each lands on a specific line:
 
-1. **"Running-max update is `minimum`, yielding `−max_new`."** CONFIRMED — line 2156 is `tensor_tensor(..., op=nl.minimum)` on `mm1_running_max` (`= −max_old`) and `mm1_section_max` (`= −max_new`, from `negate=True` at line 2135). `min(−a, −b) = −max(a, b)`. Not fabricated.
-2. **"`α = exp(max_old − max_new)` via `exp(prev + running)`."** CONFIRMED — line 2149 sets `prev = −1·(−max_old) = +max_old`; line 2162 is `activation(op=exp, prev_mm1_running_max, bias=mm1_running_max)` = `exp(prev + running) = exp((+max_old) + (−max_new))`. The `+running` lands in the bias adder; both operands are existing buffers.
-3. **"Fused exp via `bias=−max`, no separate subtract."** CONFIRMED — line 2225 `activation_reduce(op=nl.exp, data=mm1_masked, bias=mm1_running_max[:num_p, g], reduce_op=nl.add, reduce_res=exp_partial_sum)`. `mm1_running_max` is `−max`; one op does exp + shift + sum. No subtract instruction exists in `_exp_impl`.
-4. **"Diagonal mask predicate is `q_pos ≥ k_pos`."** CONFIRMED via affine arithmetic — `channel_multiplier=1` (line 2695), `pattern=[[-1, num_f]]` (line 2693), `offset = qkmax_grp·128 − k_start_pos` (line 2694), `cmp_op=greater_equal` (line 2696). `1·p − 1·f + (grp·128 − k_start) ≥ 0 ⇔ q_pos ≥ k_pos`. The source comment at lines 2681–2685 states the same predicate independently. STRONG (the iota-coordinate convention `channel→partition, pattern→free` is the documented `affine_select` semantics; the rest is exact).
-5. **"O round-trips through HBM between sections."** CONFIRMED — `dma_copy(dst=mm2_prev_output, src=o[...])` at lines 2454 (tp_out) and 2487 (non-tp_out), inside the `section_idx > 0` branch, *before* the `α·O_prev + O_section` accumulate. The source comment "Load previous output scale by flash_attn_correction_factor and accumulate" (line 2443) confirms intent.
+- **The running-max update is a `minimum`.** Line 2156 is `tensor_tensor(..., op=nl.minimum)` over `mm1_running_max` (`= −max_old`) and `mm1_section_max` (`= −max_new`, from the `negate=True` at line 2135), and `min(−a, −b) = −max(a, b)`.
+- **`α = exp(max_old − max_new)` falls out of `exp(prev + running)`.** Line 2149 sets `prev = −1·(−max_old) = +max_old`; line 2162 is `activation(op=exp, prev_mm1_running_max, bias=mm1_running_max)`, so the `+running` term lands in the bias adder and both operands are buffers that already exist.
+- **The exp is fused, with no separate subtract.** Line 2225 reads `activation_reduce(op=nl.exp, data=mm1_masked, bias=mm1_running_max[:num_p, g], reduce_op=nl.add, reduce_res=exp_partial_sum)` — one op performs the shift, the exponential and the sum. No subtract instruction appears anywhere in `_exp_impl`.
+- **The diagonal predicate reduces to `q_pos ≥ k_pos`.** From `channel_multiplier=1` (line 2695), `pattern=[[-1, num_f]]` (line 2693), `offset = qkmax_grp·128 − k_start_pos` (line 2694) and `cmp_op=greater_equal` (line 2696): `1·p − 1·f + (grp·128 − k_start) ≥ 0`. The source comment at lines 2681–2685 states the same predicate independently.
+- **`O` round-trips through HBM.** `dma_copy(dst=mm2_prev_output, src=o[...])` sits at lines 2454 (tp_out) and 2487 (non-tp_out), inside the `section_idx > 0` branch and *before* the `α·O_prev + O_section` accumulate; the comment at line 2443 states the intent.
 
-**Re-verification ceiling.** Every algorithmic claim is grounded in the readable `attention_cte.py` wheel artifact at named line numbers, cross-checked against the legacy twin `_pre_prod_kernels/attn_fwd.py` (same running-max/min + `correction = exp` recurrence — its exp bias arg is verbatim `bias=running_max[ip_reduce, grp_i]`, line 1579). The `nisa.*` primitive signatures are confirmed against the wheel's type stubs (`neuronxcc-stubs/nki/isa/__init__.pyi`): `range_select` (`:1133`), `affine_select` (`:268`), `activation_reduce` (`:206`, `bias`/`scale`/`reduce_res` keywords present), `scalar_tensor_tensor` (`:1255`), `tensor_scalar_reduce` (`:1848`). What is *not* independently re-derived from a compiled `.so`: the concrete bodies of those primitives live only in compiled modules (the runtime `neuronxcc/nki/isa/` directory is empty — stub-and-`.so` only), so the exact micro-op encoding each lowers to (e.g. whether `activation_reduce` is one TPB instruction or a 2-op macro) is asserted from the stub signature and primitive name, not disassembled — it does not change the algorithm. There exists a separate, *older* Cython `_private_kernels/attention_cte.cpython-3XX.so` whose string table contains `attention_cte`/`affine_select` but **not** `range_select` or the modern helper names; it is a stale build and not the source analysed here — do not cross-check against it. The `scale = 1/√d` convention is INFERRED from the opaque `scale: float` API, not from a kernel-side division.
+Corroboration comes from the legacy twin `_pre_prod_kernels/attn_fwd.py`, which carries the same running-max/min plus `correction = exp` recurrence — its exp bias argument is verbatim `bias=running_max[ip_reduce, grp_i]` at line 1579. The `nisa.*` signatures check out against the wheel's type stubs (`neuronxcc-stubs/nki/isa/__init__.pyi`): `range_select` (`:1133`), `affine_select` (`:268`), `activation_reduce` (`:206`, with `bias`/`scale`/`reduce_res` keywords present), `scalar_tensor_tensor` (`:1255`), `tensor_scalar_reduce` (`:1848`).
+
+## Limits of this reading
+
+Every algorithmic claim rests on the readable `attention_cte.py` wheel artifact at named line numbers. Two things sit outside that.
+
+The concrete *bodies* of the `nisa.*` primitives live only in compiled modules — the runtime `neuronxcc/nki/isa/` directory holds stubs and `.so` files, nothing readable — so the micro-op encoding each one lowers to (whether `activation_reduce` is a single TPB instruction or a two-op macro, for instance) is taken from the stub signature and the primitive's name rather than disassembled. This does not affect the algorithm. Separately, the `affine_select` coordinate convention that `channel_multiplier` addresses the partition axis and `pattern` the free axis is the documented semantics of the primitive; the affine arithmetic built on top of it is exact.
+
+> **GOTCHA — a stale `attention_cte` `.so` exists and will mislead a cross-check.** The Cython `_private_kernels/attention_cte.cpython-3XX.so` has `attention_cte` and `affine_select` in its string table but lacks `range_select` and the modern helper names entirely. It is an older build than the Python source analysed here, so treating it as the same kernel produces spurious disagreements about the masking family.
 
 ---
 
