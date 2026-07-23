@@ -72,9 +72,9 @@ Penguin sits in the middle of a three-IR stack. The reference frame an LLVM engi
 
 > **NOTE —** the NKI path forks at the bottom of the middle-end: instead of `BirCodeGenLoop`, `SharedCodeGenFlow.nki_codegen()` / `targets/codegen/NkiCodegen.so` re-emits NKI text. Same Penguin object graph, different terminal visitor. This page covers the BIR exit; the NKI exit is the [NKI codegen](../nki/) territory of Part 6.
 
-The *endpoints* of the chain are binary-confirmed; the *edges between them* are inferred. `starfish/bin/hlo2penguin` interns both printer class names and both pass-arg strings **[CONFIRMED]**; `driver/jobs/HLOToTensorizer.cpython-310-…so` interns `"hlo2penguin"` and `"optimize"` **[CONFIRMED]**; `targets/sunda/SharedCodeGenFlow.so` interns `peephole_optimizations`, `legalize_pe_insts`, `codegen_optimization_post_tritium_fusion` **[CONFIRMED]**.
+The *endpoints* of the chain are readable in the binaries; the *edges between them* are inferred. `starfish/bin/hlo2penguin` interns both printer class names and both pass-arg strings; `driver/jobs/HLOToTensorizer.cpython-310-…so` interns `"hlo2penguin"` and `"optimize"`; `targets/sunda/SharedCodeGenFlow.so` interns `peephole_optimizations`, `legalize_pe_insts`, and `codegen_optimization_post_tritium_fusion`.
 
-> **GOTCHA — the chain is not a single binary-traceable call path.** `hlo2penguin`'s string pool names *only* `neuronxcc.starfish.penguin`, `neuronxcc.starfish.penguin.ir.Dependency`, and `neuronxcc.starfish.support` — it does **not** embed `"CodeGenFlow"` or the penguin `"Module"` string. Those modules exist as separate compiled `.so` files (`penguin/ir/Module.so`, `penguin/targets/{sunda,tonga}/CodeGenFlow.so`), but the linkage `hlo2penguin → Module → CodeGenFlow` is a *structural inference* from the package edges and the `HLOToTensorizer` job, **not** a string-level call trace inside any one binary. **[STRONG for the endpoints; INFERRED for the inter-stage hand-off.]**
+> **GOTCHA — the chain is not a single binary-traceable call path.** `hlo2penguin`'s string pool names *only* `neuronxcc.starfish.penguin`, `neuronxcc.starfish.penguin.ir.Dependency`, and `neuronxcc.starfish.support` — it does **not** embed `"CodeGenFlow"` or the penguin `"Module"` string. Those modules exist as separate compiled `.so` files (`penguin/ir/Module.so`, `penguin/targets/{sunda,tonga}/CodeGenFlow.so`), but the linkage `hlo2penguin → Module → CodeGenFlow` is a *structural inference* from the package edges and the `HLOToTensorizer` job, **not** a string-level call trace inside any one binary. The endpoints are solid; the inter-stage hand-off is INFERRED.
 
 ---
 
@@ -86,7 +86,7 @@ Lower the MLIR graph (mhlo / stablehlo, already legalized and fused by `hlo-opt`
 
 ### The Mechanism
 
-The back-half of `hlo2penguin` is a **printer**, not a builder. `MhloToPythonPrinter` (and its stablehlo sibling) walk the MLIR module and emit Python *source* — constructor calls for the `penguin.ir.*` classes plus `IRBuilder` method calls — which downstream is `exec`-ed to construct the object graph. The tell is in the binary: the **only** `penguin.ir` module name the C++ `hlo2penguin` binary needs to embed is `neuronxcc.starfish.penguin.ir.Dependency` — because the printer emits `DependencyEdge(...)` ctors as text, the import string must be present even though no Python ran inside `hlo2penguin`. **[CONFIRMED — `neuronxcc.starfish.penguin.ir.Dependency` is in `hlo2penguin`'s string pool.]**
+The back-half of `hlo2penguin` is a **printer**, not a builder. `MhloToPythonPrinter` (and its stablehlo sibling) walk the MLIR module and emit Python *source* — constructor calls for the `penguin.ir.*` classes plus `IRBuilder` method calls — which downstream is `exec`-ed to construct the object graph. The tell is in the binary: the **only** `penguin.ir` module name the C++ `hlo2penguin` binary needs to embed is `neuronxcc.starfish.penguin.ir.Dependency` — because the printer emits `DependencyEdge(...)` ctors as text, the import string must be present even though no Python ran inside `hlo2penguin`. That string, `neuronxcc.starfish.penguin.ir.Dependency`, is in `hlo2penguin`'s string pool.
 
 ```c
 // MhloToPythonPrinter — back-half of hlo2penguin (C-strand, see 4.43/4.44)
@@ -125,7 +125,7 @@ function printModule(mlir::ModuleOp m):
 | `QuantizeMX` / scale matmul (SHLO) | `printQuantizeMX` / `printScaleMatmult` | `QuantizeMXOperator` / `ScaledTensorContractOp` | §8.4 |
 | MLIR tensor type (arg/result/const) | `printTensor` / `printConstant` | `Tensor` (+ `TensorType.kind`) | §3 |
 
-Verified printer emitters in `hlo2penguin`'s string pool: `printDotOp`, `printTensor`, `printControlDep`, `printNeuronCustomOp`, `printQuantizeMX`, `printCollectiveOp`. **[CONFIRMED.]** Remaining emitter names are **[STRONG]** (cross-referenced from the C-strand 4.43/4.44 roster, not all re-grepped here).
+Six printer emitters are directly present in `hlo2penguin`'s string pool: `printDotOp`, `printTensor`, `printControlDep`, `printNeuronCustomOp`, `printQuantizeMX`, and `printCollectiveOp`. The remaining emitter names in the table are carried from the hlo-opt roster (4.43/4.44) rather than re-derived here.
 
 > **QUIRK —** the same Python-ctor surface the printer emits is exactly what `IRWriter` (`penguin/ir/IRWriter.so`, `serialize_dep_edge` / ctor-emit methods) writes when dumping live IR. The printer's *output format* and the IR's *serialization format* are one and the same runnable-Python form. A reimplementer who chooses a binary or protobuf serialization for the mid IR has diverged from the architecture: the design intent is that emitted IR is replayable Python source.
 
@@ -151,7 +151,7 @@ BirCodeGenLoop  (subclass of DotTransform)        ── banner: "Generate Backe
   └─ ~100 codegen<Op>  (codegenMatMulOp, codegenDMACopyOp, codegenAllReduceOp, …)
 ```
 
-All of `beforeStmtTransform`, `addInstToBir`, `codegenScopeRegion`, `codegenLoop`, `codegenWhile`, `codegenMatMulOp`, `addReduceAP`, `addSeqAccess`, `addSparseMatmulAP` are confirmed present in `BirCodeGenLoop.so`'s string pool. **[CONFIRMED — direct grep.]**
+All of `beforeStmtTransform`, `addInstToBir`, `codegenScopeRegion`, `codegenLoop`, `codegenWhile`, `codegenMatMulOp`, `addReduceAP`, `addSeqAccess`, `addSparseMatmulAP` are all present in `BirCodeGenLoop.so`'s string pool.
 
 ### The Node Map (the core of this page)
 
@@ -169,9 +169,9 @@ This is the structural correspondence a reimplementer must reproduce. Each Pengu
 | each `TongaISAInst` (the ~100 ISA insts) | one `bir::Instruction` | one `codegen<Op>` each |
 | `ScopeRegion` / `While` | `bir` scope / structured loop | `codegenScopeRegion` / `codegenWhile` |
 
-The five `Bir*` node-type names (`BirAxis`, `BirDynamicForAxis`, `BirQuasiAffineExpr`, `BirAffinePredicate`, `BirAffineExpr`) are all interned in `BirCodeGenLoop.so`. **[CONFIRMED — direct grep, all five matched.]**
+The five `Bir*` node-type names (`BirAxis`, `BirDynamicForAxis`, `BirQuasiAffineExpr`, `BirAffinePredicate`, `BirAffineExpr`) are all interned in `BirCodeGenLoop.so`.
 
-> **GOTCHA — the dependency-edge representation flips at this seam.** In Penguin the dep graph lives at the **Function** level: a flat list of first-class `DependencyEdge(src, dst, kind)` objects on `Function.dep_edges`. In BIR the edge is *inline* in the target instruction's dependency set, keyed by the target's **name** (a hash), and a single `(A→B)` pair collapses to the **MAX** `EdgeKind`. `BirCodeGenLoop` performs this conversion — Function-level edge list → per-target inline `addDependency` calls with name-hashing and max-merge. A reimplementer who mirrors BIR's inline model upward, or Penguin's flat-list model downward, will mis-model the dependency layer. The Penguin `EdgeKind` member set `{FLOW, ANTI, OUTPUT, ORDERED}` is confirmed in `ir/Dependency.so`; BIR's twin adds the `Invalid0` sentinel. **[CONFIRMED member set; the MAX-merge is the BIR-side representation choice — see Part 7.]**
+> **GOTCHA — the dependency-edge representation flips at this seam.** In Penguin the dep graph lives at the **Function** level: a flat list of first-class `DependencyEdge(src, dst, kind)` objects on `Function.dep_edges`. In BIR the edge is *inline* in the target instruction's dependency set, keyed by the target's **name** (a hash), and a single `(A→B)` pair collapses to the **MAX** `EdgeKind`. `BirCodeGenLoop` performs this conversion — Function-level edge list → per-target inline `addDependency` calls with name-hashing and max-merge. A reimplementer who mirrors BIR's inline model upward, or Penguin's flat-list model downward, will mis-model the dependency layer. The Penguin `EdgeKind` member set `{FLOW, ANTI, OUTPUT, ORDERED}` is present in `ir/Dependency.so`; BIR's twin adds the `Invalid0` sentinel. The MAX-merge itself is a BIR-side representation choice — see Part 7.
 
 ### Instruction Selection — the in-place op → ISAInst step
 
@@ -192,7 +192,7 @@ function selectInstructions(function):
     // post-condition: every node is a TongaISAInst — the level BirCodeGenLoop.codegen<Op> consumes
 ```
 
-> **NOTE —** the op-name and ISA-inst-name spaces overlap (`AllReduceOp` is both an op-level collective and an ISA collective inst), which is why the `codegen<Op>` roster and the op family roster look similar. They are *not* the same set: the `codegen<Op>` dispatch keys on the **ISA-inst** node that ISel produced, listed under the families below. The `codegen<Op>` count is ~100 distinct methods (the `codegen[A-Z]…` interned-string sweep over `BirCodeGenLoop.so` yields ~69 full canonical names plus the macro/scope variants — the truncated duplicate strings in the pool are Cython interning artifacts, not extra methods). **[CONFIRMED count is "~100"; exact integer not pinned because of interning truncation.]**
+> **NOTE —** the op-name and ISA-inst-name spaces overlap (`AllReduceOp` is both an op-level collective and an ISA collective inst), which is why the `codegen<Op>` roster and the op family roster look similar. They are *not* the same set: the `codegen<Op>` dispatch keys on the **ISA-inst** node that ISel produced, listed under the families below. The `codegen<Op>` count is ~100 distinct methods (the `codegen[A-Z]…` interned-string sweep over `BirCodeGenLoop.so` yields ~69 full canonical names plus the macro/scope variants — the truncated duplicate strings in the pool are Cython interning artifacts, not extra methods). The order of magnitude is firm; the exact integer is not pinnable, because interning truncation blurs the count.
 
 ### The `codegen<Op>` Dispatch — by family
 
@@ -209,7 +209,7 @@ Do not enumerate all ~100 here; the per-op detail is [Part 6 / BirCodeGenLoop](.
 | Misc | `codegenIndexValueInst`, `codegenInlineASMInst`, `codegenNeuronPrintInst`, `codegenBroadcastOp`, `codegenBroadcastPartition`, `codegenNoOp` | index-value, inline ASM, print, broadcast |
 | Scope / region | `codegenScopeRegion`, `codegenLoop`, `codegenWhile`, `codegenMemoryLoc` | control / placement |
 
-Representatives confirmed by grep (`codegenMatMulOp`, `codegenAllGatherOp`, `codegenAllReduceOp`, `codegenAlltoAllOp`, `codegenCollectivePermuteOp`, `codegenCoreBarrierOp`, `codegenGetGlobalRankId`, `codegenBIRKernel`, `codegenAttentionMMSoftmaxMM`, `codegenBackwardsAttention`, `codegenExternalNativeNkiKernel`, `codegenBroadcastOp`, `codegenBroadcastPartition`, `codegenDMACopyOp`, `codegenDMATranspose`, `codegenScopeRegion`, `codegenLoop`, `codegenWhile`, `codegenCustomOp`, `codegenDropoutMaskInst`). **[CONFIRMED.]** The full per-family roster is **[STRONG]** (sourced from U08 §9.2; representative members re-grepped).
+Representatives confirmed by grep (`codegenMatMulOp`, `codegenAllGatherOp`, `codegenAllReduceOp`, `codegenAlltoAllOp`, `codegenCollectivePermuteOp`, `codegenCoreBarrierOp`, `codegenGetGlobalRankId`, `codegenBIRKernel`, `codegenAttentionMMSoftmaxMM`, `codegenBackwardsAttention`, `codegenExternalNativeNkiKernel`, `codegenBroadcastOp`, `codegenBroadcastPartition`, `codegenDMACopyOp`, `codegenDMATranspose`, `codegenScopeRegion`, `codegenLoop`, `codegenWhile`, `codegenCustomOp`, `codegenDropoutMaskInst`) are each present in the pool. The remaining members of each family are carried from the BirCodeGenLoop roster rather than individually re-derived.
 
 ### The Access → AP-struct helpers
 
@@ -225,7 +225,7 @@ A Penguin operand binding is `(Tensor, Access)`. After tiling, the `Access` is a
 | double-row / batch-transpose | `addDoubleRowAP` / `addBatchTransposeAP` | engine-specific AP |
 | SB↔SB collective (delinearized) | `add_sb_to_sb_cc_ap` | CC AP |
 
-Confirmed helpers in `BirCodeGenLoop.so`: `addReduceAP`, `addSeqAccess`, `addSparseMatmulAP`, `addComplicatedDMAAP`, `addOpaqueAP`, `addDoubleRowAP`, `addBatchTransposeAP`, `codegenNdDMAAP`, `add_sb_to_sb_cc_ap`. **[CONFIRMED — direct grep.]**
+Confirmed helpers in `BirCodeGenLoop.so`: `addReduceAP`, `addSeqAccess`, `addSparseMatmulAP`, `addComplicatedDMAAP`, `addOpaqueAP`, `addDoubleRowAP`, `addBatchTransposeAP`, `codegenNdDMAAP`, and `add_sb_to_sb_cc_ap`.
 
 ---
 
@@ -238,23 +238,27 @@ AffineAxis.serialize   →   "for ({it}: range({lb}, {ub}, {stride}))"
 Tensor.serialize       →   "{attr}{dtype} {shape} {name}{init}"
 ```
 
-Both matched verbatim in `ir/Axis.so` and `ir/Tensor.so` respectively. **[CONFIRMED.]** The first tells you a Penguin loop axis *is* a Python `for`-over-`range` — which is why `codegenLoop` maps it cleanly to a `BirAxis` with the same `(lb, ub, stride)` triple. The second gives the five core abstract-tensor fields (`attr, dtype, shape, name, init`) that `codegenMemoryLoc` consumes (after the tiler has chosen a `TongaTensor` placement). The `Module` docstring `"…connected functions forming a neural network"` is likewise verbatim in `ir/Module.so` **[CONFIRMED]**, anchoring the top of the placement chain.
+Both appear verbatim in `ir/Axis.so` and `ir/Tensor.so` respectively. The first tells you a Penguin loop axis *is* a Python `for`-over-`range` — which is why `codegenLoop` maps it cleanly to a `BirAxis` with the same `(lb, ub, stride)` triple. The second gives the five core abstract-tensor fields (`attr, dtype, shape, name, init`) that `codegenMemoryLoc` consumes (after the tiler has chosen a `TongaTensor` placement). The `Module` docstring `"…connected functions forming a neural network"` is likewise verbatim in `ir/Module.so`, anchoring the top of the placement chain.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims on this page, each re-challenged against the binary:
+Three of this page's central claims rest on strings that are unambiguous in the binaries.
 
-1. **"The upward seam is textual Python emit, not in-process building."** Re-challenge: could `MhloToPythonPrinter` be a misnamed tree-builder? Counter-evidence held: `hlo2penguin` embeds `mhlo-to-py-penguin`/`stablehlo-to-py-penguin` (the `-to-py-` infix), the `print<Op>` emitter naming, and — decisively — the dotted import string `neuronxcc.starfish.penguin.ir.Dependency` baked into a *C++* binary that never runs Python. A pure tree-builder would link the classes, not embed their import path as text. **Holds — CONFIRMED.**
+**The upward seam is a textual Python emit.** `hlo2penguin` embeds `mhlo-to-py-penguin` / `stablehlo-to-py-penguin` — note the `-to-py-` infix — alongside the `print<Op>` emitter naming and, decisively, the dotted import string `neuronxcc.starfish.penguin.ir.Dependency` baked into a *C++* binary that never runs Python. A tree-builder would link those classes; only a source emitter needs their import path as text.
 
-2. **"`BirCodeGenLoop` consumes Penguin at the `TongaISAInst` level."** Re-challenge: is the banner real or inferred? The exact string `"Generate Backend IR from tensoriser IR at the TongaISAInst level"` matched verbatim in `BirCodeGenLoop.so`. **Holds — CONFIRMED.**
+**`BirCodeGenLoop` consumes Penguin at the `TongaISAInst` level.** The banner string `"Generate Backend IR from tensoriser IR at the TongaISAInst level"` is verbatim in `BirCodeGenLoop.so`.
 
-3. **"The node map is `AffineAxis→BirAxis`, `AffineExpr→BirQuasiAffineExpr`, `AffinePredicate→BirAffinePredicate`, `DynamicAxis→BirDynamicForAxis`."** Re-challenge: are the `Bir*` names invented? All five (`BirAxis`, `BirDynamicForAxis`, `BirQuasiAffineExpr`, `BirAffinePredicate`, `BirAffineExpr`) matched as interned strings in `BirCodeGenLoop.so`. **Holds — CONFIRMED.**
+**The `Bir*` node names are real, not invented.** All five — `BirAxis`, `BirDynamicForAxis`, `BirQuasiAffineExpr`, `BirAffinePredicate`, `BirAffineExpr` — are interned strings in `BirCodeGenLoop.so`.
 
-4. **"~100 `codegen<Op>` methods, one per ISA inst."** Re-challenge: is "~100" real? The `codegen[A-Z]…` sweep yields ~69 full canonical names plus scope/macro variants; the pool also contains truncated duplicates (Cython interning artifacts, e.g. `codegenActivate2` alongside `codegenActivationOp`). The order-of-magnitude is firm; the *exact* integer is **not pinnable** from the truncated pool. **Downgraded to: count ≈100, INFERRED-exact / STRONG-magnitude.**
+### Limits of this reading
 
-5. **"`addDependency` is the BIR-side edge emit; Penguin stores edges at Function level."** Re-challenge: `addDependency` did **not** match in `BirCodeGenLoop.so`'s pool (it is a `bir::` C++ method, called across the Python→C++ boundary, not interned as a Python attribute). The Penguin `EdgeKind` members `{FLOW, ANTI, OUTPUT, ORDERED}` *did* match in `ir/Dependency.so`. **Refined: the Function-level `DependencyEdge` model and the four `EdgeKind` members are CONFIRMED on the Penguin side; the `addDependency` call name and the MAX-merge are the BIR-side behavior, tagged STRONG (sourced from the BIR strand / Part 7), not re-grepped in the Python pool here.**
+Two claims are softer than the rest.
+
+The **~100 `codegen<Op>` count** is a magnitude, not a number. A `codegen[A-Z]…` sweep yields roughly 69 full canonical names plus scope and macro variants, and the pool also holds truncated duplicates that are Cython interning artifacts (`codegenActivate2` appearing beside `codegenActivationOp`, for instance). The exact integer is not pinnable from a truncated pool.
+
+The **`addDependency` name and the MAX-merge** are BIR-side behaviour described from the BIR strand, not from this module. `addDependency` does not appear in `BirCodeGenLoop.so`'s pool at all — it is a `bir::` C++ method called across the Python→C++ boundary, so it is never interned as a Python attribute. What *is* readable here is the Penguin side: the Function-level `DependencyEdge` model and the four `EdgeKind` members `{FLOW, ANTI, OUTPUT, ORDERED}`, present in `ir/Dependency.so`.
 
 ---
 

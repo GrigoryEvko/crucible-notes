@@ -31,7 +31,7 @@ The bar for reimplementation is that a reader can reconstruct: the `BackendPass`
 
 ### The three `run` overloads
 
-The base exports three methods (`nm -DC libwalrus.so`), all CONFIRMED by symbol:
+The base exports three methods, all present in `nm -DC libwalrus.so`:
 
 ```text
 BackendPass::run(vector<unique_ptr<bir::Module>>&)         T  0x1736d40   ── DRIVER ENTRY
@@ -62,18 +62,20 @@ BackendPass_run(BackendPass *this, vector<unique_ptr<bir::Module>> *modules) {
 }
 ```
 
-The `call *0x10(%rax)` is the entire dispatch mechanism: the base's `run` is fixed code, the *behaviour* is whatever the derived class installs at vtable slot `+0x10`. (Slot index = `(0x10 − 0x10)/8 = 0`, measured from the loaded vptr — i.e. the first non-RTTI slot.) **[CONFIRMED — `mov (%r15),%rax ; mov (%rbx),%rdx ; call *0x10(%rax)` read verbatim from the binary at `0x1736d70`–`0x1736d7c`.]**
+The `call *0x10(%rax)` is the entire dispatch mechanism: the base's `run` is fixed code, the *behaviour* is whatever the derived class installs at vtable slot `+0x10`. (Slot index = `(0x10 − 0x10)/8 = 0`, measured from the loaded vptr — i.e. the first non-RTTI slot.)
+
+*Anchors: `mov (%r15),%rax ; mov (%rbx),%rdx ; call *0x10(%rax)` at `0x1736d70`–`0x1736d7c`.*
 
 ### The two predicates
 
-- **`isRealPass()`** @ `0x87fd70` (weak, inlined) distinguishes *real* transform passes from the synthetic check/dump/measurement passes (`Dumper`, `Hasher`, `perf_sim*`, the verifiers, `report_stats`) that the backend's `CheckPassAdder` interposes *between* named passes. `ContainerPass` overrides it at `0x1743320`. A `false` return is the marker that a pass is structural padding in the step count, not a pipeline transform. **[CONFIRMED — symbol + `ContainerPass::isRealPass` override present.]**
-- **`dry_run(vector<Module>&, Logger&)`** @ `0x173af40` is the legality/measurement traversal: run the pass *without committing emission*, used by the verifier and perf-sim "measure" front. **[CONFIRMED symbol; STRONG role — the dry-run front itself is documented in the codegen-driver strand.]**
+- **`isRealPass()`** @ `0x87fd70` (weak, inlined) distinguishes *real* transform passes from the synthetic check/dump/measurement passes (`Dumper`, `Hasher`, `perf_sim*`, the verifiers, `report_stats`) that the backend's `CheckPassAdder` interposes *between* named passes. `ContainerPass` overrides it at `0x1743320`. A `false` return is the marker that a pass is structural padding in the step count, not a pipeline transform.
+- **`dry_run(vector<Module>&, Logger&)`** @ `0x173af40` is the legality/measurement traversal: run the pass *without committing emission*, used by the verifier and perf-sim "measure" front. The symbol is unambiguous; the measurement role is read from the codegen-driver side rather than from this body.
 
-The vtable backing all this (`vtable for BackendPass` @ `0x3d98548`) has the standard Itanium layout — RTTI header (offset-to-top, `typeinfo*`) at `vt+0x00`, the D1/D0 destructor pair, then the per-unit hook at `+0x10`. The remaining slot ordering is **[INFERRED]**: the vtable function pointers are RELR/`.rela`-packed and read as zero in the raw `.data.rel.ro` image, so only the `+0x10` slot — which the disassembly of `run()` proves is the dispatched hook — is CONFIRMED.
+The vtable backing all this (`vtable for BackendPass` @ `0x3d98548`) has the standard Itanium layout — RTTI header (offset-to-top, `typeinfo*`) at `vt+0x00`, the D1/D0 destructor pair, then the per-unit hook at `+0x10`. The remaining slot ordering is **INFERRED**: the vtable function pointers are RELR/`.rela`-packed and read as zero in the raw `.data.rel.ro` image, so the `+0x10` slot — which the disassembly of `run()` shows is the dispatched hook — is the only one actually pinned.
 
 ### Construction signature
 
-Every leaf pass shares a uniform construction signature: a base ctor `backend::<Class>::<Class>(PassOptions const&)`. Multi-registered classes additionally expose a *parameterized* overload that selects the variant. Two CONFIRMED examples:
+Every leaf pass shares a uniform construction signature: a base ctor `backend::<Class>::<Class>(PassOptions const&)`. Multi-registered classes additionally expose a *parameterized* overload that selects the variant. Two examples:
 
 ```text
 ColoringAllocator::ColoringAllocator(PassOptions const&, Type, bool,
@@ -110,11 +112,11 @@ ContainerPass::getKind() const                                        0x1737480 
 ContainerPass::isRealPass() const                                     0x1743320   ── override
 ```
 
-The by-name `addPass` is the bridge to the registry: handed a string, it asks `GeneratorRegistration` for the factory and stores it. `getKind()` plus a per-subclass `classof()` form an LLVM-style RTTI discriminator — every fork subclass is identified by `getKind()` and tested with `<Fork>::classof(ContainerPass const*)`. **[CONFIRMED — `getKind` @ `0x1737480` plus all three `classof` symbols present.]**
+The by-name `addPass` is the bridge to the registry: handed a string, it asks `GeneratorRegistration` for the factory and stores it. `getKind()` plus a per-subclass `classof()` form an LLVM-style RTTI discriminator — every fork subclass is identified by `getKind()` and tested with `<Fork>::classof(ContainerPass const*)`. `getKind` sits at `0x1737480`, and all three `classof` symbols are present.
 
 ### The three forks
 
-Each fork is a `ContainerPass` whose `run(vector<Module>&)` overload forks the children across one axis, runs them, and joins. All addresses CONFIRMED by symbol:
+Each fork is a `ContainerPass` whose `run(vector<Module>&)` overload forks the children across one axis, runs them, and joins. Every address below is a symbol:
 
 | Fork | Axis | `classof` | `run(bir::Module&)` | `run(vector&)` | `dry_run` |
 |---|---|---|---|---|---|
@@ -122,11 +124,11 @@ Each fork is a `ContainerPass` whose `run(vector<Module>&)` overload forks the c
 | `ModuleForkPass` | per-module | `0x1737490` | `0x173bca0` | `0x17404d0` | `0x173f5d0` |
 | `SubgraphForkPass` | per-subgraph | `0x17374b0` | `0x173c2f0` | `0x173cfa0` | `0x173d8e0` |
 
-The fork machinery is TBB-backed: the per-element child invocation runs under `tbb::detail::r1::execute_and_wait(parallel_for …)`, the same TBB arena that drives the per-`MemoryLocation` parallel-for elsewhere in the backend. **[STRONG — TBB `parallel_for` present in the pass bodies; the exact fork wrapping is STRONG, not byte-exact CONFIRMED.]**
+The fork machinery is TBB-backed: the per-element child invocation runs under `tbb::detail::r1::execute_and_wait(parallel_for …)`, the same TBB arena that drives the per-`MemoryLocation` parallel-for elsewhere in the backend. The `parallel_for` calls are present in the pass bodies; the exact shape of the fork wrapping around them is reconstructed rather than byte-exact.
 
 ### `DapPass` — the odd one out
 
-`DapPass` derives straight from `BackendPass`, **not** from `ContainerPass`. It adapts an external "DAP" analyzer/transform and carries its own name string in its ctor (`DapPass(PassOptions const&, string const& name, bool)` @ `0x87d930`). It exports its own `run(bir::Module&)` @ `0x87d7e0`, `run(vector&)` @ `0x87db10`, and `getAdapterInstance()` @ `0x87da40`. It is nonetheless eligible for subgraph-fork wrapping (see the template instance below). **[CONFIRMED — symbols present; non-`ContainerPass` parentage confirmed by the absence of a `DapPass::classof(ContainerPass const*)` and presence of `BackendPass`-shaped `run` overloads only.]**
+`DapPass` derives straight from `BackendPass`, **not** from `ContainerPass`. It adapts an external "DAP" analyzer/transform and carries its own name string in its ctor (`DapPass(PassOptions const&, string const& name, bool)` @ `0x87d930`). It exports its own `run(bir::Module&)` @ `0x87d7e0`, `run(vector&)` @ `0x87db10`, and `getAdapterInstance()` @ `0x87da40`. It is nonetheless eligible for subgraph-fork wrapping (see the template instance below). The non-`ContainerPass` parentage shows up as an absence: there is no `DapPass::classof(ContainerPass const*)`, and the only `run` overloads it carries are `BackendPass`-shaped.
 
 ### Granularity is assigned per call-site
 
@@ -139,7 +141,7 @@ BackendPassManager::addCoreParallelPass[WithName]<C>       → wraps C in a Core
 BackendPassManager::addSubgraphParallelPass[WithName]<C>   → wraps C in a SubgraphForkPass
 ```
 
-So the *same* leaf class can be added serially in one place and inside a fork in another. The CONFIRMED compile-time fork bindings (from the `add*ParallelPass<Class>` template instantiations in the symtab) are:
+So the *same* leaf class can be added serially in one place and inside a fork in another. The compile-time fork bindings, read from the `add*ParallelPass<Class>` template instantiations in the symtab, are:
 
 | Fork | Classes carrying a compile-time fork instance |
 |---|---|
@@ -147,9 +149,9 @@ So the *same* leaf class can be added serially in one place and inside a fork in
 | `CoreFork` | `DMAReport`, `MemoryAnalysis`, `AntiDependencyAnalyzer`, `BirLinker` |
 | `SubgraphFork` | `BirSim`, `BirSimWithKernelInline`, `DapPass` |
 
-`MemoryAnalysis` and `AntiDependencyAnalyzer` appear under **both** module- and core-forks — they run at several pipeline points at different fork granularities. **[CONFIRMED — the `addModParallelPass<MemoryAnalysis,…>` and `addCoreParallelPass<MemoryAnalysis,…>` template instances both appear in `nm -DC`.]**
+`MemoryAnalysis` and `AntiDependencyAnalyzer` appear under **both** module- and core-forks — they run at several pipeline points at different fork granularities — both `addModParallelPass<MemoryAnalysis,…>` and `addCoreParallelPass<MemoryAnalysis,…>` appear in `nm -DC`.
 
-A handful of class names *end* in `Pass` but are ordinary leaf passes, **not** granularity bases: `LowerSelectPass`, `OrderConstraintsPass`, `PerfSimPass`, `PerfSimPackagePass`, `SynchronizerPass`, `VNSplitterPass`. Each has its own `register_generator_*__` factory in the table below. Do not mistake the suffix for membership in the fork spine. **[CONFIRMED — RTTI typeinfos + factory functions.]**
+A handful of class names *end* in `Pass` but are ordinary leaf passes, **not** granularity bases: `LowerSelectPass`, `OrderConstraintsPass`, `PerfSimPass`, `PerfSimPackagePass`, `SynchronizerPass`, `VNSplitterPass`. Each has its own `register_generator_*__` factory in the table below. Do not mistake the suffix for membership in the fork spine; each has its own RTTI typeinfo and factory function.
 
 ---
 
@@ -169,7 +171,7 @@ GeneratorRegistration::hasGenerator(string const&)         0x1735630   ── na
 GeneratorRegistration::getPassNames[abi:cxx11]()           0x17357e0   ── dump all names (--list-passes)
 ```
 
-The backing store is a `_Hashtable<string, pair<const string, function<unique_ptr<BackendPass>(PassOptions const&)>>>`. This exact value type is visible in the symbol the driver-entry `run` rehashes against — confirming the registry value really is *the factory closure type*. **[CONFIRMED — all five API symbols, and the hashtable value type `function<unique_ptr<BackendPass>(PassOptions const&)>` appears verbatim in the `_M_rehash` symbol called from `BackendPass::run`.]**
+The backing store is a `_Hashtable<string, pair<const string, function<unique_ptr<BackendPass>(PassOptions const&)>>>`. This exact value type is visible in the symbol the driver-entry `run` rehashes against — so the registry value really is *the factory closure type*. All five API symbols are present, and the value type `function<unique_ptr<BackendPass>(PassOptions const&)>` appears verbatim in the `_M_rehash` symbol called from `BackendPass::run`.
 
 `getPassNames()` is what `walrus_driver --list-passes` dumps; `hasGenerator` is the validity gate that turns an unknown `--pass` into the `Backend pass: <X> is not registered!` error ([3.7](../frontend/walrus-driver-cli.md)).
 
@@ -194,7 +196,7 @@ typeinfo for register_generator_unroll__::{lambda(PassOptions const&)#1}        
 
 ### `_M_invoke` is the ground-truth `name → class` evidence
 
-The `_M_invoke` body is the canonical proof of which class a name builds: it allocates with `operator new` and calls the class ctor (or `make_unique<Class>`), then installs that class's vtable. For `unroll` the body at `0xb46400` reads (CONFIRMED verbatim):
+The `_M_invoke` body is the canonical proof of which class a name builds: it allocates with `operator new` and calls the class ctor (or `make_unique<Class>`), then installs that class's vtable. For `unroll`, the body at `0xb46400` reads:
 
 ```c
 // _M_invoke for register_generator_unroll__  @0xb46400  [CONFIRMED]
@@ -207,11 +209,11 @@ unique_ptr<BackendPass> unroll_factory(PassOptions const& opts) {
 }
 ```
 
-Three evidence shapes recur across the 150 bodies, and the table below tags each row by which one was observed: `ctor` = a direct `backend::Class::Class(PassOptions)` PLT call; `mkuq` = a `make_unique<backend::Class>` call; `vt` = the `vtable for backend::Class` symbol the lambda installs. All three pin the same fact — *which class this name constructs*. **[CONFIRMED — the `unroll` body shown is the exemplar; every row below was resolved the same way.]**
+Three evidence shapes recur across the 150 bodies, and the table below tags each row by which one was observed: `ctor` = a direct `backend::Class::Class(PassOptions)` PLT call; `mkuq` = a `make_unique<backend::Class>` call; `vt` = the `vtable for backend::Class` symbol the lambda installs. All three pin the same fact — *which class this name constructs*. The `unroll` body above is the exemplar; every row below was resolved the same way.
 
 ### Pipeline-build-time selection
 
-At pipeline-build time, the optlevel pipeline builders call `addPass("<name>")`, which does `getGenerator("<name>")(passOptions)` → `unique_ptr<BackendPass>`. The same registry also serves the arch-`Generator` lookup: the `codegen` slot's `Codegen` pass resolves `CoreV{2,3,4}Gen` through `GeneratorRegistration::getGenerator`. The registry is thus the *single* name-to-object indirection for the entire backend. **[CONFIRMED — `getGenerator` @ `0x1735740` is the shared lookup for both pass and generator slots.]**
+At pipeline-build time, the optlevel pipeline builders call `addPass("<name>")`, which does `getGenerator("<name>")(passOptions)` → `unique_ptr<BackendPass>`. The same registry also serves the arch-`Generator` lookup: the `codegen` slot's `Codegen` pass resolves `CoreV{2,3,4}Gen` through `GeneratorRegistration::getGenerator`. The registry is thus the *single* name-to-object indirection for the entire backend: `getGenerator` @ `0x1735740` is the shared lookup for both pass and generator slots.
 
 ---
 
@@ -223,7 +225,7 @@ This is the headline mechanism. **150** register names construct **121** distinc
 
 ```text
 $ nm -DC libwalrus.so | rg -o 'register_generator_[a-z0-9_]+' | sort -u | wc -l
-150                                          # ← 150 registered pass NAMES  [CONFIRMED on the binary]
+150                                          # ← 150 registered pass NAMES
 ```
 
 121 is the count of distinct `_M_invoke` ctor targets across those 150 bodies (the table below). The two are reconciled exactly by the multi-registration groups.
@@ -245,9 +247,9 @@ These are the classes that answer to more than one name; the "extra" column is `
 | `PerfSimPass` | 2 | 1 | `perf_sim` / `perf_sim_at_end` |
 | `PrefetchScheudling` | 2 | 1 | `before_sched` / `after_sched` *(class name misspelled in the binary — preserved verbatim)* |
 
-Sum of the surplus column: `9 + 7 + 3 + 2 + 2 + 2 + 1 + 1 + 1 + 1 = 29`. Therefore `121 + 29 = 150`. **[arithmetic CONFIRMED — the `MemoryAnalysis` group's 10 names and the `ColoringAllocator`/`AddressRotation` groups were enumerated directly from `nm -DC`.]**
+Sum of the surplus column: `9 + 7 + 3 + 2 + 2 + 2 + 1 + 1 + 1 + 1 = 29`. Therefore `121 + 29 = 150`. The `MemoryAnalysis` group's 10 names and the `ColoringAllocator` / `AddressRotation` groups were enumerated directly from `nm -DC`.
 
-A worked example: `MemoryAnalysis` is a single class registered under ten snapshot names (`memory_analysis_after_unroll`, `…_after_pre_sched`, `…_after_post_sched`, `…_after_address_rotation_{dram,psum,sb}`, `…_after_coloring_allocator_{sb,dram_post_lnk,dram_shared}`, `…_after_dma_optimization_sb`). Each name's `_M_invoke` constructs the same `MemoryAnalysis` with a `MemoryAnalysisRequest&` that says *which* prior pass it is profiling — confirmed by the matching `addModParallelPass<MemoryAnalysis, char const(&)[N], MemoryAnalysisRequest&>` template instances (lengths 29/32/33/42/44/53 — the differing `[N]` are the differing name-string lengths). Ten names, one vtable.
+A worked example: `MemoryAnalysis` is a single class registered under ten snapshot names (`memory_analysis_after_unroll`, `…_after_pre_sched`, `…_after_post_sched`, `…_after_address_rotation_{dram,psum,sb}`, `…_after_coloring_allocator_{sb,dram_post_lnk,dram_shared}`, `…_after_dma_optimization_sb`). Each name's `_M_invoke` constructs the same `MemoryAnalysis` with a `MemoryAnalysisRequest&` that says *which* prior pass it is profiling — matched by the `addModParallelPass<MemoryAnalysis, char const(&)[N], MemoryAnalysisRequest&>` template instances (lengths 29/32/33/42/44/53 — the differing `[N]` are the differing name-string lengths). Ten names, one vtable.
 
 ### Reconciling ~180 steps
 
@@ -256,13 +258,13 @@ The pipeline quotes roughly **180 steps**, above the 150 names, for two reasons:
 1. **Repeats.** Some names occupy multiple pipeline positions (e.g. `non_ssa_legalization` early *and* late, `coalesce_multichannel_cc_ops` at two points, `perf_sim` twice). The same registered name is scheduled more than once.
 2. **Interposed non-real passes.** The `CheckPassAdder` inserts `!isRealPass` check/dump/sim passes (`Dumper`, `Hasher`, `perf_sim*`, the verifiers, `report_stats`) *between* named steps, padding the step count above the name count.
 
-So the three numbers are: **150** registered names (the registry size), **121** distinct classes (the vtable count), ~**180** pipeline steps (names × positions + interposed checkers). **[CONFIRMED.]**
+So the three numbers are: **150** registered names (the registry size), **121** distinct classes (the vtable count), ~**180** pipeline steps (names × positions + interposed checkers).
 
 ---
 
 ## The full 150-name → class → granularity table
 
-Evidence column (`ev`): `ctor` = direct `backend::Class::Class(PassOptions)` PLT call in the `_M_invoke` body; `mkuq` = `make_unique<Class>`; `vt` = `vtable for backend::Class` installed by the lambda. Granularity: `serial` = added by name (default serial child); a Fork tag is shown **only** where an explicit `add*ParallelPass<Class>` template instance exists, else `serial*` (the call-site may still fork — granularity is per-site, see above). All rows CONFIRMED by factory-body evidence unless noted.
+Evidence column (`ev`): `ctor` = direct `backend::Class::Class(PassOptions)` PLT call in the `_M_invoke` body; `mkuq` = `make_unique<Class>`; `vt` = `vtable for backend::Class` installed by the lambda. Granularity: `serial` = added by name (default serial child); a Fork tag is shown **only** where an explicit `add*ParallelPass<Class>` template instance exists, else `serial*` (the call-site may still fork — granularity is per-site, see above). Every row is grounded in factory-body evidence unless noted.
 
 | register name | C++ pass class | granularity | ev |
 |---|---|---|---|
@@ -416,21 +418,19 @@ Evidence column (`ev`): `ctor` = direct `backend::Class::Class(PassOptions)` PLT
 | `vnc_link` | `VncLink` | serial* | ctor |
 | `vnc_remote_addr_map` | `VncRemoteAddrMap` | serial* | ctor |
 
-**Total: 150 register names · 121 distinct C++ pass classes.** The `serial*` tag means added via `addPass("<name>")` by default; the same class may be fork-wrapped at a different call-site. Fork tags are CONFIRMED only where an explicit `add*ParallelPass<Class>` template instance exists in the symtab.
+**Total: 150 register names · 121 distinct C++ pass classes.** The `serial*` tag means added via `addPass("<name>")` by default; the same class may be fork-wrapped at a different call-site. A fork tag appears only where an explicit `add*ParallelPass<Class>` template instance exists in the symtab.
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-Five strongest claims, re-checked against the binary:
+**Read directly off the binary.** The name count is a one-liner: `nm -DC | rg -o 'register_generator_[a-z0-9_]+' | sort -u | wc -l` gives **150**. The three `run` overloads are all symbols — `run(vector<Module>&)` @ `0x1736d40`, the per-leaf `run(bir::Module&)` (e.g. `Unroll::run(bir::Module&)` @ `0xb42f30`), and `runSubgraph` (e.g. `BirSim::runSubgraph` @ `0x1109440`) — and the dispatch `mov (%r15),%rax ; call *0x10(%rax)` sits at `0x1736d70`. The pass-kind taxonomy rests on `ContainerPass::getKind` @ `0x1737480` plus the three `classof` symbols @ `0x17374d0` / `0x1737490` / `0x17374b0`; `DapPass` carries `BackendPass`-only `run` overloads and no `classof`, which is what places it outside the `ContainerPass` spine. For the registry, all five API symbols are present, the `unroll` factory body at `0xb46400` shows `_Znwm@plt` followed by `Unroll::Unroll(PassOptions const&)@plt`, and the value type `function<unique_ptr<BackendPass>(PassOptions const&)>` appears verbatim in the `_M_rehash` symbol called from `run`.
 
-1. **150 → 121 collapse.** `nm -DC | rg -o 'register_generator_[a-z0-9_]+' | sort -u | wc -l` = **150** on the binary. The 10 multi-registered groups were enumerated directly (`MemoryAnalysis` = 10 names, `ColoringAllocator` = 8 of the 9 `coloring_allocator_*` names — the ninth, `coloring_allocator_with_loop`, is the distinct `ColoringAllocatorWithLoop` class, `AddressRotation` = 4, `DeadCodeElim` = 2). Surplus sums to 29; `121 + 29 = 150`. The 121 itself is the distinct-ctor-target count over the table (not independently grep-able), so **121 is STRONG** (derived by counting distinct classes in the verified table), while **150 is CONFIRMED on the binary**.
-2. **The three `run` overloads.** `run(vector<Module>&)` @ `0x1736d40`, `run(bir::Module&)` per-leaf (e.g. `Unroll::run(bir::Module&)` @ `0xb42f30`), `runSubgraph` (e.g. `BirSim::runSubgraph` @ `0x1109440`) — all three symbols CONFIRMED. The dispatch `mov (%r15),%rax ; call *0x10(%rax)` read verbatim from `0x1736d70`. **CONFIRMED.**
-3. **Pass-kind taxonomy.** `ContainerPass::getKind` @ `0x1737480` plus `CoreForkPass`/`ModuleForkPass`/`SubgraphForkPass::classof` @ `0x17374d0`/`0x1737490`/`0x17374b0`, and `DapPass`'s `BackendPass`-only `run` overloads (no `classof`). All CONFIRMED by symbol. The TBB fork wrapping is **STRONG** (parallel-for present, exact arena binding not byte-verified here).
-4. **`GeneratorRegistration` mechanism.** All five API symbols present; the `unroll` factory body at `0xb46400` shows `_Znwm@plt` then `Unroll::Unroll(PassOptions const&)@plt`, and the hashtable value type `function<unique_ptr<BackendPass>(PassOptions const&)>` appears verbatim in the `_M_rehash` symbol called from `run`. **CONFIRMED.**
-5. **Hierarchy root.** `BackendPass` is the abstract base; `ContainerPass : BackendPass`, the three forks `: ContainerPass`, `DapPass : BackendPass` — confirmed by the `classof(ContainerPass const*)` signatures (forks take a `ContainerPass*`, so they derive from it) and `DapPass`'s lack of one. The full **vtable slot ordering beyond `+0x10` is INFERRED** (RELR-packed pointers read 0 in the static image); only the `+0x10` dispatched-hook slot is CONFIRMED.
+**Reconstructed rather than read.** The **121** distinct-class total is a count of distinct ctor targets over the table above — it is derived, not independently grep-able, unlike the 150. The multi-registration arithmetic that reconciles the two was enumerated group by group: `MemoryAnalysis` under 10 names, `ColoringAllocator` under 8 of the 9 `coloring_allocator_*` names (the ninth, `coloring_allocator_with_loop`, is the distinct `ColoringAllocatorWithLoop` class), `AddressRotation` under 4, `DeadCodeElim` under 2; the surplus sums to 29 and `121 + 29 = 150`. The TBB fork-wrapping shape and the `dry_run` measurement role are likewise reconstructed — the `parallel_for` calls and the `dry_run` symbol are real, the surrounding structure is not byte-exact. The RTTI class-set context (178 backend typeinfos, of which 121 are registry-reachable) comes from the RTTI table.
 
-**Re-verify ceiling.** Class addresses, the 150 name count, the registry API, the fork `classof`/`getKind` symbols, and the `unroll` factory body are all CONFIRMED against the binary verbatim. The **121** distinct-class total is STRONG (counted over the verified table, not independently grep-confirmed). The full **vtable slot layout** beyond the dispatched `+0x10` hook is INFERRED. The **TBB fork-wrapping** and the **`dry_run` measurement role** are STRONG, not byte-exact. The RTTI typeinfo class-set context (178 backend typeinfos, of which 121 are registry-reachable) is reported STRONG, sourced from the rtti table rather than re-grepped here.
+### Limits of this reading
+
+The vtable slot ordering beyond `+0x10` is **INFERRED**. RELR-packed pointers read as zero in the static image, so only the dispatched-hook slot at `+0x10` — the one `BackendPass::run`'s disassembly exercises directly — is actually pinned.
 
 ---
 
