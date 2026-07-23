@@ -26,11 +26,12 @@ shipped bytes:
 >    MaxPool/AvgPool; GPSIMD (the programmable `NX_POOL` Q7 cluster the rest of this
 >    book documents) is a **SUNDA-onward (v2+) feature**.
 
-Every value, count, and presence cell below was read this pass from the shipped
+Every value, count, and presence cell below was read from the shipped
 header enums (bracket-bounded), cross-checked against the per-gen
 `instruction_mapping.json`, and grounded with direct `rg`/bracket counts — never a
 decompile. Confidence/evidence tags follow [The Confidence & Walls
 Model](../reference/confidence-model.md): **HIGH/MED/LOW** × **OBSERVED/INFERRED/CARRIED**.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 
 This page owns the **evolution narrative + TONGA**. For the image-grounded,
 per-generation KIT→kernel/engine/struct Rosetta, see the sibling [Cross-Gen
@@ -48,7 +49,7 @@ algebra see [The Codename → Generation Map](./codename-generation-map.md).
 
 There are **four** `NEURON_ISA_TPB_OPCODE` enum trees (the authoritative opcode
 source), one TONGA V1 ISA package (a *different* opcode form), and zero
-`mariana_plus` opcode tree. `[HIGH/OBSERVED]`
+`mariana_plus` opcode tree.
 
 | Tree | NC version | `NEURON_ISA_TPB_OPCODE` body | enumerator count | enum-body lines |
 |---|---|---|---|---|
@@ -64,19 +65,18 @@ All four counts are **independently bracket-bounded** (the count of
 and `} NEURON_ISA_PACKED NEURON_ISA_TPB_OPCODE;`), and each count includes the
 `INVALID = 0xff` sentinel. The path stem is
 `…/custom_op/c10/include/neuron_<gen>_arch_isa/tpb/aws_neuron_isa_tpb_common.h`.
-`[HIGH/OBSERVED]`
 
 > **NOTE — MARIANA_PLUS has no opcode tree.** There is no
 > `neuron_mariana_plus_arch_isa/` directory anywhere in the package. A *register*
 > tree `arch-headers/mariana_plus/` does exist, but it carries CSR/register-block
 > headers (`aws_mariana_isa_common.h`, `a2i`, `cce`, `address_map`, …) with **no
 > `aws_neuron_isa_tpb_common.h` and no `NEURON_ISA_TPB_OPCODE`**. MARIANA_PLUS
-> executes the MARIANA 159-opcode table verbatim — see [§7](#7-is-mariana_plus-a-distinct-isa-no). `[HIGH/OBSERVED]`
+> executes the MARIANA 159-opcode table verbatim — see [§7](#7-is-mariana_plus-a-distinct-isa-no).
 
 ### 1.1 The version axis is cumulative, and it is born at v2
 
 `NEURON_ISA_TPB_NEURON_CORE_VERSION` grows with the tree, and **no tree has a
-`V4_PLUS` / `V4P` enumerator**: `[HIGH/OBSERVED]`
+`V4_PLUS` / `V4P` enumerator**:
 
 | Tree | `NEURON_CORE_VERSION` enumerators |
 |---|---|
@@ -98,7 +98,7 @@ This single line is the structural keystone of the whole page: **the version axi
 starts at v2**, it has **no V1 point** (V1 is externalized by name to a separate
 package — that is TONGA, [§5](#5-tonga-v1-the-pre-unified-outlier)), and it has **no
 v4+ point** (MARIANA_PLUS is distinguished by a runtime *string* selector, not an
-ISA-version number — [§7](#7-is-mariana_plus-a-distinct-isa-no)). `[HIGH/OBSERVED]`
+ISA-version number — [§7](#7-is-mariana_plus-a-distinct-isa-no)).
 
 ---
 
@@ -110,7 +110,7 @@ show the hex value where present, `·` where absent. TONGA (V1) is **not** a per
 column — its bytes *are* mappable onto this namespace (the V1 datapath bytes equal
 the v2 bytes, [§6](#6-the-v1v2-transition)), but V1 uses a different *encoding* and
 a different *opcode set*, so it is treated structurally in [§5](#5-tonga-v1-the-pre-unified-outlier),
-not as a fifth column here. `[HIGH/OBSERVED]`
+not as a fifth column here.
 
 > **TONGA (V1):** engine-scoped `TONGA_ISA_TPB_OPCODE` (44 entries), `byte = local
 > \| (ENGINE<<5)`, in the separate `TongaArchIsa` package. Its compute-datapath
@@ -119,7 +119,7 @@ not as a fifth column here. `[HIGH/OBSERVED]`
 
 The presence matrix below is the **union across v2..v5 = 172 distinct opcode names**
 (including the `0xff` sentinel). `add`/`change`/`remove` are marked inline where they
-occur at a generation boundary. `[HIGH/OBSERVED]`
+occur at a generation boundary.
 
 | VAL | OPCODE | V2 | V3 | V4/4+ | V5 | step note |
 |---|---|---|---|---|---|---|
@@ -298,9 +298,9 @@ occur at a generation boundary. `[HIGH/OBSERVED]`
 
 **Matrix dimensions: 172 opcode rows × 4 generation columns (V2/V3/V4-4+/V5).**
 Per-column live totals (enum-body entries, sentinel included): **V2 = 145, V3 = 150,
-V4 ≡ V4+ = 159, V5 = 165.** `[HIGH/OBSERVED]`
+V4 ≡ V4+ = 159, V5 = 165.**
 
-> **CORRECTION (to DX-GEN-04 §2.1 / §5.3).** DX-GEN-04 states JPEG_DECODE (`0x81`,
+> **CORRECTION (to GEN-04 §2.1 / §5.3).** GEN-04 states JPEG_DECODE (`0x81`,
 > +v3) *"reuses a byte freed by a sunda removal"* and calls `0x81` *"the only reused
 > freed byte."* **That is wrong.** In the SUNDA opcode enum the sequence steps
 > directly from `DROPOUT = 0x7f` (`sunda common.h:215`) to
@@ -309,7 +309,7 @@ V4 ≡ V4+ = 159, V5 = 165.** `[HIGH/OBSERVED]`
 > CAYMAN's `JPEG_DECODE = 0x81` (`cayman common.h:219`) fills a **pre-existing free
 > byte**, not a freed-and-reused one. The corrected invariant is **stronger**: v2→v3
 > performs **zero byte-reuse** — all 12 CAYMAN additions claim genuinely-free bytes,
-> and all 7 retired SUNDA bytes are permanently abandoned. `[HIGH/OBSERVED]`
+> and all 7 retired SUNDA bytes are permanently abandoned.
 
 ---
 
@@ -317,7 +317,6 @@ V4 ≡ V4+ = 159, V5 = 165.** `[HIGH/OBSERVED]`
 
 The lineage net-growth is `145 −(7) +(12) → 150 +(9) → 159 +(6) → 165`. Exactly one
 step has removals (the v2→v3 re-baseline); v3→v4 and v4→v5 are strictly additive.
-`[HIGH/OBSERVED]`
 
 ### 3.1 SUNDA (v2) → CAYMAN (v3): 145 → 150 (+12 / −7)
 
@@ -329,7 +328,7 @@ SUNDA-era ops are retired and twelve image/sparse/collective/codec ops land.
 `PSEUDO_JPEG_DECODE 0xd7` (codec); `RANGE_SELECT 0xbc`, `DMA_TRANSPOSE 0xbd`,
 `GET_SEQUENCE_BOUNDS 0xbe`, `SB2SB_COLLECTIVE 0xbf` (DMA/collective cluster);
 `CONV_LUT_LOAD 0xe4`, `DVE_READ_INDICES 0xe9`, `DMA_GATHER_TRANSPOSE 0xf1`,
-`NONZERO_WITH_COUNT 0xf2` (high cluster). `[HIGH/OBSERVED]`
+`NONZERO_WITH_COUNT 0xf2` (high cluster).
 
 **REMOVED at CAYMAN (7)** — the only deletions in v2..v5, all **abandoned** (never
 reused v3..v5):
@@ -349,14 +348,14 @@ The freed band is `{0x87,0x88,0x8a,0x8b,0x8c,0x8d,0x8f}`; the **sandwiched
 band). The dual-pointer multi ops were already deprecated in SUNDA (`// n`); the
 BF16-fused arithmetic ops were live in v2 (`// Y`) and superseded at the v3
 re-baseline by the generic `TensorTensor`/`TensorScalar`/`TensorReduce` arith ops
-carrying a dtype field. Anchors: `sunda common.h:221–228`. `[HIGH/OBSERVED]`
+carrying a dtype field. Anchors: `sunda common.h:221–228`.
 
 > **GOTCHA — forensic value of the abandoned band.** Because the seven freed bytes
 > are **never reused** in v3/v4/v5, a stray `0x87/0x88/0x8a/0x8b/0x8c/0x8d/0x8f` in a
 > v3+ instruction stream is a **decode error or a v2 artifact**, never a live v3+
 > instruction. Likewise `0x80`/`0x81` (with `0x81` taken by JPEG_DECODE only from v3)
 > are SUNDA holes. A decoder validating against the wrong generation will mis-flag
-> these. `[HIGH/OBSERVED]`
+> these.
 
 **Second-source cross-check.** The per-gen `instruction_mapping.json` `struct2opcode`
 (the wire-encodable subset) goes **sunda 89 → cayman 99 (+10)**: of the 12 added, 10
@@ -377,14 +376,14 @@ cluster); `TEST_EVENT_SEM 0xb4` (between `POLL_SEM 0xb3` and `BRANCH_PREFETCH_HI
 `QUANTIZE_MX 0xe3` (the MX/sparse cluster, just below `CONV_LUT_LOAD 0xe4`). None of
 the seven v2→v3-freed bytes are touched. `struct2opcode: cayman 99 → mariana 108
 (+9)` — the cleanest cross-source confirmation in the lineage (all nine are
-encodable, none pseudo). `[HIGH/OBSERVED]`
+encodable, none pseudo).
 
 > **NOTE — `QUANTIZE_MX 0xe3` binds DVE, not POOL.** `QUANTIZE_MX` is the MX-quantize
 > handler that runs on the **DVE** engine; it is **absent from the POOL kernel-info
 > tables** (the named POOL QuantizeMx handler count drops 60→59 when it is moved out).
 > The POOL MX surface is `TENSOR_DEQUANTIZE 0x7b`, not `0xe3`. See the [Cross-Gen
 > Kernel-Info Matrix](../images/cross-gen-kernel-info-matrix.md) for the per-engine
-> KIT binding. `[HIGH/OBSERVED]`
+> KIT binding.
 
 ### 3.3 MARIANA (v4) → MAVERICK (v5): 159 → 165 (+6 / −0)
 
@@ -416,7 +415,7 @@ existing `0xb5`/`0xb8`/`0xbb`); `TENSOR_TENSOR_INT_WIDE 0xf3`, `TENSOR_SCALAR_IN
 > `cayman↔mariana`, `mariana↔maverick`, **and the full `sunda↔maverick` span** (138
 > common opcodes, **zero** mismatches). The opcode byte is a **write-once global
 > namespace**: new generations only append, removals only abandon, nothing is ever
-> renumbered. `[HIGH/OBSERVED]`
+> renumbered.
 
 A representative cross-range sample, value-identical across **all** of V2/V3/V4/V5
 (verified directly from the four enum bodies):
@@ -440,20 +439,20 @@ generation steps**. This is the gen-invariance evidence that lets a reimplemente
 hard-code one opcode→handler table and parameterize only the *presence set* per
 generation (see [The Gen-Invariance Thesis](../orientation/gen-invariance.md)). And
 the invariant's **first link is V1→V2** — the entire V1 compute-datapath byte
-namespace is inherited verbatim by SUNDA ([§6.1](#61-carried-forward-byte-identical-the-compute-datapath)). `[HIGH/OBSERVED]`
+namespace is inherited verbatim by SUNDA ([§6.1](#61-carried-forward-byte-identical-the-compute-datapath)).
 
 The **union** across v2..v5 is **172 distinct opcode names**; the **live** set is
 **165** (the MAVERICK superset). `172 − 7 (the SUNDA-only retired ops) = 165`. Every
 live op is present in MAVERICK, which is a strict superset of `{CAYMAN ∪ MARIANA}`.
 On the opcode axis the chain is `SUNDA′ ⊊ CAYMAN ⊊ {MARIANA ≡ MARIANA_PLUS} ⊊
-MAVERICK` (where `SUNDA′` = SUNDA minus the 7 retired). `[HIGH/OBSERVED]`
+MAVERICK` (where `SUNDA′` = SUNDA minus the 7 retired).
 
 > **NOTE — opcode axis ≠ register/CSR axis.** On the **register/CSR** axis the
 > inclusion is `SUNDA ⊂ {CAYMAN ≡ MARIANA ≡ MARIANA_PLUS} ⊂ MAVERICK` (CAYMAN and
 > MARIANA share a CSR schema). On the **opcode** axis CAYMAN ⊊ MARIANA strictly
 > (MARIANA *adds* 9 opcodes). The `≡` between MARIANA and MARIANA_PLUS holds on
 > **both** axes; the `≡` between CAYMAN and MARIANA holds **only** on the CSR axis.
-> The two are not contradictory — they describe different axes. `[HIGH/OBSERVED]`
+> The two are not contradictory — they describe different axes.
 
 ---
 
@@ -465,9 +464,9 @@ no NCFW firmware image, no EXTISA blob, and **zero** runtime strings; it lives o
 in legacy ISA/register headers, and the SPIS Product-ID register places it one
 generation *before* SUNDA (Tonga `0x01` < Sunda `0x02` < Cayman `0x03`). See [The
 Codename → Generation Map](./codename-generation-map.md) for its identity placement.
-This section recovers what V1's ISA actually *is*. `[HIGH/OBSERVED]`
+This section recovers what V1's ISA actually *is*.
 
-> **CORRECTION (to DX-GEN-04 §1.2 / §7).** DX-GEN-04 reports TONGA as *"register-block
+> **CORRECTION (to GEN-04 §1.2 / §7).** GEN-04 reports TONGA as *"register-block
 > RTL only, no opcode enum,"* and marks the matrix TONGA column `n/a`. That reading is
 > correct **only for the RTL register tree** `arch-headers/tonga/` (cmake
 > `TongaArchHeaders`, 215 files). It is **incomplete**: there is a *second* TONGA tree
@@ -476,12 +475,12 @@ This section recovers what V1's ISA actually *is*. `[HIGH/OBSERVED]`
 > instruction-struct family and a separate SP sequencer ISA. V1 has a structured
 > opcode/struct ISA; it simply uses an **engine-scoped** encoding rather than the
 > unified flat namespace. The `n/a` is right for the *flat* axis but V1's bytes **are**
-> mappable onto it ([§6.1](#61-carried-forward-byte-identical-the-compute-datapath)). `[HIGH/OBSERVED]`
+> mappable onto it ([§6.1](#61-carried-forward-byte-identical-the-compute-datapath)).
 
 ### 5.1 The V1 NeuronCore geometry
 
 `TONGA_ISA_TPB_ARCH_CONSTS` (`arch-isa/tpb/aws_tonga_isa_tpb_common.h:13–37`) — the
-classical fixed-function TPB: `[HIGH/OBSERVED]`
+classical fixed-function TPB:
 
 | Const | Value | Meaning |
 |---|---|---|
@@ -497,7 +496,7 @@ classical fixed-function TPB: `[HIGH/OBSERVED]`
 
 This is a PE-array + ACT + POOL over SB/PSUM. **There is no 8-core Q7-POOL DSP
 cluster, no IRAM/DRAM Q7 apertures, no Vision-Q7 microarch** — those are the v2+
-GPSIMD additions ([§7](#7-the-gpsimd-genesis-answer)). `[HIGH/OBSERVED]`
+GPSIMD additions ([§7](#7-the-gpsimd-genesis-answer)).
 
 ### 5.2 The opcode construction rule: engine ‖ local
 
@@ -529,14 +528,14 @@ structure*. The unified v2+ `NEURON_ISA_TPB_OPCODE` **inherits the byte values b
 drops the field semantics** — the engine becomes an out-of-band dispatch property,
 not a bitfield, and the byte is frozen as a flat write-once key. **This is the
 genesis of the "stable global opcode byte" that [§4](#4-the-value-stability-proof)
-proves invariant v2..v5.** `[HIGH/OBSERVED]`
+proves invariant v2..v5.**
 
 A further structured field survives inside the encoding: within the POOL engine the
 **`0x10` local bit** is the arith/bitvec discriminator. E.g.
 `TENSOR_TENSOR_ARITH_OP` is `local 0x01 → byte 0x41`, while
 `TENSOR_TENSOR_BITVEC_OP` is `local 0x11 → byte 0x51`
 (`aws_tonga_isa_tpb_common.h:75–76`). The unified enum preserves both bytes (0x41,
-0x51) but no longer documents the bit as a field. `[HIGH/OBSERVED]`
+0x51) but no longer documents the bit as a field.
 
 ### 5.3 The 44-entry V1 roster (byte = local ‖ engine<<5)
 
@@ -551,7 +550,7 @@ A further structured field survives inside the encoding: within the POOL engine 
 | — | 0xff | INVALID |
 
 (RT ops are runtime-patched placeholders, "never executed by H/W"; SIM ops are
-simulator-only.) `[HIGH/OBSERVED]`
+simulator-only.)
 
 ### 5.4 The 64-byte `TONGA_ISA_TPB` instruction-struct family
 
@@ -561,7 +560,7 @@ per instruction). The umbrella `aws_tonga_isa_tpb.h` pulls in **39** struct head
 **25 compute/ALL** (always), **8 RT-pseudo**, **5 SIM-only** (under `#ifdef
 SIM_ONLY`). Every compute struct `STATIC_ASSERT`s to `INST_NBYTES = 64`, and each
 ships a `tonga_isa_tpb_<op>_check_validity()` — this is a **wire-format-exact host
-encoder/validator library**, not an internal model. `[HIGH/OBSERVED]`
+encoder/validator library**, not an internal model.
 
 **The shared 8-byte prefix** (every TPB instruction):
 
@@ -575,7 +574,7 @@ TONGA_ISA_TPB_INST_EVENTS (4B, common.h:229–235):
 The embedded per-instruction wait-on-event / set-on-done synchronization is part of
 **every** compute instruction — V1's dataflow sync model. The memory-access patterns
 `MEM_ACCESS_1D/2D/3D/4D` are `8/12/16/20` bytes (`{ tpb_addr start_addr; int16
-step_elem[N]; uint16 num_elem[N]; }`, i.e. `4 + 4N`; `common.h:246–269`). `[HIGH/OBSERVED]`
+step_elem[N]; uint16 num_elem[N]; }`, i.e. `4 + 4N`; `common.h:246–269`).
 
 **Exemplar — `TONGA_ISA_TPB_COPY_INST` (64 B, opcode `0x46`, POOL engine)**
 (`aws_tonga_isa_tpb_copy.h:14–49`):
@@ -602,7 +601,7 @@ src/dst MEM_ACCESS_3D(16+16) + num_active_rows(1) + num_active_cols(1) +
 reserved[14] == 64`. Math (doc `:10`): `Psum_out = (Xq−Xqz)·(Wq−Wqz) + Psum_in` over
 the 128×64 array — native asymmetric UINT8/UINT16 quantization with zero-points; UINT8
 `DOUBLE_ROW/COLUMN/PIXEL` 2×/cycle perf modes. **Note MatMul uses MEM_ACCESS_3D (16 B)
-while COPY/POOL use MEM_ACCESS_4D (20 B).** `[HIGH/OBSERVED]`
+while COPY/POOL use MEM_ACCESS_4D (20 B).**
 
 ### 5.5 The SP sequencer ISA (separate, 8-byte, opcode:7 + phase:1)
 
@@ -610,7 +609,7 @@ The Sequencer (SP) is a **separate** instruction set with its own encoding (8-by
 instructions: `SP_INST_NBYTES = 8`, `_NWORDS = 2`). The instruction header is a
 bitfield `{ opcode:7; p:1 }` (`aws_tonga_isa_sp_common.h:45–48`), masked
 `OPCODE_MASK = 0x7F` / `P_MASK = 0x80` (`aws_tonga_isa_sp_instruction_fields.h`). The
-**16** SP opcodes (`aws_tonga_isa_sp_instruction_opcodes.h:9–24`): `[HIGH/OBSERVED]`
+**16** SP opcodes (`aws_tonga_isa_sp_instruction_opcodes.h:9–24`):
 
 | op | val | op | val | op | val | op | val |
 |---|---|---|---|---|---|---|---|
@@ -621,7 +620,7 @@ bitfield `{ opcode:7; p:1 }` (`aws_tonga_isa_sp_common.h:45–48`), masked
 
 The SP is V1's control-flow / event / counter / branch engine — the on-chip program
 sequencer that drives the TPB engines, with full 64-bit wire-field diagrams in
-`sp_isa.txt`. `[HIGH/OBSERVED]`
+`sp_isa.txt`.
 
 ### 5.6 The V1 dtype family
 
@@ -629,7 +628,7 @@ sequencer that drives the TPB engines, with full 64-bit wire-field diagrams in
 family** (`TONGA_ISA_TPB_DTYPE_*` vs the unified `NEURON_ISA_TPB_DTYPE_*`) that marks
 V1 as the older arch — but the byte-width-encoded *values* carry forward into the v2+
 dtype family: `INVALID 0x0, UINT8 0x3, UINT16 0x5, BFLOAT16 0x6, FP16 0x7, INT32 0x8,
-FP32 0xA, INT64 0xC`. `[HIGH/OBSERVED]`
+FP32 0xA, INT64 0xC`.
 
 ---
 
@@ -638,11 +637,10 @@ FP32 0xA, INT64 0xC`. `[HIGH/OBSERVED]`
 Computed by joining V1's `TONGA_ISA_TPB_OPCODE` bytes (`engine<<5 | local`) against
 the unified SUNDA `NEURON_ISA_TPB_OPCODE`. Of V1's 44 entries, 30 share a *name* with
 SUNDA; of those, **26 are byte-identical** and **4 are re-homed**; **14 are V1-only**.
-`[HIGH/OBSERVED]`
 
 ### 6.1 Carried forward byte-identical — the compute datapath
 
-The **entire V1 compute-datapath byte namespace** is inherited verbatim by V2: `[HIGH/OBSERVED]`
+The **entire V1 compute-datapath byte namespace** is inherited verbatim by V2:
 
 - **PE:** LDWEIGHTS `0x01`, MATMUL `0x02`.
 - **ACT:** ACTIVATE `0x21`, ACTIVATE_QUANTIZE `0x22`.
@@ -655,13 +653,12 @@ The **entire V1 compute-datapath byte namespace** is inherited verbatim by V2: `
 
 **This is the birth of the write-once opcode byte** that [§4](#4-the-value-stability-proof)
 proves invariant v2..v5 — the invariant's first link is established at V1→V2.
-`[HIGH/OBSERVED]`
 
 ### 6.2 Re-homed — the control/sync block moves out of `ENGINE_ALL`
 
 V1 put cross-engine control ops in the `ENGINE_ALL` (`3<<5 = 0x60`) band; V2 rebuilt
 control/sync into the `0xa0–0xab` cluster and replaced the engine-scoped event ops
-with the unified `EVENT_SEMAPHORE` family: `[HIGH/OBSERVED]`
+with the unified `EVENT_SEMAPHORE` family:
 
 | V1 op | V1 byte | V2 op | V2 byte |
 |---|---|---|---|
@@ -674,7 +671,7 @@ with the unified `EVENT_SEMAPHORE` family: `[HIGH/OBSERVED]`
 The 4 re-homed shared ops are `{NOP, WRITE, NOTIFY, PSEUDO_READ_VAR_ADDR}`; the
 engine-scoped EVENT/SEM ops are *replaced* (not moved) by the unified
 `EVENT_SEMAPHORE` model. **The compute surface V2 kept; the control surface it
-redesigned.** `[HIGH/OBSERVED]`
+redesigned.**
 
 ### 6.3 Dropped at V2 — V1-specific bands
 
@@ -684,7 +681,7 @@ RT-pseudo `PSEUDO_DMA_{TRIGGER 0xc1, REARM 0xc2, BARRIER 0xc3, MEMCPY 0xc4}` +
 `PSEUDO_DMATRIGGER/DMAREARM/DMABARRIER/DMAMEMCPY_FULL_IND` — **same bytes, renamed and
 reorganized** into the unified `0xc1–0xdf` PSEUDO band); and the **entire `SIM_*`
 band** (`SIM_DMA_COPY 0xeb … SIM_MEMCPY 0xef`, `ENGINE_SIM 7<<5`) — simulator-only ops
-that V2 does not carry into the runtime enum. `[HIGH/OBSERVED]`
+that V2 does not carry into the runtime enum.
 
 ### 6.4 What the transition means
 
@@ -704,7 +701,7 @@ engine replacement.]`
 > **Is there a Vision-Q7 GPSIMD POOL engine in V1? NO.** GPSIMD — the programmable
 > Cadence Tensilica Vision-Q7 `NX_POOL` cluster running the Vision-Q7 device ISA, with
 > custom-op image download, DVE, and IRAM/DRAM apertures — is a **SUNDA-onward (v2+)
-> feature.** V1 predates it. `[HIGH/OBSERVED]`
+> feature.** V1 predates it.
 
 Three independent shipped-artifact lines of evidence:
 
@@ -718,13 +715,13 @@ Three independent shipped-artifact lines of evidence:
    no Q7 core** — a fixed `pool_func` selector, not a kernel. The 64-byte
    `POOL_INST` layout: `inst_header(4)+inst_events(4)+pool_func(1)+in_dtype(1)+
    out_dtype(1)+pool_dim(1)+pool_scale(4)+src/dst MEM_ACCESS_4D(20+20)+
-   num_active_channels(1)+reserved[7] == 64` (`pool.h:61–137`). `[HIGH/OBSERVED]`
+   num_active_channels(1)+reserved[7] == 64` (`pool.h:61–137`).
 
 2. **Zero GPSIMD / Vision-Q7 / DVE / custom-op footprint in the V1 ISA.** A
    case-insensitive scan of the **entire** TONGA `arch-isa/` tree for
    `gpsimd|dve|q7|ncore2gp|vision.?q7|custom.?op` returns **0** matches across every
    term. The V1 ISA has no concept of a programmable DSP cluster, no DVE, no custom-op
-   descriptor, no Q7 apertures. `[HIGH/OBSERVED]`
+   descriptor, no Q7 apertures.
 
 3. **Every runtime core is an `NX_POOL` core — and there is no TONGA core.** The
    shipped runtime container exposes exactly
@@ -733,7 +730,7 @@ Three independent shipped-artifact lines of evidence:
    suffix (NX = the Vision-Q7 GPSIMD POOL engine). There is **no TONGA core, no
    `tonga_libs`, and zero `"tonga"` strings** in the runtime lib. The TONGA ISA package
    is **compile-time-only** (a host-side encoder/validator + cmake export), with zero
-   runtime identity. `[HIGH/OBSERVED]`
+   runtime identity.
 
 **The genesis, stated.** The `POOL` *name* and the producer-side *opcode byte* `0x45`
 are conserved across the V1→V2 boundary, but the *thing behind them* is swapped: V1
@@ -751,9 +748,9 @@ three evidence lines; MED/INFERRED on the silicon-swap-behind-conserved-opcode f
 > **MARIANA_PLUS (v4+, `arch_id 28` / `coretype 29`) is NOT a distinct ISA. It is a
 > recompile + flag-refresh of MARIANA (v4, `arch_id 20` / `coretype 21`).** It
 > executes the MARIANA 159-opcode table **verbatim** — same key-set, same values, same
-> KIT keys. `[HIGH/OBSERVED]`
+> KIT keys.
 
-The resolution rests on three independent shipped-artifact lines: `[HIGH/OBSERVED]`
+The resolution rests on three independent shipped-artifact lines:
 
 1. **No distinct ISA opcode table.** There is no `neuron_mariana_plus_arch_isa/`
    directory; the register tree `arch-headers/mariana_plus/` contains **no
@@ -783,15 +780,15 @@ product-revision label is MED/INFERRED]`
 
 ## 9. Corrections to the backing reports
 
-Two in-place corrections were established from the bytes this pass. `[HIGH/OBSERVED]`
+Two in-place corrections were established from the bytes.
 
-- **`0x81` is a pre-existing hole, not a reused freed byte.** DX-GEN-04 §2.1/§5.3 call
+- **`0x81` is a pre-existing hole, not a reused freed byte.** GEN-04 §2.1/§5.3 call
   `JPEG_DECODE 0x81` *"the only reused freed byte."* The SUNDA opcode enum jumps
   `DROPOUT 0x7f → TRANSPOSE_BATCH_NORM_STATS2 0x82` (`sunda common.h:215–216`); `0x80`
   and `0x81` are **never occupied in any generation** before CAYMAN fills `0x81` (and
   `0x80` stays a hole in all four). So v2→v3 performs **zero byte-reuse**. (Recorded in
   the matrix and [§3.1](#31-sunda-v2--cayman-v3-145--150-12--7).)
-- **TONGA V1 has a real opcode enum.** DX-GEN-04 §1.2/§7 mark TONGA as *"register-block
+- **TONGA V1 has a real opcode enum.** GEN-04 §1.2/§7 mark TONGA as *"register-block
   only, no opcode enum."* That holds for `arch-headers/tonga/` (the RTL tree) but
   **not** for `arch-isa/aws_tonga_isa_*` (cmake `TongaArchIsa`), which ships a real
   engine-scoped `TONGA_ISA_TPB_OPCODE` (44 entries) + 64-byte struct family + SP ISA.

@@ -14,6 +14,7 @@ are*. It is a trace, not a reference: every claim here is stated once and proved
 > [the Confidence & Walls Model](../reference/confidence-model.md): confidence is
 > `HIGH`/`MED`/`LOW`, provenance is `OBSERVED` (read from a binary/header/disasm),
 > `INFERRED` (derived), or `CARRIED` (from a sibling corpus, re-grounded where possible).
+> The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag.
 > Where this page says **the binary wins**, it means a symbol name or address was read
 > straight out of a shipped file with `nm`/`objdump`/`strings`. The five strongest
 > stage-claims in this trace were re-verified that way (see *Self-Verification* at the end).
@@ -76,8 +77,8 @@ The arg-type map is fixed: `Tensor → customop_next_tensor`, `Scalar/number →
 customop_next_scalar`, `int/float/long long →` the matching `customop_next_*`. The codegen
 also emits, once per library, a `get_func_cnt()=N` / `get_func_name(idx)` /
 `get_func_ptr(idx)` table (the last returning `<fn>_stack_switch`); these are the undefined
-references the runtime's `register_funcs` later walks to publish each op. `[HIGH/OBSERVED]`
-— the `customop_setup(true)`, `customop_return_tensor(output)`, `asm("j switchBack")`, and
+references the runtime's `register_funcs` later walks to publish each op — the
+`customop_setup(true)`, `customop_return_tensor(output)`, `asm("j switchBack")`, and
 `int <fn>_stack_switch()` lines are emitted verbatim by `script/build_custom_op.py`
 (`_create_wrapper`, lines ~152–251).
 
@@ -110,7 +111,6 @@ relaxes far calls so code can sit anywhere in the 1 GB SRAM window. The provenan
 baked into each object's `.comment` section is the strongest single anchor in the corpus:
 `XtensaTools-14.09 clang version 10.0.1`. The assembler/linker/strip underneath are GNU
 binutils `2.34.20200201`, driven through the `xt-clang++`/`xt-pkg-loadlib` shells.
-`[HIGH/OBSERVED]`
 
 > **NOTE — two version axes, one core.** The hardware this targets is `NX1.1.4`
 > (= LX7.1.4 = HW RI-2020.4); the *tools* that build for it are the later `14.09 =
@@ -147,7 +147,6 @@ private 2 MiB sub-window. "FLL" = *Fixed Location Library* — a packaged librar
 absolute address, which is why the LSP origins are non-PIC absolutes. The LSP places **no**
 stack and **no** heap; those are runtime objects (Stage 9). So the core identity is encoded
 **twice**: at link time (the SRAM window) and at run time (the PRID, Stage 9).
-`[HIGH/OBSERVED]`
 
 **Artifact:** `vector_add_cpu0.so … vector_add_cpu7.so` (or a single `.so`) — each a
 position-independent `ET_DYN` Xtensa image carrying a `.kernel_info_table` section.
@@ -169,7 +168,7 @@ library as a `libdata` section inside an empty relocatable object, with the expo
 `lib_func` placed at the *start* of the embedded blob (`STRIP_OPT` carries `-e lib_func`),
 emitting `<base>.packed.so`. `lib_func` is the symbol that marks the packaged-library blob
 base — it is **not** a code entry point (the device run entries are `_start`/`entry_func`,
-Stage 9). `[HIGH/OBSERVED]`
+Stage 9).
 
 > **CORRECTION — where the per-generation EXTISA images actually live.** Distinct from the
 > customer-built op, the runtime ships *pre-built per-generation* EXTISA device libraries (the
@@ -203,7 +202,7 @@ host runtime consumes.
 > and the TIE compiler (`tcgen`) — not in the `clang-10` path. The per-kernel **compile + link
 > is ungated**; only the ISS oracle and TIE/config-gen flow require a live `xtensad` checkout.
 > `build_custom_op.py` forces `LM_LICENSE_FILE`, when unset, to the node-locked
-> `amzn_vq7_us_582883.out` shipped in the tools `.deb`. `[HIGH/OBSERVED]`. Full mechanism:
+> `amzn_vq7_us_582883.out` shipped in the tools `.deb`. Full mechanism:
 > [FlexLM Licensing Gate](../abi/flexlm-licensing.md).
 
 ---
@@ -220,16 +219,16 @@ library, out_ll)`:
 1. **Resolve the library selector.** A single
    `getenv("NRT_UCODE_UNSTABLE_LIBRARY_FLAG_CPTC_DECODE")` decides: a caller-supplied
    `library` wins; otherwise the env forces selector 3 (the CPTC superset) or defaults to
-   selector 0 (the base POOL EXTISA). `[HIGH/OBSERVED]`
+   selector 0 (the base POOL EXTISA).
 2. **Fetch the EXTISA image.**
    `nrtucode_get_ext_isa_internal(coretype, arg3, &pi_lib, selector)` returns the packaged
    Xtensa-ELF blob for `{coretype, arg3, selector}` (these are the Stage-4 EXTISA blobs,
-   resolved through the per-gen `{SO_get, JSON_get}` table). `[HIGH/OBSERVED]`
+   resolved through the per-gen `{SO_get, JSON_get}` table).
 3. **Per-coretype switch.** A jump table accepts the shipped set `{6, 13, 21, 29}` =
    {SUNDA, CAYMAN, MARIANA, MARIANA_PLUS}; coretype 6 is a degenerate host-only family needing
    no device prelink, `{13,21,29}` take the prelink path, anything else returns error 8. (The
    internal twin additionally accepts 37 = MAVERICK; the shipped jump table does not — this is
-   the single genuine divergence between the two binaries.) `[HIGH/OBSERVED]`
+   the single genuine divergence between the two binaries.)
 
 **Artifact:** a partly-built `nrtucode_ll_t` (0x48-byte host struct) holding the selector and,
 after Stage 6, the staged device handle.
@@ -264,12 +263,12 @@ device-resident prelink routine. Given the EXTISA blob and the per-generation
    `start_sym`. A neat trick: the magic's byte `[0x04]` = `0x20` (the space in `"UCPL "`)
    doubles as the literal code-segment device offset, so no separate `code_seg_off` field
    exists. The header carries **no** version, checksum, section count, or reloc/symbol table —
-   the image is already relocated. `[HIGH/OBSERVED]`
+   the image is already relocated.
 
 `nrtucode_ll_create` then `device_malloc`s a 16 MiB buffer (the actual library is capped at
 64 KiB — `cmpq $0x10001`, "Prelinked library would be larger than the available buffer on
 device") and issues **three** ordered `write_memhandle` calls — `[UCPL header][code][data]` —
-through the embedder-supplied 5-slot memhandle vtable. `[HIGH/OBSERVED]`
+through the embedder-supplied 5-slot memhandle vtable.
 
 **Artifact:** a staged, fully-relocated `[UCPL header | code | data]` image resident in device
 memory, plus `prelinked_size` recorded in the `ll`.
@@ -295,7 +294,7 @@ address, the library selector, the image size, and a load/unload direction:
 
 The normal path emits **one** record (target core == the `ll`'s context); a cross-context
 fallback emits **eight** identical copies — most plausibly one per Q7 POOL core — plus a
-warning. This is the sole producer of the `0x1095` record. `[HIGH/OBSERVED]` — the
+warning. This is the sole producer of the `0x1095` record — the
 constant is written as `movw $0x1095,(%rsi)` at five consecutive 0x40-byte offsets (the
 8-record fallback). Note the two distinct magics: `0x1095` is the host→device load-*record*
 container; `"UCPL "` is the prelinked device-*image* the record points at.
@@ -304,7 +303,7 @@ Second, which library? The host resolver `nrtucode_ll_get_libraries_from_opcodes
 opcodes[], …, libs, num_libs)` is **opcode-content-blind**: for a Q7_POOL coretype it emits a
 single scalar library index — SUNDA(6) → 0; CAYMAN/MARIANA/MARIANA_PLUS(13/21/29) → (CPTC env
 ? 3 : 0). The actual per-opcode→handler map is **not** computed here; it lives device-side in
-the staged lib's `.kernel_info_table`. `[HIGH/OBSERVED]`
+the staged lib's `.kernel_info_table`.
 
 **Artifact:** a stream of `0x1095` load records (and a resolved library index) handed to the
 device transport.
@@ -333,12 +332,11 @@ device transport.
    table. The table is 8-byte entries `{ BE key (spec<<8 | opcode) | LE funcVA }`.
 6. Run the library's start/init symbol (`call_start_symbol`) so it registers its kernels, then
    assert the `NUM_POOL_CORES = 8` invariant (`total_cpus` ∈ {1, 8}, a `bnei a,8` immediate).
-   `[HIGH/OBSERVED]`
 
 > **NOTE — `.kernel_info_table` is not compiler-emitted.** The opcode→handler binding is baked
 > into the *device* image (the EXTISA / the customer-built `.so`), never into the NEFF the
 > compiler emits. The compiler emits only the upstream TPB instruction (opcode + descriptor).
-> `[HIGH/OBSERVED]`. The `.kernel_info_table` section name is present in the binary (verified
+> The `.kernel_info_table` section name is present in the binary (verified
 > by `strings`).
 
 **Artifact:** a bound, active `.kernel_info_table` on each POOL core's dispatcher; the op is
@@ -366,7 +364,7 @@ POOL engine then does a **linear scan** over its bound `.kernel_info_table` matc
   (`SP − ISL`); if the tiny 4196-byte frame fits it `callx8`s the wrapper in place; otherwise
   it allocates a ≤4 MB HBM stack, `saveContext` + `xthal_window_spill_nw` + `switchStack`, and
   jumps in. The kernel arguments do **not** cross the switch — they are pulled lazily by the
-  wrapper. `[HIGH/OBSERVED]` — `switch_stack_or_call_wrapper(uint,uint)` is present in
+  wrapper. `switch_stack_or_call_wrapper(uint,uint)` is present in
   `libneuroncustomop.a`.
 - **Marshal.** `customop_setup(true)` reads the payload count, starts the SDMA ring, and slurps
   every on-wire `ARG_TENSOR` descriptor (0x30 bytes: `location`, `dtype`, `storage.hbm.addr`,
@@ -374,7 +372,7 @@ POOL engine then does a **linear scan** over its bound `.kernel_info_table` matc
   16-byte `Q7PtrType` `{hbm_addr, neuron_translate_ctx()}`, wraps it through `NeuronStorageImpl
   → NeuronTensorImpl`, and returns an `at::Tensor` with **poisoned** storage — only Q7-aware
   accessors can reach HBM. A **dtype-match gate** rejects any ISA dtype with no
-  `c10::ScalarType` target (UINT16/32/64, FP8_*). `[HIGH/OBSERVED]`
+  `c10::ScalarType` target (UINT16/32/64, FP8_*).
 - **Execute.** Inside `vector_add`, each `accessor[]` is a *lazy translating dereference*:
   multi-dim indexing does pure 64-bit address math (`Q7PtrType::operator+`), and the single
   `neuron_translate` happens at the leaf — searching the 5-entry window TLB (HIT = arithmetic;
@@ -382,11 +380,10 @@ POOL engine then does a **linear scan** over its bound `.kernel_info_table` matc
   through a TCM/dataram buffer over SDMA (`neuron_memcpy` → `dma_data_transfer`, M2S read / S2M
   write). Per-core work is partitioned by `get_cpu_id()` (a cached `PRID` in `[0,8)`) and
   `get_cpu_count()` (constant 8) over **private** memory with **zero** cross-core sync.
-  `[HIGH/OBSERVED]`
 - **Return.** `customop_return_tensor(output)` stages the result through a dataram bounce
   buffer + SDMA into the output HBM address; `customop_cleanup()` does
   `respond(TPB_WRITE_RESPONSE)` then `fsync`; and if the stack was switched, the codegen's tail
-  `j switchBack` restores `SP`/`SR`/`ISL` and frees the HBM stack. `[HIGH/OBSERVED]` —
+  `j switchBack` restores `SP`/`SR`/`ISL` and frees the HBM stack.
   `customop_return_tensor(at::Tensor&)` and `customop_cleanup()` are present in
   `libneuroncustomop.a`.
 
@@ -410,7 +407,7 @@ selector via its resident entry array + window table, reclaims the window
 (`push_unallocated_window`), and clears the `.kernel_info_table` binding (`total_cpus → 0`).
 Only then does `nrtucode_ll_destroy` `device_free` the 16 MiB buffer and free the host `ll`.
 The correct idiom is **emit-unload-sequence then destroy** — they are disjoint operations.
-`[HIGH/OBSERVED]`. Deep page:
+Deep page:
 [The 8-Core SPMD Execution Model + Teardown](../runtime/spmd-teardown.md).
 
 ---
@@ -443,24 +440,23 @@ Each claim below is read directly from a shipped file.
 
 1. **Stage 1 wrapper template.** `script/build_custom_op.py` `_create_wrapper` emits
    `customop_setup(true)`, `customop_return_tensor(output)`, `asm("j switchBack")`, and
-   `int <fn>_stack_switch()` verbatim (lines ~152–251). `[HIGH/OBSERVED]`
+   `int <fn>_stack_switch()` verbatim (lines ~152–251).
 2. **Stage 9 marshalling + entry symbols.** `nm libneuroncustomop.a` resolves
    `customop_setup(bool)`, `customop_next_tensor()`, `customop_return_tensor(at::Tensor&)`,
    `customop_cleanup()`, `switch_stack_or_call_wrapper(uint,uint)`, and the device entries
    `_start` @0xaf8, `entry_func` @0x93c, `register_funcs`, `get_cpu_id`, `get_cpu_count` — all
-   defined (`T`). `[HIGH/OBSERVED]`
+   defined (`T`).
 3. **Stage 5/6 host symbols + address.** `nm libnrtucode_internal.so` resolves
    `nrtucode_ll_create`, `nrtucode_get_ext_isa_internal`, `nrtucode_ll_get_load_sequence`, and
-   `prelink` at `0x9b5d60` with `prelink_load_lib` / `prelink_relocate_lib`. `[HIGH/OBSERVED]`
+   `prelink` at `0x9b5d60` with `prelink_load_lib` / `prelink_relocate_lib`.
 4. **Stage 6/7/8 magics + section.** `strings libnrtucode_internal.so` contains `"UCPL "`,
    `.kernel_info_table`, and "Prelinked library would be larger than the available buffer on
    device"; `objdump -d` shows `movw $0x1095,(%rsi)` at five 0x40-spaced offsets (the 8-record
-   cross-context fallback). `[HIGH/OBSERVED]`
+   cross-context fallback).
 5. **Stage 4 EXTISA embedding (with the SUNDA correction).** `nm libnrtucode_internal.so` shows
    `CAYMAN_Q7_POOL_PERF_EXTISA_0_SO_get` defined (`t`) with a `.data` payload, while
    `SUNDA_Q7_POOL_RELEASE_EXTISA_0_SO_get` / `_JSON_get` are weak-undef (`w`) with no payload —
    confirming the modern-gen EXTISA blobs are embedded there but SUNDA's is container-only.
-   `[HIGH/OBSERVED]`
 
 **Confidence summary.** All nine stages are `HIGH/OBSERVED` for their named symbol, file, or
 tool. The `MED/INFERRED` softenings are the `device_malloc(size,align)` argument order, the

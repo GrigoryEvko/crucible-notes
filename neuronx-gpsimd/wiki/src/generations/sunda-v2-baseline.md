@@ -45,7 +45,8 @@ OBJD = …/gpsimd_tools/tools/XtensaTools/bin/xtensa-elf-objdump   (XTENSA_CORE=
 [the Confidence & Walls Model](../reference/confidence-model.md): `OBSERVED` =
 a byte/string/header read; `INFERRED` = reasoned over OBSERVED
 facts; `CARRIED` = consolidated from a cited sibling at its stated confidence.
-Crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but
+Crossed with `HIGH`/`MED`/`LOW`; the page default is `[HIGH/OBSERVED]` and claims that
+depart from it carry an explicit tag. Callouts: **QUIRK** (counter-intuitive but
 real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive
 reading), **NOTE** (orientation).
 
@@ -57,12 +58,12 @@ reading), **NOTE** (orientation).
    six getter classes as CAYMAN — `NX_{ACT,DVE,PE,POOL,SP}` + `Q7_POOL` — on the
    *same* gen-invariant Cairo / NX1.1.4 / Xtensa24 Vision-Q7-NX core
    (`XtensaTools-14.09 clang 10.0.1`, e_flags `0x300`). The reduction is
-   per-subsystem. `[HIGH/OBSERVED]`
+   per-subsystem.
 2. **The v2 absence floor** (§2): no RNG *body* (the `RAND_ALGORITHM` enum lacks
    `XORWOW`, which appends at CAYMAN); no `0xe4 CONV_LUT_LOAD`; no `0xbf` on-chip
    SB2SB collective; no `0xf0` ExtendedInst NX→Q7 *bridge*; no PROF CAM/table; no
    DKL variant; no in-library EXTISA; the monolithic NCFW; and **zero** `S:`/`P%i:`
-   self-naming logs — the observability floor. `[HIGH/OBSERVED]`
+   self-naming logs — the observability floor.
 3. **SUNDA is genuinely distinct, not just minus-CAYMAN** (§3): a five-opcode
    2×-throughput BF16 cluster (`0x8a/0x8b/0x8c/0x8d/0x8f`), the dual-ALU
    `TensorScalarPtr` pair (`0x87/0x88`), a divergent activation PWP header
@@ -70,15 +71,15 @@ reading), **NOTE** (orientation).
    bits), the retained static `CUSTOM_OP_HEADER/PAYLOAD` structs (the *only*
    removals in the whole chain), the arch5 single-data-band device ELF, the
    external-lib loader shell Q7, the sole non-zero EXTRAM, and the
-   standalone-only EXTISA delivery model. `[HIGH/OBSERVED]`
+   standalone-only EXTISA delivery model.
 4. **The boot signature is a relocated CAYMAN shape** (§4): NX reset `j 0x1dc`
    (== CAYMAN), but `enter_run @0x94` (CAYMAN `@0x90`, **+0x4**), Q7 reset
    `j 0x220` (CAYMAN `j 0x200`, **+0x20**), window base `0x00100000`
-   (CAYMAN-family `0x04000000`). `[HIGH/OBSERVED]`
+   (CAYMAN-family `0x04000000`).
 5. **"Sunda-mode" ≠ SUNDA** (§4f): the CAYMAN-and-later runtime software-fetch
    *fallback* is *named after* the legacy SUNDA-style fetch but is **not** the
    SUNDA generation. The SUNDA NX image is the pre-dual-mode monolithic baseline
-   that has *neither* the HW-Decode FSM *nor* the "Sunda-mode" construct. `[HIGH/OBSERVED]`
+   that has *neither* the HW-Decode FSM *nor* the "Sunda-mode" construct.
 
 ---
 
@@ -106,7 +107,7 @@ proof and the full 32-entry `get_ext_isa` jump table. SUNDA sits unambiguously a
 the bottom of all six independent monotone anchors (coretype 6 / arch_id 5 /
 NCFW sel-byte 0x05 / NC-banner v2 / dtype-superset / toolchain), and the
 SUNDA→CAYMAN step is the line's only `+7` coretype stride (every subsequent is
-`+8`). `[HIGH/OBSERVED]`
+`+8`).
 
 > **GOTCHA — the silicon part is *not* pinned by these binaries.** The
 > `coretype → silicon-part` map is not inside any GPSIMD binary in this corpus.
@@ -144,7 +145,7 @@ the SUNDA *DEBUG* members (48 SUNDA members total = 6 engine-classes × DEBUG+RE
 4 regions, of which 16 are the POOL pair) for module enumeration, but the host
 runtime selects RELEASE. RELEASE is SUNDA-specific naming (CAYMAN+ use
 DEBUG/PERF/TEST); in observability it sits at CAYMAN's PERF level (no logs). The
-EXTISA JSON manifest declares `ulib_to_ucode_version "1.21.1.0"`. `[HIGH/OBSERVED]`
+EXTISA JSON manifest declares `ulib_to_ucode_version "1.21.1.0"`.
 
 ### 1e. The standalone-EXTISA dependency — the structural v2-floor identity bit
 
@@ -166,7 +167,7 @@ manifest markers `all.stripped.so` / `ulib_to_ucode_version` return **0 hits** i
 / `0xaef0`. By contrast CAYMAN/MARIANA/MARIANA_PLUS live in *both* the container
 *and* as in-library getters (the internal-twin), and MAVERICK lives
 internal-only. **SUNDA = standalone-container-only.** This is the
-[arch5 EXTISA container](../images/sunda-arch5-extisa.md) model. `[HIGH/OBSERVED]`
+[arch5 EXTISA container](../images/sunda-arch5-extisa.md) model.
 
 ---
 
@@ -186,7 +187,7 @@ header sweeps, with the search scope stated.)
 > is therefore: **no kernel body, no `kernel_info_table` row, no `0xf0` escape on
 > the SUNDA images** — *not* a missing header declaration. Where a feature is
 > genuinely absent *from the header too* (e.g. `XORWOW`, `CONV_LUT_LOAD 0xe4`,
-> `SB2SB_COLLECTIVE 0xbf`), that is called out explicitly below. `[HIGH/OBSERVED]`
+> `SB2SB_COLLECTIVE 0xbf`), that is called out explicitly below.
 
 ### 2a. The per-subsystem absence floor
 
@@ -212,7 +213,7 @@ header sweeps, with the search scope stated.)
 
 SUNDA POOL = the floor compute set — the 18 flat pool/dma kernels of §3a, with
 **no** RNG, **no** dequant/MX, **no** sort, **no** conv-LUT, **no** seq-bounds,
-**no** `0xf0` escape. `[HIGH/OBSERVED]`
+**no** `0xf0` escape.
 
 ### 2c. The collective floor — what SUNDA *keeps*
 
@@ -234,7 +235,7 @@ The `0xf0 = ExtendedInst` SEQ→Q7 escape is the POOL-exclusive dual-dispatch
 bridge that makes POOL dual-core on CAYMAN+. It **arrives at CAYMAN**. SUNDA is
 *still* dual-core (NX_POOL SEQ + Q7_POOL compute), but the cores couple through
 the external-lib loader / direct-opcode `kernel_info_table` path (§3e), **not**
-the `0xf0` escape — there is no `0xf0` row in SUNDA's table. `[HIGH/OBSERVED]`
+the `0xf0` escape — there is no `0xf0` row in SUNDA's table.
 
 ### 2e. The observability floor — total, every engine
 
@@ -248,7 +249,7 @@ common to all four**; the *sole* engine-distinguishing string is DVE's
 `sunda/seq/src/uarch.hpp:161` `0 && "not a supported tscr op"` (the tensor-scalar
 arm). The SUNDA handler set is recoverable only from (i) the source-path
 assertions, (ii) the EXTISA `kernel_info_table` (§3a), and (iii) the byte-distinct
-IRAM/IVP datapaths. `[HIGH/OBSERVED]`
+IRAM/IVP datapaths.
 
 ---
 
@@ -282,7 +283,7 @@ CAYMAN's multi-lib split with a 5-row `0xf0` spec sub-dispatch. The real JSON
 manifest names 17 functions (it omits the op68 alias of op67); the JSON op-set is
 a strict subset of the SO op-set (the lone SO-only opcode is the `0x44` alias).
 The SUNDA base compute lives at the *v2 opcode numbers* (`0x41/0x43/0x44/0x49…`),
-which the SUNDA→CAYMAN renumbering later changes. `[HIGH/OBSERVED]` Full carve in
+which the SUNDA→CAYMAN renumbering later changes. Full carve in
 [SUNDA arch5 EXTISA](../images/sunda-arch5-extisa.md).
 
 ### 3b. The SUNDA-only EXTISA kernels (the arch5 additions over the CAYMAN roster)
@@ -323,7 +324,7 @@ hits in any later gen:
 > **GOTCHA — `0x8e` is *not* a BF16 op.** Byte `0x8e` = `BATCH_NORM_PARAM_LOAD2`
 > (`sunda/common.h:227`), maintained in *all four* gens. The BF16 cluster is the
 > five *non-contiguous* bytes `{0x8a,0x8b,0x8c,0x8d,0x8f}`. After SUNDA those five
-> bytes go *unassigned* (not recycled) in every later enum. `[HIGH/OBSERVED]`
+> bytes go *unassigned* (not recycled) in every later enum.
 
 The mechanism: the "2×" packing reads source patterns as `Dtype::UINT32` (a packed
 BF16 pair per 4-byte lane), requires the inner dim even + unit-stride
@@ -375,7 +376,6 @@ the **only** gen defining the dual-ALU `TensorScalarPtr` pair, dropped at CAYMAN
 > `W = src_mem_pattern.num_elem[3]` is the number of scalar **pairs**, `1 ≤ W ≤ 4`.
 > The struct (`S4D4_TSM`, 64 B) has a *single* `op` field @36 and *zero* immediate
 > fields — it is shared byte-for-byte with the singular `PtrMulti` `0x4F`/`0x5F`.
-> `[HIGH/OBSERVED]`
 
 ```c
 /* SUNDA-only dual TensorScalarPtr (0x87). is_valid_tensor_scalar_ptr_multi_dual().
@@ -401,14 +401,13 @@ void tensor_scalar_ptr_multi_dual(const S4D4_TSM *i,
 > (`op1 = bypass 0x00`) and the dual (`op1 = config-multiply 0x06`) forms with no
 > byte-layout change — the "second op" lives at engine-config level. The BITVEC
 > form `0x88` is *disabled even on SUNDA* ("no sensible default 2nd op for bitvec
-> to hard-code yet … very tight on uop table space in DVE"). `[HIGH/OBSERVED]`
+> to hard-code yet … very tight on uop table space in DVE").
 
 > **CORRECTION — `0x87` is *not* recycled as a semaphore opcode.** SUNDA carries
 > `0x87` in *two distinct enums simultaneously*: `OPCODE_*_DUAL_ARITH = 0x87`
 > (`common.h:221`) and `UPDATE_MODE_SEM_SUB_REG_READ = 0x87` (`common.h:350`, and
 > stable through maverick). On NC-v3+ only the *opcode* name drops; the
 > gen-stable `UPDATE_MODE` constant is untouched. Separate decode contexts.
-> `[HIGH/OBSERVED]`
 
 Firmware reality: `"Dual"` strings = **0** hits in `INT` — `0x87`/`0x88` are
 header-only (no enabled worker even on SUNDA), and they leave a *stale* `S4D4_TSM`
@@ -449,7 +448,7 @@ is the largest single EXTISA image (`0xd308` vs CAYMAN `0xa260`) — the monolit
 `all.stripped.so`. The 445-reloc table is the const16-VA fixup table the host
 prelink applies at device-staging time. Three VA windows: code `0x010xxxxx` (RE),
 data `0x020xxxxx` (**RWE** — executable data, no W^X), dyn `0x030xxxxx` (WE).
-`[HIGH/OBSERVED]` Full anatomy in
+Full anatomy in
 [SUNDA arch5 EXTISA](../images/sunda-arch5-extisa.md).
 
 ### 3g. The external-lib loader shell Q7 + the sole non-zero EXTRAM
@@ -551,7 +550,7 @@ the module spine — *not* re-verifiable by handler name (the observability floo
 The engines are laid out **byte-contiguous** (each blob's end == the next blob's
 start), order `ACT → DVE → PE → NX_POOL → NX_SP → Q7_POOL`. Adjacency closes
 exactly (`0x055f0 + 0x8f20 = 0x0e510`; `0x469d0 + 0x2220 = 0x48bf0`). **NX_SP is
-interleaved between the two POOL cores.** `[HIGH/OBSERVED]` The eight non-POOL
+interleaved between the two POOL cores.** The eight non-POOL
 engine carves are byte-identical to their `.a` RELEASE members (full shas in
 [SUNDA SP + remaining engines](../images/sunda-sp-remaining.md)); the POOL/Q7
 carves likewise (see [SUNDA POOL](../images/sunda-pool.md)).
@@ -658,7 +657,7 @@ retained legacy fetch. The SUNDA negative control (carved `SUNDA_NX_POOL_DEBUG`,
 > silicon.** In `INT` the runtime-mode strings `"NX in Sunda mode"` (16) and
 > `sunda_fetch` (48) are present — but they belong to the *CAYMAN+* runtime
 > software-fetch fallback, **not** the SUNDA generation, whose own image has
-> neither construct. Conflating the two inverts every per-gen claim. `[HIGH/OBSERVED]`
+> neither construct. Conflating the two inverts every per-gen claim.
 > Full FSM contrast + the per-gen presence proof in
 > [HW-Decode vs Sunda Dual Fetch](../firmware/seq/dual-fetch.md).
 

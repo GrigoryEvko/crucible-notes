@@ -685,7 +685,7 @@ NO-BACKEND`).
 transpose-reshape ISA (§3.4).
 
 > **LOW / flagged — MAVERICK (v5).** MAVERICK ships `gather_xpose.h` (own
-> `arch_isa` dir) but no MAVERICK NX_POOL DGE image was carved in this analysis —
+> `arch_isa` dir) but no MAVERICK NX_POOL DGE image was carved —
 > v5 reshape behaviour is header-OBSERVED only, INFERRED, not claimed here.
 
 ---

@@ -21,7 +21,8 @@ library `libneuroncustomop.a`, **1479** real FLIX bundles decoded and classified
 follow [the Confidence & Walls Model](../reference/confidence-model.md): `OBSERVED` =
 byte/immediate/symbol read from the shipped binary (or computed by executing the shipped
 simulator); `INFERRED` = reasoned over OBSERVED facts; `CARRIED` = re-used at a cited page's
-confidence; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
+confidence; crossed with `HIGH`/`MED`/`LOW`. The page default is `[HIGH/OBSERVED]`; claims that
+depart from it carry an explicit tag. Callouts: **QUIRK** (counter-intuitive but real),
 **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE**
 (orienting context).
 
@@ -33,7 +34,7 @@ confidence; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuit
 > lane." The arbiter is the **slot the placement names** (`…_Slot_<fmt>_s<N>_<unit>_…`), read from
 > the `Opcode_*_Slot_*_encode` symbol and cross-checked against the `Slot_*_get` thunk's `<unit>`
 > token. Below, every "lane" claim is grounded in the slot/unit, then re-challenged against the
-> opcode-name superset. `[HIGH/OBSERVED]`
+> opcode-name superset.
 
 > **GOTCHA — the `.data.rel.ro` VMA↔file delta is `0x200000` for these `ncore2gp` DLLs (not
 > libtpu's `0x400000`).** `format_decoder` / `length_decoder` / the count getters and the per-port
@@ -86,14 +87,14 @@ census over all 256 cells is `{3:128, 2:96, 16:22, 8:8, −1:2}`:
 
 So the length rule is: `op0 ∈ 0..7` ⇒ **3** (core `x24`); `op0 ∈ 8..B` ⇒ **2** (`x16a`); `op0 ∈ C..D`
 ⇒ **2** (`x16b`); `op0 == 0xE` ⇒ **16** (the 5-slot wide class `F3`/`F11`); `op0 == 0xF` splits on
-`b3lo` parity into narrow-8 / wide-16 / illegal. `[HIGH/OBSERVED]`
+`b3lo` parity into narrow-8 / wide-16 / illegal.
 
 > **CORRECTION — the static `XCHAL_BYTE0_FORMAT_LENGTHS` macro is lossy and will desync you.** The
 > Tensilica static macro keys length on `byte0` alone and flattens `op0 == 0xF` to a constant **8**
 > bytes. The shipped runtime `length_decoder` does **not**: it also reads `byte3.low4`, so a real
 > `op0 == 0xF` word decodes to 8, 16, **or** illegal. A linear sweep that assumes "`op0==0xF` ⇒ 8"
 > mis-lengths every 16-byte `F0`/`F1`/`F2`/`F4`/`F6`/`F7` bundle as two 8-byte reads and locks onto
-> the bundle's interior. The binary `length_table` is authoritative. `[HIGH/OBSERVED]`
+> the bundle's interior. The binary `length_table` is authoritative.
 
 ### 1.2 The format key — `format_decoder` (`0x3b5970`)
 
@@ -125,7 +126,7 @@ int format_decoder(const uint8_t *inst) {
 
 The shipped body computes the last predicate with a `cmovne` (`3b5a27: and $0x900000f; cmp $0xf;
 mov $-1,%edx; cmovne %edx,%eax; ret`) and the `F3` case as a bare `cmp $0xe,%esi` against the
-`op0=E`-masked word; the C above is the verified-equal *behavioural* form. `[HIGH/OBSERVED]`
+`op0=E`-masked word; the C above is the verified-equal *behavioural* form.
 
 > **NOTE — the wide-format selector lives in `byte3`, not in a `[25:24]/[26:24]` length-class
 > field.** The binary `format_decoder` is a single flat ladder keyed on `op0` (bits `[3:0]`) plus the
@@ -134,7 +135,7 @@ mov $-1,%edx; cmovne %edx,%eax; ret`) and the `F3` case as a bare `cmp $0xe,%esi
 > `[26:24]==011`). That re-expression is **numerically equivalent** — `F0`'s `byte3-sel 0x01` is
 > `bit24=1, bit25=0` ⇒ `[25:24]==01`; `F4`'s `0x09` is `bit24=1, bit27=1` ⇒ `[25:24]==01` — but it
 > is a *derived view*, not how the shipped code branches. **The shipped decoder keys on the full
-> `byte3` selector byte against the masks above; reproduce that.** `[HIGH/OBSERVED]`
+> `byte3` selector byte against the masks above; reproduce that.**
 
 ### 1.3 Format → length → slot-roster summary
 
@@ -161,7 +162,7 @@ need only the **issue profile** the scheduler reasons over):
 
 Slot-count census: `4+5+4+4+5+4+4+4+3+2+4+1+1+1 = 46 = num_slots`. The two **5-slot** formats are
 `F3` and `F11` (the `op0==0xE` class). `F5`/`F8`/`F9`/`F10` do not exist — the `Fn` numbering is
-sparse. `[HIGH/OBSERVED]`
+sparse.
 
 ### 1.4 Decoder self-consistency — 0 mismatch / 4096 combos
 
@@ -175,7 +176,7 @@ every format the decoder calls wide → length 16; narrow → 8; illegal → −
 
 This is an independent, internal proof that the §1.1 length table and the §1.2 format ladder are
 mutually exact: the bits the format ladder masks (`op0` + the `byte3` selector) are exactly the bits
-the length table keys on, and they never disagree. `[HIGH/OBSERVED]`
+the length table keys on, and they never disagree.
 
 ---
 
@@ -202,11 +203,11 @@ x24:  Inst 319     x16a: Inst16a 4     x16b: Inst16b 10                 =  333
 ```
 
 The three `None` slots (`N0_S1`, `N0_S2`, `N1_S1`) host **exactly one** opcode — `nop` — and are
-NOP-only filler, not real issue ports. `[HIGH/OBSERVED]`
+NOP-only filler, not real issue ports.
 
 > **CORRECTION — `F4_S2_Mul` is `61`, not `60`/`65`.** Earlier internal drafts variously stated 60
 > and 65 multiply placements for `F4`'s mul slot. The binary truth
-> (`nm libisa-core.so | rg -c 'Slot_f4_s2_mul_encode'`) is **`61`**. Use 61. `[HIGH/OBSERVED]`
+> (`nm libisa-core.so | rg -c 'Slot_f4_s2_mul_encode'`) is **`61`**. Use 61.
 
 These per-slot **opcode populations are permissive supersets** (Tensilica lists `vec_alu`-class ops
 in nearly every slot). To turn them into a *co-issue* model we need the **class-exclusive** facts —
@@ -230,11 +231,11 @@ OBSERVED:
   duplicated `_0`/`_1` — `nx_VAddrBase_{0,1}_interface`, `nx_VectorMemDataIn512_{0,1}_interface`,
   `nx_ScalarMemDataIn32_{0,1}_interface` — exactly two port indices, the two LSU lanes. Both are
   live: PLT call-site references count **port_0 = 2256, port_1 = 623** (asymmetric ≈3.6:1, mirroring
-  S0=full-LdSt / S1=Load-only). `[HIGH/OBSERVED]`
+  S0=full-LdSt / S1=Load-only).
 
 Scatter/gather (SuperGather) ops concentrate in the memory slots: `S0_LdStALU`/`S0_LdSt` carry
 9–19 gather placements each, `S1_Ld` carries 4 each; none appear outside S0/S1 (the lone outlier is
-`ivp_scatterw` in the scalar `Inst` x24 slot, a non-FLIX core encoding). `[HIGH/OBSERVED]`
+`ivp_scatterw` in the scalar `Inst` x24 slot, a non-FLIX core encoding).
 
 ### 2.2 The integer quad-MAC lane — single `S2_Mul`
 
@@ -243,13 +244,12 @@ The genuine integer **quad-MAC** (multiply-accumulate into the 1536-bit `wvec` a
 `*_s2_mul` = **∅**. Every format has **exactly one** `S2_Mul` slot (the `mul` functional
 unit, absent only in `N0`/`N2`). There is **no replicated multiplier** (`XCHAL_HAVE_MAC16 = 0`;
 `HAVE_MUL16`/`MUL32`/`MUL32_HIGH = 1`). Therefore **at most one integer quad-MAC issues per bundle.**
-`[HIGH/OBSERVED]`
 
 > **GOTCHA — do not derive this from an `ivp_mul*` name grep.** `Opcode_ivp_mul.*` also matches
 > `ivp_mulsgnnx16` (multiply-**sign**, a sign-extract ALU op), which is placed in S3_ALU / S4_ALU /
 > S0_LdStALU across most formats. The name "mul" is not the unit. The S2_Mul-exclusive fact holds
 > for the *quad-MAC accumulate* class (`ivp_mulqa*`), grounded in the slot/unit, **not** for
-> everything spelled `…mul…`. `[HIGH/OBSERVED]`
+> everything spelled `…mul…`.
 
 ### 2.3 The FP fused-multiply-add lane — `S3_ALU` *primarily*, but NOT exclusively
 
@@ -271,14 +271,14 @@ The sound, binary-defensible bound is therefore the **slot-count / port bound**,
 exclusivity claim: a format with both `S2_Mul` and `S3_ALU` (F0/F1/F2/F3/F6/F7/F11) can co-issue
 **one op from the mul port + one op from the (S3) ALU port** = at most **2 multiply-class ops/cycle**
 of (typically) different datapaths — one integer quad-MAC (S2) and one FP-FMA/FP-ALU (S3). On
-formats that place `madd.s` in S2, the FP-FMA can also ride the mul port instead. `[HIGH/OBSERVED]`
+formats that place `madd.s` in S2, the FP-FMA can also ride the mul port instead.
 
 ### 2.4 The vector / FP ALU lanes — `S3_ALU` (+ `S4_ALU`, + `S1_ALU` on F11)
 
 `S3_ALU` is the universal ALU lane (483 ops even on the narrow `N0`). `F3` and `F11` add `S4_ALU` →
 **two** dedicated ALU lanes; `F11` additionally makes its S1 an ALU lane (`S1_ALU`, 66 placements) →
 **three** ALU-capable lanes (S1 + S3 + S4). `vec_alu`-class ops appear permissively in the mem/mul
-slots too, but the *dedicated* vector/FP-ALU issue ports are S3/S4 (+S1 on F11). `[HIGH/OBSERVED]`
+slots too, but the *dedicated* vector/FP-ALU issue ports are S3/S4 (+S1 on F11).
 
 > **NOTE — the unit *name* is not a strict store-capability gate; `F4` is a nuanced "dual-load".**
 > `F4`'s S0 is named `Ld`, yet it carries **3 scalar stores** (`s32i`/`s16i`/`s8i`) — confirmed:
@@ -286,7 +286,7 @@ slots too, but the *dedicated* vector/FP-ALU issue ports are S3/S4 (+S1 on F11).
 > `f4_s0_ld` = **0**). So `F4` is dual-**load** for the *vector* datapath (no vector store lane) while
 > still admitting the three scalar integer stores. `F11`'s S0 (also named `Ld`) carries **zero**
 > stores of either kind — `F11` is the genuinely no-store wide format. Store capability is set
-> per-mnemonic via `opcodes[].flags` bit 5, not by the slot name. `[HIGH/OBSERVED]`
+> per-mnemonic via `opcodes[].flags` bit 5, not by the slot name.
 
 ---
 
@@ -311,7 +311,7 @@ slots too, but the *dedicated* vector/FP-ALU issue ports are S3/S4 (+S1 on F11).
 | `x16a/b` | 2 | 1 | 1 | one density insn |
 
 **Peak issue width = 5 ops/bundle** (`F3`, `F11`). The `N0`/`N1` `None` slots are NOP-only padding
-that round the 64-bit narrow bundle but issue no real op → real width 2. `[HIGH/OBSERVED]`
+that round the 64-bit narrow bundle but issue no real op → real width 2.
 
 ### 3.2 The co-issue legality table
 
@@ -334,7 +334,7 @@ true Load/Store or scatter/gather op (escaped `\|` are literal column borders):
 
 \* `F4` S0 takes 3 scalar stores but no vector store (§2.4).
 
-**The co-issue bounds that are provable from the shipped tables** `[HIGH/OBSERVED]`:
+**The co-issue bounds that are provable from the shipped tables:**
 
 * **Issue width ≤ the format's real slot count** — `F3`/`F11` → 5; `F0`–`F7` → 4; `N0`/`N1`/`N2` → 2;
   `x24`/`x16` → 1. *(Hard, from the FORMAT slot roster.)*
@@ -352,7 +352,7 @@ true Load/Store or scatter/gather op (escaped `\|` are literal column borders):
 > operand and found up to three "mul-capable" slots. Re-grounded to the slot/functional-unit, each
 > format has exactly **one** `S2_Mul` lane; the FP-FMA/FP-ALU rides `S3_ALU` (and, on F2/F7/N1, may
 > also ride S2). The honest ceiling is **1 (S2) + 1 (S3)**. Per-op latencies are unchanged
-> ([Pipeline Timing](pipeline-timing.md)). `[HIGH/OBSERVED]`
+> ([Pipeline Timing](pipeline-timing.md)).
 
 ### 3.3 Device validation — 1479 real bundles, byte-classified
 
@@ -370,7 +370,7 @@ decoders. Reproduced:
   vector bundles need a vision-SIMD body absent from this management library; their structure is
   validated by §1.4 + the `slots[]` roster, not by a device sample here.)*
 * **Format marker:** 100 % of the 1479 bundles have first-byte low nibble ∈ `{e,f}` — the op0 FLIX
-  length marker — with 0 unclassified. `[HIGH/OBSERVED]`
+  length marker — with 0 unclassified.
 
 > **GOTCHA (MED) — the device cross-check carries a TIE-checksum-mismatch warning.** Every member
 > emits `warning: Xtensa configuration may be incompatible (TIE checksum does not match)`: the
@@ -401,7 +401,7 @@ ships the reservation as fully populated function bodies:
 The stage functions tile stages 0–15 densely (≈13k at stage 0 down to ≈4.9k at stage 15); a scalar
 `L32I` carries `stage0..stage5+`; a vector `IVP_LVN_2X16S_I` carries through **`stage10`/`stage11`**
 — exactly the deep vector memory-port pipe of §5. These bodies call the `nx_*_interface` port
-signals via PLT (`call nx_VectorMemDataIn512_0_interface@plt` from stage bodies). `[HIGH/OBSERVED]`
+signals via PLT (`call nx_VectorMemDataIn512_0_interface@plt` from stage bodies).
 
 > **CORRECTION — "the `MODULE_SCHEDULE` is structurally empty → only a `1+1` structural bound" is
 > over-pessimistic.** The *named* symbol `module_schedule` exists in neither DLL, and the
@@ -417,7 +417,7 @@ signals via PLT (`call nx_VectorMemDataIn512_0_interface@plt` from stage bodies)
 > **NOTE — `libcas-core.so` has no DWARF; the model is symbol-table-based.** `readelf -SW` shows
 > **zero** `.debug_*` sections; the DLL is "unstripped" only in that it carries a full `.symtab`
 > (177 936 symbols, 166 024 text). All co-issue / stage / port facts above are read from **symbol
-> names** and PLT relocations, not DWARF type/line info. `[HIGH/OBSERVED]`
+> names** and PLT relocations, not DWARF type/line info.
 
 ---
 
@@ -436,8 +436,6 @@ signals via PLT (`call nx_VectorMemDataIn512_0_interface@plt` from stage bodies)
 | line-lock / dyn-ways | none | `XCHAL_ICACHE_LINE_LOCKABLE 0` |
 | fetch width | 32 B (256-bit) | `XCHAL_INST_FETCH_WIDTH` |
 | prefetch | present, **8 entries**, 1 castout line | `XCHAL_HAVE_PREFETCH 1`, `_PREFETCH_ENTRIES 8` |
-
-`[HIGH/OBSERVED]`
 
 > **I-cache miss penalty `[MED/INFERRED]` — structure pinned, cycle count unrecovered.** The miss is a
 > **front-end** stall, not a register-result latency, so it does not appear in the per-op stage model
@@ -460,7 +458,7 @@ buffer** (`XCHAL_NUM_WRITEBUFFER_ENTRIES 8`). `XCHAL_DATA_WIDTH = 64 B` (512-bit
 `XCHAL_DATA_PIPE_DELAY = 1`, `XCHAL_HAVE_IMEM_LOADSTORE = 1`, `XCHAL_HAVE_MEM_ECC_PARITY = 0` (local
 RAM unprotected; the AXI master has ECC — `XCHAL_HAVE_AXI_ECC = 1`). With no D-cache, **every data
 access is a fixed-latency local-RAM or AXI transaction — there is no data-side miss/refill.** The 4
-DataRAM banks supply the 512-bit bus its read/write bandwidth. `[HIGH/OBSERVED]`
+DataRAM banks supply the 512-bit bus its read/write bandwidth.
 
 > **DataRAM bank-conflict cycle count `[MED]` — structure pinned, count unrecovered.** The 4-bank
 > DataRAM is the structural basis for bank-conflict arbitration on a 512-bit access that straddles
@@ -501,7 +499,7 @@ scatter/gather    : GSVAddrOffset @10 (nx_GSVAddrOffset_0), result @10/11, in me
 ```
 
 The `_0`/`_1` duplication of every port signal is the **two LSU lanes**; the `MemDataIs{256,512}Bits`
-tag carries the access width. `[HIGH/OBSERVED]`
+tag carries the access width.
 
 ### 5.4 How a memory access threads the pipeline + the SBUF/AXI path
 

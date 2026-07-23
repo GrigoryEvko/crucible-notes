@@ -15,7 +15,8 @@ isadll const tables, and the ISS consumer disassembly.
 All facts below are read straight from the shipped config files and from host
 `objdump`/`nm`/`readelf`/`xxd`/`strings` on the `ncore2gp` config DLLs and the ISS
 consumer DLL. Recovered symbols, strings, and consts are binary-derived and
-citeable. Every claim is tagged `[HIGH/MED/LOW]` × `[OBSERVED/INFERRED/CARRIED]`.
+citeable. Every claim is tagged `[HIGH/MED/LOW]` × `[OBSERVED/INFERRED/CARRIED]`;
+the page default is `[HIGH/OBSERVED]` and claims that depart from it carry an explicit tag.
 
 > **TL;DR.** The NX1.1.4 rev is pinned by a small, fixed set of fields re-emitted
 > *redundantly* across four host-toolchain files and one isadll const table, then
@@ -52,7 +53,7 @@ Five host-toolchain artifacts carry rev markers; one ISS DLL pair consumes them.
 > copy at `XtensaTools/config/ncore2gp-params` (`md5 4a52d1d0…`) differs **only**
 > in the install/config-prefix/DLL-path block (lines 548–563); the entire rev
 > block (lines 16–27, 109–111, 541–544, 573–576) is byte-identical across all
-> three. The rev markers are install-prefix-invariant. `[HIGH/OBSERVED]`
+> three. The rev markers are install-prefix-invariant.
 
 ---
 
@@ -98,7 +99,7 @@ present in the files.
 > verbatim so the consumer can cross-check **without inverting the ConfigID hash**.
 > `[INFERRED/MED]` ConfigID0/1 are a serialization/hash of the full option vector;
 > the ISS never needs to invert it because the option fields are present verbatim
-> in the same param file. `[HIGH/OBSERVED]`
+> in the same param file.
 
 ### 2.1 The version triple `NX1.1.4 = LX7.1.4 = RI-2020.4 = 281040`
 
@@ -114,7 +115,6 @@ hardware *release* — all three resolve to the single micro-arch integer `28104
 `core-isa.h` corroborates with `XCHAL_HW_VERSION_NAME "NX1.1.4"` (line 260) and
 the release-flag triple `XCHAL_HW_REL_NX1 / NX1_1 / NX1_1_4 == 1` (lines 265–267,
 the only `XCHAL_HW_REL_*` set), confirming exactly the `NX1.1.4` point.
-`[HIGH/OBSERVED]`
 
 > **GOTCHA — `RI-2020.4` and `RI-2022.9` each name *two distinct numbers* on two
 > axes.** `xtensa-versions.h` carries `XTENSA_HWVERSION_RI_2020_4 = 281040` (HW
@@ -125,14 +125,13 @@ the only `XCHAL_HW_REL_*` set), confirming exactly the `NX1.1.4` point.
 > *different, later* **SW release** (`RI-2022.9 = 14.09 = 1409000`). The hardware
 > is RI-2020.4; the toolchain is RI-2022.9; the two "RI" labels live on different
 > axes and must not be conflated. It does **not** ship the SW 14.04 tools.
-> `[HIGH/OBSERVED]`
 
 > **CORRECTION — `core.yml` slot numbers are the *first element* of a
 > `[index, '$']` pair, not a YAML anchor.** The anchor table at `core.yml:1688+`
 > lists each field as `Name: &NN  / - <slot>  / - $`. The slot is `<slot>`; the
 > `&NN` is a separate YAML anchor id. So `TargetHWConfigID0` maps to **slot 53**
 > (anchor `&102`), `ConfigKey0` to **slot 56** (`&84`), `TargetHWVersion` to
-> **slot 51** (`&106`). Cite the slot index, not the anchor. `[HIGH/OBSERVED]`
+> **slot 51** (`&106`). Cite the slot index, not the anchor.
 
 ---
 
@@ -194,14 +193,13 @@ element at line 3546 carries the live values inline:
 `vectorPipe="1"`, `prid="0"`. TIE source paths at 3636/3639 anchor the toolchain:
 `.../RI-2022.9/.../Coprocessors/XDG/Tie/vision.tie` — the Vision SIMD is the
 **XDG** (Xtensa DSP Group) coprocessor, and RI-2022.9 is corroborated a third way
-(path string). `[HIGH/OBSERVED]`
+(path string).
 
 > **GOLDEN-DB FINDING — in the xparm the keyed identity is NULL.** The live `<xt>`
 > element carries `ConfigKey0="0"`, `ConfigKey1="0"`, `TargetHWUniqueID="0"`. The
 > *real* ConfigKeys are stamped only into the **generated** artifacts —
 > `default-params` (§3.1) and `libisa-core-hw.so` (§3.5). The xparm pins the
 > ConfigID + version + options but is **not** the license-key carrier.
-> `[HIGH/OBSERVED]`
 
 ### 3.3 `config.cf` — the toolchain control file `[CF]`
 
@@ -219,13 +217,13 @@ A fourth independent rev carrier, restating the rev with the `VNum` spelling:
 ```
 
 `config.cf` does **not** carry `ConfigKey0/1` or `HWConfigID0/1` (`rg` confirms
-absent) — it is a name+VNum+build witness only. `[HIGH/OBSERVED]`
+absent) — it is a name+VNum+build witness only.
 
 > **NOTE — three distinct copyright spans, identical rev.** `default-params`
 > banner is `(c) 2004-2018`, `config.cf` is `(c) 2005-2025`, `core.xparm` header
 > is `(c) 2008`. The rev *values* are byte-identical across all three; only the
 > generator banner spans differ — i.e. the files were emitted by generator stamps
-> of different vintages but pin the same NX1.1.4 identity. `[HIGH/OBSERVED]`
+> of different vintages but pin the same NX1.1.4 identity.
 > (date-delta interpretation `[MED/INFERRED]`)
 
 ### 3.4 `core.yml` — the CompLib schema `[Y]`
@@ -244,7 +242,6 @@ scalar slots: `$TargetHW_Major`(22), `$TargetHW_Minor`(23), `$TargetHW_Micro`(24
 > The flat files carry only the packed `281040` + the `NX1.1.4` string; `core.yml`
 > is the schema witness, the concrete per-instance scalars live in the state
 > arrays the slots index and are authoritatively read from the flat files (§2).
-> `[HIGH/OBSERVED]`
 
 ### 3.5 `libisa-core-hw.so` — the keyed-identity config_table `[HW]`
 
@@ -262,7 +259,7 @@ num_formats        @0x2e30  ->  xor %eax,%eax  ; ret      (=0, the -hw stub has 
 > is the gpsimd ncore2gp DLL delta, **not** libtpu's 0x400000). `.rodata` is
 > VMA==fileoffset (`0x3cf1`). So `config_table` @VMA `0x206200` = **file offset
 > `0x6200`**; the rodata strings it points at are read at their addend directly.
-> Always `readelf -SW` per-section before `xxd`. `[HIGH/OBSERVED]`
+> Always `readelf -SW` per-section before `xxd`.
 
 The table is a NULL-terminated array of `{key,value}` C-string pointers; 16
 `R_X86_64_RELATIVE` entries at `0x206200..0x206280` = **8 pairs**, each addend a
@@ -281,13 +278,13 @@ The table is a NULL-terminated array of `{key,value}` C-string pointers; 16
 ```
 
 The 6 ISA pairs are an identity *subset*; the two `ConfigKey` pairs are the
-licensed half, present **only** in the -hw stub. `[HIGH/OBSERVED]`
+licensed half, present **only** in the -hw stub.
 
 > **CASE NOTE — keys are lowercase in the isadll, UPPERCASE in `default-params`.**
 > isadll `0x5fa7c9e6 / 0xb2aebb83` vs params `0x5FA7C9E6 / 0xB2AEBB83`; same value.
 > The consumer parses with `strtoul` base 0 (§4.2), which is case-insensitive, so
 > they bind identically. The ConfigID shows the same split (params UPPER `0xC4019686`,
-> xparm lower `0xc4019686`) and the same value. `[HIGH/OBSERVED]`
+> xparm lower `0xc4019686`) and the same value.
 
 ### 3.6 `libisa-core.so` — the full payload config_table `[FH]` (no keys)
 
@@ -303,19 +300,19 @@ IsaUseBooleans=1`. The two qwords after the 12th pointer (`0x85eaa0`, `0x85eaa8`
 are zero — the NULL terminator. No `ConfigKey` pairs; a full-binary `strings`
 sweep finds **zero** hits for any rev marker (`C4019686`, `2908E4E3`, `281040`,
 `NX1.1.4`, `5fa7c9e6`, `ConfigKey0`). The full isadll is the decode/timing
-**payload**; the -hw stub is the licensed **identity**. `[HIGH/OBSERVED]`
+**payload**; the -hw stub is the licensed **identity**.
 
 > **QUIRK — the adjacent `Xtensa xti2752.9` literal is *not* a 7th pair.** The
 > next `.data` pointer object at `0x85eab0` resolves to `Xtensa xti2752.9` (a
 > tools-version literal at rodata `0x3d3efb`), but it sits **after** the two NULL
 > qwords that terminate the table — it belongs to an unrelated adjacent object,
-> not `config_table`. `[HIGH/OBSERVED]`
+> not `config_table`.
 
 > **CORRECTION — both isadlls export 159 global text symbols, not 160.** Verified
 > three ways: `nm -D --defined-only … | grep -c ' T '` = 159 (hw) and 159 (full);
 > `nm --defined-only … | grep -c ' T '` = 159; zero weak (`W`) symbols. The 159 are
 > `get_config_table` + `interface_version` + 157 `num_*`/`<thing>_<attr>`
-> accessors. A prior count of "160" should read **159**. `[HIGH/OBSERVED]`
+> accessors. A prior count of "160" should read **159**.
 
 ---
 
@@ -342,7 +339,7 @@ libsimxtcore --[DT_NEEDED]--> libxtisa --[dlopen]--> libisa-core{,-hw}.so
 > `libxtparams.so` parses the flat param syntax yet carries **none** of the rev
 > keys (a `strings` sweep for `HWMicroArch`/`TargetHWVersion`/`HWConfigID`/`281040`/
 > `NX1.1.4` returns **0**) — the rev params are owned by libsimxtcore's
-> `read_params` (§4.3). `[HIGH/OBSERVED]`
+> `read_params` (§4.3).
 
 ### 4.2 The ConfigKey read path — `libxtisa::xtensa_isa_configkey`
 
@@ -461,7 +458,6 @@ gate compares against. `[HIGH/OBSERVED, full disasm]`
 > je .configid` skips the ABI comparison when `do_abi_check == 0` and falls
 > straight to the ConfigID checks; with `edx != 0` it runs the `SW_ABI ==
 > "windowed"` comparison first. The ConfigID0/ConfigID1 checks are unconditional.
-> `[HIGH/OBSERVED]`
 
 > **EFFECTIVE-TEETH FINDING — the TIE-checksum slots are neutralized in this
 > config.** The four `tie-checksum-0..3` params are all `0` (`default-params:573–576`),
@@ -469,7 +465,7 @@ gate compares against. `[HIGH/OBSERVED, full disasm]`
 > per-key enable gate is not satisfied by zero values). The **operative** rev guard
 > is therefore `{HW_CONFIGID0, HW_CONFIGID1}` plus the `SW_ABI == windowed` check.
 > The ConfigID is the real lock; the TIE-checksum machinery is present but
-> unpopulated. `[HIGH/OBSERVED]`
+> unpopulated.
 
 ### 4.5 The sibling consistency gates (distinct from the ConfigID gate)
 
@@ -502,7 +498,7 @@ is rejected. `core-isa.h:273/277` shows `XCHAL_HW_MIN_VERSION == XCHAL_HW_MAX_VE
 == 281040`, the same window, decoding `major=2810 / minor=4 / micro=0` (lines
 270–272). The version-name string `TargetHWVersion="NX1.1.4"` and the release-flag
 triple `XCHAL_HW_REL_NX1 / NX1_1 / NX1_1_4 == 1` are the human-readable redundant
-encoding of the same `281040`. `[HIGH/OBSERVED]`
+encoding of the same `281040`.
 
 > **NOTE — zero-width HW-accept window ≠ gen-invariance.** A zero-width window
 > means the *toolchain/ISS* targets one Cairo IP rev (`281040`); the *generation*
@@ -510,7 +506,7 @@ encoding of the same `281040`. `[HIGH/OBSERVED]`
 > generations run firmware built for this **same** `281040` Cairo core. The
 > per-generation `coretype`/`arch_id` identity (`coretype 37` `[OBSERVED]`,
 > `arch_id 36` `[INFERRED]` = `coretype − 1`, unshipped MAVERICK) is owned by
-> [The Config Identity](../isa/core/identity-config.md). `[HIGH/OBSERVED]`
+> [The Config Identity](../isa/core/identity-config.md).
 
 ---
 
@@ -541,7 +537,6 @@ markers are confined to the **host toolchain** artifacts — the config files
 (`default-params`/`core.xparm`/`config.cf`/`core.yml`), the -hw isadll stub, and
 the `core-isa.h` / `xtensa-versions.h` headers. The silicon rev is pinned by the
 host build config, not re-encoded in the ISS payload or the device runtime.
-`[HIGH/OBSERVED]`
 
 ---
 

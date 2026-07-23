@@ -39,7 +39,8 @@ composing the observable layers. Five layers are independently OBSERVED:
 
 Tags per claim: `[HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED]`. `OBSERVED` = a symbol / byte / stage /
 **executed** value read from a shipped binary or shipped public header; `INFERRED` =
-reasoned over OBSERVED; `CARRIED` = re-used at a cited sibling page's confidence. All prose reads as
+reasoned over OBSERVED; `CARRIED` = re-used at a cited sibling page's confidence. The page
+default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag. All prose reads as
 derived from shipped-binary + shipped-public-header + device-disassembler static analysis (lawful
 interoperability reverse engineering, DMCA 17 U.S.C. 1201(f)). Binary paths under
 `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/` (gitignored — reach with `fd --no-ignore` or an
@@ -152,7 +153,7 @@ not data.
     AR       32b x64 -- scalar base/index (ars@1 -> VAddrBase) + vision-scalar results (SQZN @12)
 ```
 
-`[HIGH/OBSERVED]` the stage numbers and the named hardware-block modules are read from the ISS;
+The stage numbers and the named hardware-block modules are read from the ISS;
 `[INFERRED][HIGH]` the box-to-box wiring is the unique topology consistent with: a single @10 read
 port feeding all clusters, the per-class result stages, the `wvec` `(12,12)` self-RMW, and the
 live-driven value bodies.
@@ -163,7 +164,7 @@ live-driven value bodies.
 
 ### 2.1 Physical lane grid
 
-`[HIGH/OBSERVED]` `XCHAL_VISION_SIMD16 = 32` (`core-isa.h` L207): the datapath is **32 lanes of
+`XCHAL_VISION_SIMD16 = 32` (`core-isa.h` L207): the datapath is **32 lanes of
 16-bit = 512 bits**. The lane width is **not a mode register** — it is the opcode's lane *token*,
 enumerated across the ISA roster (`Opcode_ivp_*<token>*` mnemonics in `libisa-core.so`):
 
@@ -176,7 +177,6 @@ enumerated across the ISA roster (`Opcode_ivp_*<token>*` mnemonics in `libisa-co
 | `NXF16` | 32 × fp16 | 100 | the HP VFPU lane (§4) |
 
 (Counts: `nm libisa-core.so | rg -o 'Opcode_ivp_[a-z_0-9]*<tok>[a-z_0-9]*_args' | sort -u | wc -l`.)
-`[HIGH/OBSERVED]`
 
 `[INFERRED][HIGH — supported by L1 lane tokens + L5 per-width value bodies]` The 8/32-bit modes are
 **carved from the same `32×16b` physical array**: 8-bit splits each 16-bit lane into two byte
@@ -189,7 +189,7 @@ constants (the saturation is a *decode-time width+sat variant*, not a global mod
 
 ### 2.2 Ops, latency, slot binding
 
-`[HIGH/OBSERVED]` The `ivp_sem_vec_alu` family (plus `vec_mov`, `vec_shift`, `vbool_alu`) is
+The `ivp_sem_vec_alu` family (plus `vec_mov`, `vec_shift`, `vbool_alu`) is
 **1-cycle**: inputs read @10, result written @11 ([pipeline-timing §3.1](pipeline-timing.md), exemplar
 `IVP_MINN_2XF32T` @11, `IVP_ANDB`/`IVP_LTNX16` vbool @11). The ALU is the **`S0`/`S2`/`S3`/`S4`**
 ALU-capable slots — `my_vec_{0,2,3,4}_opnd_ivp_sem_vec_alu_*` all resolve in `nm libcas-core.so`
@@ -213,7 +213,7 @@ This is the deep-learning inner-loop critical path, and it is the strongest-evid
 page: the **hardware-block model functions are named in the binary** and the **value semantics drive
 live**.
 
-### 3.1 No native multiplier — Booth + partial-product + carry-save Wallace tree `[HIGH/OBSERVED]`
+### 3.1 No native multiplier — Booth + partial-product + carry-save Wallace tree
 
 There is **no single full-width device multiplier**. `libcas-core.so` (unstripped, 179 079 symbols)
 models the multiply datapath as a chain of named hardware-block functions, each a bit-level model
@@ -235,14 +235,14 @@ that contains **zero** x86 `imul`/`mul` instructions (verified by disassembly �
 > bit-level device model and has **no** `imul`. Do not read the `xdref` `imul` as evidence of a
 > hardware array multiplier — it is the simulator's shortcut for getting the right bits. The 11
 > `comp_X_2_arr_N` compressor cells (3:2, 4:2, 5:2 at widths 18/19/24/26/34/35/40) are the definitive
-> carry-save Wallace-tree signature. `[HIGH/OBSERVED]`
+> carry-save Wallace-tree signature.
 
 `[INFERRED][HIGH — constrained by the named modules above]` The *device* is therefore a Booth-encoded
 partial-product PE array per lane feeding a carry-save (3:2/4:2/5:2) compressor tree into the
 accumulator lane — the only structure consistent with the named module set and a width-parameterised
 PP accumulate. The exact which-compressor-feeds-which wiring is the only remaining inference.
 
-### 3.2 The `wvec` accumulator lane layout (i8→24 / i16→48 / i32→96) `[HIGH/OBSERVED]`
+### 3.2 The `wvec` accumulator lane layout (i8→24 / i16→48 / i32→96)
 
 The accumulator widths are read straight out of the `xdref` symbol names and the firmware CTYPEs, and
 confirmed by the regfile descriptor table (`wvec` = **1536 bit × 4**, §7):
@@ -263,7 +263,7 @@ maximum span, and the same 1536 bits re-partitioned by source width:
 So `wvec` is the reduce/MAC summation **headroom** over the raw product, re-partitioned by source
 width — never a wider physical file. `[HIGH/OBSERVED — regfile table walk + arithmetic + CTYPEs]`
 
-### 3.3 The three accumulate modes, driven live `[HIGH/OBSERVED]`
+### 3.3 The three accumulate modes, driven live
 
 The accumulate direction is a **decode-selected datapath path**, not a runtime mode: OVERWRITE
 (`mul`/`muln`/`mulp`/`mulq`: `wvt = product`, no prior-acc read), RMW-ADD (`mula`: `wvt += product`),
@@ -287,7 +287,7 @@ The accumulate **wraps mod 2^(lanewidth)** — there is no saturation on the acc
 [B04 §1](../isa/ref/b04-mac-integer.md)). Saturating/rounding narrowing is a *separate* opcode
 (the `packvr` family); plain `PACKL` is a truncating low-half extract. `[HIGH/OBSERVED — executed live]`
 
-### 3.4 The 4-tap quad-MAC (`QUAD_MAC_TYPE = 1`) `[HIGH/OBSERVED]`
+### 3.4 The 4-tap quad-MAC (`QUAD_MAC_TYPE = 1`)
 
 `XCHAL_VISION_QUAD_MAC_TYPE = 1` (`core-isa.h` L209). The quad-MAC reads, in **one issue**: the
 running `wvec` accumulator (inout) + **FOUR** vec operands (the 4 taps) + a `b32_pr` **radix** scalar.
@@ -375,7 +375,7 @@ static uint32_t quad_mac_lane_i8(uint32_t acc_in,           // wvec lane, 24-bit
 //   module__xdref_mul4t2n8xr8_24_8_8_8_8_64 == sum_i tap_i*radix_byte_i, AND 0xffffff (driven live).
 ```
 
-### 3.5 The `wvec` 2-cycle recurrence (the MAC chain) `[HIGH/OBSERVED]`
+### 3.5 The `wvec` 2-cycle recurrence (the MAC chain)
 
 The accumulator (`wvt`/`wvu`) is **both a USE @12 and a DEF @12** — a same-stage read-modify-write —
 for every accumulating op ([pipeline-timing §3.1 GOTCHA](pipeline-timing.md);
@@ -390,9 +390,8 @@ MAC accumulation chains** are live at once — a software register-pressure boun
 > `my_wvec_2_opnd_ivp_sem_multiply_{wvt,wvu}_{use,def}` — both halves are read **and** written at
 > stage 12. A model that tracks only `wvt` undercounts the accumulator's read/write ports by half.
 > This page adopts the binary-witnessed two-operand RMW (matching [regfile-ports §5](regfile-ports.md)).
-> `[HIGH/OBSERVED]`
 
-### 3.6 Slot binding `[HIGH/OBSERVED]`
+### 3.6 Slot binding
 
 The integer multiply / quad-MAC class is carried **exclusively** by `S2_Mul`: `nm` resolves only
 `my_vec_2_opnd_ivp_sem_multiply_{vp,vq,vr,vs,vt}_use` — **no** `my_vec_{0,1,3,4}_opnd_ivp_sem_multiply_*`.
@@ -405,14 +404,14 @@ is `my_b32_pr_2_opnd_ivp_sem_multiply_arr_use` — the packed round/select opera
 
 ## 4. The SP/HP 2×FMA VFPU
 
-### 4.1 Config `[HIGH/OBSERVED]`
+### 4.1 Config
 
 From `core-isa.h` (L211-215): `XCHAL_HAVE_VISION_SP_VFPU = 1`, `SP_VFPU_2XFMAC = 1`,
 `HP_VFPU = 1`, `HP_VFPU_2XFMAC = 1`, `DP_VFPU = 0`. So: **single-precision (fp32, `N_2XF32` = 16
 lanes)** and **half-precision (fp16, `NXF16` = 32 lanes)** vector FMA, both with the **`2×FMAC`**
 double-throughput option; **no vector double precision**.
 
-### 4.2 One multiplexed FMA tree, named in the binary `[HIGH/OBSERVED]`
+### 4.2 One multiplexed FMA tree, named in the binary
 
 `libcas-core.so` models the VFPU FMA as a named, multiplexed tree per precision, with the **significand
 partial-product cells named explicitly**:
@@ -493,7 +492,7 @@ not separately encoded in the schedule (one op = one result/op), so "2 FMA/cycle
 > `Opcode_ivp_mulsn_2xf32_args`, `Opcode_ivp_mulanxf16_args`, …). The `MADD.S`/`MADD.H` *assembly
 > aliases* the device assembler accepts are spellings of these roots, not distinct opcodes. The
 > `OP_MADD`/`OP_MSUB` enum names in the §4.2 pseudocode are the *op-class* the selector `CONST`
-> lights, not mnemonics. `[HIGH/OBSERVED]` The FP-FMA / FP-divide-step class rides **`S2`-Mul OR `S3`-ALU** —
+> lights, not mnemonics. The FP-FMA / FP-divide-step class rides **`S2`-Mul OR `S3`-ALU** —
 see the CORRECTION — and the VFPU control/status (RoundMode + the 5 IEEE flags/enables) lives in the
 `gvr` **FSR/FCR** CSR, accessed via `RUR.FSR`/`WUR.FSR`/`RUR.FCR`/`WUR.FCR` (no data-register operand;
 the flag DEFs land @14). Device confirm: `MADD.S v4,v5,v6` co-issues with a MAC.
@@ -507,13 +506,13 @@ the flag DEFs land @14). Device confirm: `MADD.S v4,v5,v6` co-issues with a MAC.
 > a same-bundle integer quad-MAC** — the two contend for that single lane. The co-issue win is still
 > real: an FMA on `s3` co-issues with an integer MAC on `s2`. This page adopts the binary-witnessed
 > `s2|s3` binding (matching [regfile-ports §3 CORRECTION](regfile-ports.md) and
-> [pipeline-timing §6](pipeline-timing.md)). `[HIGH/OBSERVED]`
+> [pipeline-timing §6](pipeline-timing.md)).
 
 ---
 
 ## 5. The SuperGather address-generation engine
 
-### 5.1 Config + engine role `[HIGH/OBSERVED]`
+### 5.1 Config + engine role
 
 `XCHAL_HAVE_SUPERGATHER = 1` (`core-isa.h` L100). SuperGather is a **memory-subsystem engine** wired
 to the load/store slots (`S0` for address-issue + scatter; `S1` for drain), **not** an ALU — every
@@ -522,9 +521,9 @@ address `addr[k] = base + offset[k]·elem_sz`** computed inside the core and han
 validity predicate, to a memory port the rest of the pipeline cannot see ([B19](../isa/ref/b19-scatter-gather.md)).
 The roster is **24 mnemonics** (6 gather-address `GATHERA*`, 4 gather-drain `GATHERD*`, 1 `MOVGATHERD`,
 10 `SCATTER*`, 2 `SCATTERINC*`, 1 `SCATTERW`); `nm libisa-core.so | rg ...gather|scatter..._args`
-returns 23 `_args`-tabled mnemonics (`SCATTERW` is the no-data drain barrier). `[HIGH/OBSERVED]`
+returns 23 `_args`-tabled mnemonics (`SCATTERW` is the no-data drain barrier).
 
-### 5.2 The `gvr` ("gsr") staging file `[HIGH/OBSERVED]`
+### 5.2 The `gvr` ("gsr") staging file
 
 `gvr` (512b × 8, regfile descriptor idx 7, ctype `xb_gsr`) is the SuperGather staging register file.
 It is the **only** file flagged **`0x0d`** in the descriptor table (every other file is `0x05`) — the
@@ -541,9 +540,9 @@ the collected element bytes (8 entries `gr0..gr7`).
 > index vector, read by the D-phase on slot 1). The `RUR/WUR` FSR/FCR CSR role is *additional*, not
 > the whole story — `gvr` is genuinely dual-role (gather-staging data path **and** VFPU CSR), but the
 > data-path operands are real. This page adopts the binary-witnessed `gt`/`gs` operands (matching
-> [regfile-ports §2 CORRECTION](regfile-ports.md)). `[HIGH/OBSERVED]`
+> [regfile-ports §2 CORRECTION](regfile-ports.md)).
 
-### 5.3 The two-phase gather `[HIGH/OBSERVED]`
+### 5.3 The two-phase gather
 
 `IVP_GATHERNX16(base, off) = IVP_GATHERDNX16( IVP_GATHERANX16(base, off) )` ([B19](../isa/ref/b19-scatter-gather.md)):
 
@@ -601,7 +600,7 @@ prefix-sum pack network for `DCMPRS` — the only topology covering a `2N→N` a
 contiguous left-pack. The exact immediate→pattern LUT and the `DCMPRS` tail-fill are the network's
 internal tables (`[MED]`, suppressed semantic body).
 
-### 6.2 `valign` (the unaligned-L/S rotate-merge crossbar) `[HIGH/OBSERVED]`
+### 6.2 `valign` (the unaligned-L/S rotate-merge crossbar)
 
 `valign` (512b × 4, ctype `u`) serves **two** uses ([regfile-ports §2](regfile-ports.md)):
 
@@ -620,7 +619,7 @@ lane-select permute crossbar (lane-granular arbitrary select at the ALU) are **d
 
 ## 7. Datapath ↔ regfile connectivity map
 
-`[HIGH/OBSERVED]` The 8 register files (geometry walked directly from the `libisa-core.so` descriptor
+The 8 register files (geometry walked directly from the `libisa-core.so` descriptor
 table — file offset `0x54a800`, 56-byte stride, 8 entries) and which clusters they feed,
 with the port-STAGE each connection operates at ([regfile-ports §2/§6](regfile-ports.md)):
 
@@ -635,7 +634,7 @@ with the port-STAGE each connection operates at ([regfile-ports §2/§6](regfile
 | 6 | `b32_pr` | 64b×16 | @10 | @10/11 | the quad-MAC **radix** (`my_b32_pr_2_opnd_ivp_sem_multiply_arr_use`; `xb_int64pr`, byte-split = taps) + `vec_rep` packed predicate (`prr`/`prt`). |
 | 7 | **`gvr`** | **512b×8** (flags `0x0d`) | @10/11 (gather `gs`) + `RUR` | @10/11 (gather `gt`) + `WUR` | **dual role**: SuperGather staging "gsr" (`gt` def / `gs` use, the data path) **and** VFPU `FSR`/`FCR` CSR (RoundMode + 5 IEEE flags/enables, the `RUR/WUR` path). |
 
-### Key connectivity facts `[HIGH/OBSERVED]`
+### Key connectivity facts
 
 - **One unified stage-10 `vec` read port feeds all five clusters.** A peak `F3`/`F11` 5-slot bundle
   demands **~10–11 simultaneous @10 `vec` reads** (MAC 5 + ALU 4 + ALU 2 + mem 1, the per-slot read

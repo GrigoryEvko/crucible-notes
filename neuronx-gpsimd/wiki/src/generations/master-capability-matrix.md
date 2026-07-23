@@ -9,7 +9,7 @@
 > **not** five engines.
 >
 > It is re-verified, not transcribed. A sample of grid cells was carved directly
-> from the shipped binaries/headers this pass (§9); every other cell is CARRIED
+> from the shipped binaries/headers (§9); every other cell is CARRIED
 > from a committed page with its own binary anchor. Confidence is tagged per cell
 > and **never inflated by synthesis**.
 
@@ -77,12 +77,12 @@ not arch_id.
 > **GOTCHA — arch_id 36 is DOUBLY inferred (the headline wall).** coretype 37 is
 > OBSERVED (the `0x2020202000` bitmask → bits `{13,21,29,37}` plus the SUNDA `cmp
 > $0x6` leg, and a `cmp $0x25`=37 MAVERICK gate in the internal-twin dispatch,
-> 6 hits this pass). arch_id 36 is **not** observed: (1) it rests on the
+> 6 hits). arch_id 36 is **not** observed: (1) it rests on the
 > `coretype = arch_id + 1` rule, and (2) the `NX_TOPSP = arch_id` rule that
 > grounds the other four gens **fails** for MAVERICK — the enum slot 36 is a
 > `MAVERICK_NX__REMOVED__` placeholder and the real `MAVERICK_NX_TOPSP` sits at
 > index 54. There is no v5 NCFW image to confirm 0x24=36 (the `libncfw` selector
-> ladder closes at `0x1c`). Always carry `36*`. [CARRIED — codename-generation-map #777; SX-GEN-09 §1.1; DX-GEN-01 §9c] MED/INFERRED.
+> ladder closes at `0x1c`). Always carry `36*`. [CARRIED — codename-generation-map #777; GEN-09 §1.1; GEN-01 §9c] MED/INFERRED.
 
 See [codename-generation-map.md](codename-generation-map.md) for the full
 identity contract and the four reconciled naming enumerations (NCFW arch_id /
@@ -95,9 +95,9 @@ the `libnrtucode` idx-enum `{6,7,10,11}` — never conflate them).
 
 Cell legend: **value** + confidence (`H`=HIGH, `M`=MED) × evidence (`OBS`=observed
 from bytes/disasm/header, `INF`=inferred). `SPOT` = re-verified against the
-shipped artifact **this pass** (§9). `≡<gen>` = byte/semantically identical to
+shipped artifact (§9). `≡<gen>` = byte/semantically identical to
 that gen. `—` = absent / not applicable. Source anchors are abbreviated:
-`GEN-09`/`GEN-12`/`DX-01`/`DX-05` = the four backing reports; per-gen pages are
+`GEN-09`/`GEN-12` = the backing syntheses; per-gen pages are
 linked in §10.
 
 ### Block A — Identity, ISA, dtype (the strict-superset compute core)
@@ -114,7 +114,7 @@ linked in §10.
 > (`NEURON_ISA_TPB_INST_NBYTES = 64`; every operand struct `sizeof == 64`,
 > compile-verified). The underlying Vision-Q7 FLIX ISA (14 formats / 46 slots /
 > 8 regfiles / 1,534 mnemonics / 12,642 OPCODEDEF placements) is a property of
-> the Q7 core IP, not the GPSIMD generation. [DX-05 §1.2; GEN-12 §1] H/OBS.
+> the Q7 core IP, not the GPSIMD generation. [GEN-12 §1] H/OBS.
 
 > **GOTCHA — header-declared vs image-shipped.** A gen's `arch_isa` header
 > declares a **superset namespace**; the gen's IMAGE ships a **subset** (the
@@ -125,7 +125,7 @@ linked in §10.
 > key framing the per-gen image pages use. [GEN-12 §1.3; sunda-v2-baseline #778] H/OBS.
 
 > **NOTE — `tpb/` header-file counts.** The byte-true OBSERVED `tpb/` `.h` counts
-> (`fd --no-ignore -e h` / `find -type f -name '*.h'`, re-run this pass) are
+> (`fd --no-ignore -e h` / `find -type f -name '*.h'`) are
 > **99 / 108 / 117 / 123** (SUNDA / CAYMAN / MARIANA / MAVERICK), monotone (+9/+9/+6) — a
 > capability signature. M_PLUS reuses the MARIANA `tpb/` dir (no separate header tree).
 > This agrees with [arch-isa-header-diff.md](arch-isa-header-diff.md); an earlier
@@ -148,7 +148,7 @@ linked in §10.
 > (`start_addr` LSB set) alone — no separate opcode dispatched — plus the
 > `MX_PERF_MODE` QUAD/OCT row-pump for 4×/8× throughput. The opcodes keep their
 > values (zero drift); only the *entry mechanism* is re-parameterized. This is a
-> SCALING-with-re-encode special case, not an opcode removal. [DX-01 §8; DX-05 §2.3] H/OBS.
+> SCALING-with-re-encode special case, not an opcode removal. H/OBS.
 
 > **QUANTIZE_MX 0xe3 binds DVE on v5** — it is absent from POOL KITs; the POOL MX
 > surface is the gen-invariant `0x7b TensorDequantize` (SPOT: present on both
@@ -216,7 +216,7 @@ bytes ABANDONED, **never reused (ZERO byte-reuse across the chain)**. CAYMAN's
 `JPEG_DECODE = 0x81` is **not** a reuse — it fills a **pre-existing free byte**
 (`0x80`/`0x81` are permanent holes in all four gens; the SUNDA enum jumps
 `DROPOUT 0x7f → TRANSPOSE_BATCH_NORM_STATS2 0x82`). A stray `0x8a–0x8d/0x8f` in a
-v3+ stream is a decode error or a v2 artifact. [DX-05 §3.3; cross-gen-opcode-diff #782] H/OBS.
+v3+ stream is a decode error or a v2 artifact. [cross-gen-opcode-diff #782] H/OBS.
 
 ### B — Partial-order EXCEPTIONS (where strict-superset does NOT hold)
 
@@ -319,15 +319,15 @@ What NEVER changes across the line — the bytes a reimplementer hard-wires once
 
 | Invariant | Evidence | Conf |
 |-----------|----------|:----:|
-| **The Vision-Q7 ISA opcode namespace** — zero value-drift v2..v5 (the sunda↔maverick value-mismatch join is EMPTY; ~138 shared ops keep their v2 byte through 3 steps). Write-once: new gens only APPEND. | DX-05 §1.1; DX-GEN-04 §5.1 | H/OBS |
-| **The single fixed `ncore2gp` microarch** — `XCHAL_HW_MIN_VERSION == HW_MAX == 281040`; ConfigID `0xC4019686:0x2908E4E3`. 8 regfiles, 14-format/46-slot FLIX, fixed pipeline, 1,534-mnemonic roster. | DX-05 §1.2; DX-HW-01 | H/OBS |
+| **The Vision-Q7 ISA opcode namespace** — zero value-drift v2..v5 (the sunda↔maverick value-mismatch join is EMPTY; ~138 shared ops keep their v2 byte through 3 steps). Write-once: new gens only APPEND. | GEN-04 §5.1 | H/OBS |
+| **The single fixed `ncore2gp` microarch** — `XCHAL_HW_MIN_VERSION == HW_MAX == 281040`; ConfigID `0xC4019686:0x2908E4E3`. 8 regfiles, 14-format/46-slot FLIX, fixed pipeline, 1,534-mnemonic roster. | config identity (§7) | H/OBS |
 | **The 64-byte instruction word** — `INST_NBYTES = 64` on every gen incl TONGA; every operand struct `sizeof == 64`. | GEN-12 §4(V) | H/OBS |
 | **The SEQ engine model** — every NX engine on every gen is the same ASCII-opcode dispatch sequencer; the 18-handler control core is the 5-way intersection (the SP roster). | GEN-12 §4(I) | H/OBS |
 | **The 0xF0 ExtendedInst NX→Q7 bridge** — POOL-exclusive escape op routing to the Q7_POOL `kernel_info` back-end (the reason only POOL is dual-core); on every gen shipping POOL. | GEN-12 §4(II) | H/OBS |
 | **The engine_idx enum** — `PE=0, ACT=1, POOL=2, DVE=3, TPB_SP=4, TOP_SP=5` on every gen's header **incl maverick** (the ACT fold is firmware-IMAGE level, NOT an ISA-enum removal — SPOT). | GEN-12 §4(III); SPOT §9 | H/OBS |
-| **The globstruct magic `0x6099CB34`** (Q7 ready sentinel) + host claim `0x502B2DA1` — byte-identical CAYMAN/MARIANA/MAVERICK/SUNDA; reset state nx=1 / q7=0xFF. | DX-05 §1.4 | H/OBS |
-| **The frozen Q7-control CSR core** — shared-7 bundle sha `eeebb647`, q7-run-stall `f764ef74`, hw_decode `c7ee050e`; byte-identical cayman..maverick. | DX-05 §1.3 | H/OBS |
-| **The XEA3 interrupt controller** — 37-entry table, RER/WER external-register controller, 25 BInterrupt pins; fixed by the ncore2gp config. | DX-05 §1.5 | H/OBS |
+| **The globstruct magic `0x6099CB34`** (Q7 ready sentinel) + host claim `0x502B2DA1` — byte-identical CAYMAN/MARIANA/MAVERICK/SUNDA; reset state nx=1 / q7=0xFF. | §7 | H/OBS |
+| **The frozen Q7-control CSR core** — shared-7 bundle sha `eeebb647`, q7-run-stall `f764ef74`, hw_decode `c7ee050e`; byte-identical cayman..maverick. | §7 | H/OBS |
+| **The XEA3 interrupt controller** — 37-entry table, RER/WER external-register controller, 25 BInterrupt pins; fixed by the ncore2gp config. | §7 | H/OBS |
 | **The collective-reducible dtype set** — `{BF16,FP16,FP32R,FP8_E3/E4/E5}` (cce_dtypes @libnrt 0x9b9f40) + the 9 collective pseudo-ops + the CCE/COLLECTIVE_TYPE enums; gen-invariant incl maverick header. | GEN-12 §4(VI) | H/OBS |
 | **The NCFW ctx_log sub-structs** — ring channel 148B, mesh event 80B, hier 8B, barrier step 52B, ring_ctx 16B; byte-identical across all 4 NCFW gens. | GEN-12 §4(VIII) | H/OBS |
 | **The FIS sprot stack** (remapper → qos_prot → nsm) + the errtrig PAIR INTC leaf — universal on every gen; nsm byte-identical. | GEN-12 §4(IX) | H/OBS |
@@ -447,7 +447,7 @@ the EVENT wait/update primitive (present@v2..v4+, DROPPED@v5); the **DGE fast-pa
 
 - **v2–v4+ cells: byte-grounded (HIGH × OBSERVED).** Every count, sha, enum value,
   and selector for SUNDA/CAYMAN/MARIANA/MARIANA_PLUS is read from a shipped header
-  or symbol table — many re-verified this pass (§9).
+  or symbol table — many re-verified (§9).
 - **MAVERICK / v5 cells: header/getter/dispatch-level OBSERVED; interiors
   INFERRED.** The ISA delta (165 opcodes, 30 dtypes, MXTENSOR_V2, SEM_*_REG_OFFSET)
   is read directly from the shipped `maverick_arch_isa` headers + the customop-lib
@@ -467,14 +467,14 @@ the EVENT wait/update primitive (present@v2..v4+, DROPPED@v5); the **DGE fast-pa
 
 ---
 
-## 9. Spot-verification this pass (the cells re-carved from the binary)
+## 9. Spot-verification (the cells re-carved from the binary)
 
 A capstone re-verifies; it does not merely transcribe. The following grid cells
-were carved **directly** from the shipped artifacts this pass (all under the
+were carved **directly** from the shipped artifacts (all under the
 gitignored `extracted/.../custom_op/c10/`, read with `--no-ignore`). Every other
 grid cell is **CARRIED** from a committed page with its own binary anchor.
 
-| # | Cell | Re-verification this pass | Result |
+| # | Cell | Re-verification | Result |
 |---|------|---------------------------|:------:|
 | 1 | **(2/3/5) ISA superset** | `python` enum parse of `NEURON_ISA_TPB_{DTYPE,ALU_OP,OPCODE}` in each gen's `common.h` | DTYPE 16/16/24/30, ALU_OP 33/60/64/65, OPCODE 145/150/159/165 — **PASS** |
 | 2 | **(1) IDENTITY** | `nm libnrtucode_internal.so \| rg '_libs$'` | 5 symbols at `0x9b8f80/90, 0x9b8fd0, 0x9b9010, 0x9b9050` — **PASS** |
@@ -492,7 +492,7 @@ grid cell is **CARRIED** from a committed page with its own binary anchor.
 
 All 13 PASSED. The carved cells span IDENTITY / ISA / DTYPE / ENGINES / MX / DGE /
 COLLECTIVE / structural — at least one cell per generation, re-grounded against
-the bytes this session.
+the bytes.
 
 ---
 
