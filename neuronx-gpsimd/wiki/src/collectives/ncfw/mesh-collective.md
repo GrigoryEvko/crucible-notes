@@ -38,17 +38,17 @@ re-decode of the carved NCFW IRAM blobs**.
 > `xtensa-elf-objdump XTENSA_CORE=ncore2gp` — **never** the FLIX bundle decoder.
 > See [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md).
 
-**Provenance & confidence.** Every fact below is read **this session** from the
-shipped host library
+**Provenance & confidence.** Every fact below is read from the shipped host library
 `libncfw.so` (sha256 `598920d743762c03…`, BuildID `a98f8e1c…`, SONAME
-`libncfw.so.2.31.1.0.cf13a49f`, 615 640 B — all four identity anchors re-verified)
-with stock binutils (`readelf`/`nm`/`objdump -M intel`/`sha256sum`) and a native
-Cadence `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) on the carved IRAM blob.
-Lawful interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor
-source snapshot consulted. Tags are `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` per
-the [Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a
-byte/size/symbol/disasm read from the binary this pass; `CARRIED` = OBSERVED in a
-cited prior carve and reused; `INFERRED` = reasoned over those. Callouts: **QUIRK**
+`libncfw.so.2.31.1.0.cf13a49f`, 615 640 B) with stock binutils
+(`readelf`/`nm`/`objdump -M intel`/`sha256sum`) and a native Cadence
+`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) on the carved IRAM blob. Lawful
+interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor source
+snapshot consulted. The page default is `[HIGH/OBSERVED]`; claims that depart from
+it carry an explicit tag, per the
+[Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a
+byte/size/symbol/disasm read from the binary; `CARRIED` = OBSERVED in a cited prior
+carve and reused; `INFERRED` = reasoned over those. Callouts: **QUIRK**
 (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **NOTE**
 (orientation), **CORRECTION** (overturns a prior reading).
 
@@ -91,7 +91,7 @@ flow control.
 
 ## 2. The decoder call tree (mesh path)
 
-All `OBSERVED HIGH`, re-traced this session. The decoder symbols appear **4×** in
+All `OBSERVED HIGH`. The decoder symbols appear **4×** in
 `libncfw` (one copy per arch); the SUNDA-copy addresses are shown.
 
 ```
@@ -119,8 +119,7 @@ The four decoder copies are **byte-size-identical** across arches:
 (@0x8d82 / @0x21b29 / @0x3a8d0 / @0x53677), and `ncfw_log_algo_mesh_configs` =
 `0x2b7` at all four (@0x19365 / @0x3210c / @0x4aeb3 / @0x63c5a). **Only relocated
 string/data immediates and the event COUNT differ** — the mesh event *schema* is
-uniform across all archs; only the *capacity* scales (§4). `[HIGH/OBSERVED —
-nm -nS sizes this session.]`
+uniform across all archs; only the *capacity* scales (§4). `[HIGH/OBSERVED — nm -nS sizes.]`
 
 ---
 
@@ -219,7 +218,7 @@ the per-codename `<codename>_ncfw_ctx_log` reaches exactly one
 | `0x14` | **MARIANA** (v4) | `0x4aeb3` | `mov r8d,0x6c` @0x4b050 | `0x6c` = **108** |
 | `0x1c` | **MARIANA_PLUS** (v4+) | `0x63c5a` | `mov r8d,0x6c` @0x63df7 | `0x6c` = **108** |
 
-`[ALL OBSERVED HIGH — each immediate re-read this session via objdump.]` v5/MAVERICK
+`[ALL OBSERVED HIGH — each immediate read via objdump.]` v5/MAVERICK
 has **no row** — NCFW absent (the v5 wall).
 
 > **CORRECTION — the C1 codename inversion. DO NOT REPEAT.** An earlier copy of
@@ -230,7 +229,7 @@ has **no row** — NCFW absent (the v5 wall).
 >
 > > **`arch_id 0x05 = SUNDA / 0x0c = CAYMAN / 0x14 = MARIANA / 0x1c = MARIANA_PLUS`**
 >
-> verified this session against the `libncfw_ctx_log` dispatch ladder @0x1309:
+> verified against the `libncfw_ctx_log` dispatch ladder @0x1309:
 >
 > ```asm
 > 133c: cmp [arch_id],0x05 ; 1340: je 0x134a -> 135c: call sunda_ncfw_ctx_log        @0x1a12b
@@ -240,14 +239,14 @@ has **no row** — NCFW absent (the v5 wall).
 > default                                     -> 13ae: mov eax,0x16  (22 == EINVAL)
 > ```
 >
-> Three independent in-binary anchors agree and **none was copied from a sibling
-> report**: (1) the `ctx_log` dispatch above; (2) the `libncfw_get_image` @0x1179
+> Three independent in-binary anchors agree: (1) the `ctx_log` dispatch above;
+> (2) the `libncfw_get_image` @0x1179
 > selector, where `cmp 0x05`→loads `v2_ncfw_*_bin`, the `0x0c` leg loads
 > `v3_ncfw_*_bin` (@0x74a40), the `0x14` leg loads `v4_ncfw_*_bin` (@0x7e440); and
 > (3) the source-file strings in address order `sunda.c (0x954f9) < cayman.c
 > (0x95923) < mariana.c (0x9592c) < mariana_plus.c (0x95936)` — the same order as
 > both the per-codename `ctx_log` symbols and the DRAM-blob symbols. `[HIGH/OBSERVED
-> — triple-anchored this session.]` The binding is **`0x0c = CAYMAN/v3`,
+> — triple-anchored.]` The binding is **`0x0c = CAYMAN/v3`,
 > `0x14 = MARIANA/v4`**. Carry it; never re-introduce the
 > swap. (coretype = arch_id + 1: SUNDA 6, CAYMAN 13, MARIANA 21, MARIANA_PLUS 29.)
 
@@ -324,8 +323,7 @@ union {
 };
 ```
 
-`[HIGH/OBSERVED — both `movzx WORD PTR [rax+0x3]` and `[rax+0x5]` re-read this
-session; same 4 bytes are either one ring channel bitmap or two mesh u16s.]`
+`[HIGH/OBSERVED — both `movzx WORD PTR [rax+0x3]` and `[rax+0x5]`; same 4 bytes are either one ring channel bitmap or two mesh u16s.]`
 
 > **NOTE — mesh derives neighbour sema slots arithmetically.** Where the ring
 > carries an explicit `channel_list` bitmap, the mesh carries
@@ -420,8 +418,7 @@ placement in the `ncfw_log_algo_ctx` struct (@0x18cd2):
 +0x204  mesh_ctx          (event_index u16)   -> ncfw_log_algo_mesh_ctx          (lea +0x204 @0x18ea9)
 ```
 
-`[HIGH/OBSERVED — all three leas re-read this session; the active one is chosen by
-`algo_type`.]`
+`[HIGH/OBSERVED — the active one is chosen by `algo_type`.]`
 
 > **QUIRK — mesh has no per-channel flow control.** The ring runtime ctx is
 > 32 channels × 16 B = 512 B of `recv_cnt`/`send_credit`/`m2s_val`/`s2m_val`/
@@ -438,7 +435,7 @@ The host decoders give the *structures* the firmware reads; the **device step
 machine** that consumes them is in the carved NCFW IRAM blobs. Decoded under the
 scalar-LX length rule via `xtensa-elf-objdump XTENSA_CORE=ncore2gp` on the **v3
 CAYMAN** image (carved from `v3_ncfw_iram_bin` @0x79860, 19 392 B = `0x4bc0`; sha256
-`d7bc8b81…`, re-verified == the carve identity). The mesh/ring/hier case bodies
+`d7bc8b81…`, == the carve identity). The mesh/ring/hier case bodies
 **call a shared bank of leaf semaphore primitives**, and those primitives decode
 cleanly even though the case-body interiors do not (§9.4).
 
@@ -455,14 +452,14 @@ The wait helpers are a `memw`-fenced spin-poll on the CSR pointed by `a10`. The
 34a0:  1d f0      retw.n              ; return once reached
 ```
 
-`[HIGH/OBSERVED — bytes decoded this session, native objdump output.]` The full
+`[HIGH/OBSERVED — native objdump output.]` The full
 family is present — **10 spin-poll wait primitives** across two register banks
 (`a2/a3` and `a5/a4`): `wait-ne` (`bne`), `wait-lt/le` (`bltu`), `wait-ge` (`bgeu`),
 each loading the CSR at `a10`, comparing the target, and spinning back to its own
 `memw` until release. Count byte-stable **10/10/10** across CAYMAN/MARIANA/
 MARIANA_PLUS; SUNDA (the structurally-different v2 monolith) does **not**
 library-factor the primitives into an `a10`-pointer bank (4 inlined spin-polls on
-base regs `a3/a4/a6`). `[HIGH/OBSERVED — per-gen census this session.]`
+base regs `a3/a4/a6`). `[HIGH/OBSERVED — per-gen census.]`
 
 This is the device side of the host `add_semaphore_wait_ge_and_dec` op. The wait-ge
 helper @0x3488 has an arg-decode prologue (an `entry a1,32` + one `op0=f` scalar op
@@ -556,8 +553,8 @@ The idle loop parks at `waiti 15` with a tight back-edge:
 
 > **NOTE — ring unit size.** The ring page reports the ring *config* channel at
 > 149 B (`0x95`); the ring *runtime* channel record refines to 148 B (`0x94`). Both
-> are ring facts; the mesh event (80 B) is unaffected. Cite the ring page for its
-> own numbers — those facts are taken from the binary, not its (stub) prose.
+> are ring facts; the mesh event (80 B) is unaffected. Cite the
+> [ring page](./ring-kangaring.md) for its own numbers.
 
 ---
 

@@ -42,20 +42,20 @@ blob**.
 > **never** the FLIX bundle decoder. See
 > [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md).
 
-**Provenance & confidence.** Every host-decoder fact below is read **this session**
-from the shipped sibling runtime library
+**Provenance & confidence.** Every host-decoder fact below is read from the shipped
+sibling runtime library
 `libncfw.so` (sha256 `598920d743762c03…`, BuildID `a98f8e1ca2294582…`, SONAME
-`libncfw.so.2.31.1.0.cf13a49f`, **615 640 B** — all four identity anchors
-re-verified via `readelf -n`/`-d`, `stat`, `sha256sum`), with stock binutils
+`libncfw.so.2.31.1.0.cf13a49f`, **615 640 B**; anchors via `readelf -n`/`-d`,
+`stat`, `sha256sum`), with stock binutils
 (`readelf -SW`/`nm -nS`/`objdump -d -M intel`) and the native Cadence
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) on the carved v3 IRAM blob.
 `.text`/`.rodata` are VMA==file-offset here (`[14] .text @0x10c0`,
 `[16] .rodata @0x65000` — both VMA==offset), so **no `.data` delta** applies to any
 quoted address. Lawful interoperability reverse engineering (DMCA 17 U.S.C.
-1201(f)); no vendor source snapshot consulted. Tags are
-`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` per the
+1201(f)); no vendor source snapshot consulted. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag, per the
 [Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a
-byte/size/symbol/disasm read this pass; `CARRIED` = OBSERVED in a cited prior carve
+byte/size/symbol/disasm read directly; `CARRIED` = OBSERVED in a cited prior carve
 and reused; `INFERRED` = reasoned over those. Callouts: **QUIRK** (counter-intuitive
 but real), **GOTCHA** (a reimplementation trap), **NOTE** (orientation),
 **CORRECTION** (overturns a prior reading).
@@ -78,7 +78,7 @@ Each barrier decoder appears **four times** — once per embedded NCFW image. Th
 `arch_id`→image binding is read directly from the `libncfw_get_image @0x1179`
 dispatch (do **not** invert it):
 
-| `arch_id` | codename | NC gen | image symbols (this pass) | barrier decoder copy |
+| `arch_id` | codename | NC gen | image symbols | barrier decoder copy |
 | --------- | -------- | ------ | ------------------------- | -------------------- |
 | **`0x05`** | SUNDA | NC-v2 | `v2_ncfw_dram_bin @0x66a60` / `v2_ncfw_iram_bin @0x6a140` | `device_barrier_config @0xfef5` |
 | **`0x0c`** | CAYMAN | NC-v3 | `v3_ncfw_dram_bin @0x74a40` / `v3_ncfw_iram_bin @0x79860` | `device_barrier_config @0x28c9c` |
@@ -97,7 +97,7 @@ if (arch_id == 0x0c) return {v3...};        // 11c7: cmp [rbp-4],0x0c ; je 121a 
 ```
 
 > **QUIRK — the four barrier decoders are byte-identical in *size*, proving a
-> schema-wide layout.** From `nm -nS libncfw.so` this pass, every per-arch copy of
+> schema-wide layout.** From `nm -nS libncfw.so`, every per-arch copy of
 > every barrier decoder has the **same function size** (so the same struct walk):
 
 | decoder | size | v2 | v3 | v4 | v4+ |
@@ -112,7 +112,7 @@ if (arch_id == 0x0c) return {v3...};        // 11c7: cmp [rbp-4],0x0c ; je 121a 
 The four `arch_id` values therefore share **one** device-barrier schema; offsets,
 strides and the 4-step / 4-sema / 4-target counts below are schema-wide. **All
 addresses below quote the v2/SUNDA copy.** [**HIGH/OBSERVED** — function-size deltas
-from `nm -nS`, this pass.]
+from `nm -nS`.]
 
 > **NOTE — `.data` caveat.** The `soc_addr` *integers* the firmware reads live in
 > the embedded DRAM image (`v2_ncfw_dram_bin` …), populated at runtime — **not** in
@@ -177,7 +177,7 @@ relationship to the device barrier is recorded here.
 | `+0x00` | 8 | `barrier_start.addr.soc_addr` u64 | `ncfw_log_addr(cfg)` — `mov r8,rcx` @`0xd7b2` → `call 0x41c3` @`0xd7c4`; key `"barrier_start"` @`0x65371` |
 | `+0x08` | 8 | `barrier_done.addr.soc_addr` u64 | `mov r12,QWORD PTR [rax+0x8]` @`0xda40`; key `"barrier_done"` @`0x6537f` |
 
-[**HIGH/OBSERVED** — both loads + key strings read this pass.]
+[**HIGH/OBSERVED** — both loads + key strings.]
 
 **Handshake relationship [INFERRED/MED].** `barrier_start` is the semaphore the host
 **signals to release** the device into the collective; `barrier_done` is the
@@ -251,7 +251,7 @@ struct neff_device_barrier_config {
 > **GOTCHA — there is *no* `barrier_id`, rank/participant *count*, `timeout`, or
 > explicit *phase* field anywhere in the struct or in `libncfw.so`'s rodata.**
 > `strings -t x libncfw.so | rg -i 'barrier_id|timeout|phase|participant|threshold|
-> rank_mask|num_ranks'` returns **zero hits** this pass. Participant identity is
+> rank_mask|num_ranks'` returns **zero hits**. Participant identity is
 > carried **implicitly**: which *engines* → `dma_engines_bitmap` + `queue_id`; which
 > *ranks/dies* → the high bits of the `barrier_sema` / `dma_sync_sema` /
 > `start_network_proxy` `soc_addr` values (the Cayman die-select bitfields — see
@@ -442,12 +442,12 @@ from the identical `m2s`/`s2m` tail-ptr semantics in the ring channels.]
 
 The host decoder recovers only the **layout**; the firmware *executes* the
 arrive/wait using the scalar-Xtensa-LX semaphore primitives in the carved NCFW IRAM
-blob. Re-decoded this pass with `xtensa-elf-objdump XTENSA_CORE=ncore2gp` on
+blob. Decoded with `xtensa-elf-objdump XTENSA_CORE=ncore2gp` on
 **v3 CAYMAN IRAM** (carved from `v3_ncfw_iram_bin @0x79860`, 19 392 B / `0x4bc0`,
 size confirmed against `v3_ncfw_iram_bin_size @0x7e420`).
 
 **WAIT-GE @0x3498** — the `barrier_sema[k][i] >= target_sema_val[k][i]` spin of
-§5.2 / §6 (**HIGH/OBSERVED** this pass; **CARRIED** from
+§5.2 / §6 (**HIGH/OBSERVED**; **CARRIED** from
 [`mesh-collective.md`](./mesh-collective.md) /
 [`main-dispatch-loop.md`](./main-dispatch-loop.md)):
 
@@ -464,7 +464,7 @@ register banks) in the helper bank `0x3100..0x36f0`; the device barrier composes
 **GE** member per `target_sema_val`.
 
 **Fenced SIGNAL @0x31c7** — the CSR-write half (the on-device counterpart of the
-ARRIVE increment) (**HIGH/OBSERVED** this pass; **CARRIED** from
+ARRIVE increment) (**HIGH/OBSERVED**; **CARRIED** from
 [`mesh-collective.md`](./mesh-collective.md)):
 
 ```asm
@@ -481,7 +481,7 @@ ARRIVE increment) (**HIGH/OBSERVED** this pass; **CARRIED** from
 > **scalar-LX** management core — the real stream is scalar (the `1d f0` = `retw.n`
 > is visible *inside* the garbled bundle). Resync at the next `retw.n` under the
 > scalar-LX length rule; do **not** trust the bundle grouping here. [**HIGH** — the
-> mis-decode is reproduced this pass; the debunk is established in
+> mis-decode is reproduced here; the debunk is established in
 > [`main-dispatch-loop.md`](./main-dispatch-loop.md).]
 
 **Hardware substrate.** Every semaphore `soc_addr` (the `barrier_sema`,
@@ -505,7 +505,7 @@ target the ARRIVE writes hit) / `dec @0x1C00`. [`soc_addr` representation
 
 ## 9. Confidence ledger
 
-**HIGH / OBSERVED** (read from disasm/bytes this pass):
+**HIGH / OBSERVED** (read from disasm/bytes):
 
 * Full call tree (§2): parent passes the **same** `cfg=[rbp-0x60]` to host (`d613`)
   and device (`fef5`) sub-decoders; `execute_device_barrier` u8 @`+0x124` via `"%p"`.

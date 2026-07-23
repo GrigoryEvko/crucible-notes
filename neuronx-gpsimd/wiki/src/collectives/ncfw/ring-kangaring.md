@@ -19,14 +19,15 @@ and from the host **encoder** primitives + DWARF in `libnrt.so`. The device
 is recovered separately by re-decoding the carved NCFW IRAM under the **scalar-LX
 length rule** with the native `xtensa-elf-objdump XTENSA_CORE=ncore2gp` (§8).
 
-All claims are tagged `[CONFIDENCE × PROVENANCE]`: `HIGH/MED/LOW` ×
-`OBSERVED` (read directly from a binary/disasm/DWARF/bytes), `INFERRED` (deduced from
-naming/structure), or `CARRIED` (established on a committed sibling page).
+The page default is `[HIGH × OBSERVED]` (read directly from a binary/disasm/DWARF/
+bytes); claims that depart from it carry an explicit `[CONFIDENCE × PROVENANCE]` tag,
+with `INFERRED` (deduced from naming/structure) or `CARRIED` (established on a
+committed sibling page).
 
 > **Provenance.** Host decoders + firmware blobs from `libncfw.so`
 > (`aws-neuronx-runtime-lib 2.31.24.0-0b044f4ce`,
 > `opt/aws/neuron/lib/libncfw.so`, BuildID `a98f8e1ca2294582835310c3a1092e0a5e500db5`,
-> ELF64 x86-64, **not stripped**, 615 640 bytes — `stat`/`readelf -n` re-verified).
+> ELF64 x86-64, **not stripped**, 615 640 bytes — `stat`/`readelf -n` confirm).
 > `.text` and `.rodata` are VMA==file-offset (`.text` @`0x10c0`, `.rodata`
 > @`0x65000`); `.data` carries a `0x1000` delta (`readelf -SW`). The host encoder +
 > the `reduction_type_t`/`encd_neigh` DWARF are from `libnrt.so.2.31.24.0`
@@ -347,7 +348,7 @@ i.e. a per-step, **per-peer** INC + wait-GE handshake using the `kring_peer_sema
 ### 5.1 `reduction_type_t` and the N-read mechanism
 
 The fold pattern is the `reduction_type_t` enum (DWARF DIE `<0x60c99b>` in
-`libnrt.so`, re-extracted byte-exact), the **3rd integer arg (`ecx`)** of every reduce
+`libnrt.so`), the **3rd integer arg (`ecx`)** of every reduce
 step primitive:
 
 | value | name | fold |

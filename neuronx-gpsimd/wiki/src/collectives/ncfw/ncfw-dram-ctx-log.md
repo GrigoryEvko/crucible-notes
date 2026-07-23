@@ -22,16 +22,17 @@ firmware's runtime context.**
 > separately in `libnrtucode_extisa.so`). See the
 > [scalar-LX core page](../../uarch/ncfw-lx-core.md) for the full ISA evidence.
 
-**Provenance & confidence.** Every fact below is read **this session** from the
-shipped host library `libncfw.so` (sha256 `598920d7…`) with stock binutils
-(`readelf` / `nm` / `objdump -M intel` / `sha256sum`) and a Python ELF/byte/struct
-reader. Lawful interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no
-vendor source snapshot consulted. Tags follow the
+**Provenance & confidence.** Every fact below is read from the shipped host library
+`libncfw.so` (sha256 `598920d7…`) with stock binutils (`readelf` / `nm` /
+`objdump -M intel` / `sha256sum`) and a Python ELF/byte/struct reader. Lawful
+interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor source
+snapshot consulted. The page default is `[HIGH/OBSERVED]`; claims that depart from
+it carry an explicit tag, per the
 [Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a byte
-/ size / symbol / disassembler output read from the binary **this pass**; `CARRIED`
-= OBSERVED in a cited prior carve and reused; `INFERRED` = reasoned over those.
-Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a reimplementation
-trap), **NOTE** (orientation), **CORRECTION** (overturns a prior reading).
+/ size / symbol / disassembler output read from the binary; `CARRIED` = OBSERVED in
+a cited prior carve and reused; `INFERRED` = reasoned over those. Callouts:
+**QUIRK** (counter-intuitive but real), **GOTCHA** (a reimplementation trap),
+**NOTE** (orientation), **CORRECTION** (overturns a prior reading).
 
 > **THE v5 / MAVERICK WALL.** `libncfw` ships **exactly four** NCFW generations
 > (v2/v3/v4/v4_plus) on the DRAM side too — `nm` lists exactly four `v#_ncfw_dram_bin`
@@ -44,9 +45,9 @@ trap), **NOTE** (orientation), **CORRECTION** (overturns a prior reading).
 
 ---
 
-## 0. Target binary identity (all anchors match this session)
+## 0. Target binary identity
 
-| Field | Value | How verified `[HIGH/OBSERVED]` |
+| Field | Value | How verified |
 |---|---|---|
 | Path | `…/aws-neuronx-runtime-lib_2.31.24.0-0b044f4ce_amd64/opt/aws/neuron/lib/libncfw.so` | `fd --no-ignore` |
 | Size | **615640** bytes | `stat -c %s` |
@@ -59,7 +60,7 @@ The four DRAM blobs and all `ctx_log` rodata strings live in `.rodata`, where **
 equals file offset**, so each blob symbol's address *is* its file offset and the
 carve is a direct `f[off : off+size]` slice — no `.data` VMA↔file delta correction is
 needed. (That `0x1000` `.data` delta matters only for the two `.data`-resident
-globals, e.g. `ncfw_log_buffer_full`; the DRAM image is `.rodata`.) `[HIGH/OBSERVED]`
+globals, e.g. `ncfw_log_buffer_full`; the DRAM image is `.rodata`.)
 
 ---
 
@@ -69,8 +70,7 @@ Each generation ships a **DRAM** (data) blob immediately preceding its IRAM blob
 `.rodata`, followed by a `u32 *_dram_bin_size` word that the
 [host selector](ncfw-iram-images.md#2-the-host-selector-libncfw_get_image-text-0x1179)
 loads. The **carved length, the `u32` size word, and the `nm -S` symbol size all
-agree** for every blob — no padding slack. Re-carved + hashed with Python this pass
-`[HIGH/OBSERVED]`:
+agree** for every blob — no padding slack. Carved and hashed with Python:
 
 | gen | codename | NC | file-off | size (B / hex) | `u32` szword (off) | nonzero | sha256 (carved) |
 |---|---|---|---|---|---|---|---|
@@ -86,7 +86,7 @@ MARIANA_PLUS=NC-v4+ (29); `arch_id = coretype − 1`. The four sha256s match the
 [IRAM-images carve](ncfw-iram-images.md#1-the-image-inventory--four-iram--four-dram-blobs)
 exactly. `[HIGH/OBSERVED for the carve; codename↔NC HIGH/CARRIED]`
 
-Three structural facts fall straight out `[HIGH/OBSERVED]`:
+Three structural facts fall straight out:
 
 - **MARIANA and MARIANA_PLUS share a byte-identical DRAM** (both sha `1c3ac5f4…`;
   Python `v4 == v4plus` → `True`). MARIANA_PLUS is a *code-only* delta over MARIANA on
@@ -103,7 +103,7 @@ Three structural facts fall straight out `[HIGH/OBSERVED]`:
 > not a real format). The **first bytes are a `u32` table, not instructions** (unlike
 > the IRAM images, whose first bytes are live Xtensa `j` vectors). The init header is
 > read as **data tables**; the host `ctx_log` decoders — which walk the *runtime*
-> context those tables seed — are the disassemblable half. `[HIGH/OBSERVED]`
+> context those tables seed — are the disassemblable half.
 
 ### 1.1 Init-data extent vs zero tail
 
@@ -126,8 +126,8 @@ can reside given an all-zero static image.]`
 ## 2. The DRAM header — static config tables
 
 The init header carries **three** addressable tables that the LX firmware boots from,
-all at fixed offsets from the DRAM base. Byte-decoded from the carved v4 image this
-pass (`<I`/`<Q` struct unpack); v3 is the same shape with a constant `+0x18` offset
+all at fixed offsets from the DRAM base. Byte-decoded from the carved v4 image
+(`<I`/`<Q` struct unpack); v3 is the same shape with a constant `+0x18` offset
 shift, and v2 is structurally simpler ([§4](#4-per-arch-differences-v2-is-simpler-v3v4-are-relocated)).
 
 ### 2.1 The exc-cause / boot vector @ `DRAM+0x000` (4 × u32)
@@ -170,7 +170,7 @@ from v4 (v3 byte-identical; see [§4](#4-per-arch-differences-v2-is-simpler-v3v4
 | `+0x098` | `0x0000008006900000` | NC0 notif/DMA block 1 |
 | `+0x0a0`–`+0x0a8` | `…06800000`/`06900000`, `+0x8000` bank | NC1 notif/DMA |
 
-Two byte-grounded properties pin the layout `[HIGH/OBSERVED]`:
+Two byte-grounded properties pin the layout:
 
 - **The engine selector is bits [32:39]** of the low half: `0x28`/`0x38`/`0x68`/`0x78`
   = engines A/B/C/D, over a common base `0x02700000` (the **NC_EVENT region base**,
@@ -198,7 +198,7 @@ Two byte-grounded properties pin the layout `[HIGH/OBSERVED]`:
 > an 8-slot table plus a separate 4-entry secondary table.** An earlier reading on
 > this page split the `0xb0..0xe0` window by value range (the `0x3c..` cluster at
 > `+0xb0` vs the `0x3e..` cluster at `+0xd0`) into two tables. **That split is
-> overturned by the dispatch instruction**, re-verified byte-exact this pass at v3
+> overturned by the dispatch instruction**, byte-exact at v3
 > IRAM `0x3bf8`: `const16 a2,0xB0 (24 b0 00) ; addx4 a2,a3,a2 (20 23 a0) ; l32i.n
 > a5,a2,0 (58 02)` — a **single** `const16` base literal (`24 b0 00` occurs **exactly
 > once** in the v3 image, **zero** in v2), **one** `addx4` ×4-scale, and **one**
@@ -210,9 +210,7 @@ Two byte-grounded properties pin the layout `[HIGH/OBSERVED]`:
 > reads the `addx4/l32i` dispatch and bounds `a3 ∈ 0..11`), the
 > [`main-dispatch-loop`](main-dispatch-loop.md) §4, and the
 > [`ncfw-iram-images`](ncfw-iram-images.md) §1 NOTE all read this as the single
-> 12-entry table; this page now agrees. `[HIGH/OBSERVED — the v3 `0x3bf8`
-> `addx4/l32i` dispatch read is the decider; `<12I` unpack of the `0xb0..0xe0`
-> window.]`
+> 12-entry table; this page now agrees. `[HIGH/OBSERVED]`
 
 The table maps the dispatch `algo_type` index (0..11) to an IRAM case-label
 entry-point inside the main-loop function (a staggered computed-goto, not separate
@@ -223,7 +221,7 @@ functions — see [main dispatch loop §4.2](main-dispatch-loop.md#42-the-12-ent
 | **v4** (`+0x0b0`) | `0x3c38` | `0x3c35` | `0x3c2e` | `0x48f0` | `0x3c27` | `0x3c20` (shared) | `0x3e9c` | `0x3e32` | `0x3e76` | `0x3e80` |
 | **v3** (`+0x0b0`) | `0x3c20` | `0x3c1d` | `0x3c16` | `0x48c4` | `0x3c0f` | `0x3c08` (shared) | `0x3e84` | `0x3e1e` | `0x3e5e` | `0x3e68` |
 
-Structure `[HIGH/OBSERVED]`:
+Structure:
 
 - **12 entries, two case-clusters + an outlier.** idx `{0,1,2,4}` are distinct entries
   packed on a **7-byte stride** in the `0x3c..` cluster (`0x3c38`/`0x3c35`/`0x3c2e`/
@@ -242,7 +240,7 @@ Structure `[HIGH/OBSERVED]`:
 
 A regular array of `0x28`-byte records — the firmware's static per-entry
 config/channel descriptor table, loaded at boot. Field offsets byte-pinned from the
-raw record bytes this pass (record `[0]` = `ff ff ff 00 | 00 00 00 00 | 00 00 00 80 |
+raw record bytes (record `[0]` = `ff ff ff 00 | 00 00 00 00 | 00 00 00 80 |
 00 00 00 01 | 00 00 00 00 | 00 00 00 00 | 01 00 00 00 | …`):
 
 | off | type | field | v3/v4 values | v2 values |
@@ -265,7 +263,7 @@ is structural.]`
 > fixed marker and byte [3] is a small class field (`0x00`, or `0x03` for v2's last
 > two records). Mis-reading the marker as the whole field, or the `+0x08` id as a
 > single byte, is the easy trap; the structurally-correct read is byte [3] = class,
-> `+0x08` u32 = id with a `0x04000000` stride. `[HIGH/OBSERVED]`
+> `+0x08` u32 = id with a `0x04000000` stride.
 
 ---
 
@@ -277,9 +275,9 @@ state built in the DRAM zero-tail — as a single 1 MiB JSON blob.
 
 ### 3.1 Public entry `libncfw_ctx_log` (`.text 0x1309`, 0xac B)
 
-Fully disassembled this pass (`objdump -d 0x1309`). Signature recovered from the arg
+Fully disassembled (`objdump -d 0x1309`). Signature recovered from the arg
 spills; dispatch ladder is the **same four-key binary-search ladder** as
-`libncfw_get_image` `[HIGH/OBSERVED]`:
+`libncfw_get_image`:
 
 ```c
 // @ libncfw.so .text 0x1309 (exported T). Args spilled at 0x1315–0x1321:
@@ -303,12 +301,11 @@ struct offsets ([§3.2](#32-buffer-setup-ncfw_ctx_log-text-0x19f01)) differ per 
 **Out-of-range arch_id (incl. `0x24` = MAVERICK) returns EINVAL — no v5 leg, no
 default image.** This is the second independent four-key anchor (the first is
 `get_image`), so `arch_id ↔ codename` and the count-of-four are doubly pinned.
-`[HIGH/OBSERVED]`
 
 Each per-codename wrapper (e.g. `sunda_ncfw_ctx_log @0x1a12b`, 0x31 B) is a trivial
 thunk: it re-spills the three args and tail-calls `ncfw_ctx_log` — verified at
 `0x1a155: call 0x19f01`. The four wrappers exist only so the per-arch offsets are
-baked in per copy. `[HIGH/OBSERVED]`
+baked in per copy.
 
 ### 3.2 Buffer setup: `ncfw_ctx_log` (`.text 0x19f01`, 0x22a B)
 
@@ -334,8 +331,8 @@ The 1 MiB `memset` (`mov edx,0x100000; call memset@plt`), the bounds-checked
 `snprintf` pattern (`strlen(buf)` then `0x100000` cap), the two rodata strings, and
 the three child-pointer computes are all byte-confirmed. The **per-arch offsets scale
 with the configs size**: the cayman copy (`ncfw_ctx_log @0x32ca8`) uses `add
-rax,0x4280` (neff_ctx) and `add rax,0x42e0` (algo_ctx) instead — verified at
-`0x32e72`/`0x32e80`. `[HIGH/OBSERVED]`
+rax,0x4280` (neff_ctx) and `add rax,0x42e0` (algo_ctx) instead, at
+`0x32e72`/`0x32e80`.
 
 | arch | neff_ctx offset | algo_ctx offset |
 |---|---|---|
@@ -364,14 +361,14 @@ void ncfw_log_ctx(char *buf, int indent, void *enable,
 ```
 
 All three call sites + the three rodata key strings (`"configs"` @`0x65666`,
-`"neff"` @`0x6565d`, `"algo"` @`0x65658`) are byte-decoded. `[HIGH/OBSERVED]`
+`"neff"` @`0x6565d`, `"algo"` @`0x65658`) are byte-decoded.
 
 > **NOTE — `"configs"` is static, `"neff"`/`"algo"` are runtime; and there are *two*
 > `"neff"` keys.** The top-level `"configs"` subtree is the **static** config (the
 > data the DRAM header seeds); the top-level `"neff"` and `"algo"` are the **runtime**
 > contexts (built in the DRAM zero-tail). Confusingly, *inside* `"configs"` there is
 > **also** a `"neff"` sub-key (the NEFF config) — distinct from the top-level `"neff"`
-> runtime ctx. Keep them apart. `[HIGH/OBSERVED]`
+> runtime ctx. Keep them apart.
 
 ### 3.4 The `"configs"` subtree (`ncfw_log_configs @0x19915`)
 
@@ -386,7 +383,7 @@ proven from the `lea`/`add` immediates before each call (sunda copy):
 
 Verified at `0x19abf`/`0x19ac8`/`0x19ae3`/`0x19aec`/`0x19b07` (sunda `lea
 [rax+0x2228]`/`[rax+0x3030]`). The **`neff` config block has three children**, decoded
-from `ncfw_log_neff_configs @0x12864`'s call sites `[HIGH/OBSERVED]`:
+from `ncfw_log_neff_configs @0x12864`'s call sites:
 
 | call site | child | key | leaf page |
 |---|---|---|---|
@@ -401,7 +398,7 @@ lives inside the NEFF config block. The `soc_addr` apertures from
 
 ### 3.5 The runtime `"neff"` and `"algo"` subtrees
 
-`ncfw_log_neff_ctx` (`0x1653b`, the top-level `"neff"` key) `[HIGH/OBSERVED]`:
+`ncfw_log_neff_ctx` (`0x1653b`, the top-level `"neff"` key):
 
 ```c
 // @ libncfw.so .text 0x1653b
@@ -411,7 +408,7 @@ lives inside the NEFF config block. The `soc_addr` apertures from
 ```
 
 `ncfw_log_algo_ctx` (`0x18cd2`, the top-level `"algo"` key) — the runtime algorithm
-scoreboard, three coexisting sub-ctxs `[HIGH/OBSERVED]`:
+scoreboard, three coexisting sub-ctxs:
 
 ```c
 // @ libncfw.so .text 0x18cd2
@@ -452,24 +449,24 @@ named sibling pages) `[HIGH/OBSERVED for structure]`:
 Buffer: a single 1 MiB (`0x100000`) text buffer, `memset`-zeroed, `snprintf`-appended
 with a global overflow byte (`ncfw_log_buffer_full @0x95029`, `.bss`). Format is
 pretty-printed JSON: `"%*s"` indent (`@0x65001`), `"\"%s\": {\n"`, `"%s: \"0x%016lX\""`
-for `soc_addr`s. `[HIGH/OBSERVED]`
+for `soc_addr`s.
 
 ---
 
 ## 4. Per-arch differences (v2 is simpler; v3/v4 are relocated)
 
 **v4 (MARIANA) DRAM == v4_plus (MARIANA_PLUS) DRAM — byte-identical** (Python `==` →
-`True`; sha `1c3ac5f4…`). `[HIGH/OBSERVED]`
+`True`; sha `1c3ac5f4…`).
 
 **v3 (CAYMAN) vs v4 (MARIANA) DRAM — differ in exactly 13 bytes**, all in the
-dispatch-table region `[HIGH/OBSERVED]`:
+dispatch-table region:
 
 | offsets | nature |
 |---|---|
 | `+0xb0`–`+0xdf` (12-entry `algo_type` table, idx 0..11) | each entry `+0x18` (e.g. idx0 `0x3c20`→`0x3c38`, idx3 `0x48c4`→`0x48f0`, idx8 `0x3e84`→`0x3e9c`, idx11 `0x3e68`→`0x3e80`) |
 | `+0x12c` (one IRAM ptr) | `0x5c`→`0x88` byte |
 
-Byte-diff this pass: differing offsets =
+Byte-diff: differing offsets =
 `{0xb0,0xb4,0xb8,0xbc,0xc0,0xc4,0xc8,0xcc,0xd0,0xd4,0xd8,0xdc,0x12c}` (13 total). The
 delta is a **near-uniform `+0x18` IRAM-code relocation** — a small block of LX code was
 inserted ahead of the `0x3c20` handler cluster, shifting those entry-points. **The
@@ -477,7 +474,7 @@ reg-addr table (`+0x10`–`+0xaf`) and the 40-byte descriptor table are byte-ide
 between v3 and v4** — only IRAM-address fields moved, by a constant. CAYMAN→MARIANA is
 a pure code-layout delta, not a config/topology change.
 
-**v2 (SUNDA) DRAM — structurally simpler** `[HIGH/OBSERVED]`:
+**v2 (SUNDA) DRAM — structurally simpler**:
 
 | image | size | reg-addr entries | 12-entry `algo_type` table | 40-B records |
 |---|---|---|---|---|
@@ -492,7 +489,7 @@ boot block of `0xffffffff` sentinels + IRAM ptrs starts by `+0x30`), and **11**
 descriptor records. The per-arch ×4 delta on the runtime context is therefore a
 **size delta** (v2 smaller) + an **offset shift** of the neff/algo ctx regions — *not*
 a schema change. The sub-struct layouts themselves (ring channel, mesh event, barrier
-step, etc.) are schema-wide identical across all four copies. `[HIGH/OBSERVED]`
+step, etc.) are schema-wide identical across all four copies.
 
 ---
 
@@ -592,9 +589,9 @@ To rebuild a compatible NCFW DRAM image + host decoder:
 
 ---
 
-## 9. Verification ledger (grounded this session)
+## 9. Verification ledger
 
-| # | claim | how grounded **this pass** | verdict |
+| # | claim | how grounded | verdict |
 |---|---|---|---|
 | 1 | Four DRAM blobs; carved size == `u32` szword == `nm` size; v4 DRAM == v4+ DRAM | `nm -S` + Python carve + `<I` unpack + sha256: all four match; `v4==v4plus` True (sha `1c3ac5f4…`) | **HIGH/OBSERVED** |
 | 2 | reg-addr table @ `DRAM+0x010` = 20×u64 per-die apertures, base `0x02700000`, engine selector bits [32:39], **NC bank = bit [47]** | `<20Q` unpack of v4 carve; `reg[0]^reg[4]=0x0000800000000000` (bit 47); base `0x02700000` common | **HIGH/OBSERVED** |

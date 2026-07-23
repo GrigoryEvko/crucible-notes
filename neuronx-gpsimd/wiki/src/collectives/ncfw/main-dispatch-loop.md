@@ -20,19 +20,20 @@ annotated C pseudocode naming the **real device IRAM symbols/offsets**.
 > [scalar-LX core page](../../uarch/ncfw-lx-core.md). Do not budget a FLIX issue
 > port for this core.
 
-**Provenance & confidence.** Every fact is read **this session** from the four raw
-NCFW IRAM/DRAM images carved out of the shipped host library `libncfw.so` (sha256
-`598920d7…`, `.rodata` blobs, VMA==file-offset), decoded with the co-shipped
-Cadence `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, the only registered core,
-used as a base/windowed/density decoder) and a from-scratch scalar-LX length walk
-(op0 `e/f` ⇒ 3-byte resync, the [scalar-LX rule](../../uarch/ncfw-lx-core.md)).
-Lawful interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor
-source snapshot consulted. Tags are `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` per
-the [Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a
-byte/disasm read from the binary this pass; `CARRIED` = OBSERVED in a cited prior
-carve and reused; `INFERRED` = reasoned over those. Callouts: **QUIRK**
-(counter-intuitive but real), **GOTCHA** (a reimplementation trap), **NOTE**
-(orientation), **CORRECTION** (overturns a prior reading).
+**Provenance & confidence.** Every fact is read from the four raw NCFW IRAM/DRAM
+images carved out of the shipped host library `libncfw.so` (sha256 `598920d7…`,
+`.rodata` blobs, VMA==file-offset), decoded with the co-shipped Cadence
+`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, the only registered core, used as a
+base/windowed/density decoder) and a from-scratch scalar-LX length walk (op0 `e/f`
+⇒ 3-byte resync, the [scalar-LX rule](../../uarch/ncfw-lx-core.md)). Lawful
+interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor source
+snapshot consulted. The page default is `[OBSERVED HIGH]`; claims that depart from
+it carry an explicit tag, per the
+[Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` = a
+byte/disasm read from the binary; `CARRIED` = OBSERVED in a cited prior carve and
+reused; `INFERRED` = reasoned over those. Callouts: **QUIRK** (counter-intuitive
+but real), **GOTCHA** (a reimplementation trap), **NOTE** (orientation),
+**CORRECTION** (overturns a prior reading).
 
 > **THE v5 / MAVERICK WALL.** `libncfw` ships **exactly four** NCFW images
 > (v2/v3/v4/v4_plus). **There is no MAVERICK (v5) NCFW image in this binary** — the
@@ -78,7 +79,7 @@ for byte anchors is **CAYMAN (v3)**, the full table-dispatch reference.
    └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Every box is byte-grounded below. `[OBSERVED HIGH]`
+Every box is byte-grounded below.
 
 ---
 
@@ -88,8 +89,8 @@ Every box is byte-grounded below. `[OBSERVED HIGH]`
 
 The only Xtensa core registered anywhere in the corpus is **`ncore2gp`** (the
 Vision-Q7 NX datapath core); `xtensa-elf-objdump -i` lists exactly that one and
-errors *"no Xtensa core registered as the default"* for any other (re-verified this
-pass). There is **no NCFW LX disassembler config** — no `core-isa.h`, `-params`,
+errors *"no Xtensa core registered as the default"* for any other. There is
+**no NCFW LX disassembler config** — no `core-isa.h`, `-params`,
 `.tie`, or `.flix` for the management core (the exhaustive inventory is on the
 [scalar-LX core page](../../uarch/ncfw-lx-core.md)). So the loop is decoded two
 ways, cross-checked: (a) `ncore2gp` as a **base/windowed/density** decoder — the
@@ -100,11 +101,11 @@ reset `j`, the window-overflow handler, `entry`/`call8`/`call0`/`l32r`/`waiti`/
 
 The **dispatch spine** — function boundaries, the jump table, the call graph, the
 idle loop, the field extractions — is recoverable with **HIGH** confidence. The
-instruction-by-instruction **case bodies** are not (§4). `[OBSERVED HIGH]`
+instruction-by-instruction **case bodies** are not (§4).
 
-### 1.2 The decode anchors — byte-exact this pass
+### 1.2 The decode anchors — byte-exact
 
-Read directly from the carved v3 (CAYMAN) IRAM `[OBSERVED HIGH]`:
+Read directly from the carved v3 (CAYMAN) IRAM:
 
 | IRAM off | bytes | decode | role |
 |---|---|---|---|
@@ -125,16 +126,16 @@ Read directly from the carved v3 (CAYMAN) IRAM `[OBSERVED HIGH]`:
 | `0x13c5` | `25 39 00` | `call8 0x1758` | (A)[2] trampoline |
 
 > **QUIRK — `const16 a2,0xB0` (`24 b0 00`) appears EXACTLY ONCE in the v3 image,
-> and ZERO times in v2.** Counted byte-exact this pass: v3 = 1, v2/SUNDA = 0. That
+> and ZERO times in v2.** Counted byte-exact: v3 = 1, v2/SUNDA = 0. That
 > single literal load — the byte offset `0xB0` of the DRAM dispatch table — is the
 > **fingerprint** of the entire table-based dispatch. SUNDA has no such instruction
-> because it has no `+0xB0` jump table (§5/§7.2). `[OBSERVED HIGH]`
+> because it has no `+0xB0` jump table (§5/§7.2).
 
 ### 1.3 The LX-not-FLIX debunk, re-grounded on the loop bytes
 
 Pointing the native `ncore2gp` disassembler at the **real v3 IRAM** decodes the
 base op `rsr.excvaddr a2` @ `0x6c` correctly (`20 ee 03`) but then spews
-**impossible-for-a-control-core** Vision-DSP opcodes — verbatim this pass at `0x76`:
+**impossible-for-a-control-core** Vision-DSP opcodes — verbatim at `0x76`:
 
 ```text
   6c:  20 ee 03   rsr.excvaddr  a2        ◄── correct base op
@@ -161,15 +162,15 @@ The `retw.n` resync ratios confirm the scalar rule wins on these very images
 (matching the committed
 [scalar-LX core page](../../uarch/ncfw-lx-core.md#4-why-the-core-is-scalar-xtensa-lx--decoded-against-the-blob)):
 **v3 90/133, v4 101/134, v4+ 100/134** under scalar `(e3,f3)` vs 66/74/69 under the
-Vision `(e16,f8)` rule. `[OBSERVED HIGH]`
+Vision `(e16,f8)` rule.
 
 > **CORRECTION — there is no NCFW FLIX layer to recover, in EITHER width.** Two
-> earlier report lineages each invented a FLIX over scalar bytes (radare2's 8-byte
+> earlier readings each invented a FLIX over scalar bytes (radare2's 8-byte
 > guess, `ncore2gp`'s 16-byte Vision bundle). Both are decoder artifacts: the
 > cleanly-decoded NCFW instruction set is **exclusively 2-byte and 3-byte** (no
 > genuine wide bundles), the SR set is the standard LX registry (no TIE coprocessor
 > SRs), and the scalar resync beats both FLIX widths. NCFW is a scalar LX control
-> core; do not reimplement a FLIX issue port for it. `[OBSERVED HIGH]`
+> core; do not reimplement a FLIX issue port for it.
 
 ---
 
@@ -180,20 +181,19 @@ Vision `(e16,f8)` rule. `[OBSERVED HIGH]`
 The carved blob **is** the IRAM-resident image: the Xtensa XEA2 vector table sits
 at offset `0x0`, code follows, and there is **no load-address header** (the device
 IRAM base is set by the upload path, not embedded). The first two `j` (opcode
-`0x06`) are the reset and window/exception vectors `[OBSERVED HIGH]`:
+`0x06`) are the reset and window/exception vectors:
 
 | gen | head bytes | reset `j` @ `0x0` | secondary `j` @ `0x6` |
 |---|---|---|---|
 | v2 SUNDA / v3 CAYMAN | `06 76 00 … 86 77 00` | `j 0x1dc` | `j 0x1e8` |
 | v4 MARIANA / v4+ MARIANA_PLUS | `06 7d 00 … 86 7e 00` | `j 0x1f8` | `j 0x204` |
 
-The `j` immediates were re-derived this pass (`op0=6`, 18-bit signed offset in bits
+The `j` immediates were derived (`op0=6`, 18-bit signed offset in bits
 `[23:6]`, `target = PC+4+off`). The `0x1dc`→`0x1f8` shift in v4/v4+ is the +28-byte
 (`+0x1c`) early-boot relocation (a D-cache-invalidate loop inserted ahead of every
 inline handler — [IRAM-images §1.1](ncfw-iram-images.md#11-the-raw-image-head--reset-vectors-at-the-iram-base)).
 The `WindowOverflow8` handler is at `0x24` (`l32e a8..a15` / `s32e a8..a15`),
 **byte-identical across all four gens** — proving the windowed XEA2 ABI.
-`[OBSERVED HIGH]`
 
 ### 2.2 Reset body → C entry (the honest limit)
 
@@ -214,7 +214,7 @@ is OBSERVED; the precise values are not. So the hand-off is pinned **structurall
 
 Sweeping each IRAM for valid windowed prologues (`entry a1,N`, frame in
 `{32,48,64,80,96}`) partitions it into functions. The **largest function is the
-main loop**; the **one `waiti 15` is the idle point** `[OBSERVED HIGH]`:
+main loop**; the **one `waiti 15` is the idle point**:
 
 | image | #funcs | MAIN LOOP (largest) | size | IDLE (`waiti 15`) |
 |---|---|---|---|---|
@@ -230,7 +230,7 @@ The v4 main loop (`@0x3bc8`) is the v3 loop (`@0x3bb0`) relocated by **+0x18**
 
 The DRAM image header @`+0x00` holds a 4-entry IRAM-code-address vector — the
 per-iteration **command/event-type** entry points (read byte-exact from the carved
-DRAM this pass) `[OBSERVED HIGH]`:
+DRAM):
 
 | gen | (A)[0] | (A)[1] | (A)[2] | (A)[3] |
 |---|---|---|---|---|
@@ -239,7 +239,7 @@ DRAM this pass) `[OBSERVED HIGH]`:
 
 All three **distinct** entries are **trampolines** that `call8` a handler and all
 live inside one host function (`0x132c..0x14bc` in v3). The 4th slot equals the 1st
-— the canonical *unknown-command → default* guard. `[OBSERVED HIGH]`
+— the canonical *unknown-command → default* guard.
 
 ```c
 // (A) command-type vector @ DRAM+0x00 — the per-iteration dispatch on COMMAND TYPE.
@@ -276,7 +276,7 @@ in-range `0x36ec`/`0x3784`) then desync on `op0=e/f` operand bytes in their inte
 ### 4.1 The dispatch read in the main loop
 
 Inside the largest function (v3 `@0x3bb0`) the dispatch index sequence is, byte-for
-byte `[OBSERVED HIGH]`:
+byte:
 
 ```c
 // MAIN LOOP dispatch read — v3 @0x3bb0 (CAYMAN), byte-confirmed under the scalar-LX rule.
@@ -292,11 +292,11 @@ goto *handler;                                  // computed-goto into a 0x3c.. /
 
 `a5` is loaded with `T[idx]`, an **IRAM code address that falls inside the main-loop
 function** — i.e. the table holds **case labels / computed-goto targets**, not
-addresses of separate functions. `[OBSERVED HIGH]`
+addresses of separate functions.
 
 ### 4.2 The 12-entry table @DRAM+0xB0 (carved byte-exact)
 
-Read directly from the carved v3/v4 DRAM this pass `[OBSERVED HIGH]`:
+Read directly from the carved v3/v4 DRAM:
 
 | idx | v3 (CAYMAN) | v4/v4+ (MARIANA/_PLUS) | Δ | note |
 |---|---|---|---|---|
@@ -315,12 +315,12 @@ Read directly from the carved v3/v4 DRAM this pass `[OBSERVED HIGH]`:
 
 All v4 targets verified inside `0x3bc8..0x4900`. The v3→v4 shift is the same +0x18
 code-relocation throughout (idx 9 is +0x14, idx 3 +0x2c) — a pure code-insertion,
-not a topology change (§7). `[OBSERVED HIGH]`
+not a topology change (§7).
 
 > **QUIRK — the case labels are a STAGGERED computed-goto, not separate functions.**
 > Walking the ring/mesh cluster under the scalar-LX rule, the labels are entry
-> points into **one packed body** at fixed +7/+7/+7/+3-byte strides (verified
-> byte-exact this pass): `idx5/6/7 → 0x3c08 ─+7→ idx4 0x3c0f ─+7→ idx2 0x3c16
+> points into **one packed body** at fixed +7/+7/+7/+3-byte strides (byte-exact):
+> `idx5/6/7 → 0x3c08 ─+7→ idx4 0x3c0f ─+7→ idx2 0x3c16
 > ─+7→ idx1 0x3c1d ─+3→ idx0 0x3c20`. A higher dispatch index enters **earlier** in
 > the chain and executes **more** steps — a Duff's-device / staggered-fallthrough
 > dispatch (the three identical `0x3c08` entries for idx5/6/7 are exactly this
@@ -362,7 +362,6 @@ config+runtime structs the sibling handler pages decode host-side:
 > in `libncfw.so`, NOT device IRAM addresses. The DEVICE handler entry points are
 > the small IRAM addresses in the DRAM (A)/(C) tables above. The two address spaces
 > are linked by **role** (ring/mesh/hier/barrier), not by numeric equality.
-> `[OBSERVED HIGH]`
 
 ### 4.4 The case-body interiors stay hard (the honest limit)
 
@@ -382,8 +381,7 @@ leaf primitives the bodies call (§5). `[OBSERVED HIGH that the interiors stay h
 
 ### 5.1 IDLE — `waiti 15` at max INTLEVEL
 
-The idle state is a tiny function (v3 `@0x4b58`, `entry a1,32`), fully decoded
-`[OBSERVED HIGH]`:
+The idle state is a tiny function (v3 `@0x4b58`, `entry a1,32`), fully decoded:
 
 ```c
 // IDLE — v3 @0x4b58. The core PARKS here until a notification/semaphore interrupt.
@@ -397,9 +395,9 @@ void ncfw_idle(void) {                  // 4b58: entry a1,32
 }
 ```
 
-`extw` (one per image) and `waiti 15` (one per image) were counted byte-exact this
-pass. The idle function also carries `simcall 0` / `break 1,15` host-debug/trap
-hooks adjacent to the `waiti`. `[OBSERVED HIGH]`
+`extw` (one per image) and `waiti 15` (one per image) were counted byte-exact. The
+idle function also carries `simcall 0` / `break 1,15` host-debug/trap hooks adjacent
+to the `waiti`.
 
 ### 5.2 FETCH → DISPATCH → RUN
 
@@ -419,9 +417,9 @@ advancing its runtime scoreboard:
   `event_type`/`dma_trigger`/`direct_trigger`/`wait_event` u8
   ([Mesh Collective](mesh-collective.md)).
 
-The one step composes **three re-decoded leaf primitives** from the helper bank at
-`0x3100..0x36f0` (a dense library of **41 windowed functions** — `entry`/`retw.n`
-sweep this pass: 41 prologues / 32 `retw.n`):
+The one step composes **three leaf primitives** from the helper bank at
+`0x3100..0x36f0` (a dense library of **41 windowed functions** — an `entry`/`retw.n`
+sweep gives 41 prologues / 32 `retw.n`):
 
 ```c
 // One collective STEP, expressed in the §5.2 leaf primitives (helper bank @0x3100..0x36f0).
@@ -442,7 +440,7 @@ memw();                             // 3113: c0 20 00  barrier
 ```
 
 > **QUIRK — every CSR access in the wait/signal path is `memw`-fenced.** The
-> wait/signal substrate, left MED by earlier passes ("runs in the FLIX-corrupted
+> wait/signal substrate, left MED by earlier readings ("runs in the FLIX-corrupted
 > bodies, not directly decodable"), **lifts to HIGH** under the scalar-LX rule: the
 > helper bank decodes cleanly. The census is byte-stable across the table-dispatch
 > family — `memw` **47/47/47** (v3/v4/v4+) — and `memw` **405** in the v2 monolith
@@ -474,9 +472,9 @@ Dispatch index **3** (`0x48c4` v3 / `0x48f0` v4) is the **OUTLIER** target — i
 jumps to the `0x48e0` region (a separate small function `@0x48e0`, `entry a1,32`,
 size `0x1a4`), distinct from the `0x3c..` algorithm cluster. Combined with the (A)
 vector's repeated default slot (§3.2), this is the **default / error / unknown-
-command** leg. Verified byte-exact this pass: idx3 = `0x48c4` is the only table
-entry outside the `0x3c..`/`0x3e..` clusters. `[OBSERVED structure HIGH; "error
-reporting" naming INFERRED MED]`
+command** leg. Byte-exact: idx3 = `0x48c4` is the only table entry outside the
+`0x3c..`/`0x3e..` clusters. `[OBSERVED structure HIGH; "error reporting" naming
+INFERRED MED]`
 
 ---
 
@@ -485,33 +483,32 @@ reporting" naming INFERRED MED]`
 ### 7.1 v3 (CAYMAN) → v4 (MARIANA) → v4+ (MARIANA_PLUS): same architecture, relocated
 
 - **Same dispatch design**: DRAM+0xB0 12-entry table → case labels inside the
-  largest function. `[OBSERVED HIGH]`
+  largest function.
 - **v4 main loop `@0x3bc8` = v3's `@0x3bb0` relocated +0x18** (size `0xd3c` vs
   `0xd28`). Every DRAM+0xB0 entry shifts +0x18 (idx9 +0x14, idx3 +0x2c). The DRAM
-  delta is **exactly 13 bytes**, all within offsets `0xB0..0x12c` (verified this
-  pass: `ndiff=13`, range `0xb0..0x12c`) — the `soc_addr` CSR table and the 40-byte
-  descriptor table are byte-identical CAYMAN↔MARIANA. A pure code-layout delta.
-  `[OBSERVED HIGH]`
-- **v4 vs v4+ IRAM first diverge @ byte `0x1190` (4496)** (verified this pass) but
-  the main-loop address (`0x3bc8`), the DRAM+0xB0 table, and the (A) vector are
-  **identical**, and the **DRAM is byte-identical** (verified `v4_dram == v4p_dram`
-  this pass). MARIANA_PLUS is a code-only recompile on the same dispatch spine; its
-  one functional add (the DGE reshape fast-path) lives in the NX-sequencer / Q7
-  firmware, **not** the NCFW management core. `[OBSERVED HIGH]`
+  delta is **exactly 13 bytes**, all within offsets `0xB0..0x12c` (`ndiff=13`, range
+  `0xb0..0x12c`) — the `soc_addr` CSR table and the 40-byte descriptor table are
+  byte-identical CAYMAN↔MARIANA. A pure code-layout delta.
+- **v4 vs v4+ IRAM first diverge @ byte `0x1190` (4496)** but the main-loop address
+  (`0x3bc8`), the DRAM+0xB0 table, and the (A) vector are **identical**, and the
+  **DRAM is byte-identical** (`v4_dram == v4p_dram`). MARIANA_PLUS is a code-only
+  recompile on the same dispatch spine; its one functional add (the DGE reshape
+  fast-path) lives in the NX-sequencer / Q7 firmware, **not** the NCFW management
+  core.
 - **(A) vector identical** for v3/v4/v4+: `{0x1399, 0x13b1, 0x13c5, 0x1399}`.
 
 ### 7.2 v2 (SUNDA): structurally different dispatch
 
 - **NO DRAM+0xB0 12-entry jump table.** v2's `+0xB0` region holds descriptor **DATA**
   (`0x0,0x0,0x0,0x0, 0xffffff,0x0, 0x4000000,0x1000000, 0x100200,0x1,0x0,0x0` —
-  carved byte-exact this pass), **not** IRAM code addresses; and there is **no
-  `const16 0xB0` index instruction anywhere in v2** (the `24 b0 00` one-shot pattern
-  that defines the v3/v4 dispatch read is **absent** — counted 0). `[OBSERVED HIGH]`
+  carved byte-exact), **not** IRAM code addresses; and there is **no `const16 0xB0`
+  index instruction anywhere in v2** (the `24 b0 00` one-shot pattern that defines
+  the v3/v4 dispatch read is **absent** — counted 0).
 - **Larger, more monolithic body**: 23 functions (vs 57), largest `@0x5f60`
   (`0x1760` B, ~1.8× the v3 main loop) on a ~43 KB IRAM (vs ~19 KB). SUNDA does not
   factor the wait/signal primitives into the a10-pointer helper bank either —
   searching v2 finds **4 inlined** spin-polls (base regs a3/a4/a6), present but not
-  library-factored. `[OBSERVED HIGH]`
+  library-factored.
 - **(A) vector shape is COMMON**: `{0x1bb3, 0x1bcf, 0x1be3, 0x1bb3}` — 3 command-type
   trampolines + 1 default, exactly the v3 shape; only the IRAM addresses differ. So
   the per-iteration **command** dispatch shape (3 handlers + default) is common to
@@ -529,15 +526,12 @@ reporting" naming INFERRED MED]`
 | v4 MARIANA | `j 0x1f8` | `{1399,13b1,13c5,1399}` | 12-entry tbl @D+0xB0 (+0x18) | 61 | `0x3bc8` | `0x4b9d` |
 | v4+ MARIANA_PLUS | `j 0x1f8` | `{1399,13b1,13c5,1399}` | 12-entry tbl @D+0xB0 (== v4) | 55 | `0x3bc8` | `0x4b9d` |
 
-`[ALL OBSERVED HIGH]`
-
 > **NOTE — two orthogonal groupings cross-cut the four gens.** The **reset-vector**
 > magic groups them `{v2,v3}→0x1dc` vs `{v4,v4+}→0x1f8` (and v2/v3 share their first
 > 121 IRAM bytes), but the **dispatch architecture** groups them `{v2}` vs
 > `{v3,v4,v4+}`. SUNDA is the prologue-twin of CAYMAN yet the odd-one-out on
 > dispatch. The deeper arch_id ↔ codename ↔ silicon reconciliation is consolidated
 > in the [LX-ISA / arch_id synthesis](lx-isa-naming-archid-synthesis.md).
-> `[OBSERVED HIGH]`
 
 ---
 
@@ -598,9 +592,9 @@ the ISA/ABI obligations on the [scalar-LX core page](../../uarch/ncfw-lx-core.md
 
 ---
 
-## 10. Verification ledger (grounded this session)
+## 10. Verification ledger
 
-| # | claim | how grounded **this session** | verdict |
+| # | claim | how grounded | verdict |
 |---|---|---|---|
 | 1 | Dispatch read = `const16 a2,0xB0 (24 b0 00) ; addx4 a2,a3,a2 (20 23 a0) ; l32i.n a5,a2,0 (58 02)` @v3 `0x3bf8`; `const16 0xB0` occurs **once** in v3, **zero** in v2 | byte read at `0x3bf8`; `v3.count(24b000)=1`, `v2.count=0`; native `ncore2gp` objdump decodes it cleanly as `const16 a2,176; addx4; l32i.n` | **HIGH/OBSERVED** |
 | 2 | 12-entry table @DRAM+0xB0: v3 `{3c20,3c1d,3c16,48c4,3c0f,3c08,3c08,3c08,3e84,3e1e,3e5e,3e68}`; v4 = +0x18; v2 = **data** (`0xffffff/0x4000000/…`); idx3 `0x48c4` is the OUTLIER | `<I` unpack of carved v3/v4/v2 DRAM @`0xB0`; staggered strides `[7,7,7,3]` for `0x3c08→0x3c20`; idx5==6==7==`0x3c08` | **HIGH/OBSERVED** |

@@ -34,22 +34,23 @@ aperture and the fabric fan-out path).
 > [scalar-LX core page](../../uarch/ncfw-lx-core.md) for the ISA evidence and
 > [pring](pring-descriptors.md) for why the host side is fully recoverable.
 
-**Provenance & confidence.** Every fact below is read **this session** from two
-shipped host libraries with stock binutils (`readelf -SW`/`-n`, `nm -nS`,
-`objdump -d -M intel`, `sha256sum`) and a Python ELF/`struct` byte reader:
+**Provenance & confidence.** Every fact below is read from two shipped host
+libraries with stock binutils (`readelf -SW`/`-n`, `nm -nS`, `objdump -d -M intel`,
+`sha256sum`) and a Python ELF/`struct` byte reader:
 
 | binary | role | sha256 (head) | BuildID (head) |
 |---|---|---|---|
 | `libnrt.so.2.31.24.0` | the **encoder** — builds the reprogram descriptors, the bcast value, resolves the alloc bitmap; carries DWARF | `956382de…` | `8bb57aba…` |
 | `libncfw.so` | the **decoder** — the `ctx_log` JSON pretty-printer that walks the firmware DRAM structs | `598920d7…` | `a98f8e1c…` |
 
-Both SHA256 + BuildID re-verified this pass. Section deltas confirmed by
-`readelf -SW`: in **both** binaries `.text`/`.rodata` have **VMA == file offset**
-(so all `.text`/`.rodata` addresses below are read directly); `libncfw.so` `.data`
-has a `+0x1000` VMA→file delta but **no struct read here touches `.data`**. Tags
-follow the [Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = byte/disasm/symbol read this pass; `INFERRED` = deduced from
-structure/siblings; `CARRIED` = cited from a committed page. Lawful
+Section deltas confirmed by `readelf -SW`: in **both** binaries `.text`/`.rodata`
+have **VMA == file offset** (so all `.text`/`.rodata` addresses below are read
+directly); `libncfw.so` `.data` has a `+0x1000` VMA→file delta but **no struct read
+here touches `.data`**. The page default is `[OBSERVED HIGH]`; claims that depart
+from it carry an explicit tag, per the
+[Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` =
+byte/disasm/symbol read directly; `INFERRED` = deduced from structure/siblings;
+`CARRIED` = cited from a committed page. Lawful
 interoperability reverse engineering (DMCA 17 U.S.C. 1201(f)); no vendor source
 snapshot consulted.
 
@@ -65,11 +66,11 @@ engine (each engine's ring lives at a distinct HBM address), so they **cannot be
 broadcast** — they are written per `(engine, QID)` (contrast §2, which broadcasts
 the ring *trigger*).
 
-### 1.1 The six ring-CSR descriptors `[OBSERVED HIGH]`
+### 1.1 The six ring-CSR descriptors
 
 The reprogram loop is emitted inline in **`encd_load_executable`** (`@0x246ae0`).
 Six descriptors per `(engine, QID)`, one per ring-CSR field; the verbatim log
-strings (`.rodata`, `strings -t x` this pass) name each role:
+strings (`.rodata`, via `strings -t x`) name each role:
 
 | `.rodata` | string |
 |---|---|
@@ -91,10 +92,10 @@ by a host queue-CSR offset getter (`nm`-confirmed symbols):
 | `m2s_size` | `get_dma_queue_size_offset`      | `0x318b80` |
 
 Each getter computes `<dir>_offset + ((q+1)<<12) + <register>`. The cayman
-within-block register constants are byte-exact this pass:
+within-block register constants are byte-exact:
 
 ```c
-/* aws_hal_udma_get_m2s_queue_offset_cayman @0x473a90  [OBSERVED HIGH] */
+/* aws_hal_udma_get_m2s_queue_offset_cayman @0x473a90 */
 /*   473a90: lea eax,[rdi+0x1]   ; q + 1                              */
 /*   473a93: shl eax,0xc         ; << 12                             */
 queue_base = (queue_id + 1) << 12;        /* 0x1000-stride per-queue bank */
@@ -122,7 +123,7 @@ So the reprogram is a write of the ring's **new `{base_lo, base_hi, len}`** into
 the per-queue M2S and S2M descriptor-ring CSRs of **each participating engine** —
 the literal "reload the standing pring's ring pointer/size in place" re-arm.
 
-### 1.2 The re-arm reset — `q_sw_ctrl rst_tail_ptr` `[OBSERVED HIGH]`
+### 1.2 The re-arm reset — `q_sw_ctrl rst_tail_ptr`
 
 After the base/size reload the ring is re-armed via the `q_sw_ctrl` reset, which
 returns the tail pointer to the ring base before the new step's descriptors are
@@ -138,7 +139,7 @@ re-arm reset). The M2S `q_sw_ctrl` sits at within-block `+0xb0`, the S2M at `+0x
 — matching [udma-hw-engine.md](../../dma/udma-hw-engine.md) (M2S `q_sw_ctrl@0xb0`,
 S2M `q_sw_ctrl@0x64`). `[OBSERVED HIGH — the two getters; CARRIED — the bit fields]`
 
-### 1.3 The reprogram section — a dedicated descriptor sub-list `[OBSERVED HIGH]`
+### 1.3 The reprogram section — a dedicated descriptor sub-list
 
 The reprogram descriptors are **not** free-standing; they are pushed into a named
 **reprogram section** of the standing pring (the pring's `reset_section`,
@@ -161,7 +162,7 @@ So the reprogram section **re-writes, per basic block**: the SPAD-CTRL + per-slo
 SPAD, the M2S/S2M ring base/size, and a padding tail — the complete per-step re-arm
 of the standing pring.
 
-### 1.4 The per-engine gate `[OBSERVED HIGH]`
+### 1.4 The per-engine gate
 
 The reprogram loop is gated per queue-bundle on the **used-engine bitmap** (§3.3):
 
@@ -173,9 +174,9 @@ The reprogram loop is gated per queue-bundle on the **used-engine bitmap** (§3.
 
 i.e. the firmware lays reprogram descriptors only for engines whose bit is set in
 the queue-bundle's used bitmap, and only for the `(engine, QID)` pairs in use.
-`[OBSERVED HIGH — the gate disasm inside encd_load_executable]`
 
-### 1.5 The device-side `reprogram_info` struct (libncfw decoder) `[OBSERVED HIGH]`
+
+### 1.5 The device-side `reprogram_info` struct (libncfw decoder)
 
 The firmware's own reprogram-config struct is decoded by
 **`ncfw_log_dma_reprogram_info`** (`@libncfw 0x4571`, **4 arch copies**). The
@@ -191,7 +192,7 @@ decoder emits four SoC-address fields with these keys (`.rodata`):
 Each is a 4-byte SoC address printed via the `ncfw_log_addr` helper. The **size**
 leg (`m2s_size`/`s2m_size`) lives in the host reprogram descriptors (§1.1) and the
 basic-block table; the device struct mirrors only the **address** half.
-`[OBSERVED HIGH — the field keys + the 4 arch copies]`
+
 
 ---
 
@@ -203,7 +204,7 @@ write to a per-engine **`BCAST_UDMA`** window, which the fabric fans to the whol
 group. This is the complement of §1 (ring *setup* per-engine; ring *trigger*
 broadcast).
 
-### 2.1 The bcast doorbell address `[OBSERVED HIGH]`
+### 2.1 The bcast doorbell address
 
 The per-engine APB-broadcast doorbell address is resolved by
 **`tdrv_arch_get_dma_queue_regs_bcast_offset_cayman`** (`@0x30c1e0`):
@@ -221,7 +222,6 @@ The per-engine APB-broadcast doorbell address is resolved by
 ```
 
 ```c
-/* [OBSERVED HIGH — the resolver chain disassembled] */
 bcast_addr = cayman_bcast_region_table[engine_region_idx]   /* per-engine bcast base */
            + (direction ? 0x20000 : 0)                      /* M2S @ +0 | S2M @ +0x20000 */
            + ((queue_id + 1) << 12)                         /* the per-queue base */
@@ -238,12 +238,12 @@ unicast register offset, `nm`-confirmed `t` symbols):
 | `get_dma_queue_sw_ctrl_bcast_offset`       | `0x3188b0` | `sw_ctrl`           `0x10b0` / **`+0xb0`** |
 
 > **CORRECTION — the register constants are `0x10xx`, not `0xxx`.** The cayman
-> getters return the **absolute** `q=0` offsets, byte-exact this pass:
+> getters return the **absolute** `q=0` offsets, byte-exact:
 > `aws_hal_udma_get_m2s_queue_tail_ptr_inc_offset_cayman@0x473bf0 = 0x1038`,
 > `…data_tail_ptr_inc…@0x473c30 = 0x10e0`, sw_ctrl `@0x473c50 = 0x10b0`. The
 > within-block deltas are `+0x38` / `+0xe0` / `+0xb0` (`= abs − 0x1000`). `+0x38`
 > is exactly the [udma-hw-engine.md](../../dma/udma-hw-engine.md) **`TDRTP_inc`
-> doorbell** (`THE DOORBELL`, field `val[23:0]`). `[OBSERVED HIGH]`
+> doorbell** (`THE DOORBELL`, field `val[23:0]`).
 
 The `tail_inc` getter (`@0x318830`) is shown verbatim:
 
@@ -256,9 +256,9 @@ The `tail_inc` getter (`@0x318830`) is shown verbatim:
   318851:  add   rax,rbx                                     ; full bcast doorbell addr
 ```
 
-### 2.2 The `bcast_region_table` **is** the `BCAST_UDMA` aperture (`+0x80000`) `[OBSERVED HIGH — numeric proof]`
+### 2.2 The `bcast_region_table` **is** the `BCAST_UDMA` aperture (`+0x80000`)
 
-`cayman_bcast_region_table` (`.rodata @0x9def40`, 8× `u64`, dumped this pass):
+`cayman_bcast_region_table` (`.rodata @0x9def40`, 8× `u64`, dumped):
 
 | idx | value | = SDMA channel base `+0x80000` |
 |---|---|---|
@@ -289,11 +289,10 @@ to the group whose membership is the `papb_bcast.grps` mask (FIS).
 
 > **NOTE — the index.** The table has **8 entries**; the caller passes a small
 > engine→region index `edx` (0..7) into `[rcx+rdx*8]`. `add_dma_tail_inc_bcast`
-> (`@0x273480`) supplies that index from the engine class. `[OBSERVED HIGH — the
-> 8 table bytes + the `+0x80000` numeric identity; the per-cycle fabric fan-out
-> is HW, see §2.6]`
+> (`@0x273480`) supplies that index from the engine class. `[OBSERVED HIGH; the
+> per-cycle fabric fan-out is HW — §2.6]`
 
-### 2.3 The bcast doorbell **value** `[OBSERVED HIGH]`
+### 2.3 The bcast doorbell **value**
 
 The host computes the bcast doorbell value in
 **`encd_basic_block_build_toplevel_mhandles_for_qbi`** (`@0x246070`). The full
@@ -314,7 +313,6 @@ byte-exact sequence (`@0x24611f..0x24614a`):
 ```
 
 ```c
-/* [OBSERVED HIGH — the full shr/not/shl/or chain] */
 shift  = pcore_idx << 4;                               /* select the per-pcore 16-bit lane */
 lane   = (dma_engines_bitmap >> shift) & 0xffff;       /* this pcore's 16 engines */
 value  = ((uint32_t)(~(dma_engines_bitmap >> shift)) << 16) | 0x100;
@@ -329,7 +327,7 @@ s2m_apb_bcast = value;                                  /* identical for both di
 > **complement** of the participating-engine lane mask, and the low field is
 > `0x100` (`or ah,0x1` sets bit 8). The "name the group + arm the ring in one
 > write" reading still holds, but the high bits are the **inverted** lane mask,
-> not the raw bitmap. `[OBSERVED HIGH]`
+> not the raw bitmap.
 
 The value is written per engine via `encd_devmem_copyin`; the verbatim log strings
 name both the value and the source bitmap:
@@ -341,7 +339,7 @@ name both the value and the source bitmap:
 | `0x8064a8` | `[nec_dev %d] Failed to copy m2s_apb_bcast_value` |
 | `0x806518` | `[nec_dev %d] Failed to copy s2m_apb_bcast_value` |
 
-### 2.4 The `dma_apb_bcast` config struct (libncfw decoder) `[OBSERVED HIGH]`
+### 2.4 The `dma_apb_bcast` config struct (libncfw decoder)
 
 The firmware's per-channel `dma_apb_bcast` struct is decoded by
 **`ncfw_log_dma_channel_apb_bcast`** (`@libncfw 0x4899`, **4 arch copies**):
@@ -356,10 +354,9 @@ The two `*_tail_ptr` fields are SoC addresses printed via `ncfw_log_addr`; `mask
 is the group mask. A `dma_apb_bcast` **mesh-event** variant additionally prints
 `dma_apb_bcast_%d` (`0x65246`, two per event), `dma_apb_rsvd_addr` (`0x652cd`, the
 reserved APB address), and `dma_engines_bitmap` (`0x6535c`) — the
-[NCFW DMA-naming](ncfw-dram-ctx-log.md) field. `[OBSERVED HIGH — the three field
-keys + the mesh-event variant keys]`
+[NCFW DMA-naming](ncfw-dram-ctx-log.md) field.
 
-### 2.5 Which registers are broadcast- vs per-engine-programmed `[OBSERVED HIGH]`
+### 2.5 Which registers are broadcast- vs per-engine-programmed
 
 This is the clean division of labour, and it falls **directly** out of which
 getters exist for the bcast path vs which CSRs the reprogram descriptors target:
@@ -377,14 +374,13 @@ The bcast path has **only** `tail_inc` / `data_tail_inc` / `sw_ctrl` variant
 getters — **no** `base`/`len` bcast getter exists — confirming the base/size CSRs
 are never broadcast and are written per `(engine, QID)` in the reprogram section
 (§1). Ring **setup** (base/size) is per-engine; ring **trigger** + re-arm is
-broadcast to the group. `[OBSERVED HIGH — the getter roster vs the reprogram CSR
-targets]`
+broadcast to the group.
 
 > **NOTE — `cayman_get_apb_bcast_m2s_offsets`.** `@0x25ced0` resolves the queue
 > id, the pcore, and `cayman_get_dma_alloc_bitmap`, then **tail-jumps** to
 > `get_dma_queue_data_tail_inc_bcast_offset` (`@0x318870`) — i.e. the M2S
 > "apb-bcast offsets" path arms the **enhanced-prefetch** (`data_tail_inc`)
-> doorbell. `[OBSERVED HIGH — the tail-jmp]`
+> doorbell. 
 
 ### 2.6 The fabric path `[CARRIED — sdma-windows-apb.md]`
 
@@ -401,7 +397,7 @@ OBSERVED on the committed page; the end-to-end write data-flow is INFERRED MED]`
 
 ## 3. The alloc bitmap — the resource-allocation bitmap
 
-### 3.1 The static `dma_alloc_bitmap` table `[OBSERVED HIGH — dumped this pass]`
+### 3.1 The static `dma_alloc_bitmap` table
 
 `cayman_dma_alloc_bitmap` (`.rodata @0x9d20a0`, 8× `u64`). Each `u64` packs two
 32-bit masks — the two-half structure is **proven** by the consumer (§3.2):
@@ -423,7 +419,7 @@ compute-engine apertures); the **high 32** is the queue/channel mask
 engine-aperture patterns × 2 dies. `[bytes OBSERVED HIGH; the half semantics
 PROVEN via §3.2]`
 
-### 3.2 The getter + the two-half decode `[OBSERVED HIGH]`
+### 3.2 The getter + the two-half decode
 
 **`cayman_get_dma_alloc_bitmap`** (`@0x25cd10`) validates the index (`idx <= 1`,
 `idx <= 3`, `idx <= 7` asserts), then indexes the static table by the queue-bundle
@@ -447,9 +443,9 @@ mariana `@0x259430` / sunda `@0x25f030`). The **consumer**
 
 So the **high half** is a per-bit queue/channel allocation mask (`tzcnt` =
 find-first-allocated channel); the **low half** is the engine mask used elsewhere.
-`[OBSERVED HIGH — the getter index + the shr/tzcnt consumer]`
 
-### 3.3 The bitmap operations — SET / FIND-FREE / VALIDITY `[OBSERVED HIGH]`
+
+### 3.3 The bitmap operations — SET / FIND-FREE / VALIDITY
 
 **SET (OR-in)** — build the runtime `dma_engines_bitmap` from the in-use channels.
 `encd_dma_get_used_dma_engine_bitmap_for_queue_bundle` (`@0x231720`) walks the
@@ -484,10 +480,9 @@ and asserts it against `valid_dma_engines_bitmap`:
 So `valid_dma_engines_bitmap = 0xffff` (16-engine config) or `0xffffffff`
 (32-engine), and the assert string `(1 << dma_engine_id) & valid_dma_engines_bitmap`
 (`.rodata @0x80ae48`) is byte-confirmed at this site — the byte-exact form of the
-[NCFW-naming](ncfw-dram-ctx-log.md) validity gate. `[OBSERVED HIGH — all three ops
-disassembled]`
+[NCFW-naming](ncfw-dram-ctx-log.md) validity gate.
 
-### 3.4 The device-side `dma_alloc_bitmap` (libncfw decoder) `[OBSERVED HIGH]`
+### 3.4 The device-side `dma_alloc_bitmap` (libncfw decoder)
 
 The firmware DRAM config carries `dma_alloc_bitmap` as a `u64` **array**, decoded
 by **`ncfw_log_configs_neff_dma_alloc_bitmap`** (`@libncfw 0xce01`, **4 arch
@@ -496,10 +491,9 @@ copies**). The decoder prints a **JSON array**: the array key `"%s": [`
 config array with stride 8). The parent caller emits the `"dma_alloc_bitmap"` key
 (`@0x654d1`) then calls this array-printer. So the device-resident
 `dma_alloc_bitmap` is the `u64`-per-qbundle array **mirroring** the host static
-table (§3.1) — the device reads what the host laid down. `[OBSERVED HIGH — the
-JSON-array key + the stride-8 element loop + the parent key]`
+table (§3.1) — the device reads what the host laid down.
 
-### 3.5 The APB-bcast mask is *also* die-banked `[OBSERVED HIGH]`
+### 3.5 The APB-bcast mask is *also* die-banked
 
 `cayman_get_apb_bcast_mask` (`@0x25bd70`) resolves the used qbundle id, reads a
 per-qbundle `u32` from the passed table, then **selects a 16-bit half by qbundle
@@ -519,9 +513,9 @@ id** — the same die-banking pattern as the alloc bitmap:
 > table element is read with **stride 4** (`mov edx,[rbx+rdx*4]`); its low 16 bits
 > are the die0 group mask, high 16 the die1 group mask. The selector takes the
 > high half for qbundle id `> 3` (die1), low half otherwise. The **returned** value
-> is the 16-bit group mask. `[OBSERVED HIGH]`
+> is the 16-bit group mask.
 
-### 3.6 Reconciliation vs the `dma_engines_bitmap` `[HIGH]`
+### 3.6 Reconciliation vs the `dma_engines_bitmap`
 
 - The [NCFW `dma_engines_bitmap`](ncfw-dram-ctx-log.md) (the per-collective
   participating-engine 32-bit mask) is **built at runtime** from the static
@@ -548,12 +542,12 @@ runtime sequencing is `INFERRED-STRONG` from the build order + the pring
 `reset_section` gating.
 
 ```c
-/* ============ ALLOC  (per queue-bundle) ============ [OBSERVED HIGH] */
+/* ============ ALLOC  (per queue-bundle) ============ */
 u64 alloc = cayman_get_dma_alloc_bitmap(qbundle);  /* static {low=engine apertures, high=queue mask} */
 u32 dma_engines_bitmap = encd_dma_get_used_dma_engine_bitmap_for_queue_bundle(qb);  /* OR-in §3.3 */
 /* validity-gated: each id asserted via  (1<<id) & valid_dma_engines_bitmap  (0xffff|0xffffffff) */
 
-/* ============ REPROGRAM  (per engine in the bitmap) ============ [OBSERVED HIGH] */
+/* ============ REPROGRAM  (per engine in the bitmap) ============ */
 if (dma_engines_bitmap == 0) skip_queue_bundle();           /* the §1.4 gate */
 for (engine in set_bits(dma_engines_bitmap))
   for (qid in used_qids(engine)) {
@@ -567,7 +561,7 @@ for (engine in set_bits(dma_engines_bitmap))
     emit_reprogram_desc(q_sw_ctrl rst_tail_ptr @ +0xb0/+0x64);  /* the re-arm reset (§1.2) */
   }
 
-/* ============ BCAST  (per queue-bundle) ============ [OBSERVED HIGH] */
+/* ============ BCAST  (per queue-bundle) ============ */
 shift = pcore_idx << 4;
 value = ((u32)(~(dma_engines_bitmap >> shift)) << 16) | 0x100;     /* §2.3 (note: shr+not!) */
 addr  = cayman_bcast_region_table[engine_region_idx]              /* the BCAST_UDMA aperture */
@@ -597,27 +591,27 @@ FLIX-undecodable]`
 
 - **ALLOC: `cayman == mariana` byte-identical** (8× `u64`, same values). **SUNDA is
   the outlier**: its high (queue) masks are `0xff00` and `0x003f` (vs `0xffff`),
-  the smaller SUNDA fabric. `[OBSERVED HIGH — all three dumped this pass]`
+  the smaller SUNDA fabric.
 
 > **NOTE — the SUNDA alloc layout differs structurally, not just numerically.**
 > Cayman/mariana bank by die (idx 0..3 = `0x0000ffff`, idx 4..7 = `0xffff0000`).
 > SUNDA **alternates** the two smaller masks per index: idx `{0,2,4,6}` =
 > `0x0000ff00`, idx `{1,3,5,7}` = `0x0000003f` (always in the **low** dword, no
 > die-1 `0xffff0000` form). So SUNDA's 8 entries are 4 engine patterns × 2
-> queue-mask sizes, not 4 × 2 dies. `[OBSERVED HIGH — sunda table dumped]`
+> queue-mask sizes, not 4 × 2 dies.
 
 - The three libncfw ctx_log decoders (`ncfw_log_dma_reprogram_info`,
   `_dma_channel_apb_bcast`, `_configs_neff_dma_alloc_bitmap`) each ship in **4 arch
   copies** with identical field-offset structure (the per-copy byte diff is only
-  the rip-relative key/helper targets). `[OBSERVED HIGH — 4 copies each via nm]`
+  the rip-relative key/helper targets).
 
 ---
 
 ## 6. Confidence ledger
 
-**HIGH / OBSERVED (bytes / disasm / DWARF / table-dump this pass):**
+**HIGH / OBSERVED (bytes / disasm / DWARF / table-dump):**
 
-- **lib identities** re-verified: `libncfw` sha `598920d7…` / BuildID `a98f8e1c…`;
+- **lib identities**: `libncfw` sha `598920d7…` / BuildID `a98f8e1c…`;
   `libnrt` sha `956382de…` / BuildID `8bb57aba…`; section deltas confirmed.
 - **REPROGRAM**: the seven reprogram strings (`@0x806e60`/`806eb8…807048`); the
   getters `get_dma_queue_base_low/high/size_offset` (`@0x318ac0`/`318b20`/`318b80`)

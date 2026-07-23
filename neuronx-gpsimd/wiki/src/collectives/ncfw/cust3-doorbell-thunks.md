@@ -38,18 +38,17 @@ doorbell split**:
 > [scalar-LX core page](../../uarch/ncfw-lx-core.md) and
 > [LX-ISA naming / arch_id synthesis](lx-isa-naming-archid-synthesis.md).
 
-**Provenance & confidence.** Every fact below is read **this session** from two
-shipped host libraries with stock binutils (`readelf -SW`/`-n`, `nm`,
+**Provenance & confidence.** Every fact below is read from two shipped host
+libraries with stock binutils (`readelf -SW`/`-n`, `nm`,
 `objdump -d -M intel`, `sha256sum`, `strings -t x`) plus a Python `struct`/`call8`
 byte reader:
 
 * **`libncfw.so`** (NCFW image accessor + `ctx_log` JSON pretty-printer; carries
   the firmware blobs as `.rodata`) — sha256 `598920d743…`, BuildID `a98f8e1c…`,
-  `.rodata` VMA == file-offset `0x65000` *(re-verified)*.
+  `.rodata` VMA == file-offset `0x65000`.
 * **`libnrt.so.2.31.24.0`** (host RunTime — the **encoder**; the authoritative
-  struct/getter source) — BuildID `8bb57aba…`, `.text`/`.rodata` VMA == file-offset
-  *(re-verified)*.
-* **The carved NCFW blobs** (MD5 re-verified this session): `v4_iram` @`0x83260`
+  struct/getter source) — BuildID `8bb57aba…`, `.text`/`.rodata` VMA == file-offset.
+* **The carved NCFW blobs** (MD5): `v4_iram` @`0x83260`
   `1f3d74d1…`, `v3_iram` @`0x79860` `d4d5b0d8…`, `v4_plus_iram` @`0x8ccc0`
   `eec31c54…`, `v4_dram == v4_plus_dram` @`0x7e440`/`0x87ea0` `7ff55158…`,
   `v3_dram` @`0x74a40` `c0a240cf…`.
@@ -62,9 +61,10 @@ byte reader:
 > page. Likewise `libncfw.so` fn-ptr tables are plain **C arrays** (slot N = symbol
 > + 8·N); the C++ `_ZTV+0x10` vtable rule is irrelevant here.
 
-Tags: **HIGH/MED/LOW** × **OBSERVED** (bytes/disasm/DWARF read this session) /
+The page default is **OBSERVED HIGH**; claims that depart from it carry an explicit
+tag: **HIGH/MED/LOW** × **OBSERVED** (bytes/disasm/DWARF read directly) /
 **INFERRED** (deduced from structure/siblings) / **CARRIED** (from a cited sibling
-report). `v2`/SUNDA is the addressing outlier; `v5`/MAVERICK NCFW is **FILE-ABSENT**
+page). `v2`/SUNDA is the addressing outlier; `v5`/MAVERICK NCFW is **FILE-ABSENT**
 (every v5 claim is INFERRED/ABSENT).
 
 ---
@@ -72,7 +72,7 @@ report). `v2`/SUNDA is the addressing outlier; `v5`/MAVERICK NCFW is **FILE-ABSE
 ## 1. What "CUST3" is
 
 > **NOTE — "CUST3" is a disassembler mnemonic, not a vendor name.** A corpus census
-> this session (`rg -i 'CUST3|cust3|custom3'` over the shipped `extracted/` tree and
+> (`rg -i 'CUST3|cust3|custom3'` over the shipped `extracted/` tree and
 > `strings` over the two binaries) returns **zero** occurrences of any
 > `CUST3`/`cust3`/`custom3` opcode name. The one hit in the whole corpus is
 > *unrelated*: `custom32` in the bundled LLVM `MIRYamlMapping.h` /
@@ -84,9 +84,9 @@ report). `v2`/SUNDA is the addressing outlier; `v5`/MAVERICK NCFW is **FILE-ABSE
 > HIGH; "third CUSTOM-class mnemonic" INFERRED-STRONG from the mnemonic family + the
 > absence of the name anywhere in the shipped corpus.)*
 
-**The concrete op word — OBSERVED HIGH.** The NCFW DMA doorbell instruction is a
-single 3-byte TIE word `0x0d0ca0` — LE bytes **`a0 0c 0d`** on Mariana, **`80 0c 0d`**
-on Cayman. Byte-census of the carved blobs (my own `xxd`/grep, this session):
+**The concrete op word.** The NCFW DMA doorbell instruction is a single 3-byte TIE
+word `0x0d0ca0` — LE bytes **`a0 0c 0d`** on Mariana, **`80 0c 0d`** on Cayman.
+Byte-census of the carved blobs (`xxd`/grep):
 
 | gen | codename / arch_id | CUST3 op bytes | word | t-field nibble | markers |
 |-----|--------------------|----------------|------|----------------|---------|
@@ -123,8 +123,8 @@ direction nibble, selector immediates, target region, and value=N are all proven
 
 The thunk array is 27 functions, each `entry a1,32` (`36 41 00`) → `retw.n`
 (`1d f0`); **14** carry the CUST3 `a0 0c 0d` op. They split into four sub-families.
-All bytes below were **dumped this session** from `v4_iram` (`1f3d74d1…`); all
-`call8` targets were **decoded with the scalar LX rule**, not a FLIX emit.
+All bytes below are **dumped** from `v4_iram` (`1f3d74d1…`); all `call8` targets
+are **decoded with the scalar LX rule**, not a FLIX emit.
 
 ### 2.1 Family A — SETUP thunks (no CUST3)
 
@@ -133,10 +133,10 @@ All bytes below were **dumped this session** from `v4_iram` (`1f3d74d1…`); all
 the engine-command core `0x490c`). These prime engine state *before* the per-channel
 rings. *(structure CARRIED; OBSERVED that they carry no CUST3 word.)*
 
-### 2.2 Family B — CUST3 GROUP-selector thunks (`ae bX 0Y`) — OBSERVED HIGH
+### 2.2 Family B — CUST3 GROUP-selector thunks (`ae bX 0Y`)
 
 Selector `ae bX 0Y` at thunk `+0x03`; CUST3 word `a0 0c 0d` at thunk `+0x0b`; the
-`call8` word follows at thunk `+0x0e`. Bytes + decoded targets this session:
+`call8` word follows at thunk `+0x0e`. Bytes + decoded targets:
 
 ```
 0x3700: 36 41 00 ae b1 01 80 01 8c 01 7a a0 0c 0d  a5 98 ff  → call8 0x3098 (IN)
@@ -155,9 +155,9 @@ Selector `ae bX 0Y` at thunk `+0x03`; CUST3 word `a0 0c 0d` at thunk `+0x0b`; th
 All seven `call8` words (`callPC = thunk+0x0e`) decode to **`0x3098`** (the IN
 helper) in their first leg.
 
-### 2.3 Family C — CUST3 BANK-selector thunks (`d2 04 ZZ 0Y`) — OBSERVED HIGH
+### 2.3 Family C — CUST3 BANK-selector thunks (`d2 04 ZZ 0Y`)
 
-Selector `d2 04 ZZ 0Y` at thunk `+0x0d`. Bytes this session:
+Selector `d2 04 ZZ 0Y` at thunk `+0x0d`. Bytes:
 
 ```
 0x3748: 36 41 00 be c0 00 80 01 0c 45 fa ab 2f  d2 04 40 02  cc 07 ad 02  a5 93 ff  be 10 20 98
@@ -174,7 +174,7 @@ Selector `d2 04 ZZ 0Y` at thunk `+0x0d`. Bytes this session:
 These carry the `be 10 20 98 41 9f 01 5a … a0 0c 0d` CUST3 tail, then `call8 0x30bc`
 (the OUT helper).
 
-### 2.4 Family D — PER-CHANNEL IN/OUT thunks (`0x3948..0x3a28`) — OBSERVED HIGH
+### 2.4 Family D — PER-CHANNEL IN/OUT thunks (`0x3948..0x3a28`)
 
 Eight **byte-identical** thunks differing only in the channel nibble (`byte+9`) and
 the IN/OUT call displacement. Template (32 B):
@@ -186,8 +186,8 @@ the IN/OUT call displacement. Template (32 B):
                                                               └ call8 word @ thunk+0x1a
 ```
 
-All 8 `call8` targets **decoded myself** this session (`callPC = thunk+0x1a`,
-scalar call8):
+All 8 `call8` targets decoded under the scalar `call8` rule
+(`callPC = thunk+0x1a`):
 
 | thunk | `byte+9` | channel | call word | target | helper |
 |-------|----------|---------|-----------|--------|--------|
@@ -243,14 +243,14 @@ an engine sub-index via the CUST3 operand directly. The engine **CLASS** labels
 ## 3. The two shared direction-coded helpers
 
 Both ring thunks tail-call one of two helpers that differ **only** in a transfer-
-direction field. Byte-diff over 0x24 B (dumped + diffed this session):
+direction field. Byte-diff over 0x24 B (dumped + diffed):
 
 ```
 0x3098 (IN/read) : 36 41 00 6e 1f 30 18 7c ff 0A 50 a0 6e 1f 4f f8 9f DF EE 50 ab 6f 12 52 b8 bd bf 05 7a a2 A5 9A 01 1d f0
 0x30bc (OUT/write): 36 41 00 6e 1f 30 18 7c ff 2A 50 a0 6e 1f 4f f8 9f 1F EF 50 ab 6f 12 52 b8 bd bf 05 7a a2 65 98 01 1d f0
 ```
 
-The **only** differing bytes over 0x24 B (re-verified):
+The **only** differing bytes over 0x24 B:
 
 | offset | IN (`0x3098`) | OUT (`0x30bc`) | meaning |
 |--------|---------------|----------------|---------|
@@ -260,14 +260,14 @@ The **only** differing bytes over 0x24 B (re-verified):
 | `+0x1e` | `a5` | `65` | `call8` displacement low byte (same callee, different call PC) |
 | `+0x1f` | `9a` | `98` | `call8` displacement |
 
-Both helpers' `call8` word at `+0x1e` decodes to the **same** callee **`0x4a60`**
-(decoded this session). The high nibble of `byte+9` (`0` vs `2`) is the DMA
+Both helpers' `call8` word at `+0x1e` decodes to the **same** callee **`0x4a60`**.
+The high nibble of `byte+9` (`0` vs `2`) is the DMA
 transfer-direction selector inside the op: the IN/read leg is the head-pointer read
 (`DRHP`), the OUT/write leg is the tail-pointer doorbell (`TDRTP_INC`/`RDRTP_INC`).
 *(the IN/OUT → DRHP/DRTP_INC mapping is INFERRED-STRONG from the helper byte-diff +
 the host getter pair, §4; the TIE bit semantics are the residual.)*
 
-**Tail chain (call targets decoded myself).** Both helpers reach the engine-command
+**Tail chain (call targets decoded under the scalar `call8` rule).** Both helpers reach the engine-command
 core through two more LX functions:
 
 ```
@@ -288,16 +288,16 @@ The actual engine MMIO write is the TIE op inside `0x4a6c`/`0x48fc` — undecoda
 > direct callers — they are reached via computed-goto / `callx` from a runtime-
 > indexed per-channel dispatch table (consistent with the byte-identical, channel-
 > indexed template). The helpers `0x3098`/`0x30bc` have 23–24 callers each — every
-> ring thunk. *(structure CARRIED; entry sites re-verified.)*
+> ring thunk. *(structure CARRIED; entry sites OBSERVED.)*
 
 ---
 
 ## 4. The write mechanics — value = N, target = uDMA tail-ptr-INC, APB-broadcast fan
 
 The host RunTime resolves the **same** doorbell address + value the CUST3 thunks
-ring. Recovered byte-exact this session from `libnrt.so` (the authoritative encoder).
+ring. Recovered byte-exact from `libnrt.so` (the authoritative encoder).
 
-### 4.1 The full doorbell address — OBSERVED HIGH
+### 4.1 The full doorbell address
 
 ```c
 /* doorbell_addr = the uDMA per-queue tail-pointer-increment register, fanned
@@ -311,7 +311,7 @@ uint64_t doorbell_addr =
 uint32_t value = N;   /* descriptor count to arm: write N ⇒ advance tail by N descriptors */
 ```
 
-Resolver chain (every getter disassembled this session):
+Resolver chain (every getter disassembled):
 
 | symbol | addr | does |
 |--------|------|------|
@@ -324,7 +324,7 @@ Resolver chain (every getter disassembled this session):
 | `get_dma_queue_data_tail_inc_bcast_offset` | `0x318870` | the `+0xe0` enhanced-prefetch variant, gated by `tdrv_arch_supports_data_tail_ptr_inc` |
 | `get_dma_queue_sw_ctrl_bcast_offset` | `0x3188b0` | the `+0xb0`/`+0x64` re-arm variant |
 
-Disassembly of the cayman address-assembler (`0x30c1e0`, this session):
+Disassembly of the cayman address-assembler (`0x30c1e0`):
 
 ```asm
 30c1ee:  call  aws_hal_udma_get_m2s_offset      ; M2S sub-block base ([khal+0x578])
@@ -351,11 +351,11 @@ engine — i.e. one MMIO write to the broadcast window reaches all masked peers 
 APB-broadcast fan-out). Its S2M sibling is `cayman_get_apb_bcast_s2m_offsets`
 (`0x25af40`).
 
-### 4.2 The per-queue CSR register block (`+0x1028..+0x10e0`) — OBSERVED HIGH
+### 4.2 The per-queue CSR register block (`+0x1028..+0x10e0`)
 
 `queue_base = (q+1) << 12` (`aws_hal_udma_get_m2s_queue_offset_cayman` @`0x473a90`:
 `lea eax,[rdi+0x1]; shl eax,0xc; ret`; S2M identical at `0x473aa0`). Each cayman
-getter's `mov edx,0x10XX` immediate was read this session:
+getter's `mov edx,0x10XX` immediate:
 
 | register | abs offset (q=0) | M2S getter | S2M getter | meaning |
 |----------|------------------|------------|------------|---------|
@@ -395,7 +395,7 @@ See [ring protocol / config command](ring-protocol-config-command.md).
 
 ## 5. The register-address TABLE (`v4_dram +0x010`, 20× u64)
 
-The NCFW firmware's own engine/event base table, dumped byte-exact this session from
+The NCFW firmware's own engine/event base table, dumped byte-exact from
 `v4_dram` (`7ff55158…` == `v4_plus_dram`), reconciled against the libnrt host tables.
 
 | idx | off | u64 (LE) | role |
@@ -440,8 +440,7 @@ Three row-bands:
 The table ends at `+0xb0`, where the **12-entry `algo_type` engine-dispatch table**
 begins (`{0x3c38, 0x3c35, 0x3c2e, 0x48f0, 0x3c27, 0x3c20, 0x3c20, 0x3c20, 0x3e9c,
 0x3e32, 0x3e76, 0x3e80}`; idx 3 `0x48f0` is the error/default outlier). The exc-cause
-table at `+0x000` is `{0x1399, 0x13b1, 0x13c5, 0x1399}`. *(all tables OBSERVED HIGH
-this session.)*
+table at `+0x000` is `{0x1399, 0x13b1, 0x13c5, 0x1399}`.
 
 > **CORRECTION — `+0xb0` is ONE 12-entry table, not an 8-slot table + a 4-entry
 > `+0xd0` secondary.** An earlier framing here (and in
@@ -457,8 +456,8 @@ this session.)*
 
 ### 5.1 `cayman_bcast_region_table` — byte-identity with idx[8..15] + 0x80000
 
-Dumped this session from `libnrt.so` `.rodata` @`0x9def40` (the symbol objdump even
-resolves at the `lea` in `0x30c1e0`):
+Dumped from `libnrt.so` `.rodata` @`0x9def40` (the symbol objdump even resolves at
+the `lea` in `0x30c1e0`):
 
 ```
 [0] 0x001002080000   [1] 0x001003080000   [2] 0x005004080000   [3] 0x005005080000
@@ -476,25 +475,24 @@ as the NC1 reg-addr entries.
 > **CORRECTION — "engine A/B/C/D = EVENT-slot 0x28/0x38/0x68/0x78" is an address
 > field, not an event-file sub-offset.** An earlier reading framed idx[0..3] as four
 > "engine apertures at EVENT-file offset 0x28/0x38/0x68/0x78 = event index
-> 10/14/26/30." Bit-decode this session settles it: each byte `0x28`/`0x38`/`0x68`/
+> 10/14/26/30." Bit-decode settles it: each byte `0x28`/`0x38`/`0x68`/
 > `0x78` is the **byte at bits[39:32] of the 48-bit device address**, i.e.
 > `(engine_nibble << 4) | 0x8` — the **high nibble** (2/3/6/7, at bit36) is the
 > engine/TPB selector and the **low nibble** (`0x8`) is a constant region selector.
 > They are **not** offsets into an EVENT file; they are four distinct device base
 > addresses each ending `0x...02700000`. idx[0..7] are the 8 full per-(NC × engine)
 > EVENT/sema base apertures (4 engines × 2 dies), not 4 event-slot offsets.
-> *(bit-decode + the idx[8..15] ↔ `cayman_bcast_region_table` equality OBSERVED HIGH.)*
 
 ---
 
 ## 6. CONTROL-plane vs DATA-plane doorbell — the key distinction
 
-### 6.1 DATA-plane (the CUST3 thunks' target) — OBSERVED HIGH
+### 6.1 DATA-plane (the CUST3 thunks' target)
 
 The uDMA per-queue **`TDRTP_INC`/`RDRTP_INC`** at `queue_base + 0x38` (abs `+0x1038`
 at `q=0`), fanned via the per-engine APB-broadcast window (`bcast_region_table`,
 idx[8..15], §5). The `libncfw.so` `ctx_log` key roster (the firmware's own DMA
-vocabulary, `strings -t x` this session) is purely data-plane:
+vocabulary, via `strings -t x`) is purely data-plane:
 
 | key | `libncfw.so` offset | meaning |
 |-----|---------------------|---------|
@@ -512,10 +510,9 @@ instance.)* The CUST3 family-D/B/C thunks ring **this** doorbell. The descriptor
 naming (`tdrbp`/`m2s`/`s2m`) is shared with the
 [descriptor-ring field tables](../../dma/descriptor-ring-field-tables.md).
 
-### 6.2 CONTROL-plane (NOT a CUST3 thunk target) — OBSERVED HIGH
+### 6.2 CONTROL-plane (NOT a CUST3 thunk target)
 
-The TOP_SP `LOCAL_REG` quintet, through the `kaena_khal` HAL vtable, re-verified
-byte-exact this session:
+The TOP_SP `LOCAL_REG` quintet, through the `kaena_khal` HAL vtable, byte-exact:
 
 | signal | getter | offset |
 |--------|--------|--------|
@@ -555,7 +552,7 @@ byte-diff + the host getter set; the TIE bit semantics are the residual.)*
 ## 7. The off-image per-channel descriptor pointers (honest limit)
 
 The family-D thunks load a descriptor pointer via an `l32r` at thunk `+0x10`
-(`a0 1d ac 01`, scalar op0-nibble-1; **OBSERVED HIGH** the instruction is present).
+(`a0 1d ac 01`, scalar op0-nibble-1; the instruction is present).
 
 > **GOTCHA — the `0xfffdXXXX` descriptor values are off-image, not blob-stored.**
 > An earlier reading reported the loaded *values* as `0xfffd307c..` (stride `0x30`
@@ -579,7 +576,7 @@ re-arms.
 
 ## 8. Per-generation stability + the residual
 
-### 8.1 Per-generation stability — OBSERVED HIGH
+### 8.1 Per-generation stability
 
 | gen | CUST3 op | CUST3 markers | family-D sig `3e 1c 4f 98 67 ff` | group skeleton `ae b1 01` |
 |-----|----------|---------------|----------------------------------|---------------------------|

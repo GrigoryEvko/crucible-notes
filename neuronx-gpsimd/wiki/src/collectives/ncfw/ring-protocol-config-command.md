@@ -41,7 +41,7 @@ the NX/LX cores execute.
 > `readelf -SW`), and `libnrt.so`/`libncfw.so` have **no** `.data` delta beyond
 > their own section deltas. `libncfw.so` and `libnrtucode_internal.so` use plain
 > **C function-pointer tables** (slot N = symbol + 8·N), *not* C++ `_ZTV+0x10`
-> vtables. Every count below is re-grounded to `nm <lib> | rg -c`.
+> vtables. Every count below is grounded on `nm <lib> | rg -c`.
 
 ---
 
@@ -369,7 +369,7 @@ DMAs onto the TOP_SP (CTRL SPAD → SRAM 4 KiB; SLOT SPAD → TPB IRAM 32 KiB; E
 
 ## 2.1 The top-level config — `struct neff_configs` (3592 B)
 
-Every member offset re-read from the `libnrt` DWARF (DIE `<14f9029>`):
+Every member offset from the `libnrt` DWARF (DIE `<14f9029>`):
 
 | Offset | Field | Type | Role |
 |--------|-------|------|------|
@@ -412,11 +412,11 @@ type + the bit split OBSERVED HIGH.]
 ## 2.2 The `cc_op` record format (byte-exact, both views)
 
 Each `ctrl_spad` slot = a 1-byte header + a `cc_op` command word. Two independent
-views, both byte-verified this pass.
+views, both byte-verified.
 
 ### Decoder view — `ncfw_log_spad_ctrl_cc_op_entry` @0x1840 (libncfw)
 
-Every bitfield extraction re-disassembled:
+Every bitfield extraction, disassembled:
 
 | Field | Extraction | Address |
 |-------|-----------|---------|
@@ -434,7 +434,7 @@ Every bitfield extraction re-disassembled:
 The decoder body is **linear** (no `algo_type` switch) — a debug pretty-printer
 that dumps both the RING (`channel_list`) and MESH (`sema_shift_offset`/
 `sema_mask`) union views unconditionally; the live union selector is `algo_type`.
-[Every immediate re-disassembled — OBSERVED HIGH.]
+[Every immediate disassembled — OBSERVED HIGH.]
 
 ### Packer view — `create_spad_ctrl_entry` @0x232cd0 (libnrt)
 
@@ -492,7 +492,7 @@ variant @0x804198). These name exactly the `cc_op` fields.
 > the on-device `cc_op` decoder reads *no* width for — it is a host-side staging/
 > safety flag, not part of the on-wire `cc_op` record.
 
-## 2.3 The enums the config carries (re-extracted from DWARF)
+## 2.3 The enums the config carries (from DWARF)
 
 Exact enumerator names + values (DIE offsets noted):
 

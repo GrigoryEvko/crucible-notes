@@ -18,13 +18,14 @@ deliverables, each its own top-level section:
 
 Everything below is derived from static/binary analysis of the shipped redistributable
 host libraries and the device firmware images they embed. Every claim is anchored to an
-address / offset / symbol / enum / opcode / string and tagged
-**[CONF × PROVENANCE]** where CONF ∈ {HIGH, MED, LOW} and PROVENANCE ∈ {OBSERVED
+address / offset / symbol / enum / opcode / string. The page default is
+**[HIGH × OBSERVED]**; claims that depart from it carry an explicit
+**[CONF × PROVENANCE]** tag, where CONF ∈ {HIGH, MED, LOW} and PROVENANCE ∈ {OBSERVED
 (bytes/disasm read directly), INFERRED (architectural reading over observed facts),
 CARRIED (from a cited sibling at its stated confidence)}. v2–v4 are byte-grounded;
 **every v5/MAVERICK claim is INFERRED or ABSENT, never OBSERVED.**
 
-**Target binaries** (all three identity anchors re-verified):
+**Target binaries:**
 
 | binary | role | sha256 / BuildID | size |
 |--------|------|------------------|------|
@@ -50,7 +51,7 @@ The NCFW management core is a **scalar Xtensa-LX control core**: base ISA + wind
 registers (XEA2) + 16-bit code density + zero-overhead loops + a small option set, with
 **no Vision/SIMD datapath and no FLIX/VLIW layer**. It is a *different* core from the
 GPSIMD Vision-Q7 NX datapath core (`ncore2gp`/Cairo) on which the customop kernels run;
-the two share only the windowed+density **base** ISA. **[HIGH × OBSERVED]** — see the
+the two share only the windowed+density **base** ISA. See the
 dedicated uarch page [`uarch/ncfw-lx-core.md`](../../uarch/ncfw-lx-core.md) for the full
 register/SR census; this section gives the *decode* consequence for the collective lane.
 
@@ -65,11 +66,11 @@ loads, `a2`–`a7` → `a10`–`a15` rotation. The SR set is the standard LX reg
 (`WINDOWBASE`/`PS`/`VECBASE`/`EXCCAUSE`/`EXCVADDR`/`PRID`/`MEMCTL`/`MS`/`ISB`/`ISL`/`MPUENB`
 /`PREFCTL`/`LBEG`/`IBREAKC0`); **no TIE/coprocessor SRs**. The idle point is a single
 `waiti 15` per image (v3 at IRAM **`0x4b6c`**, decoded cleanly with the shipped objdump:
-`00 7f 00 → waiti 15`). **[HIGH × OBSERVED]**
+`00 7f 00 → waiti 15`).
 
 A per-generation **boot marker byte at IRAM `0x1022`** distinguishes the images even
 within a shared prologue: SUNDA `0x08`, CAYMAN `0x09`, MARIANA `0x0a`, MARIANA_PLUS
-`0x0a`. (It is at `0x1022`, **not** `0x1021`.) **[HIGH × OBSERVED]**
+`0x0a`. (It is at `0x1022`, **not** `0x1021`.)
 
 ### 1.2 The decode limit — the definitive FLIX-mis-decode demonstration
 
@@ -82,7 +83,7 @@ FLIX format-length table assigns **op0 = `0xe` → 16-byte (5-slot Vision) bundl
 **op0 = `0xf` → 8-byte bundle**, with Vision SIMD `ivp_*` slots. On the scalar-LX NCFW
 bytes, every `op0 = e/f` byte (which is just the tail/operand of an ordinary scalar
 2-/3-byte instruction) is greedily consumed as a wide Vision bundle, mis-decoded, then
-re-synced via `.byte`. **[HIGH × OBSERVED]**
+re-synced via `.byte`.
 
 This is demonstrated *live* at the v3 dispatch prologue. Decoding `v3_iram.bin` with
 `XTENSA_CORE=ncore2gp xtensa-elf-objdump -D -b binary -m xtensa` produces, at IRAM
@@ -97,7 +98,7 @@ This is demonstrated *live* at the v3 dispatch prologue. Decoding `v3_iram.bin` 
 A 5-slot 512-bit SIMD float-blend/absolute-difference bundle, **inside the dispatch
 prologue of a DMA/collective control core** — architecturally impossible. The bytes are
 scalar; the bundle is fabricated by the wrong config. This is the entire mechanism of the
-"FLIX mis-decode." **[HIGH × OBSERVED]**
+"FLIX mis-decode."
 
 > **GOTCHA — do not report any `ivp_*` / `{ … }` content from an NCFW image.** Any
 > `{ … }` bundle the `ncore2gp` objdump emits over NCFW bytes is spurious. The two prior
@@ -134,7 +135,7 @@ scalar 2-/3-byte length profile is identical; each image has exactly one `waiti 
 images differ in *code shape*, not ISA: v2/SUNDA is a ~2.2× larger monolith (43 KB vs ~19
 KB) but shares its first **121 (`0x79`) IRAM bytes** with v3/CAYMAN (the reset+window
 prologue family). The reset-`j` magic groups the gens `{v2,v3}→j 0x1dc` (`06 76`) vs
-`{v4,v4+}→j 0x1f8` (`06 7d`) — confirmed byte-exact in the IRAM heads. **[HIGH × OBSERVED]**
+`{v4,v4+}→j 0x1f8` (`06 7d`) — confirmed byte-exact in the IRAM heads.
 
 ---
 
@@ -148,7 +149,6 @@ census of `libncfw.so` (`strings | rg -cw`): **`SDMA` = 0, `DDMA` = 0, `CDMA` = 
 `ctx_log` JSON keys (each appearing **×4**, one byte-identical copy per arch):
 `dma_engines_bitmap`, `queue_id`, `m2s_tail_ptr`/`s2m_tail_ptr`, `tdrbp_low`/`tdrbp_high`,
 `dma_apb_bcast`, `dma_sync_sema`, `dma_compl_sema`, `dma_trigger`, `barrier_sema`.
-**[HIGH × OBSERVED]**
 
 The engine namespace is a **flat engine-id** `0..(16·tpb − 1)`, at most 32 per TPB, with
 16 queues each. The host RunTime carries the constants:
@@ -156,7 +156,6 @@ The engine namespace is a **flat engine-id** `0..(16·tpb − 1)`, at most 32 pe
 `GET_SUNDA_ENG_IDX_FROM_TPB_ENG(tpb,eng) = 16·tpb + eng`, and the bitmap test
 `(1 << dma_engine_id) & valid_dma_engines_bitmap`. The per-gen getter
 `tdrv_arch_get_num_dma_per_tpb_cayman@0x30ba10` returns `mov eax,0x10` (16).
-**[HIGH × OBSERVED]**
 
 > **NOTE — reconciliation with the DDMA/CDMA/UDMA SoC taxonomy.** On the four NCFW gens
 > (all pre-MAVERICK), the SoC name is **SDMA**, the engine IP is **UDMA**
@@ -185,7 +184,7 @@ getter; the four offsets are byte-exact in the disassembly (`lea rax,[rax+rbx*4+
 The base arithmetic (from `_i_ofst@0x25c2e0`): `shl rdx,0x1e` (bit 30 = TOP_SP-within-die)
 + `shl rax,0x2f` (bit 47 = die) — i.e. the TOP_SP EVT_SEM copy is keyed on
 `(topsp_idx & 7)` and the die bit. SUNDA uses the same window offsets but a `shl edx,0x16`
-(bit 22) base shift (the smaller fabric). **[HIGH × OBSERVED]** — these are byte-identical
+(bit 22) base shift (the smaller fabric). These are byte-identical
 to the [`spad-ccop-tsync`](spad-ccop-tsync.md) EVT_SEM windows and the
 [`ops/sync-barrier`](../ops/sync-barrier.md) substrate.
 
@@ -224,7 +223,7 @@ Entries [0..7] reconcile byte-exact to the per-TPB EVT_SEM bases; [16..19] to th
 host-transfer engines; the die bit is **bit 47** (`0x800000000000`). v2/SUNDA has only
 4 entries with older-fabric `0x0fff_xxxx` addressing
 (`0x…fffc2700000`, `0x…fffc6700000`, `0x…fff0600000`, `0x…fff0d00000`). v3 == v4 over
-`0x10..0xb0` (Python `==` True). **[HIGH × OBSERVED]**
+`0x10..0xb0` (Python `==` True).
 
 ### 2.5 The engine table + the logical-DMA → (engine, doorbell, completion) triple
 
@@ -270,7 +269,7 @@ integers (engine-id, queue, ring PA, sema index) are LX/DRAM-runtime-resident �
 
 Both NCFW host selectors key on **`arch_id`** (the `coretype − 1` space `{5,12,20,28}`),
 not on coretype and not on a private NCFW version number. `libncfw_get_image@0x1179`
-re-disassembled (byte-exact):
+disassembled (byte-exact):
 
 ```text
 1199: cmp DWORD PTR [rbp-0x4],0x1c ; je 12a7  -> v4_plus  (dram 0x87ea0 / iram 0x8ccc0)
@@ -328,7 +327,7 @@ image. **[HIGH × OBSERVED for the absence; matches the
 | MARIANA_PLUS v4+ | `abc4d452…` (19 KB) | **`1c3ac5f4…`** | IRAM unique; **DRAM shared w/ v4** |
 
 All four IRAM SHAs are distinct; **v4 == v4+ DRAM byte-identical** (`1c3ac5f4`) is the only
-image share. **[HIGH × OBSERVED — all 8 SHAs re-hashed from the carved blobs this pass.]**
+image share — all 8 SHAs hashed from the carved blobs.
 
 ### 3.4 The per-generation NCFW functional diff — two families, not five
 
@@ -337,7 +336,7 @@ dispatch table** (the `+0xB0` region holds descriptor *data* — `{0,0,0,0, 0xff
 0x4000000,0x1000000, 0x100200,1,0,0}` — not IRAM code addresses); smaller DRAM (`0x36c0`),
 **only 4 soc_addr CSRs** (vs 20), 11 descriptor records (vs 16); a more-inlined main loop
 @`0x5f60`. Reduced collective: 50-event mesh tape; and (ISA-side) no SB2SB `0xBF` on-engine
-collective. **[HIGH × OBSERVED]**
+collective.
 
 **CAYMAN (v3) + MARIANA (v4) + MARIANA_PLUS (v4+) — TABLE-BASED.** The DRAM+0xB0 12-entry
 IRAM-code-address jump table; 108-event per-die mesh tape; 20 per-die soc_addr CSRs; 16
@@ -352,7 +351,7 @@ descriptor records. SB2SB `0xBF` + the pseudo-op family present. Within this fam
   handler-rewrite of v4 with the same dispatch spine, (A) vector, `+0xB0` table, mesh
   count, and reset vector. v4+'s one genuine functional add (the DGE reshape fast-path)
   lives in the **NX sequencer + Q7 POOL** (EXTISA), **not** the NCFW management core. At
-  the NCFW level v4→v4+ is a recompile. **[HIGH × OBSERVED]**
+  the NCFW level v4→v4+ is a recompile.
 
 > **NOTE — orthogonal groupings.** The reset-`j` prologue groups `{v2,v3}` (j `0x1dc`) vs
 > `{v4,v4+}` (j `0x1f8`); the *dispatch* architecture groups `{v2}` (monolithic) vs
@@ -435,7 +434,7 @@ on the cc_op `algo_type` nibble through the DRAM+0xB0 jump table → **RUN** one
 **SIGNAL** (EVT_SEM CSR write, `memw`-fenced) → DEFAULT/ERROR (idx 3 → `0x48xx`).
 
 The dispatch instruction itself decodes cleanly (config-independent) at **v3 IRAM
-`0x3bf8`**, re-verified this pass with the shipped objdump:
+`0x3bf8`**, under the shipped objdump:
 
 ```text
 3bf8:  24 b0 00   const16 a2, 0xB0       ; table base = DRAM+0xB0
@@ -452,7 +451,7 @@ v4:  v3 + 0x18  (idx3 +0x2c, idx9 +0x14 outliers)   v4+ == v4 (byte-identical)
 
 idx 3 (`0x48c4`/`0x48f0`) is the error/default outlier → the `0x48e0` region. The index
 `a3` is bounded **0..11** (a single `addx4` scale into a physically-contiguous 12-entry
-table; idx 3 is the unknown-command guard). **[HIGH × OBSERVED]**
+table; idx 3 is the unknown-command guard).
 
 > **NOTE — the contested DRAM+0xB0 split (resolved here).** The committed
 > [`main-dispatch-loop`](main-dispatch-loop.md), [`ncfw-iram-images`](ncfw-iram-images.md),
@@ -527,8 +526,7 @@ Each step is a four-stage DMA orchestration:
    (`SEMAPHORE_INC +0x1800`), polled WAIT-GE (`+0x1000`) + DEC; LOCAL: the
    `DMA_COMPLETION_MARKER 0xabcdef01` busy-poll (no interrupt). See
    [`dma-reprogram-apb-bcast`](dma-reprogram-apb-bcast.md) and
-   [`cust3-doorbell-thunks`](cust3-doorbell-thunks.md). **[HIGH × OBSERVED + the four spot
-   checks above]**
+   [`cust3-doorbell-thunks`](cust3-doorbell-thunks.md).
 
 ### 4.6 The sync model + completion
 
@@ -554,7 +552,7 @@ surfaces to the host as the per-TOPSP ack EVT, the `COLLECTIVE_TOPSP_ACK` sema, 
 
 ### 4.7 The collective lifecycle (mapped through the stack)
 
-The host state machine (`nrt_cc_*` symbols re-verified): **CREATE**
+The host state machine (from the `nrt_cc_*` symbols): **CREATE**
 (`nrt_cc_global_comm_init@0x7fd90` builds the topology) → **PREPARE**
 (`nrt_cc_prepare@0x7f610`: `__select_algorithms` assigns one `enc_alg_type` per leg,
 `encd_set_exec_prings@0x23f9b0` binds the persistent prings, the cc_op program is *built*
