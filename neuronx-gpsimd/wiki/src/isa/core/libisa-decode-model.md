@@ -345,7 +345,7 @@ is authoritative. Every `s0` slot starts at bit 4 because bits `[3:0]` are alway
 selector. A representative gather body (the N0 LdSt slot, `0x3b5400`, which zero-fills
 `slotbuf[1..7]` then assembles `slotbuf[0]` from seven scattered ranges) and the per-format
 offset/width roster are reproduced on
-[Part 0 §5](../../reference/flix-decoding.md#5-per-format-slot-partition--the-slot_get-bit-gather);
+[Part 0 §5](../../reference/flix-decoding.md#5-per-format-slot-partition--the-slot__get-bit-gather);
 the model treats them as `slots[sid].get` function pointers.
 
 ```c

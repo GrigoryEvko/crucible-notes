@@ -38,7 +38,7 @@ but real), **GOTCHA** (a reimplementation trap), **NOTE** (orientation),
 > **THE v5 / MAVERICK WALL.** `libncfw` ships **exactly four** NCFW images
 > (v2/v3/v4/v4_plus). **There is no MAVERICK (v5) NCFW image in this binary** — the
 > `get_image` selector ladder stops at `arch_id 0x1c` and the blob region closes
-> into `__GNU_EH_FRAME_HDR` @ `0x918e4` ([IRAM-images §5](ncfw-iram-images.md#5-the-v5--maverick-wall-no-ncfw-image-ships)).
+> into `__GNU_EH_FRAME_HDR` @ `0x918e4` ([IRAM-images §5](ncfw-iram-images.md#5-the-v5--maverick-wall--no-ncfw-image-ships)).
 > Every statement on this page is grounded on the **v2/v3/v4/v4+** bytes. Any claim
 > about a **v5 NCFW loop interior is INFERRED/ABSENT, never observed** — the file
 > does not contain one. `[WALL]`
@@ -160,7 +160,7 @@ tool:
 
 The `retw.n` resync ratios confirm the scalar rule wins on these very images
 (matching the committed
-[scalar-LX core page](../../uarch/ncfw-lx-core.md#4-why-the-core-is-scalar-xtensa-lx--decoded-against-the-blob)):
+[scalar-LX core page](../../uarch/ncfw-lx-core.md#15-why-this-is-a-real-scalar-lx-core--the-four-way-proof)):
 **v3 90/133, v4 101/134, v4+ 100/134** under scalar `(e3,f3)` vs 66/74/69 under the
 Vision `(e16,f8)` rule.
 

@@ -64,7 +64,7 @@ floor is the one this page targets.
 > 512 fp32/partition. The compiler's `kernel_helpers.py` constants, the allocator and
 > `psum.pyi` all use the **8-bank (2048 B)** view; that is the modulo-allocator's rotation
 > modulus and the matmul accumulator unit. Do not seed the modulo allocator with 16. See
-> [SBUF/PSUM Bank Model §4.2](../dma/sbuf-psum-banks.md#42-reconciling-8-banks-partition-with-32-ecc-banks--48).
+> [SBUF/PSUM Bank Model §4.2](../dma/sbuf-psum-banks.md#42-reconciling-8-bankspartition-with-32-ecc-banks--48).
 > `[HIGH/CARRIED]`
 
 ---

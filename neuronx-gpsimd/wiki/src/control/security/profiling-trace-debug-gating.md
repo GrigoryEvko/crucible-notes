@@ -490,7 +490,7 @@ crux of the reformat. It is **not a strict 1:1 identity** — it is a
 
 The full byte-decoded jump table (with `.rodata` case addresses) and the field
 numbers live in
-[ntff-trace-parse-state.md §3](../../neff/ntff-trace-parse-state.md#3-device-notification-type--ntfftrace_type-block_type-jump-table-highobs).
+[ntff-trace-parse-state.md §3](../../neff/ntff-trace-parse-state.md#3-device-notification-type--ntfftrace_type-block_type-jump-table--highobs).
 
 > **CORRECTION — "1:1 device `notific_type` → `ntff` trace_type" is too strong.**
 > It is a **collapse with block-tagging**: `INFER_STATUS(3)` folds onto
@@ -506,7 +506,7 @@ numbers live in
 > `TRACE`/`EVENT` → `ntff` `INSTRUCTION`/`EVENT` with `block=NC`. The fact that it is
 > **GPSIMD** is carried in `ntff::engine_instruction_info.nc_engine_type_ == POOL(2)`
 > and the `nc_timestamp_info.tpb_pool_` channel — see
-> [ntff-trace-parse-state.md §2](../../neff/ntff-trace-parse-state.md#2-ntff-trace-file-format--message-schema-highobs).
+> [ntff-trace-parse-state.md §2](../../neff/ntff-trace-parse-state.md#2-ntff-trace-file-format--message-schema--highobs).
 > `[HIGH/OBSERVED tie]`
 
 ### 5b. The Q7 stdout is a separate path — `sys_trace`, not `ntff`

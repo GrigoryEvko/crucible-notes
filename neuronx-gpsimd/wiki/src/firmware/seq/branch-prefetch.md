@@ -695,7 +695,7 @@ prefetch-side mirror of the `wait_for_cache_line` OOB skip on the fetch path. Th
 
 The prefetch is **speculative and decoupled from correctness**: pushing a line only *schedules*
 its fill; it never lets the SEQ core execute an un-filled line. The guard is the
-[IRAM-cache state machine](iram-cache.md#5-the-per-line-state-machine--wait_for_valid-0x67f4--highobserved),
+[IRAM-cache state machine](iram-cache.md#5-the-per-line-state-machine--wait_for_valid-0x67f4),
 which the prefetch never touches:
 
 - Per-line **state word** `entry[0]` ∈ `{0 invalid, 1 fill-in-flight, 2 valid/ready}`.

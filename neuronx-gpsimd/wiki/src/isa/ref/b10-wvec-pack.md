@@ -581,7 +581,7 @@ leaves but their *use* (which GEMM tiling emits them) is `[MED/INFERRED]`.
   [§6.2 pack/unpack bridge](../core/register-files.md#62-vec--wvec--pack-write-into-the-accumulator-and-unpack-read-it-back-out)
   this page expands.
 - [ISA Batch 04 — Integer MAC Matrix (signed)](b04-mac-integer.md) — the signed MAC that **fills** the
-  `wvec` lanes B10 reads out; its [§8](b04-mac-integer.md#8-readout-the-wvecvec-pack-cross-link-to-b10)
+  `wvec` lanes B10 reads out; its [§8](b04-mac-integer.md#8-readout--the-wvecvec-pack-cross-link-to-b10)
   points forward here. Lane geometry 8→24/16→48/32→96 is the inverse of B10's 24→8/48→16/96→32.
 - [ISA Batch 05 — MAC (mixed-sign/complex/wide-acc)](b05-mac-mixed.md) — the unsigned/mixed/complex MAC
   that fills `wvec`; the `mulus*` (`uint8` activation × `int8` weight) accumulations are the dominant

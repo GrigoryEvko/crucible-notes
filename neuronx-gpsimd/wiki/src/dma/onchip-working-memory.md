@@ -128,7 +128,7 @@ NX-local view is record 3 of the window TLB ([§4](#4-the-soc--q7-nx-local-windo
 accumulator the matmul systolic array writes into and ACT/POOL read out of. Its
 accumulator-bank structure (**32 ECC banks** = 4 clusters × 8; 8 HW banks of 2048 B per
 partition) is the bank-model page's subject
-([§838 §4](sbuf-psum-banks.md#4-psum-banking--128-partitions--4-cluster--8--32-ecc-banks)).
+([§838 §4](sbuf-psum-banks.md#4-psum-banking--128-partitions--4-cluster--8--32-ecc-banks-8-bankspartition)).
 
 The region-level fact this page owns is the **disjointness keystone**:
 

@@ -237,7 +237,7 @@ The base `S3S3D3_TT` uses **`TENSOR3D` (16 B)** — `{ADDR4, int16 step[3], uint
 `num_active_channels` byte) is exactly the space the 2-byte ExtendedInst preamble +
 `reserved0[3]` + `reserved1[8]` reclaim, keeping the struct at 64 B. The `start_addr` /
 `ADDR4` semantics (immediate `PARTITION_OFFSET`, `ADDR_REG4`, shape-reg, marker byte) are
-**identical** to the base — see [tensor-tensor.md §2](tensor-tensor.md#2-the-operand-struct--neuron_isa_tpb_s3s3d3_tt_struct).
+**identical** to the base — see [tensor-tensor.md §2](tensor-tensor.md#2-the-operand-struct--neuron_isa_tpb_s3s3d3_tt_struct-64-b).
 `[HIGH/OBSERVED — common.h:643; sizeof compile-asserted = 12]`
 
 ### 2.2 The `completion_info` bitfield (1 B) and the port model
