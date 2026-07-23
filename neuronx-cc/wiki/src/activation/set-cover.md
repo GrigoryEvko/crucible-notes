@@ -8,7 +8,7 @@ The Activation engine has **one** live LUT bank: a `LoadActFuncSet` (IT6) instal
 
 The headline result: the cover is **greedy, not optimal**. `calculateBestSets` makes a **single forward pass** over the candidate `ActFuncSets[]` list, assigning each Activation the first remaining set that covers its function, clearing the covered functions from a running bit-set, and asserting at the end that the candidate list was either *exhausted* or had *remaining sets for the last group*. There is no nested search, no backtracking, no minimisation over the power-set of sets — it is a classic first-fit greedy set-cover. Two structural budgets cap the result: at most **8 resident func-sets per engine** (`"the number of activation tables must be <= 8"`@0x1d50118, asserted in the load-minting path), and **one func-set family per engine** (`"Engine2UsedActSetNames.size() <= 1"`).
 
-The page is organised as: the residency contract (§1), the data structures the cover walks (§2), the greedy cover algorithm as annotated pseudocode (§3), the load-minting budget asserts (§4), the prefetch hoist (§5), and the global dedup (§6), closing with a confidence ledger (§7).
+The page is organised as: the residency contract (§1), the data structures the cover walks (§2), the greedy cover algorithm as annotated pseudocode (§3), the load-minting budget asserts (§4), the prefetch hoist (§5), and the global dedup (§6), closing with an evidence summary (§7).
 
 For reimplementation, the contract is:
 
@@ -69,7 +69,7 @@ The "best set index" register is initialised to `0xFFFFFFFF` (`mov $0xffffffff,%
 
 The function first asserts a non-empty work list (`reportError(empty, "must have at least one Activation instruction")`@0x1159875, guarding `this+0xE8 == this+0xF0`), then runs the greedy pass. The two trailing string asserts — `"must have remaining ActFuncSets for the last …"`@0x1d50568 and `"must have exhausted all ActFuncSets"`@0x1d50540 — bracket the candidate iteration and are the structural proof that the cover is a *single forward sweep* of the candidate list, terminating either by running out of sets or by covering the last group. There is no power-set enumeration and no re-scan.
 
-> **CORRECTION — the `"must have remaining ActFuncSets …"` string starts at `0x1d50568`, not `0x1d50563`.** An earlier draft pinned this rodata string to `0x1d50563`; that offset lands inside the null padding *after* the preceding `"…ActFuncSets"` (bytes `0x1d50560..67` are `65 74 73 00 00 00 00 00` = `"ets\0\0\0\0\0"`). The C-string actually begins at `0x1d50568` (`6d 75 73 74` = `"must"`), verified by `objdump -s -j .rodata`. The string content and the single-forward-sweep conclusion are unchanged. (CONFIRMED — byte dump of `.rodata` at `0x1d50540..0x1d50590`.)
+> **GOTCHA —** the `"must have remaining ActFuncSets …"` C-string begins at `0x1d50568` (`6d 75 73 74` = `"must"`). Bytes `0x1d50560..67` are `65 74 73 00 00 00 00 00` = `"ets\0\0\0\0\0"`, the tail plus NUL padding of the preceding `"…ActFuncSets"` — so a nearby offset such as `0x1d50563` lands mid-padding, not at a string start. Confirm with `objdump -s -j .rodata` over `0x1d50540..0x1d50590`.
 
 ```c
 // LowerPWPImpl::calculateBestSets @ 0x11597e0  (greedy first-fit set-cover)
@@ -120,7 +120,9 @@ void LowerPWPImpl::calculateBestSets() {
 
 The crucial detail is `best = s; break;` — the inner loop takes the **first** still-live set that covers the function, not the set that covers the *most* outstanding functions. Combined with the single non-backtracking outer pass, this is a **greedy first-fit** cover. It is cheap (`O(nActs · numSets · log|set|)`) and produces a valid — but not provably minimal — cover. For the shipped catalogs (≤21 sets, ≤8 budget) the gap between greedy and optimal is immaterial; the heuristic trades the NP-hardness of exact set-cover for a linear sweep.
 
-> **CORRECTION — this is *not* an exact/optimal minimiser.** An earlier framing might read "minimal sequence" as "fewest possible loads, optimally chosen." The byte trace contradicts that: there is no objective function evaluated over the power-set of sets, no comparison of candidate covers, and no backtracking. "Minimal" here means "greedily fewest by first-fit," which can be strictly worse than optimal on an adversarial membership matrix. The name `calculateBestSets` is aspirational, not a proof of optimality. **[STRONG — control-flow structure, the first-fit `break`, and the single-pass termination asserts are all anchored; the exact tie-break among equally-covering sets is the program order of `act_func_sets[]`, inferred from the forward scan rather than independently proven.]**
+Nothing in the body evaluates an objective function over the power-set of sets, compares candidate covers, or backtracks. "Minimal" therefore means "greedily fewest by first-fit," which can be strictly worse than optimal on an adversarial membership matrix. The tie-break among equally-covering sets is the program order of `act_func_sets[]` — read off the direction of the forward scan rather than from an explicit comparator [INFERRED].
+
+> **GOTCHA —** the name `calculateBestSets` promises more than the body delivers: it is a first-fit greedy cover, not an exact minimiser. Do not model it as an optimal set-cover solver.
 
 > **NOTE — invalid-function is a hard error, not a fallback.** If no shipped set covers a requested `ActivationFunctionType`, the cover calls `reportError("Invalid activation function found in instruction")`@0x1d4ff90 and aborts. There is no synthesise-a-new-set path: the set catalog (`act_info.json`, parsed by `fillAllActInfos`) is closed, and LUT-driven funcs that belong to no set cannot be lowered. This is why the catalog ([10.2](act-function-catalog.md)) and the cover are co-dependent.
 
@@ -174,21 +176,21 @@ L30  optimize_act_control            enterBasicBlock     ── global dedup    
 
 ---
 
-## 7. Confidence ledger
+## 7. Evidence summary
 
-**CONFIRMED** (anchored byte-exact to the stripped `.so`):
+Anchored byte-exact to the stripped `.so`:
 - `calculateBestSets@0x11597e0` (label resolves exactly; thunk `0x5f2090` → GOT `off_3DCE830`); the first-fit inner `break`, the per-set bit-set clear-on-cover (`not; and; mov`@0x1159a60), the single-pass outer loop, and the `MapVector`/`set` result builders.
 - The greedy-vs-optimal verdict: no power-set search, no backtracking; the `"must have remaining ActFuncSets …"`@0x1d50568 / `"must have exhausted all ActFuncSets"`@0x1d50540 termination asserts.
 - The `≤ 8` budget string `@0x1d50118` and the `Engine2UsedActSetNames.size() <= 1` (CoreV4 `== 0`) family bound.
 - The prefetch hoist entry `@0x11651b0` calling `resetStack@0x11650a0`; `Eng2UsedActTables` as `DenseMap<EngineInfo, vector<set<ActivationFunctionType>>>`; the `ForcePrefetchFollowIncomingOrder`@0x15fb5f knob.
 - The `0xFFFFFFFF` "no active set" sentinel shared by cover, load default, and dedup.
 
-**STRONG** (symbol/structure grounded, one inference step):
-- The tie-break among equally-covering sets is `act_func_sets[]` program order (inferred from the forward scan).
+Symbol/structure grounded, one inference step away:
+- The tie-break among equally-covering sets is `act_func_sets[]` program order, read from the direction of the forward scan.
 - The `≤ 8` budget is enforced at mint time, not inside the cover.
 
-**INFERRED / SPECULATIVE:**
-- The exact membership-probe node layout (rb-tree at set-record `+0x60`, key at node `+0x20`) is read from the walk shape, not from a typed struct dump.
-- Whether two distinct Activation engines can each carry their own ≤8/≤1 budget independently (the per-engine keying of `Eng2UsedActTables`/`Engine2UsedActSetNames` implies yes; not exercised on a multi-engine module here).
+Open:
+- The exact membership-probe node layout (rb-tree at set-record `+0x60`, key at node `+0x20`) is read from the walk shape, not from a typed struct dump. [INFERRED]
+- Whether two distinct Activation engines can each carry their own ≤8/≤1 budget independently. The per-engine keying of `Eng2UsedActTables`/`Engine2UsedActSetNames` implies yes, but no multi-engine module here exercises it. [UNRESOLVED]
 
-**Evidence:** D-H38 (engine lowering), D-T05 (PWP control). Cross-refs: [10.6 LoadActFuncSet](loadactfuncset.md) (wire/encoding half), [10.2 Activation Function Catalog](act-function-catalog.md) (the set roster), [10.4 bkt/ctrl blob](bkt-ctrl-blob.md) (set byte format), [8.6 engine-lowering](../walrus/engine-lowering-set.md) (the `lower_act` shell), [1.10 Activation Engine](../arch/activation-engine.md) (datapath + the no-latency finding).
+Cross-refs: [10.6 LoadActFuncSet](loadactfuncset.md) (wire/encoding half), [10.2 Activation Function Catalog](act-function-catalog.md) (the set roster), [10.4 bkt/ctrl blob](bkt-ctrl-blob.md) (set byte format), [8.6 engine-lowering](../walrus/engine-lowering-set.md) (the `lower_act` shell), [1.10 Activation Engine](../arch/activation-engine.md) (datapath + the no-latency finding).

@@ -105,7 +105,8 @@ The matmul family is the canonical example and is pinned exactly (method symbols
 The emit shape is the same for every method: build the operand access patterns, construct the value-object, append it. For `matmult` (13 keyword args: `stationary, moving, psum, outputs, perf_mode, tile_position, tile_size, is_transpose, engine, name`, + `sb_shape`/`psum_shape` locals):
 
 ```c
-// NeuronCodegen.matmult — nisa.nc_matmul → Penguin MatMulOp  (STRONG: vocab+contract, not byte-traced)
+// NeuronCodegen.matmult — nisa.nc_matmul → Penguin MatMulOp
+// (shape reconstructed from string vocabulary + downstream contract, not byte-traced)
 sb_shape, psum_shape = self.get_sb_and_psum_shape(stationary, moving, psum);
 assert is_psum(psum);                          // "Result buffer of matmult must be psum!"
 inst = MatMulOp(stationary=<w AP>, moving=<ifmap AP>, outputs=[<psum AP>],
@@ -117,7 +118,7 @@ self.builder.add_named_instruction(inst);      // append to the current basic bl
 
 The op-class names (`MatMulOp`/`MatMulMXOp`/`MatMulSparseOp`/`TransposeOp`), the `add_named_instruction` append name, the `perf_mode` enum, the `"Result buffer of matmult must be psum!"` guard, and the `check_mx_scale` `[P/8,F/4]` E8M0 geometry literals are all `.rodata` string constants in this binary. The field lineage of a single attr runs all the way to BIR — e.g. `MatMulOp.tile_position` → BIR `tile_position[2]` — and is the subject of [6.5 codegen](#).
 
-> **GOTCHA — `add_named_instruction` is *not* a `penguin.ir.IRBuilder` method.** This corrects an earlier reading. `add_named_instruction` appears as a name constant **only** in `KernelBuilder.cpython-310…so` (verified: 0 occurrences as symbol or string in `IRBuilder.cpython-310…so`). The `penguin.ir.IRBuilder` class is a *separate*, higher-level builder (§4) whose insert primitives are `insert` / `insert_inst`; its public roster is the HLO Operator vocabulary (`conv2d`/`softmax`/`matmul`/`all_reduce`), not the low-level NKI Inst emitters. `NeuronCodegen` resolves `add_named_instruction` on a builder it inherits via its generated base; same insert-family plumbing, different op vocabulary. Do not assume the two builders are one class.
+> **GOTCHA — `add_named_instruction` is *not* a `penguin.ir.IRBuilder` method.** `add_named_instruction` appears as a name constant **only** in `KernelBuilder.cpython-310…so` (verified: 0 occurrences as symbol or string in `IRBuilder.cpython-310…so`). The `penguin.ir.IRBuilder` class is a *separate*, higher-level builder (§4) whose insert primitives are `insert` / `insert_inst`; its public roster is the HLO Operator vocabulary (`conv2d`/`softmax`/`matmul`/`all_reduce`), not the low-level NKI Inst emitters. `NeuronCodegen` resolves `add_named_instruction` on a builder it inherits via its generated base; same insert-family plumbing, different op vocabulary. Do not assume the two builders are one class.
 
 ---
 
@@ -162,7 +163,8 @@ neuronxcc.starfish.birpy.Module        neuronxcc.starfish.birpy.BirAffineExpr
 A representative lowering (matmul) names a `birpy.Instruction` class and binds operands/attrs onto it:
 
 ```c
-// BirCodeGenLoop.codegenMatMulOp — Penguin MatMulOp → birpy Matmult  (INFERRED order; tokens CONFIRMED)
+// BirCodeGenLoop.codegenMatMulOp — Penguin MatMulOp → birpy Matmult
+// (tokens read from .rodata; the in-body call order is [INFERRED])
 createMemLoc(stationary); createMemLoc(moving); createMemLoc(dst);   // 3 BIR MemoryLocations
 getMatmultOperandType(...);                          // classify Stationary/Moving/Output(psum)
 inst = Instruction("Matmult");                       // birpy.Instruction
@@ -171,9 +173,11 @@ inst.set_tile_size(...); inst.set_perf_mode(DoubleRow if perf_mode=="double_row"
 addInstToBir(inst);                                  // set_name / set_engine(PE) / addInstruction
 ```
 
-The BIR Inst-class tokens `MatmultMx`, `MatmultSparse`, `Activation`, `TensorScalarPtr` are inline `.rodata` strings here; the full setter vocabulary (`set_is_transpose`, `set_perf_mode`, `set_func`, …) is confirmed.
+The BIR Inst-class tokens `MatmultMx`, `MatmultSparse`, `Activation`, `TensorScalarPtr` are inline `.rodata` strings here, alongside the full setter vocabulary (`set_is_transpose`, `set_perf_mode`, `set_func`, …).
 
-> **CORRECTION — Layer 2 emits BIR directly; there is no Penguin → KLR → BIR chain.** An earlier draft of the matmul lineage drew Layer 2 as "Penguin IR → KLR AST → `klr::NcMatMul` → BIR." The binary contradicts the KLR-intermediate claim on this path: `BirCodeGenLoop` imports `birpy.Instruction`/`Opcodes`/`MemoryLocation` and builds BIR objects directly — there is no `klr::NcMatMul` emit in its matmul codegen. The only `klr`/`KLIR` tokens in this binary belong to a *separate* branch, `codegenExternalNativeNkiKlirKernel` (the external-NKI beta2 KLIR-tracing kernel path), not the per-instruction matmul lowering. The corrected picture is two **parallel** front-ends onto BIR (beta3 Python-`birpy` ‖ beta2 C++-KLR), converging at the shared `bir::Inst` data model, **not** a three-stage pipeline.
+There is no KLR intermediate on this path. `BirCodeGenLoop` imports `birpy.Instruction`/`Opcodes`/`MemoryLocation` and builds BIR objects directly; its matmul codegen contains no `klr::NcMatMul` emit. The only `klr`/`KLIR` tokens in this binary belong to a *separate* branch, `codegenExternalNativeNkiKlirKernel` (the external-NKI beta2 KLIR-tracing kernel path), not the per-instruction matmul lowering.
+
+> **GOTCHA —** beta3 and beta2 are two **parallel** front-ends onto BIR (Python-`birpy` ‖ C++-KLR) that converge at the shared `bir::Inst` data model. They are not a three-stage `Penguin → KLR → BIR` pipeline, and only one of them runs per compilation.
 
 ### 3.3 The beta2 path — KLR → `KlirToBirCodegen` (C++)
 
@@ -205,28 +209,28 @@ This is the reference index for Part 6. Each row is a stage; the "owns" column i
 
 | # | Stage | Real symbol / binary | Confidence | Owned by |
 |---|---|---|---|---|
-| T0 | install trace singleton | `TraceContext.new_ctx` → `TraceContext.global_ctx` | CONFIRMED | 6.W tracing |
-| T1 | walk kernel body | `TraceContext.trace_kernel` / `trace_kernel_impl` | CONFIRMED | 6.W tracing |
-| T2 | trace-vs-concrete dispatch | `TraceContext.call` (`__nki_dont_trace__`, `_exclude_modules`) | CONFIRMED | 6.W tracing |
-| T3 | ambient builder access | `nki_ctx()` / `get_cur_scope()` → `ctx.sema` | CONFIRMED | 6.W tracing |
-| T4 | SPMD launch grid | `program_id`/`num_programs`; `nc()`/`cc_pipeline()` dims | CONFIRMED | 6.W SPMD |
-| **L1** | **emit Penguin Inst** | **`NeuronCodegen.<op>` (`KernelBuilder…so`) → `add_named_instruction`** | **CONFIRMED** | **§2, 6.5** |
-| L1a | Inst node model | 94 `<Op>Gen` bases + `Tonga/Sunda ISAInst` | CONFIRMED | [Part 5](../penguin/) |
-| — | path selector | `_trace_kernel_beta2` / `_trace_kernel_beta3`; `NKI_FRONTEND` | CONFIRMED | §3.1 |
-| **L2-β3** | **Penguin → BIR (live)** | **`BirCodeGenLoop.codegen*` → `birpy.Instruction`** | **CONFIRMED** | **§3.2, 6.5** |
-| L2-β2 | KLR → BIR (alt) | `KlirToBirCodegen` (C++, `libwalrus`) | STRONG | [Part 7](../bir/) |
-| L3 | BIR data model | `bir::Module/Function/Instruction` (~110 opcodes) | CONFIRMED | [Part 7](../bir/) |
+| T0 | install trace singleton | `TraceContext.new_ctx` → `TraceContext.global_ctx` | CERTAIN | 6.W tracing |
+| T1 | walk kernel body | `TraceContext.trace_kernel` / `trace_kernel_impl` | CERTAIN | 6.W tracing |
+| T2 | trace-vs-concrete dispatch | `TraceContext.call` (`__nki_dont_trace__`, `_exclude_modules`) | CERTAIN | 6.W tracing |
+| T3 | ambient builder access | `nki_ctx()` / `get_cur_scope()` → `ctx.sema` | CERTAIN | 6.W tracing |
+| T4 | SPMD launch grid | `program_id`/`num_programs`; `nc()`/`cc_pipeline()` dims | CERTAIN | 6.W SPMD |
+| **L1** | **emit Penguin Inst** | **`NeuronCodegen.<op>` (`KernelBuilder…so`) → `add_named_instruction`** | **CERTAIN** | **§2, 6.5** |
+| L1a | Inst node model | 94 `<Op>Gen` bases + `Tonga/Sunda ISAInst` | CERTAIN | [Part 5](../penguin/) |
+| — | path selector | `_trace_kernel_beta2` / `_trace_kernel_beta3`; `NKI_FRONTEND` | CERTAIN | §3.1 |
+| **L2-β3** | **Penguin → BIR (live)** | **`BirCodeGenLoop.codegen*` → `birpy.Instruction`** | **CERTAIN** | **§3.2, 6.5** |
+| L2-β2 | KLR → BIR (alt) | `KlirToBirCodegen` (C++, `libwalrus`) | HIGH | [Part 7](../bir/) |
+| L3 | BIR data model | `bir::Module/Function/Instruction` (~110 opcodes) | CERTAIN | [Part 7](../bir/) |
 
 ---
 
-## 6. Adversarial verification ledger
+## 6. Evidence summary
 
-The five strongest claims on this page, each re-challenged against the binary:
+The five structural claims this page rests on, and what pins each:
 
-1. **`NeuronCodegen` is the single public class of an unstripped `KernelBuilder.so`.** ✅ `file` reports "with debug_info, not stripped"; BuildID `9eb1020ebbb2a46b…`; size 14,588,400 B; 456 `13NeuronCodegen` mangled symbols; module docstring *"…All the intermediate AST representation of …(nki)"* read verbatim from `.rodata`.
-2. **The beta2/beta3 fork is real and selectable.** ✅ `BirCodeGenLoop._trace_kernel_beta2` / `_trace_kernel_beta3` are method symbols; the option doc *"beta2: Use beta2 KLIR tracing (default)"* / *"beta3: Use beta3 BIR compilation"* and *"Environment variable NKI_FRONTEND controls the path"* are `.rodata` strings; `NKI_BETA3_FE` present.
-3. **Layer 2 (beta3) emits BIR directly via `birpy`, not via KLR.** ✅ `BirCodeGenLoop` imports `birpy.Instruction`/`Opcodes`/`MemoryLocation`/`Function`/`Module`/`BirAffineExpr`; the only `klir`/`NcMatMul`-adjacent tokens are confined to `codegenExternalNativeNkiKlirKernel`. The earlier "Penguin→KLR→BIR" chain is corrected in §3.2.
-4. **`add_named_instruction` is not an `IRBuilder` method.** ✅ 0 occurrences (symbol or string) in `IRBuilder.cpython-310…so`; the string is present in `KernelBuilder…so`; `IRBuilder`'s confirmed insert primitives are `insert`/`insert_inst`/`create_bb` and its op roster is HLO (`matmul`/`softmax`).
-5. **The matmul method indices are exact.** ✅ `nm` confirms `13NeuronCodegen_101matmult`, `_103matmult_sparse`, `_105matmult_transpose`, `_107matmult_mx`, `_109get_identity_tensor`, `_111transpose`, `_285shared_identity_matrix`.
+1. **`NeuronCodegen` is the single public class of an unstripped `KernelBuilder.so`.** `file` reports "with debug_info, not stripped"; BuildID `9eb1020ebbb2a46b…`; size 14,588,400 B; 456 `13NeuronCodegen` mangled symbols; module docstring *"…All the intermediate AST representation of …(nki)"* read verbatim from `.rodata`.
+2. **The beta2/beta3 fork is real and selectable.** `BirCodeGenLoop._trace_kernel_beta2` / `_trace_kernel_beta3` are method symbols; the option doc *"beta2: Use beta2 KLIR tracing (default)"* / *"beta3: Use beta3 BIR compilation"* and *"Environment variable NKI_FRONTEND controls the path"* are `.rodata` strings; `NKI_BETA3_FE` present.
+3. **Layer 2 (beta3) emits BIR directly via `birpy`, not via KLR.** `BirCodeGenLoop` imports `birpy.Instruction`/`Opcodes`/`MemoryLocation`/`Function`/`Module`/`BirAffineExpr`; the only `klir`/`NcMatMul`-adjacent tokens are confined to `codegenExternalNativeNkiKlirKernel`.
+4. **`add_named_instruction` is not an `IRBuilder` method.** 0 occurrences (symbol or string) in `IRBuilder.cpython-310…so`; the string is present in `KernelBuilder…so`; `IRBuilder`'s insert primitives are `insert`/`insert_inst`/`create_bb` and its op roster is HLO (`matmul`/`softmax`).
+5. **The matmul method indices are exact.** `nm` reports `13NeuronCodegen_101matmult`, `_103matmult_sparse`, `_105matmult_transpose`, `_107matmult_mx`, `_109get_identity_tensor`, `_111transpose`, `_285shared_identity_matrix`.
 
-**INFERRED / not pinned here.** (a) The exact in-body call order of each emit method — Cython routes attribute names through the module-state struct, so a byte-traced GetAttr/Call list is blocked; emit shapes are reconstructed from string vocabulary + line ranges + the downstream BIR contract (STRONG, not byte-traced). (b) This page does **not** locate a `penguin.ir → NKI-text` *re-emit printer* class inside this wheel — no such symbol/string (`NkiCodegen`/`NkiPrinter`/`to_nki`) was found in the cp310 modules. If a re-emit printer exists, it is in a different artifact (e.g. a standalone NKI wheel) and is out of scope for the neuronx-cc descent; `NeuronCodegen` here is unambiguously a *forward builder only*, and the "forward-builder vs re-emit-printer" distinction is resolved on this map in favor of the forward builder being the one binary-confirmed surface.
+Open questions. (a) The exact in-body call order of each emit method: Cython routes attribute names through the module-state struct, so a byte-traced GetAttr/Call list is blocked, and the emit shapes above are reconstructed from string vocabulary, line ranges, and the downstream BIR contract [INFERRED]. (b) This page does **not** locate a `penguin.ir → NKI-text` *re-emit printer* class inside this wheel — no `NkiCodegen`/`NkiPrinter`/`to_nki` symbol or string appears in the cp310 modules. If a re-emit printer exists, it lives in a different artifact (e.g. a standalone NKI wheel) and is out of scope for the neuronx-cc descent; within this wheel `NeuronCodegen` is a forward builder only.
