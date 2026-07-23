@@ -3,7 +3,7 @@
 This page answers one question with byte evidence: **what is MARIANA_PLUS
 (`arch_id 28` / `coretype 29`) relative to MARIANA (`arch_id 20` / `coretype 21`)?**
 The short answer, established byte-for-byte across the five committed
-MARIANA_PLUS image pages and re-verified here against the shipped binaries:
+MARIANA_PLUS image pages and the shipped binaries:
 
 > **MARIANA_PLUS is a RECOMPILE + a flag-refresh of MARIANA, not a silicon step
 > and not a new architecture.** Every getter name, every dispatch handler, every
@@ -13,7 +13,7 @@ MARIANA_PLUS image pages and re-verified here against the shipped binaries:
 > and it is **gen-wide** (linked into all five NX engine images, including SP,
 > which hosts no DGE). The removed compile flag `NRTUCODE_MPLUS_ON_MARIANA`
 > became the runtime debug env-var `NEURON_RT_DBG_V4_PLUS=0/1`. Everything else
-> is a register-map refresh + relocated literals from a fresh build. `[HIGH/OBSERVED]`
+> is a register-map refresh + relocated literals from a fresh build.
 
 Everything below reads directly from the shipped firmware container
 `libnrtucode_internal.so` (sha256 `b7c67e898a116454…632fc329b`), its companion
@@ -63,7 +63,7 @@ The whole identity in one row, every cell anchored to a shipped artifact.
 The identity numbers are not asserted from a table comment — they come from the
 **coretype-keyed EXTISA selector** in the container. `nrtucode_get_ext_isa_internal`
 (`@0x9b2b30`) dispatches the per-generation `*_libs` roster by `lea`-ing one of five
-peer tables in lineage order: `[HIGH/OBSERVED — `objdump -d` this session]`
+peer tables in lineage order:
 
 ```text
 9b2bfd:  lea 0x637c(%rip),%rcx   # SUNDA_Q7_POOL_RELEASE_EXTISA_0_SO_get
@@ -98,7 +98,7 @@ MAVERICK arch_id INFERRED]`
 > "arch_id 29 / coretype 28". The shipped evidence is the **transpose**: the
 > selector immediate is `arch_id = 0x1c = 28` and the coretype bitmask sets bit
 > `29 = 0x1d`, with the uniform `coretype = arch_id + 1` shown above. This page
-> carries **`arch_id 28 / coretype 29`**. `[HIGH/OBSERVED]`
+> carries **`arch_id 28 / coretype 29`**.
 
 ---
 
@@ -106,7 +106,7 @@ MAVERICK arch_id INFERRED]`
 
 MARIANA_PLUS ships a **complete, parallel firmware image set** for the same engines
 as MARIANA — its own NCFW NX images and its own EXTISA Q7 kernels — but on the same
-compute silicon. The roster parity is exact. `[HIGH/OBSERVED]`
+compute silicon. The roster parity is exact.
 
 ### 2.1 The getter roster — 100 NX/Q7 image accessors per gen, identical shape
 
@@ -124,7 +124,7 @@ not stripped; the getters are local `r` symbols, so plain `nm`, not `nm -D`):
 Both gens carry exactly this 100-accessor shape (`14·4 + 12 + 32 = 100`; the `200`
 `nm -c` figure double-counts each getter's `.text` stub + `.data` blob symbol). The
 companion archive `libnrtucode.a` ships **124** members per gen — the same number as
-CAYMAN — confirmed by `ar t libnrtucode.a | rg -ci`: `[HIGH/OBSERVED]`
+CAYMAN — confirmed by `ar t libnrtucode.a | rg -ci`:
 
 ```text
 SUNDA         48
@@ -141,7 +141,7 @@ total        435        (48 + 124 + 124 + 124 + 0 + 15)
 > `rg -ci 'mariana'` reports **248** because `MARIANA_PLUS` members contain the
 > substring `MARIANA`. The mutually-exclusive count
 > (`rg -i mariana | rg -vi mariana_plus | wc -l`) is **124** for MARIANA proper and
-> **124** for MARIANA_PLUS. Always exclude the `_plus` superstring. `[HIGH/OBSERVED]`
+> **124** for MARIANA_PLUS. Always exclude the `_plus` superstring.
 
 ### 2.2 The EXTISA Q7 compute blobs — byte-identical, NCFW DRAM byte-identical
 
@@ -169,7 +169,7 @@ handler, not a new opcode, not a new dtype — it is new firmware code inside th
 existing DGE reshape subsystem. It is marked by exactly four strings, all
 **absent on every MARIANA NX engine** (`count 0`) and **present (×1) on every
 MARIANA_PLUS NX engine** (`count 1`), correlated with the **retirement** of the
-legacy `push REGWRITE to DMA[%d]` path. `[HIGH/OBSERVED]`
+legacy `push REGWRITE to DMA[%d]` path.
 
 | string | role | MARIANA | MARIANA_PLUS |
 |---|---|:---:|:---:|
@@ -180,10 +180,10 @@ legacy `push REGWRITE to DMA[%d]` path. `[HIGH/OBSERVED]`
 | `push REGWRITE to DMA[%d]` | the legacy descriptor-emit path | 1 | **0 (retired)** |
 
 Container-wide, each fast-path string appears **10×** (one per NX engine × five
-engines, plus TEST/symbol-build copies) — `rg --no-ignore -a -c` this session:
+engines, plus TEST/symbol-build copies):
 `dge_decode_fast` = 10, `wait_for_credit` = 10, `tensor_reshape_transpose_sb2sb` =
 13 (the extra hits are the Q7-side reshape kind). `BEGIN on mariana` = 5,
-`BEGIN on mariana_plus` = 5 — exactly one self-name per engine per gen. `[HIGH/OBSERVED]`
+`BEGIN on mariana_plus` = 5 — exactly one self-name per engine per gen.
 
 ### 3.1 Why it is GEN-WIDE, not DGE-engine-selective — the SP proof
 
@@ -194,7 +194,7 @@ engines, plus TEST/symbol-build copies) — `rg --no-ignore -a -c` this session:
 > DGE/reshape dispatch handler at all.
 
 SP is the decisive case. Carving `MARIANA_PLUS_NX_SP_DEBUG_DRAM` (`@0x752f80`, size
-`0x6660`, sha `2958154e`) and counting this session: all four fast-path strings
+`0x6660`, sha `2958154e`) and counting: all four fast-path strings
 `= 1`, `push REGWRITE to DMA` `= 0` — versus `= 0`/`= 1` on MARIANA SP. SP has no
 functional reason to carry reshape code; its carrying it proves the fast-path is a
 **SEQ-infrastructure recompile payload baked into every NX image**, independent of
@@ -277,14 +277,14 @@ What is **byte-identical** vs **merely refreshed**:
   enumerator in any `NEURON_ISA_TPB_NEURON_CORE_VERSION` enum — the runtime
   distinguishes v4 from v4+ by a **string selector** (`NEURON_RT_DBG_V4_PLUS`, §5),
   not an ISA version point. This is the structural reason MARIANA_PLUS *cannot* be a
-  distinct ISA. `[HIGH/OBSERVED — DX-GEN-04 §1.1/§6.1, re-confirmed]`
+  distinct ISA. `[HIGH/OBSERVED — GEN-04 §1.1/§6.1]`
 * **The opcode table is identical, value-for-value.** All 159 MARIANA opcodes recur
   at the identical hex on MARIANA_PLUS (zero drift); the engine enum
   `{PE=0, ACT=1, POOL=2, DVE=3, TPB_SP=4, TOP_SP=5}`, the 108 `struct2opcode`
   bindings, and the dtype enum (16 base + `FP4_EXP2` + `CPTC1..7` + the MX surface)
   are all MARIANA's, unchanged. The MX firmware-visible surface (`PE_MANAGE_SEED 0x08`,
   `LDWEIGHTS_MX 0x09`, `MATMUL_MX 0x0a`, `QUANTIZE_MX 0xe3`, `ConvLutLoad 0xe4`) is
-  **retained, not extended**. `[HIGH/OBSERVED]`
+  **retained, not extended**.
 * **Dispatch handlers are byte-for-name identical, `+0/−0` on every engine.** A broad
   `S:`-prefixed set-diff over all five DEBUG DRAMs returns `ADDED=[] REMOVED=[]`:
   ACT `29==29`, DVE `53==53` (60-strict), PE `29==29`, POOL `41==41`, SP `18==18`.
@@ -295,20 +295,19 @@ What is **byte-identical** vs **merely refreshed**:
   the 6-element CCE-reducible dtype set are byte-identical MARIANA→MARIANA_PLUS. The
   only collective-adjacent v4+ touch is the DGE `sb2sb` reshape *kind* (§3), a
   descriptor-generation optimization that **feeds** the SB2SB transport — not a new
-  collective op or algorithm. `[HIGH/OBSERVED — SX-GEN-08, re-confirmed]`
+  collective op or algorithm. `[HIGH/OBSERVED — GEN-08]`
 * **PROF tables reused byte-identical.** The four PROF-bearing engines reuse
-  MARIANA's per-engine `PROF_CAM`/`PROF_TABLE` **byte-for-byte** — re-carved and
-  `cmp -s`-clean this session: ACT `326bc0dd`, DVE `ca588683`, PE `43475cec`,
+  MARIANA's per-engine `PROF_CAM`/`PROF_TABLE` **byte-for-byte** — `cmp -s`-clean:
+  ACT `326bc0dd`, DVE `ca588683`, PE `43475cec`,
   **POOL CAM `0951b326` / TABLE `534f2239`** (both `== True` byte-identical against
   the MARIANA POOL tables). SP has no PROF instance. A recompile that re-armed the
   HW-decode profiler would not preserve these byte-for-byte; v4+ left them untouched.
-  `[HIGH/OBSERVED]`
 
 ### 4.2 Merely refreshed — the register-map (HW-config) dir
 
 MARIANA_PLUS carries its **own `arch-headers/mariana_plus/` register-map dir** (848
 files) distinct from `arch-headers/mariana/` (832 files), a `+16`-file delta
-(`fd --no-ignore -tf | wc -l` this session). The file-level delta:
+(`fd --no-ignore -tf | wc -l`). The file-level delta:
 
 * **ADDED** at v4+: `hbm_xbar_crc_hash{,_consts.hpp,.go,.h,.hpp,_reg_dump.cpp,_reg_dump.h}`
   (6 files — the HBM crossbar gains a CRC-hash addressing/integrity block);
@@ -322,7 +321,7 @@ files) distinct from `arch-headers/mariana/` (832 files), a `+16`-file delta
 **register-map refresh** — a relayout of the HBM-crossbar and interrupt-controller
 register descriptions — that drives the firmware recompile (relocated literals). It is
 *not* enumerated at the byte/CSR-offset level, and notably `sp.h` is sha256-**identical**
-between the two dirs (DX-GEN-04 §6.3); the device-facing CSR schema is "mostly mariana
+between the two dirs (GEN-04 §6.3); the device-facing CSR schema is "mostly mariana
 + a refresh", with **zero confirmed new device-CSR bytes** at the firmware-image layer
 (no NX engine carries any new dtype/handler/opcode that would require them).
 
@@ -330,8 +329,8 @@ between the two dirs (DX-GEN-04 §6.3); the device-facing CSR schema is "mostly 
 
 ## 5. The v4 ↔ v4+ essence — a flag-refresh recompile, with byte evidence
 
-The decisive characterization. Three byte-level signatures, each re-derived this
-session, prove **recompile + flag-refresh**, not a silicon step:
+The decisive characterization. Three byte-level signatures prove **recompile +
+flag-refresh**, not a silicon step:
 
 **(1) Block-similarity — high-prefix, then recompile-relocated.** The POOL NX DEBUG
 IRAM pair (MARIANA `@0x44b540` size `0x1c080` sha `41b6c798`; MARIANA_PLUS `@0x714700`
@@ -340,7 +339,7 @@ dispatch prefix** — the first byte divergence is at **`0xa2`** — but the **p
 16-byte-block similarity is only 5.0%** because the recompile inserted the DGE
 fast-path and relocated every downstream literal, shifting alignment. This is the exact
 signature of a *fresh build of the same source*, not a binary patch: a patch leaves
-literals in place; a recompile shifts them. `[HIGH/OBSERVED — carve+diff this session]`
+literals in place; a recompile shifts them.
 
 **(2) funcVA shift with byte-stable names.** Where the IRAM blobs differ, the change is
 **relocation, not re-routing**: the POOL SEQ default-trampoline relocated `0x3075 →
@@ -348,7 +347,7 @@ literals in place; a recompile shifts them. `[HIGH/OBSERVED — carve+diff this 
 trampoline `0x2975 → 0x298b` (`+0x16`) with the **real handler-slot trampolines
 byte-identical**; the ACT DRAM dispatch trampolines a uniform `MARIANA = MARIANA_PLUS +
 0x20`. The handler *names*, the table base, and the real-slot pattern are gen-stable —
-only the funcVAs moved, as a recompile moves them. `[HIGH/OBSERVED]`
+only the funcVAs moved, as a recompile moves them.
 
 **(3) PROF byte-identity + reset identity.** §4.1 showed the four PROF CAM/TABLE pairs
 `cmp -s`-clean. The reset geometry (§6) is byte-identical. The EXTISA Q7 SOs are
@@ -370,12 +369,11 @@ NEURON_RT_DBG_V4_PLUS=0/1   @ file offset 18671 (0x48ef)
 container.) The `=0/1` suffix confirms `NEURON_RT_DBG_V4_PLUS` is the env-var that
 toggles the v4-vs-v4+ runtime path — the runtime replacement for the compile-time
 `NRTUCODE_MPLUS_ON_MARIANA` that "turned MARIANA_PLUS firmware on over a MARIANA core".
-`[HIGH/OBSERVED]`
 
-> **CORRECTION — `[SX-GEN-03 §6]` and `[DX-GEN-04 §6.5]` call v4+ a "silicon
+> **CORRECTION — `GEN-03 §6` and `GEN-04 §6.5` call v4+ a "silicon
 > stepping / hardware-revision (Trn3-pre)".** Against the binary and the five
 > committed image pages, that framing is **over-stated**. The only HW-flavored
-> evidence is the file-name-level register-map *refresh* (§4.2) — and DX-GEN-04 §6.3
+> evidence is the file-name-level register-map *refresh* (§4.2) — and `GEN-04 §6.3`
 > itself records **zero new device-CSR bytes** and a sha-identical `sp.h`. Everything
 > the firmware images show — byte-identical PROF, byte-identical EXTISA Q7 kernels,
 > byte-identical reset, identical ISA/opcodes/collectives/handlers, a recompile that
@@ -385,7 +383,7 @@ toggles the v4-vs-v4+ runtime path — the runtime replacement for the compile-t
 > footprint, and does **not** assert a silicon step. The `mariana_plus_libs` peer
 > table, the `+8` coretype slot, and the own register-map dir make it a **distinct
 > runtime codename** — but a distinct codename is not the same as a distinct die.
-> `[HIGH/OBSERVED — reconciles SX-GEN-03/DX-GEN-04 with the committed image matrix]`
+> `[HIGH/OBSERVED — reconciles GEN-03/GEN-04 with the committed image matrix]`
 
 **PeManageSeed is NOT a v4+ delta.** `PE_MANAGE_SEED (0x08)` / `LDWEIGHTS_MX (0x09)` /
 `MATMUL_MX (0x0a)` / `ConvLutLoad (0xe4)` all **first ship at MARIANA (v4)** and are
@@ -394,14 +392,14 @@ toggles the v4-vs-v4+ runtime path — the runtime replacement for the compile-t
 "PeManageSeed is v4+-only" label was a carve-coverage artifact (only the CAYMAN and
 MARIANA_PLUS PE images had been carved). Do **not** attribute PeManageSeed, the MX
 matmul trio, or the TIE-Xorwow/LFSR RNG to MARIANA_PLUS — they are v4 arrivals.
-`[HIGH/OBSERVED — [mariana-plus-pe](../images/mariana-plus-pe.md), DX-GEN-04 §3.1]`
+`[HIGH/OBSERVED — [mariana-plus-pe](../images/mariana-plus-pe.md), GEN-04 §3.1]`
 
 ---
 
 ## 6. Reset geometry across the lineage — the byte fingerprint
 
-The reset vector is the single cleanest cross-gen discriminator, decoded this session
-with the native `ncore2gp` `xtensa-elf-objdump` (exit 0) off the carved POOL NX IRAM
+The reset vector is the single cleanest cross-gen discriminator, decoded
+with the native `ncore2gp` `xtensa-elf-objdump` off the carved POOL NX IRAM
 blobs of each gen. `[HIGH/OBSERVED for v4/v4+; v5 OBSERVED here, lineage CARRIED]`
 
 ```text
@@ -417,7 +415,7 @@ both → `enter_run @0x90` via the shared `const16 a0,0x90 ; jx a0` boot stub): 
 recompile **preserves** the +0x1c MARIANA shift with **no further shift**. MAVERICK is
 **distinct**: `06 75 … 86 76`, `j 0x1d8`/`j 0x1e4` — a **−0x20** reset shift
 (`0x1f8 → 0x1d8`). The DRAM `.globstruct` magic `0x6099cb34` + init block
-(`4×0x1000 + 4×0xffffff`) is byte-identical v4 ↔ v4+. `[HIGH/OBSERVED]`
+(`4×0x1000 + 4×0xffffff`) is byte-identical v4 ↔ v4+.
 
 So at the reset/boot level: **v4+ == v4, byte-for-byte; v5 = v4 − 0x20.** The recompile
 left the boot geometry untouched; the real gen-step (v4+ → v5) moved it.
@@ -457,38 +455,37 @@ The shape of the line: MARIANA_PLUS is the **small refresh between two large eve
 generation that adds **no ISA and no model change** — which is precisely why it is
 fully byte-grounded, while everything past it is the v5 inference wall. This synthesis
 feeds the sibling [Codename→Generation Map](./codename-generation-map.md) and the
-[Master Capability Matrix](./master-capability-matrix.md) (authored in parallel).
+[Master Capability Matrix](./master-capability-matrix.md).
 
 ---
 
 ## 8. Adversarial self-verification
 
-The five strongest claims, re-challenged against the binary this session:
+The five strongest claims, re-challenged against the binary:
 
 1. **`arch_id 28 / coretype 29`.** *Challenge:* the prompt and two reports say the
    inverse. *Re-verify:* `nrtucode_get_ext_isa_internal @0x9b2b30` `lea`s
    `mariana_plus_libs @0x9b9010` as a peer in lineage order; `coretype = arch_id + 1`
    holds for all four shipped gens; NCFW `get_image` selector immediate `0x1c`.
-   **HOLDS** — page carries 28/29, prompt pairing flagged transposed. `[HIGH/OBSERVED]`
+   **HOLDS** — page carries 28/29, prompt pairing flagged transposed.
 2. **124-member `.a` count.** *Challenge:* `rg -ci mariana` returns 248. *Re-verify:*
    the substring trap inflates it; `rg -i mariana | rg -vi mariana_plus | wc -l` = 124,
    `rg -ci mariana_plus` = 124, `= ` CAYMAN's 124; total 435 = 48+124+124+124+0+15.
-   **HOLDS.** `[HIGH/OBSERVED]`
+   **HOLDS.**
 3. **PROF byte-identity v4 ↔ v4+.** *Challenge:* equal size could mask different bytes.
    *Re-verify:* POOL `PROF_CAM` (`@0x5a3080` v4 / `@0x86ef00` v4+) and `PROF_TABLE`
    (`@0x5a3480` / `@0x86f300`) compared in full → `== True` (sha `0951b326` /
-   `534f2239` on both). **HOLDS.** `[HIGH/OBSERVED]`
+   `534f2239` on both). **HOLDS.**
 4. **+0x1c reset identity (v4 == v4+, distinct from v5).** *Challenge:* a later variant
    could hide a second shift. *Re-verify:* `ncore2gp` objdump → v4 `j 0x1f8` == v4+
    `j 0x1f8` (heads byte-identical); v5 MAVERICK `j 0x1d8` (−0x20). **HOLDS.**
-   `[HIGH/OBSERVED]`
 5. **DGE fast-path gen-wide (incl. SP) + the two flag strings.** *Challenge:* the
    strings could be POOL/DGE-only, or stray text. *Re-verify:* all four present (×1) on
    MARIANA_PLUS SP DEBUG DRAM (`@0x752f80`, sha `2958154e`) — the no-DGE engine —
    `push REGWRITE` retired; `NRTUCODE_MPLUS_ON_MARIANA` @18575/20398 and
-   `NEURON_RT_DBG_V4_PLUS=0/1` @18671. **HOLDS.** `[HIGH/OBSERVED]`
+   `NEURON_RT_DBG_V4_PLUS=0/1` @18671. **HOLDS.**
 
-All five survive. The residual frontiers (carried OPEN): the byte-level v4+ register/CSR
+The residual frontiers (carried OPEN): the byte-level v4+ register/CSR
 offset deltas (§4.2 is file-name-level); the exact `wait_for_credit` credit-counter
 mechanics (string + presence only); the per-opcode SEQ table row binding (the FLIX
 desync frontier); MAVERICK's interiors (CARRIED, §7).
@@ -497,7 +494,7 @@ desync frontier); MAVERICK's interiors (CARRIED, §7).
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED (reproduced this session):** container sha `b7c67e89…632fc329b`;
+**HIGH / OBSERVED:** container sha `b7c67e89…632fc329b`;
 `.a` sha `158dadc5…d7bd6130`; 200 `_get` symbols each gen / 100-accessor shape
 (14·4+12+32); 124 `.a` members each gen (435 total); 4 ISA dirs (no
 `mariana_plus_arch_isa`); arch-headers 6 dirs, mariana 832 / mariana_plus 848 (+16);
@@ -513,7 +510,7 @@ essence; the HW meaning of the register-map refresh (HBM-xbar routing/integrity 
 per-fabric INTC).
 
 **CARRIED:** `arch_id 28/coretype 29` from the GEN-01 `get_image` ladder; the
-collective equivalence (SX-GEN-08); MAVERICK (v5) interiors — `−0x20` reset (here
+collective equivalence (GEN-08); MAVERICK (v5) interiors — `−0x20` reset (here
 re-OBSERVED), `enter_run @0x94`, ACT→DVE fold, DGE-dropped, ~60%-smaller build — from
 the committed [maverick-profile](./maverick-profile.md).
 

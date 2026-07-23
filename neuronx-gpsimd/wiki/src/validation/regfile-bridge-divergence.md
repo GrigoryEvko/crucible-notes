@@ -26,11 +26,11 @@ This page does **two** jobs, and it is the **last per-family VAL page** before t
 > **NOTE — the binary and the address arithmetic.** `libfiss-base.so`
 > (`extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/`, gitignored — reach it with an
 > absolute path or `fd --no-ignore`): ELF64 x86-64, **not stripped**, **12,330,016 B**, with
-> `nm <abs> \| rg -c 'module__xdref_'` = **864** value leaves (re-grounded this pass; never the
+> `nm <abs> \| rg -c 'module__xdref_'` = **864** value leaves (never the
 > 884k-file decompile). `.text` (VMA `0x190430`) and `.rodata` (VMA `0x88ff00`) are
 > **VMA == file-offset** (every leaf address below is both an `nm` symbol address and an objdump
 > start); `.data` carries the **0x200000** VMA−fileoffset delta (not used here — the bridge
-> leaves are pure `.text`). `[HIGH/OBSERVED]`
+> leaves are pure `.text`).
 
 ---
 
@@ -60,21 +60,21 @@ close on: it is where "the binary is the arbiter" is most starkly true.
 
 ---
 
-## 2. The leaf census — nm-grounded, per sub-group  `[HIGH/OBSERVED]`
+## 2. The leaf census — nm-grounded, per sub-group
 
 The four ISA-reference pages own these families by **mnemonic**; this page owns the **value
 leaves** the binary exports for them. The two counts differ — one mnemonic can map to many
 width/half/select leaves, and `extr*` mnemonics are reclassified into B16 — so cite **both**, and
 do not conflate them.
 
-| Sub-group | ISA page | mnemonic count (page) | `module__xdref_*` leaf root | leaves driven this pass |
+| Sub-group | ISA page | mnemonic count (page) | `module__xdref_*` leaf root | leaves driven LIVE |
 |---|---|---|---|---|
 | **vec_mov** | [B09](../isa/ref/b09-vec-mov.md) | **27** mnemonics / 246 placements | `mov_*`, `movv*`, `movsc*`, `movpra*` | `mov_32_32`, `mov_16_32`, `mov_32f_32f`, `mov_32_8`, `mov_512_512`, `mov_1536w_1536w`, `movscfv`, `movvscf`, `movvfs` |
 | **vec_rep** | [B16](../isa/ref/b16-vec-rep.md) | **21** mnemonics / 285 placements | `rep_*`, `replo*`, `extr*`, `injbi_*`, `extractb*` | `rep_16_8`, `replo8_16_16`, `rep_nx16_512_512_32` |
 | **wvec_pack** | [B10](../isa/ref/b10-wvec-pack.md) | **42** mnemonics / 217 placements / **56** value leaves | `pack`, `packl/m/p/q`, `packv*`, `packvr*`, `packvru*` | `packl_16_48`, `packvr_16_24_32`, `packvrnr_16_24_32`, `pack` |
 | **unpack_wvec_mov** | [B22](../isa/ref/b22-unpack-wvec-mov.md) | **18** mnemonics / 141 placements / **10** widen leaves | `cvt24*`, `cvt48*`, `cvt96*`, `movww`, `movscfv` | `cvt24u_24_32`, `cvt48u_48_64`, `cvt96u_96_64` |
 
-Binary-grounded leaf tallies this pass (`nm <abs> \| rg -c`):
+Binary-grounded leaf tallies (`nm <abs> \| rg -c`):
 
 ```
 module__xdref_mov[_a-z]*_[0-9]…              = 26   (vec_mov word/lane moves)
@@ -96,7 +96,7 @@ module__xdref_(cvt24|cvt48|cvt96|movww)      = 13   (unpack_wvec_mov widen + wid
 
 ---
 
-## 3. The ABI — every bridge leaf verified, not assumed  `[HIGH/OBSERVED]`
+## 3. The ABI — every bridge leaf verified, not assumed
 
 The bridge leaves follow the same two-shape ABI as the rest of the oracle
 ([four-oracle-method §2.2](four-oracle-method.md)), confirmed **per leaf by the store register**:
@@ -110,7 +110,7 @@ WIDE leaf         : *acc and *out are POINTERS to packed-dword arrays (48b={lo,h
 
 The single hard rule: **derive `nargs` from the width suffix, then CONFIRM it against the store
 register in the disassembly.** A move with one input width (`mov_32_32`, `mov_16_32`) is UNARY and
-stores via `%rdx`; the wide packs read/write through pointers. Disassembled this pass:
+stores via `%rdx`; the wide packs read/write through pointers. Disassembled:
 
 ```asm
 ; module__xdref_mov_32_32   @0x5e9390   (UNARY 3-arg — bare bit-copy, store via %rdx)
@@ -132,7 +132,7 @@ stores via `%rdx`; the wide packs read/write through pointers. Disassembled this
 > chain of `movdqu (%rsi)…/movups …(%rdx)` (16-byte SSE moves). They take **`*src` and `*dst`
 > pointers**, copy the whole register image, and return `void`. Binding them with the scalar
 > `(xstate, A, *out)` shape reads one dword and segfaults on the rest. The width suffix `_512_512`
-> / `_1536w_1536w` is the tell: equal in==out width and ≥512 ⇒ block copy, pointer ABI. `[HIGH/OBSERVED]`
+> / `_1536w_1536w` is the tell: equal in==out width and ≥512 ⇒ block copy, pointer ABI.
 
 `%rdi` (xstate) is **dead** for every leaf in this family — none dereferences it — so the bare
 ctypes drive passes `None`. (This family contains **no** `call *0x..(%rax)` soft-float-dispatch
@@ -146,7 +146,7 @@ three `recipqli` QLI-refine leaves, [four-oracle-method §7](four-oracle-method.
 ### 4.1 The moves, driven LIVE
 
 The real `libfiss-base.so` was `dlopen`'d and each leaf **called** on the hardest representation
-inputs this pass. Every value below is the **binary's own** output:
+inputs. Every value below is the **binary's own** output:
 
 ```python
 import ctypes
@@ -176,7 +176,7 @@ mov328 = bind("module__xdref_mov_32_8",    [i, i, P])   # 8->32 inject
 
 These are the **fp-CSR ↔ vector** bitfield bridges (B09 §2.6). `movscfv` *unpacks* a packed
 status/control word into the lane's field layout; `movvscf` is the inverse *pack* (multi-field
-shift-OR); `movvfs` is the 8-lane vector→scalar fold. Disassembled this pass:
+shift-OR); `movvfs` is the 8-lane vector→scalar fold. Disassembled:
 
 ```asm
 ; module__xdref_movscfv_1_1_1_1_1_2_1_1_1_1_1_32  @0x5b76c0   (status/ctrl -> vector field)
@@ -192,7 +192,7 @@ shift-OR); `movvfs` is the 8-lane vector→scalar fold. Disassembled this pass:
   or  …                                    ; assemble the multi-field CSR word by shifted ORs
 ```
 
-LIVE this pass: `movscfv(0x3FFF) = 0x000007ff` — the packed status word `0x3FFF` unpacks to the
+LIVE: `movscfv(0x3FFF) = 0x000007ff` — the packed status word `0x3FFF` unpacks to the
 vector field layout `0x7ff` (the two-field pack of `(0x3FFF>>2)&0x1f \| (0x3FFF>>3)&0xfe0`).
 `movvscf` and `movvfs` take their operands across multiple stack slots (the 11-field signature);
 they were driven with the field-set corpus and agree bit-exact with the shift-OR SEM lift.
@@ -227,7 +227,7 @@ they share the per-lane shift/mask SEM and agree bit-exact. `[HIGH/OBSERVED·exe
 
 > **GOTCHA — the broadcast verb is `rep`, not `splat`/`bcast`/`dup`.** B16 has **no** `splat`/`dup`
 > mnemonic; a reimplementer grepping for those finds nothing. The lane-broadcast is `repnx16` /
-> `rep2nx8` / `repn_2x32`; the byte-field broadcast is `replo8`. `[HIGH/OBSERVED]`
+> `rep2nx8` / `repn_2x32`; the byte-field broadcast is `replo8`.
 
 ---
 
@@ -251,7 +251,7 @@ packvrnr= bind("module__xdref_packvrnr_16_24_32",[i, i, i, P])
 | `(0x800000, 1)` | `0x8000` (−min) | `0x0000` | YES |
 
 The widen direction (`unpack_wvec_mov`) is the zero/sign fill into the wide accumulator,
-disassembled and driven this pass:
+disassembled and driven:
 
 ```asm
 ; module__xdref_cvt24u_24_32  @0x5ba870   (24 -> 32 zero-extend into accumulator)
@@ -275,11 +275,11 @@ the LIVE binary.** `[HIGH/OBSERVED·exec]`
 > variable-shift packs (`packvr`/`packvrnr`/`packvru`) take a `u32` accumulator *by value*; only the
 > wide `pack` core (and the `cvt48/96` widens) use the pointer ABI. A driver that passes a pointer
 > to `packvr` reads garbage — a found-and-fixed harness false-positive (carried from
-> [convert-pack-cast §8](convert-pack-cast.md)). `[HIGH/OBSERVED]`
+> [convert-pack-cast §8](convert-pack-cast.md)).
 
 ---
 
-## 7. The VAL-01..09 divergence catalog — every divergence, root-caused  `[HIGH]`
+## 7. The VAL-01..09 divergence catalog — every divergence, root-caused
 
 This is the consolidation. Nine functional families were differentially bit-exact-validated:
 **fp-soft-float**, **mac-multiply**, **convert-pack-cast**, **reduce-shift-shuffle**,
@@ -304,7 +304,7 @@ divergences *observed* across all of them:
 | **D13** | transcendental-seed | seed closed-form rounds one ULP off the `.rodata` byte at 2 entries | INFERRED form vs d | RECIP `i=127` (table `0x81`=129, form `128`, exact `128.2505`) and RSQRT hi `idx=13` (table `0xa5`=165, form `164`, exact `164.499`) — the LIVE leaf reproduces the ROM bit-exact over all 128 buckets × {fp16,fp32}; only the analyst's *inferred reconstruction-form* mispredicts at those two half-ULP near-ties. **The ROM is OBSERVED truth; ship the bytes, not the formula.** | **INFERRED reconstruction-FORM (NOT the firmware)** |
 | **—** | **this page (regfile-bridge)** | **none** | a vs d | bit-exact across vec_mov / vec_rep / wvec_pack / unpack_wvec_mov | **AGREE** |
 
-### 7.1 The meta-finding  `[HIGH/OBSERVED]`
+### 7.1 The meta-finding
 
 Read down the **"Where it lived"** column: **every divergence — without exception — was in the
 REFERENCE MODEL (the nki numpy reference), the SEM/lift (the analyst's reading of the bytes), the
@@ -328,16 +328,16 @@ formula can carry the analyst's misreading; the live leaf cannot.
 > FIROUND≠FIRINT, the `>>32` flush, the name-encoded writeback width), **arbitrated four harness
 > bugs** (D8/D10/D11/D12), and **bounded one inferred-formula miss** (D13: the seed-ROM closed-form
 > off by one ULP at two near-ties, where the ROM byte is truth) — and certified the firmware
-> bit-exact throughout. `[HIGH/OBSERVED]`
+> bit-exact throughout.
 
 ---
 
-## 8. Proven-by-execution vs observed-only — the honest split  `[HIGH]`
+## 8. Proven-by-execution vs observed-only — the honest split
 
-"PROVEN-BY-EXECUTION" means the leaf was `dlopen`'d and **called** this pass; "OBSERVED" means its
+"PROVEN-BY-EXECUTION" means the leaf was `dlopen`'d and **called**; "OBSERVED" means its
 semantic was read from the disassembly but not driven live on this page.
 
-### 8.1 PROVEN-BY-EXECUTION (called LIVE this pass, this page)
+### 8.1 PROVEN-BY-EXECUTION (called LIVE on this page)
 
 ```
 vec_mov            : mov_32_32 @0x5e9390, mov_16_32 @0x857fc0, mov_32f_32f @0x87aa30,
@@ -384,10 +384,10 @@ The `recipqli` soft-float-dispatch **wall** (the one structural limit, not a div
 from [four-oracle-method §7](four-oracle-method.md).
 
 > **NOTE — what "OBSERVED-only" does NOT mean.** It does not mean "unverified." Every OBSERVED-only
-> leaf was disassembled this pass and its value semantic read from the bytes; the only thing not
+> leaf was disassembled and its value semantic read from the bytes; the only thing not
 > done on *this* page is the live ctypes call (done either on a sibling page, or trivially
 > structural — a memcpy can't have a value bug). The PROVEN-vs-OBSERVED split is a **provenance**
-> distinction, not a confidence cliff. `[HIGH]`
+> distinction, not a confidence cliff.
 
 ---
 
@@ -405,7 +405,7 @@ machinery unchanged.
 
 ---
 
-## 10. Adversarial self-verify — the 5 strongest claims, re-challenged against the binary
+## 10. Adversarial self-verify — the 5 strongest claims
 
 1. **"The four sub-group counts are 27 / 21 / 42 / 18 mnemonics (NOT 44 / 28 / 42 / 18)."**
    Re-challenge: is the discrepancy a real correction or a mis-read of the ISA pages? Re-read of
@@ -422,7 +422,7 @@ machinery unchanged.
    ABI/index bugs; D13 is the seed-ROM inferred closed-form off one ULP at two near-ties, where the
    LIVE leaf reproduces the `.rodata` ROM bit-exact (the ROM is OBSERVED truth, only the formula
    misses). In **every** case the firmware leaf, when finally driven correctly, produced the right
-   value with zero edits. No catalog entry is a firmware defect. `[HIGH/OBSERVED]`
+   value with zero edits. No catalog entry is a firmware defect.
 
 3. **"`mov_16_32` masks, `mov_32f_32f` is byte-identical (no NaN canonicalise)."** Re-challenge:
    could the fp move canonicalise? LIVE `mov_32f_32f(0xC0490FDB) = 0xc0490fdb` (−π, exact); the body
@@ -442,9 +442,7 @@ machinery unchanged.
    Re-challenge: could they be scalar leaves with a long body? The disassembly is a chain of
    `movdqu (%rsi)…` / `movups …(%rdx)` — register-to-memory SSE moves over `*src`/`*dst`, no `*out`
    scalar store, equal in/out width `_512_512`/`_1536w_1536w`. Binding them scalar-style reads one
-   dword. The pointer ABI is structural, not optional. `[HIGH/OBSERVED]`
-
-All five survive re-challenge against the binary.
+   dword. The pointer ABI is structural, not optional.
 
 **Single strongest CORRECTION:** the per-sub-group **op counts are 27 (vec_mov) / 21 (vec_rep) /
 42 (wvec_pack) / 18 (unpack_wvec_mov) MNEMONICS** — not 44 / 28 / 42 / 18. The larger figures
@@ -458,13 +456,13 @@ binary's `nm` tally settles which is which.
 ## 11. Verdict
 
 `[HIGH/OBSERVED·exec]` The **regfile-bridge / accumulator-readout** group is **bit-exact between
-the GX-SEM lift (a) and the LIVE shipped `libfiss-base.so` (d)** across all four sub-groups —
+the SEM lift (a) and the LIVE shipped `libfiss-base.so` (d)** across all four sub-groups —
 **vec_mov** (AR→splat/identity `mov_32_32`, 32→16 narrow-mask `mov_16_32`, fp bit-move
 `mov_32f_32f`, 8→32 inject `mov_32_8`, the SSE wide copies `mov_512_512`/`movww`, and the
 `movscfv`/`movvscf`/`movvfs` fp-CSR bridges), **vec_rep** (`rep_16_8`, low-byte `replo8_16_16`,
 whole-lane `rep_nx16`), **wvec_pack** (the `packvr` round+sat vs `packvrnr` truncate readout, same
 leaves as convert/mac), and **unpack_wvec_mov** (`cvt24u`/`cvt48u`/`cvt96u` widen-into-accumulator,
-zero-fill) — all driven LIVE this pass, **zero firmware value defects**.
+zero-fill) — all driven LIVE, **zero firmware value defects**.
 
 And it **closes the VAL arc**: nine families differentially validated, **thirteen divergences
 catalogued and root-caused, every one of them in the reference model (nki numpy) / the SEM-lift /
