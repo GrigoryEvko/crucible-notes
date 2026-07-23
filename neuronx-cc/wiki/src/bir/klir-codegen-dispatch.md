@@ -287,6 +287,14 @@ These sub-encoders are documented per-family in the leaf pages: access/indexing 
 //    which is why the boost::log open_record calls in codegenOperator/StmtOperWrapper log through `this`.
 //  - Asserts parent module: FunctionHolder::getModule() != null
 //      else fatal: 'curModule != nullptr && "ERROR: parent module of FunctionHolder is not set!"'
+//  - Then fills TWO adjacent pointer slots with ONE 16-byte SSE store:
+//      f0fc41  mov    rax,[rbx+0xe8]      ; rbx = the bir::Function* argument
+//      f0fc48  mov    rax,[rax+0x48]      ;  → its FunctionHolder's curModule
+//      f0fc4c  movq   xmm0,rax            ; xmm0.lo64 = bir::Module*
+//      f0fc51  pinsrq xmm0,rbx,0x1        ; xmm0.hi64 = bir::Function*
+//      f0fc58  test   rax,rax / je <fatal 'curModule != nullptr && …'>
+//      f0fc77  movups [rbp+0x38],xmm0     ; this+0x38 = Module*, this+0x40 = Function*
+//      f0fc6f  mov    QWORD PTR [rbp+0x48],0x0   ; adjacent vector/optional slot, zeroed
 ```
 
 The codegen object is a stateful sink: it IS-A `logging::Logger` (its base subobject at offset 0), holds the current Module/Function, monotonic ID counters, and the resolved arch-model SBUF/PSUM budgets. Offsets recovered via the getter bodies (word index = byte/8):
@@ -294,7 +302,8 @@ The codegen object is a stateful sink: it IS-A `logging::Logger` (its base subob
 | Offset | Accessor `@addr` | State |
 |---|---|---|
 | `+0` | — | `logging::Logger` base subobject |
-| `+0x38` | `getMod` @ `0xf142f0` | `bir::Module*` (current module); ctor also stores the `bir::Function*` here-region |
+| `+0x38` | `getMod` @ `0xf142f0` (`mov rax,[rdi+0x38]; ret`) | `bir::Module*` — the current module, and **only** that |
+| `+0x40` | (no getter) | `bir::Function*` — the ctor argument, passed straight as `this` to `bir::Function` methods: `addRegister` @ `0xf141e0`, `getRegisterByName` @ `0xf211c7` / `0xf26a77` / `0xf26e12`, and the `getIdentityMatrix` fetch @ `0xf28938` |
 | `+0xF0` | `returnAndIncrementId` @ `0xf13b50` | monotonic instruction-ID counter (read + increment) |
 | `+? (CCId)` | `returnAndIncrementCCId` @ `0xf13d50` | parallel collective-comm ID counter |
 | `+0x110` | `getIsAllocated` @ `0xf14310` | `bool` — allocation-done flag |
@@ -302,6 +311,10 @@ The codegen object is a stateful sink: it IS-A `logging::Logger` (its base subob
 | `+0x154` | (divisor) | PSUM bank size |
 | `+0x158` | `getPsumMaxBankId` @ `0xf14430` | PSUM total; `getPsumMaxBankId = (psumTotal-1)/bankSize` (0 if empty) |
 | `+0x1B0` | `setDeviceDump` @ `0xf109a0` | `bool` device-dump flag (gates the COREID DevicePrint injection in LEVEL 2) |
+
+The Module and the Function occupy **two distinct slots**, not one reused slot: `getMod` reads `+0x38` and nothing else, and every `bir::Function` call site loads `+0x40`. Neither slot is rewritten after the ctor — there is no phase in which `+0x38` carries a `Function*`.
+
+> **GOTCHA — the ctor writes both pointers with one `movups`.** `movups XMMWORD PTR [rbp+0x38],xmm0` at `0xf0fc77` looks like a 16-byte store *of the Function* into `+0x38`, because the immediately preceding `pinsrq xmm0,rbx,0x1` (`0xf0fc51`) is the only place the `bir::Function*` argument is visibly moved. It is a fused store of two 8-byte fields: `xmm0.lo64` (the `Module*`, dereferenced out of the Function's `FunctionHolder` at `+0xe8` → `+0x48`) lands at `+0x38`, `xmm0.hi64` (the `Function*`) at `+0x40`. Attributing both halves to `+0x38` contradicts the one-instruction `getMod` body.
 
 Supporting state: a name-uniquing hashtable (`Hashtable<string,string>` near `+0x1E8`/`+496`) used in `codegenLncKernel` to de-duplicate instruction names; an `OpDebugInfo` scratch (`"dummy_dbg_info"` template, set in ctor); and the deferred error log behind `collectError` @ `0xf1f190` / `getFormattedErrors` @ `0xf14450`. `setParentTensorizerId(boost::optional<unsigned long>)` @ `0xf14300` threads a nested-tensorizer id; `isBasicBlockUseful` @ `0xf14a10` / `locateSharedConstants` @ `0xf14240` support block pruning.
 
@@ -320,6 +333,7 @@ Supporting state: a name-uniquing hashtable (`Hashtable<string,string>` near `+0
 | 60 wrappers | `nm -DC \| rg 'codegenOperator\w+Wrapper' \| wc -l` = 60 |
 | Parallel, not a pipeline stage | `TranslateNKIASTToBIR::run(bir::Module&)` @ `0xf0dbc0` → `lowerKLIRToNKI(bir::InstNKIKLIRKernel&, bir::Function&, …)` @ `0xf09c40` takes a `bir::Module&` plus an `InstNKIKLIRKernel&` placeholder and *mutates* the module; beta3 builds one from scratch. The beta3 page ([6.5.10](../nki/bircodegenloop.md)) states the same from its side |
 | Context struct | every cited getter address (`getMod@0xf142f0`, `getSbufMaxBytes@0xf14420`, `getPsumMaxBankId@0xf14430`, `getIsAllocated@0xf14310`, `returnAndIncrementId@0xf13b50`, `setDeviceDump@0xf109a0`, ctor `@0xf0faa0`), with the object offsets read from the getter bodies |
+| `+0x38` = `Module*`, `+0x40` = `Function*` (two slots, not one) | `getMod` is `mov rax,[rdi+0x38]; ret` (`0xf142f0`, 5 bytes); the ctor's `movq xmm0,[[rbx+0xe8]+0x48]` / `pinsrq xmm0,rbx,1` / `movups [rbp+0x38],xmm0` pair at `0xf0fc4c`–`0xf0fc77`; `+0x40` consumed as a `bir::Function*` receiver at `0xf141e0` (`Function::addRegister`) and `0xf211c7`/`0xf26a77`/`0xf26e12` (`Function::getRegisterByName`) |
 
 > **GOTCHA — the leaf count is a definitional choice, not a discrepancy.** "How many leaves" depends on whether you count the seven thin collective leaves (each a one-line shim over `codegenCollectiveOp`), the enum-map sub-encoders, and `codegenDependencyEdges` (a post-walk pass). The unambiguous binary counts are: **176** total `KlirToBirCodegen` dynsym methods; **60** wrappers; **3** dispatch-core entries (`codegenStmt` / `codegenStmtOperWrapper` / `codegenOperator`); **82** other `codegen*` methods. Cite those rather than a derived leaf total — the §3 routing table is unaffected either way, at 60 valid kinds → 57 distinct substantive leaves.
 
