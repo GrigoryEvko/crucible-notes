@@ -50,7 +50,7 @@ SeparateLoadAndCompute::run(Module&)        @0x15bf170  (~0x44e0 B)
   └─ [postAda==1] post_ada physical-hoist worker  @0x15be280  ── "Removing deps for …"
 ```
 
-The three registration lambdas each `new` a 0x2c8 object then call the ctor with a distinct `(postAda, withMemset)` pair (the `xor`/`mov edx`/`ecx` immediately precede the ctor call) [CONFIRMED]:
+The three registration lambdas each `new` a 0x2c8 object then call the ctor with a distinct `(postAda, withMemset)` pair (the `xor` / `mov edx` / `ecx` immediately precede the ctor call):
 
 | Pass name | postAda (edx) | withMemset (ecx) | Reg invoke | Role |
 |---|---|---|---|---|
@@ -135,7 +135,7 @@ When `withMemset` (`obj+0x2c1`) is set, the target is **indirect loads** (gather
 
 ### The post_ada Variant
 
-When `postAda` (`obj+0x2c0`) is set, `run()` branches at @0x15bf37b straight to @0x15c15de, skipping the entire base body, and calls a per-function worker @0x15be280 ("Removing deps for …"). "post_ada" = the arch level past Ada (core_v4/gen4, where the gen3+ CoreBarrier is legal). This variant runs at pipeline order #105 — *after* `post_sched` and `dep_opt`, once the schedule and the final stage count are fixed — and again post-link. Where base inserts a barrier, post_ada performs the **physical hoist**: an ilist splice (@0x15c1b10–0x15c1b32) unlinks each qualified load and re-links it before the first non-load anchor, sets the new parent BB at `L+0x50`, and re-keys the symbol table via `insertIntoSymboltable` @0x15c1ccf. It logs "Moving <L> before the first non-load instruction" and "Removed <N>". The dependency surgery (cut + Flow re-wire) is the same as base. [STRONG — splice + symtab re-key + move logs are CONFIRMED; the exact first-non-load anchor selection inside @0x15be280 was inferred from the shared string set, not byte-walked end to end.]
+When `postAda` (`obj+0x2c0`) is set, `run()` branches at @0x15bf37b straight to @0x15c15de, skipping the entire base body, and calls a per-function worker @0x15be280 ("Removing deps for …"). "post_ada" = the arch level past Ada (core_v4/gen4, where the gen3+ CoreBarrier is legal). This variant runs at pipeline order #105 — *after* `post_sched` and `dep_opt`, once the schedule and the final stage count are fixed — and again post-link. Where base inserts a barrier, post_ada performs the **physical hoist**: an ilist splice (@0x15c1b10–0x15c1b32) unlinks each qualified load and re-links it before the first non-load anchor, sets the new parent BB at `L+0x50`, and re-keys the symbol table via `insertIntoSymboltable` @0x15c1ccf. It logs "Moving <L> before the first non-load instruction" and "Removed <N>". The dependency surgery (cut + Flow re-wire) is the same as base. The splice, the symbol-table re-key, and the move logs are all read directly; how the first-non-load anchor is chosen inside @`0x15be280` is inferred from the shared string set rather than walked instruction by instruction.
 
 > **NOTE —** the base/`with_memset` passes (#89–90, pre-schedule) only *mark* the split so the scheduler can overlap; `_post_ada` (#105, post-schedule) finalises it physically. This two-phase placement mirrors address-rotation: the earlier appearance prepares, the later appearance materialises. The prologue fill comes from the hoist, steady-state overlap is the scheduler's, and the epilogue drains naturally (the last iteration's loads have no consumer compute and are dead-code-eliminated).
 
@@ -143,28 +143,28 @@ When `postAda` (`obj+0x2c0`) is set, `run()` branches at @0x15bf37b straight to 
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `SeparateLoadAndCompute::run(Module&)` | 0x15bf170 | dispatcher + base classify/cut/barrier | CONFIRMED |
-| `SeparateLoadAndCompute::SeparateLoadAndCompute(PassOptions&,bool,bool)` | 0x15c3e30 | ctor; stores bools @0x2c0/0x2c1 | CONFIRMED |
-| post_ada per-fn worker ("Removing deps for") | 0x15be280 | physical hoist dep clearing | STRONG |
-| memset factory (with_memset) | 0x15bf020 | builds `memset_<idx>` InstMemset | CONFIRMED |
-| reg lambdas base / post_ada / with_memset | 0x15c4760 / 0x15c49b0 / 0x15c4880 | variant registration | CONFIRMED |
-| `Instruction::removeDependency` (plt) | 0x5f5ae0 | the CUT | CONFIRMED |
-| `Instruction::addDependency` (plt) | 0x5eff00 | Flow=4 re-wire (×7) | CONFIRMED |
-| `insertElement<InstCoreBarrier>` (plt) | 0x61bf40 | stage divider insert | CONFIRMED |
-| `get_inst_in_order` (plt) | 0x62a640 | program-order capture | CONFIRMED |
+| `SeparateLoadAndCompute::run(Module&)` | 0x15bf170 | dispatcher + base classify/cut/barrier | CERTAIN |
+| `SeparateLoadAndCompute::SeparateLoadAndCompute(PassOptions&,bool,bool)` | 0x15c3e30 | ctor; stores bools @0x2c0/0x2c1 | CERTAIN |
+| post_ada per-fn worker ("Removing deps for") | 0x15be280 | physical hoist dep clearing | HIGH |
+| memset factory (with_memset) | 0x15bf020 | builds `memset_<idx>` InstMemset | CERTAIN |
+| reg lambdas base / post_ada / with_memset | 0x15c4760 / 0x15c49b0 / 0x15c4880 | variant registration | CERTAIN |
+| `Instruction::removeDependency` (plt) | 0x5f5ae0 | the CUT | CERTAIN |
+| `Instruction::addDependency` (plt) | 0x5eff00 | Flow=4 re-wire (×7) | CERTAIN |
+| `insertElement<InstCoreBarrier>` (plt) | 0x61bf40 | stage divider insert | CERTAIN |
+| `get_inst_in_order` (plt) | 0x62a640 | program-order capture | CERTAIN |
 
 ### Key BIR Constants
 
 | Constant | Value | Meaning | Confidence |
 |---|---|---|---|
-| `Instruction+0x58` | u32 | opcode (InstructionType) | CONFIRMED |
-| Load / DMACopy | 0x13 / 0x20 | LOAD class → stage 0 | CONFIRMED |
-| IndirectLoad | 0x2B | gather; with_memset target | CONFIRMED |
-| Memset | 0x0A | inserted by with_memset | CONFIRMED |
-| CoreBarrier | 87 | inserted stage divider (gen3+) | CONFIRMED |
-| EdgeKind Flow | 4 | every edge this pass adds | CONFIRMED |
-| `memloc+0xd8` == 0x10 | SB | SBUF-resident gate (with_memset) | CONFIRMED |
-| bools @ `obj+0x2c0/0x2c1` | postAda / withMemset | variant select | CONFIRMED |
+| `Instruction+0x58` | u32 | opcode (InstructionType) | CERTAIN |
+| Load / DMACopy | 0x13 / 0x20 | LOAD class → stage 0 | CERTAIN |
+| IndirectLoad | 0x2B | gather; with_memset target | CERTAIN |
+| Memset | 0x0A | inserted by with_memset | CERTAIN |
+| CoreBarrier | 87 | inserted stage divider (gen3+) | CERTAIN |
+| EdgeKind Flow | 4 | every edge this pass adds | CERTAIN |
+| `memloc+0xd8` == 0x10 | SB | SBUF-resident gate (with_memset) | CERTAIN |
+| bools @ `obj+0x2c0/0x2c1` | postAda / withMemset | variant select | CERTAIN |
 
 ---
 
@@ -183,7 +183,7 @@ PrefetchScheudling::run(Module&)            @0xb66d90  (464 B)
        └─ sub_B64CC0                        @0xb64cc0  ── AP-argument-set dedup (×4)
 ```
 
-The two register-generator lambdas build a 112-byte object of identical vtable and differ in exactly two writes [CONFIRMED]:
+The two register-generator lambdas build a 112-byte object with an identical vtable, differing in exactly two writes:
 
 | Generator | `obj+104` | name string | Address |
 |---|---|---|---|
@@ -220,11 +220,11 @@ The guard adds the edge only when producer and consumer live on different engine
 
 ### The Prefetch Distance is Structural
 
-> **GOTCHA —** the prefetch distance is **not** computed from DMA latency. A reimplementer who expects `prefetch_scheduling` to derive "issue the load *N* cycles ahead" from a cost model will look for a calculation that does not exist. The entire prefetch translation unit — `run`, `cc_dma_alignment`, `force_incoming_order`, `sub_B64CC0` — contains **no** `getLatency`/`Hwm`/cost-model call. Sweeping every instruction in `0xb64810`–`0xb67ca0` returns zero such calls [CONFIRMED — disassembly audit]. The distance is expressed structurally, three ways:
+> **GOTCHA —** the prefetch distance is **not** computed from DMA latency. A reimplementer who expects `prefetch_scheduling` to derive "issue the load *N* cycles ahead" from a cost model will look for a calculation that does not exist. The entire prefetch translation unit — `run`, `cc_dma_alignment`, `force_incoming_order`, `sub_B64CC0` — contains **no** `getLatency`/`Hwm`/cost-model call. Sweeping every instruction in `0xb64810`–`0xb67ca0` turns up no such call. The distance is expressed structurally, three ways:
 
 1. **The lookahead window is the BB live-range.** Phase 3 of `force_incoming_order` walks within a basic block until a `Save`/`Collective` closes the live window. There is no numeric "N cycles ahead" — the window is the dependency live-range between a tensor's producing DMA and its consuming compute.
 
-2. **The iteration distance is "one iteration ahead", carried as a constraint attribute, not computed here.** The string `prefetch_one_iteration_ahead` (.rodata @0x1c89a14) is consumed by a BIR-JSON deserializer (`from_json(…, ConstraintOp&)`, region @0x16efc61), **not** by this pass. The loop-pipelining hint is set upstream (Penguin/NKI) and read by the loop/dependency machinery — that is what turns the prefetch into a 1-iteration-ahead software pipeline, not any arithmetic in this TU. [STRONG]
+2. **The iteration distance is "one iteration ahead", carried as a constraint attribute, not computed here.** The string `prefetch_one_iteration_ahead` (.rodata @0x1c89a14) is consumed by a BIR-JSON deserializer (`from_json(…, ConstraintOp&)`, region @0x16efc61), **not** by this pass. The loop-pipelining hint is set upstream (Penguin/NKI) and read by the loop/dependency machinery — that is what turns the prefetch into a 1-iteration-ahead software pipeline, rather than any arithmetic in this translation unit.
 
 3. **The size knob decides eligibility, not distance.** `opts+0xB0` (default −1 = off) selects *which* tensors get forced incoming order (footprint ≥ threshold) — only large tiles worth multi-buffering. Small tensors are left to the scheduler's discretion. The knob gates membership, never a cycle count.
 
@@ -238,13 +238,13 @@ So `prefetch_scheduling` sets prefetch intent and legality and delegates the act
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `PrefetchScheudling::run(Module&)` | 0xb66d90 | dispatcher; gate `opts+0xB0 >= 0` | CONFIRMED |
-| `PrefetchScheudling::cc_dma_alignment(Module&)` | 0xb64810 | DMA↔Collective Flow-pin; mode {0,1,2} | CONFIRMED |
-| `PrefetchScheudling::force_incoming_order(Module&)` | 0xb651e0 | incoming-order enforcer; large-tensor select | CONFIRMED |
-| `sub_B64CC0` | 0xb64cc0 | AP-argument-set dedup/compaction (×4) | CONFIRMED |
-| before / after reg invoke | 0xb67940 / 0xb675e0 | obj+104 = 0 / 1 | CONFIRMED |
-| `prefetch_one_iteration_ahead` (.rodata) | 0x1c89a14 | upstream constraint attr (not read here) | STRONG |
-| `Instruction::addDependency` (plt) | 0x5eff00 | Flow=4 edges @0xb659b6/0xb65c21 | CONFIRMED |
+| `PrefetchScheudling::run(Module&)` | 0xb66d90 | dispatcher; gate `opts+0xB0 >= 0` | CERTAIN |
+| `PrefetchScheudling::cc_dma_alignment(Module&)` | 0xb64810 | DMA↔Collective Flow-pin; mode {0,1,2} | CERTAIN |
+| `PrefetchScheudling::force_incoming_order(Module&)` | 0xb651e0 | incoming-order enforcer; large-tensor select | CERTAIN |
+| `sub_B64CC0` | 0xb64cc0 | AP-argument-set dedup/compaction (×4) | CERTAIN |
+| before / after reg invoke | 0xb67940 / 0xb675e0 | obj+104 = 0 / 1 | CERTAIN |
+| `prefetch_one_iteration_ahead` (.rodata) | 0x1c89a14 | upstream constraint attr (not read here) | HIGH |
+| `Instruction::addDependency` (plt) | 0x5eff00 | Flow=4 edges @0xb659b6/0xb65c21 | CERTAIN |
 
 ### Related Knobs
 
@@ -279,7 +279,7 @@ Backend software pipelining is emergent — these two passes plus the scheduler 
 | Name | Relationship |
 |---|---|
 | `post_sched` (three schedulers) | Consumes the cut + barrier; actually overlaps load(i+1) with compute(i) |
-| address-rotation (multi-buffering) | Rings the stage buffers `(iv mod N)·stride` so cut edges stay severed (planned, 8.14) |
+| address-rotation (multi-buffering) | Rings the stage buffers `(iv mod N)·stride` so cut edges stay severed |
 | `order_column_tiled_mms` | Runs between separate-load (#89-90) and post_sched in the phase-4 pipeline |
 | `dead_code_elim_o0` | DCEs the epilogue's consumer-less last-iteration loads |
 

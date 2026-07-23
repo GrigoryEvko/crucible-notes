@@ -17,7 +17,7 @@ The single fact that organizes everything: NKI has two execution families. `jax`
 | **torch-xla target** | HLO `custom_call_target = "AwsNeuronNkiKernel"` (`_torch_xla.so`) |
 | **Local exec base** | `BaremetalKernel` (`NumpyKernel.so`) → `neuronx-cc compile … penguin.py` → NEFF |
 
-> **CORRECTION (D-W12 §1.1 → binary).** W12 states that "`nki.jit`, the dispatcher, `GenericKernel` and `simulate_kernel` actually live in `nki/compile.so`." Only **partly** true. The `compute_mode` dispatcher, `_native_mode_map`, and the `GenericKernel` class **are** in `compile.so` (symbols `__pyx_pf_…compile_4compute_mode`, `__pyx_k_native_mode_map`, `neuronxcc.nki.compile.GenericKernel.__call__`). But the **`jit` decorator wrapper itself**, the `_jit_dispatch` helper, the `jit` docstring, *and* the dispatch error string `' passed to nki.jit'` live in **`nki/__init__.so`** — symbol `__pyx_pw_9neuronxcc_3nki_9jit` (= `neuronxcc.nki.jit`, note `_3nki_9jit`, not `_7compile_`). `__init__.so` imports `GenericKernel`/`simulate_kernel` from `neuronxcc.nki.compile` (string `neuronxcc.nki.compile` present in `__init__.so`). So: **`jit` and its dispatch glue are in `__init__.so`; the `compute_mode` algorithm and `GenericKernel` are in `compile.so`.** A reimplementer placing the whole of `jit` in `compile.so` will not match the symbol table.
+> **GOTCHA — `jit` is split across two `.so`s.** It is natural to expect all of `nki.jit` to live in `nki/compile.so`, since that is where the dispatch algorithm is. The split is: the **`jit` decorator wrapper**, the `_jit_dispatch` helper, the `jit` docstring, and the dispatch error string `' passed to nki.jit'` are in **`nki/__init__.so`** — symbol `__pyx_pw_9neuronxcc_3nki_9jit`, note the `_3nki_9jit` infix rather than `_7compile_`. The **`compute_mode` dispatcher**, `_native_mode_map`, and the `GenericKernel` class are in **`compile.so`** (`__pyx_pf_…compile_4compute_mode`, `__pyx_k_native_mode_map`, `neuronxcc.nki.compile.GenericKernel.__call__`). `__init__.so` reaches the latter by importing `GenericKernel` / `simulate_kernel` from `neuronxcc.nki.compile`.
 
 ## The five entrypoints
 
@@ -33,7 +33,7 @@ Every public name is a Cython `CyFunction` wrapper. For the four mode-pinned doo
 | `_jax_jit(func, grid=…)` | `nki/__init__.so` | `nki_*_jax_jit` (`@0xd040`) | `func` | `JAXKernel` | XLA (internal) |
 | `_torchxla_jit(func, grid=…)` | `nki/__init__.so` | `nki_*_torchxla_jit` (`@0xc2a0`) | `func` | `PyTorchXLAKernel` | XLA (internal) |
 
-The four mode-pinned wrappers are **structurally identical** — the only differences are the positional argument name (`kernel` vs `func`), the singleton they forward to (`_baremetal_kernel` / `_benchmark_kernel` / `_profile_kernel`), and the kernel class that singleton is an instance of. `__init__.so`'s string pool carries `_baremetal_kernel`, `_benchmark_kernel`, and the docstring lines that pin every default. CONFIRMED.
+The four mode-pinned wrappers are **structurally identical** — the only differences are the positional argument name (`kernel` vs `func`), the singleton they forward to (`_baremetal_kernel` / `_benchmark_kernel` / `_profile_kernel`), and the kernel class that singleton is an instance of. `__init__.so`'s string pool carries `_baremetal_kernel`, `_benchmark_kernel`, and the docstring lines that pin every default.
 
 ```c
 // nki/__init__.so — the mode-pinned wrapper pattern (profile shown; baremetal/benchmark identical)
@@ -53,12 +53,12 @@ static PyObject *nki_profile(PyObject *func /*=None*/, PyObject *kwargs) {
 > *"This decorator compiles a function to run on NeuronDevices. This decorator tries to automatically detect the current framework and compile the function as a custom operator of the current framework. To bypass the framework detection logic, you may specify the `mode` parameter explicitly."*
 > `:param mode:` *"The compilation mode, possible values: `"jax"`, `"torchxla"`, … `"baremetal"`, `"benchmark"`, `"simulation"` and `"auto"`"*
 
-`jit` supports both forms: bare `@nki.jit` (`func` given) and parametrized `@nki.jit(mode=…)` (`func=None` → returns a partial). Either way it returns a **`GenericKernel`** (defined in `compile.so`). `GenericKernel` is **subscriptable** — its type object installs `mp_subscript` (confirmed in `compile.so`), implementing `__class_getitem__` so `nki.jit[...]` type-parameter syntax is legal. CONFIRMED.
+`jit` supports both forms: bare `@nki.jit` (`func` given) and parametrized `@nki.jit(mode=…)` (`func=None` → returns a partial). Either way it returns a **`GenericKernel`** (defined in `compile.so`). `GenericKernel` is **subscriptable** — its type object installs `mp_subscript`, implementing `__class_getitem__`, so `nki.jit[...]` type-parameter syntax is legal.
 
-`GenericKernel.__call__` does **not** compile eagerly. On each call it consults `compute_mode` to pick the concrete kernel class for the live argument types, then memoizes it: the `__call__` references `compute_mode`, `build_cache_kernel`, and `_cached_kernel` (all CONFIRMED symbols in `compile.so`). So one `@nki.jit` object can resolve to different backend classes across calls if you feed it numpy on one call and a torch tensor on the next — and it caches the resolved kernel per resolution.
+`GenericKernel.__call__` does **not** compile eagerly. On each call it consults `compute_mode` to pick the concrete kernel class for the live argument types, then memoizes it: the `__call__` references `compute_mode`, `build_cache_kernel`, and `_cached_kernel`, all symbols in `compile.so`. So one `@nki.jit` object can resolve to different backend classes across calls if you feed it numpy on one call and a torch tensor on the next — and it caches the resolved kernel per resolution.
 
 ```c
-// nki/compile.so — GenericKernel.__call__ (annotated; symbols CONFIRMED, control flow STRONG)
+// nki/compile.so — GenericKernel.__call__ (symbols read from the binary; control flow reconstructed)
 PyObject *GenericKernel___call__(GenericKernel *self, PyObject *args, PyObject *kwargs) {
     KernelClass cls = compute_mode(self->mode, args, kwargs);   // resolve concrete class
     Kernel *k = self->_cached_kernel.get(cls);                  // memoized per resolved class
@@ -72,10 +72,11 @@ PyObject *GenericKernel___call__(GenericKernel *self, PyObject *args, PyObject *
 
 ## The dispatch algorithm — `compute_mode`
 
-`compute_mode` (`neuronxcc.nki.compile.compute_mode`, `compile.so`) is the heart of NKI's "front door" behavior. It has two paths: an **explicit-mode lookup** and an **argument-type auto-detection**. The class table is `_native_mode_map` (CONFIRMED symbol `__pyx_k_native_mode_map`). The auto path's detection strings — `jax`, `get_backend`, `platform`, `neuron`, `Array`, `ArrayImpl`, `Tracer`, `torch` — are all present verbatim in `compile.so`, and the platform guard error `nki only support on neuron, current target: ` is the verbatim string emitted when JAX is detected but its backend platform is not `"neuron"`.
+`compute_mode` (`neuronxcc.nki.compile.compute_mode`, `compile.so`) is the heart of NKI's "front door" behavior. It has two paths: an **explicit-mode lookup** and an **argument-type auto-detection**. The class table is `_native_mode_map` (symbol `__pyx_k_native_mode_map`). The auto path's detection strings — `jax`, `get_backend`, `platform`, `neuron`, `Array`, `ArrayImpl`, `Tracer`, `torch` — are all present verbatim in `compile.so`, and the platform guard error `nki only support on neuron, current target: ` is the verbatim string emitted when JAX is detected but its backend platform is not `"neuron"`.
 
 ```c
-// nki/compile.so — compute_mode (symbols + detection strings all CONFIRMED; precise branch order STRONG)
+// nki/compile.so — compute_mode (symbols and detection strings read from the binary;
+//                  the precise branch order is reconstructed)
 KernelClass compute_mode(const char *mode, PyObject *args, PyObject *kwargs) {
 
     // ── PATH (a): explicit mode string ───────────────────────────────────────
@@ -97,7 +98,7 @@ KernelClass compute_mode(const char *mode, PyObject *args, PyObject *kwargs) {
     for (each arg a in args, kwargs) {
         if (is_jax_tensor(a)) {                     // jax Array / ArrayImpl / Tracer
             if (jax.get_backend().platform != "neuron")
-                raise("nki only support on neuron, current target: " + platform);  // CONFIRMED string
+                raise("nki only support on neuron, current target: " + platform);  // verbatim string
             return JAXKernel;
         }
         if (is_torch_tensor(a))                      // torch.is_tensor(a)
@@ -122,7 +123,7 @@ KernelClass compute_mode(const char *mode, PyObject *args, PyObject *kwargs) {
 | `"simulation"` | `SimulateKernel` | CPU simulator | `NumpyKernel.so` |
 | `"auto"` | *(arg-type detection above)* | — | — |
 
-Unknown mode → the wrapper raises with the verbatim fragment `' passed to nki.jit'`. A *second* error string `Unknown framework '` is also present in `__init__.so` — the framework-detection failure message distinct from the mode-string failure. CONFIRMED both strings; exact wording of the surrounding text is split across rodata (STRONG).
+Unknown mode → the wrapper raises with the verbatim fragment `' passed to nki.jit'`. A *second* error string `Unknown framework '` is also present in `__init__.so` — the framework-detection failure message distinct from the mode-string failure. Both strings are verbatim in the binary; the surrounding sentence text is split across rodata, so the exact full message is reconstructed.
 
 ## The two XLA custom-call targets
 
@@ -133,20 +134,20 @@ When `jit` resolves to `JAXKernel` or `PyTorchXLAKernel`, no kernel runs. The ke
 | JAX | `_jax.so` (`JAXKernel`) | **`AwsNeuronCustomNativeKernel`** | `stablehlo.custom_call` (via `jaxlib.mlir`) | `is_framework_tensor`, `map_framework_tensor`, `translate_to_neuron_dtype` |
 | torch-xla | `_torch_xla.so` (`PyTorchXLAKernel`) | **`AwsNeuronNkiKernel`** | `scribe` `CustomCall` + `OutputOperandAliasing` | same three hooks + `build_xla_type` |
 
-Both target strings are CONFIRMED at their definition sites: `_jax.so` carries `AwsNeuronCustomNativeKernel` (symbols `__pyx_n_u_AwsNeuronCustomNativeKernel`); `_torch_xla.so` carries `AwsNeuronNkiKernel` (`__pyx_n_s_AwsNeuronNkiKernel`). The `FrameworkKernel` base-class docstring itself shows the JAX form in its worked HLO example: `custom_call_target="AwsNeuronCustomNativeKernel"` (verbatim in `FrameworkKernel.so`).
+Both target strings sit at their definition sites: `_jax.so` carries `AwsNeuronCustomNativeKernel` (symbols `__pyx_n_u_AwsNeuronCustomNativeKernel`); `_torch_xla.so` carries `AwsNeuronNkiKernel` (`__pyx_n_s_AwsNeuronNkiKernel`). The `FrameworkKernel` base-class docstring itself shows the JAX form in its worked HLO example: `custom_call_target="AwsNeuronCustomNativeKernel"` (verbatim in `FrameworkKernel.so`).
 
 > **GOTCHA — the two targets are NOT interchangeable.** JAX emits `AwsNeuronCustomNativeKernel`; torch-xla emits `AwsNeuronNkiKernel`. They carry the *same* base64-JSON `backend_config` payload (both produced by the shared `dump_config` — see 6.0.3) and the same operand-output aliasing intent, but the call-target string the downstream XLA/runtime matches on is different per framework. A reimplementer wiring the runtime side must register **both** custom-call names. The W12 in-text note flagging this divergence is correct and confirmed at both binaries.
 
 ### The JAX `nki_call` primitive
 
-The JAX bridge registers NKI as a proper **JAX primitive**, `nki_call_p`, with the two-rule structure JAX requires (`apply_primitive` / `def_abstract_eval` both present in `_jax.so`). CONFIRMED symbols:
+The JAX bridge registers NKI as a proper **JAX primitive**, `nki_call_p`, with the two-rule structure JAX requires (`apply_primitive` / `def_abstract_eval` are both present in `_jax.so`). The symbols:
 
 - **`nki_call_eval`** — the abstract-eval rule. Traces the kernel (via `dump_config`) only to learn the output `return_types`, and returns JAX `ShapedArray` avals — **no real compute**. The trace result is wrapped hashable so JAX can cache the lowering.
 - **`nki_call_lowering_rule`** — the MLIR lowering rule. Emits the `stablehlo.custom_call` with `call_target_name = "AwsNeuronCustomNativeKernel"`, the base64 `backend_config`, the operand-output aliasing, and `mhlo.frontend_attributes`.
 
-> **QUIRK — a JAX-only trace-cache escape hatch.** `_jax.so` carries the verbatim message `NKI trace is not properly cached, use ``export NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING=TRUE`` to workaround the issue` plus the env-name `NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING` and the internal flag `_dont_cache_trace_for_jax_lowering`. Setting that env var to `TRUE` bypasses a trace-caching defect on the JAX lowering path specifically. There is no torch-xla analogue. CONFIRMED.
+> **QUIRK — a JAX-only trace-cache escape hatch.** `_jax.so` carries the verbatim message `NKI trace is not properly cached, use ``export NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING=TRUE`` to workaround the issue` plus the env-name `NKI_DONT_CACHE_TRACE_FOR_JAX_LOWERING` and the internal flag `_dont_cache_trace_for_jax_lowering`. Setting that env var to `TRUE` bypasses a trace-caching defect on the JAX lowering path specifically. There is no torch-xla analogue.
 
-The torch-xla bridge has no JAX-style primitive; `PyTorchXLAKernel.__call__` builds the `CustomCall` directly through the torch-xla `scribe` HLO builder, attaching `OutputOperandAliasing` for in-place donation and an `excluded_output_tensors` set (string CONFIRMED in `_torch_xla.so`) for outputs that need not be materialized. The module also exposes a top-level `nki_jit` (symbol `neuronxcc.nki._torch_xla.nki_jit`).
+The torch-xla bridge has no JAX-style primitive; `PyTorchXLAKernel.__call__` builds the `CustomCall` directly through the torch-xla `scribe` HLO builder, attaching `OutputOperandAliasing` for in-place donation and an `excluded_output_tensors` set (the string is in `_torch_xla.so`) for outputs that need not be materialized. The module also exposes a top-level `nki_jit` (symbol `neuronxcc.nki._torch_xla.nki_jit`).
 
 ## The local-execution doors
 
@@ -162,26 +163,26 @@ neuronx-cc compile --framework XLA penguin.py --internal-tensorizer-opt-level=nk
 
 The `penguin.py` file is the serialized **Penguin IR** that `write_tensorizer_ir` emits into the temp dir before the shell-out. `additional_compile_opt` is appended to this command; the target arch is filled in from the resolved platform target.
 
-> **CORRECTION — `write_tensorizer_ir` emits Penguin IR, not BIR.** The label was loosely "Penguin/BIR"; the decompiled body of `NumpyKernel.write_tensorizer_ir` (`NumpyKernel.py:43–45`, decompile + disasm) pins it down: it does `open(os.path.join(dir, "penguin.py"), "w")` — the filename constant is literally `penguin.py` — and writes via `IRWriter.run(...)`, where `IRWriter` resolves to `neuronxcc.starfish.penguin.ir.IRWriter` (the **Penguin** IR text writer, under `penguin/ir/`). So the artifact this function writes is the **Penguin tensorizer-IR** dump. It is **distinct from** the `<fn>.TensorizerBIR.json` artifact: that BIR (`bir::Module`) dump is produced *later*, *inside* the `neuronx-cc compile … penguin.py` shell-out, by `BirCodeGenLoop.runOnFunction` (cf. [bircodegenloop](./bircodegenloop.md) §; the Penguin→BIR lowering). The wheel-side `write_tensorizer_ir` never touches BIR. CONFIRMED (decompile of `sub_1AE60` + the `penguin.py`/`IRWriter`/`os.path.join`/`open` constants at `0x1b08d`/`0x1c206`).
+> **GOTCHA — `write_tensorizer_ir` emits Penguin IR, not BIR.** The name says "tensorizer IR", which reads like BIR. The body (`NumpyKernel.py:43–45`, `sub_1AE60`) does `open(os.path.join(dir, "penguin.py"), "w")` — the filename constant is literally `penguin.py` — and writes through `IRWriter.run(...)`, where `IRWriter` is `neuronxcc.starfish.penguin.ir.IRWriter`, the Penguin IR text writer. The `<fn>.TensorizerBIR.json` artifact is a different thing produced later, *inside* the `neuronx-cc compile … penguin.py` shell-out, by `BirCodeGenLoop.runOnFunction` (see [bircodegenloop](./bircodegenloop.md)). Nothing wheel-side touches BIR. *Anchors: the `penguin.py` / `IRWriter` / `os.path.join` / `open` constants at `0x1b08d` and `0x1c206`.*
 
-> **GOTCHA — `save_trace_name` forces `save_neff_name`.** The `baremetal` docstring carries the verbatim *"Known issue: if `save_trace_name` is specified, `save_neff_name` must be set to "file.neff"."* If you ask `baremetal` to keep the NTFF execution trace, you must also leave the NEFF name at its default. CONFIRMED string.
+> **GOTCHA — `save_trace_name` forces `save_neff_name`.** The `baremetal` docstring carries the verbatim *"Known issue: if `save_trace_name` is specified, `save_neff_name` must be set to "file.neff"."* If you ask `baremetal` to keep the NTFF execution trace, you must also leave the NEFF name at its default.
 
 ### `nki.benchmark` — same spine, plus latency
 
 Docstring: *"Benchmark a NKI kernel on a NeuronDevice … uses the same underlying mechanism as `nki.baremetal` but additionally collects latency statistics …"*. It additionally invokes `neuron-bench` (`NeuronBench`, from `neuronxcc.kra.profile_lib`) and runs `warmup` + `iters` executions for timing. kwargs: `warmup` (default 10), `iters` (default 100), `save_neff_name`, `save_trace_name`, `additional_compile_opt` — the docstring shows `@benchmark(warmup=10, iters=100, …)`.
 
-The returned wrapper exposes `.benchmark_result.nc_latency` — a `BenchmarkResult` whose `nc_latency` is an `NCLatency` (or `None` if `iters` is too low). `NCLatency.get_latency_percentile(p)` returns the p-th percentile in **microseconds**. The percentile set is documented verbatim in `NCLatency.get_latency_percentile`'s docstring: *"result_dicts must be in form of {x: <Latency in us>} where x is the percentile. For example, p0, p1, p10, p25 …"* — i.e. `p ∈ {0,1,10,25,50,90,99,100}`. `NCLatency.__str__` prints a five-number summary. All symbols (`benchmark_result`, `NCLatency`, `get_latency_percentile`, `result_dicts`, `NeuronBench`) CONFIRMED in `NumpyKernel.so`.
+The returned wrapper exposes `.benchmark_result.nc_latency` — a `BenchmarkResult` whose `nc_latency` is an `NCLatency` (or `None` if `iters` is too low). `NCLatency.get_latency_percentile(p)` returns the p-th percentile in **microseconds**. The percentile set is documented verbatim in `NCLatency.get_latency_percentile`'s docstring: *"result_dicts must be in form of {x: <Latency in us>} where x is the percentile. For example, p0, p1, p10, p25 …"* — i.e. `p ∈ {0,1,10,25,50,90,99,100}`. `NCLatency.__str__` prints a five-number summary. All of `benchmark_result`, `NCLatency`, `get_latency_percentile`, `result_dicts`, and `NeuronBench` are symbols in `NumpyKernel.so`.
 
-> **NOTE — single NeuronCore, shapes-only.** `benchmark` runs on a single NeuronCore (NKI's collective compute is not supported on the benchmark path) and, like all three device doors, **does not use the real input values** when running the NEFF — only the shapes matter for timing. The docstring states *"`nki.benchmark` does not use the actual inputs passed into the benchmarked function when running the [NEFF]"* (verbatim). Outputs are undefined under benchmark. CONFIRMED.
+> **NOTE — single NeuronCore, shapes-only.** `benchmark` runs on a single NeuronCore (NKI's collective compute is not supported on the benchmark path) and, like all three device doors, **does not use the real input values** when running the NEFF — only the shapes matter for timing. The docstring states *"`nki.benchmark` does not use the actual inputs passed into the benchmarked function when running the [NEFF]"* (verbatim). Outputs are undefined under benchmark.
 
 ### `nki.profile` — full Neuron Profile capture (`.ntff` producer)
 
 `profile` is the richest local door. kwargs: `working_directory` (**REQUIRED** — `ProfileKernel.__init__` raises `ValueError` *"Please specify working directory"* if `None`), `save_neff_name` (default `file.neff`), `save_trace_name` (default `profile.ntff`), `additional_compile_opt`, `overwrite` (default `False`), `profile_nth`, plus an internal `num_execs`. It writes `file.neff`, `profile.ntff`, and JSON profile-summary files into `working_directory`.
 
-The producer boundary is the key fact and is owned by D-AD06: **the wheel triggers the capture; the runtime/firmware writes the `.ntff` bytes.** `ProfileKernel.execute_neff` (CONFIRMED decompiled body, `NumpyKernel.py:333`) acquires the device lock, constructs `neuronxcc.kra.profiler.Profiler(ntff_name, work_dir, num_execs, profile_nth, overwrite)`, then calls `generate_profile()` (which builds and runs an external `neuron-profile capture --num-exec --output-file …` command line — the on-device NRT `modelExecute` writes the `.ntff`) and `extract_ntff_json_from_profile()` (re-invokes `neuron-profile` to dump the per-NTFF JSON summaries). It then defers to `super().execute_neff` for the base device run.
+The producer boundary is the key fact: **the wheel triggers the capture; the runtime/firmware writes the `.ntff` bytes.** `ProfileKernel.execute_neff` (`NumpyKernel.py:333`) acquires the device lock, constructs `neuronxcc.kra.profiler.Profiler(ntff_name, work_dir, num_execs, profile_nth, overwrite)`, then calls `generate_profile()` (which builds and runs an external `neuron-profile capture --num-exec --output-file …` command line — the on-device NRT `modelExecute` writes the `.ntff`) and `extract_ntff_json_from_profile()` (re-invokes `neuron-profile` to dump the per-NTFF JSON summaries). It then defers to `super().execute_neff` for the base device run.
 
 ```c
-// NumpyKernel.so — ProfileKernel.execute_neff (py333; CONFIRMED decompile, see D-AD06)
+// NumpyKernel.so — ProfileKernel.execute_neff (py333)
 void ProfileKernel_execute_neff(self, neff, ir, boundargs) {
     super_try_lock_device(self);                         // acquire NeuronDevice lock
     Profiler *p = Profiler(/*ntff_name=*/ self->save_trace_name ?: "profile.ntff",
@@ -198,7 +199,7 @@ void ProfileKernel_execute_neff(self, neff, ir, boundargs) {
 }
 ```
 
-> **NOTE — `profile_nth` is exec-index selection, not a Python timer.** `num_execs` is the number of on-device runs the runtime performs; `profile_nth` selects **which** of those N runs to keep the profile for (skip warm-up / pick steady-state). The selection happens inside `Profiler` (`_get_specific_ntff` for a specific `profile_nth`, else `_get_all_ntffs`), not in a Python sampling loop. The `.ntff` **binary layout** and the Go `neuron-profile` *consumer* are out-of-wheel (`aws-neuronx-tools`) and deliberately unspecified — see [Part 8 perf-sim](../walrus/) and D-AD06. The wheel owns the *request* and the NEFF; the runtime owns the `.ntff` *bytes*.
+> **NOTE — `profile_nth` is exec-index selection, not a Python timer.** `num_execs` is the number of on-device runs the runtime performs; `profile_nth` selects **which** of those N runs to keep the profile for (skip warm-up / pick steady-state). The selection happens inside `Profiler` (`_get_specific_ntff` for a specific `profile_nth`, else `_get_all_ntffs`), not in a Python sampling loop. The `.ntff` **binary layout** and the Go `neuron-profile` *consumer* are out-of-wheel (`aws-neuronx-tools`) and deliberately unspecified — see the [walrus perf-sim pages](../walrus/). The wheel owns the *request* and the NEFF; the runtime owns the `.ntff` *bytes*.
 
 ### `nki.simulate_kernel` — CPU simulator, no device
 
@@ -206,21 +207,38 @@ void ProfileKernel_execute_neff(self, neff, ir, boundargs) {
 
 > *"Simulate a nki kernel on CPU using a built-in simulator in Neuron Compiler. This simulation mode is especially useful for inspecting intermediate tensor values using `nki.language.device_print`. … All input and output tensors to the kernel must be `numpy.ndarray` when using this `simulate_kernel` API."*
 
-It is backed by `SimulateKernel` (`NumpyKernel.so`), which **overrides `post_process_call`** (not `execute_neff`) — it compiles nothing and touches no device. Instead it builds an `IRSimulator` (the in-process BIR interpreter), runs the traced IR on CPU, streams `device_print` output to a `dump_file`, and copies simulated results back into the numpy arrays. CONFIRMED symbols: `SimulateKernel.__init__`, `SimulateKernel.post_process_call`, `IRSimulator`, `dump_file`, `_dump_file`. This is the only door that needs no hardware and the only one where intermediate tensor values are inspectable.
+It is backed by `SimulateKernel` (`NumpyKernel.so`), which **overrides `post_process_call`** (not `execute_neff`) — it compiles nothing and touches no device. Instead it builds an `IRSimulator` (the in-process BIR interpreter), runs the traced IR on CPU, streams `device_print` output to a `dump_file`, and copies simulated results back into the numpy arrays. The symbols are `SimulateKernel.__init__`, `SimulateKernel.post_process_call`, `IRSimulator`, `dump_file`, and `_dump_file`. This is the only door that needs no hardware and the only one where intermediate tensor values are inspectable.
 
 ## Where this connects
 
-- The **trace → compile → cache lifecycle**, `dump_config`/`dump_config_with_boundargs`, the base64 `backend_config` payload, operand-output aliasing, and the per-instance specialization cache (`__neuron_kernel_interface_kernel_cache__`) — all shared by every entrypoint above — are [6.0.3 NKI Framework-Kernel Lifecycle](./framework-kernel-lifecycle.md).
-- The broader XLA front door (`libneuronpjrt`, how the framework consumes the emitted custom-call) is [3.13 frontend/framework-bindings](../frontend/framework-bindings.md).
-- The NKI → **Penguin IR** codegen that runs *inside* the trace (`GeneratedNeuronCodegen`, `KernelBuilder`, `write_tensorizer_ir`/`IRWriter`) is the Part-6 codegen pages. (The Penguin→BIR lowering happens later, in the `neuronx-cc compile … penguin.py` shell-out via `BirCodeGenLoop` — see the CORRECTION above.)
-- The `neuron-profile` `.ntff` consumer and the `walrus`/perf-sim trace artifacts are [Part 8 perf-sim](../walrus/).
+- The **trace → compile → cache lifecycle**, `dump_config`/`dump_config_with_boundargs`, the base64 `backend_config` payload, operand-output aliasing, and the per-instance specialization cache (`__neuron_kernel_interface_kernel_cache__`) — all shared by every entrypoint above — are in [NKI Framework-Kernel Lifecycle](./framework-kernel-lifecycle.md).
+- The broader XLA front door (`libneuronpjrt`, how the framework consumes the emitted custom-call) is [frontend/framework-bindings](../frontend/framework-bindings.md).
+- The NKI → **Penguin IR** codegen that runs *inside* the trace (`GeneratedNeuronCodegen`, `KernelBuilder`, `write_tensorizer_ir`/`IRWriter`) is the Part-6 codegen pages. (The Penguin→BIR lowering happens later, in the `neuronx-cc compile … penguin.py` shell-out via `BirCodeGenLoop`.)
+- The `neuron-profile` `.ntff` consumer and the `walrus`/perf-sim trace artifacts are the [walrus perf-sim pages](../walrus/).
 
-## Adversarial self-verification
+## Evidence summary and limits of this reading
 
-The five strongest claims on this page, re-challenged against the binary:
+Every claim on this page bottoms out in a symbol or a verbatim string in the named `.so`.
 
-1. **`jit`'s wrapper + dispatch error are in `__init__.so`, not `compile.so`.** Re-checked: `__pyx_pw_9neuronxcc_3nki_9jit`, `_jit_dispatch`, `' passed to nki.jit'`, `Unknown framework '`, and the `jit` docstring are all in `__init__.so`; `compute_mode`/`_native_mode_map`/`GenericKernel` are in `compile.so`. Correction issued in-place. **CONFIRMED.**
-2. **The two custom-call targets differ: JAX=`AwsNeuronCustomNativeKernel`, torch-xla=`AwsNeuronNkiKernel`.** Re-checked at definition sites: `_jax.so` → `AwsNeuronCustomNativeKernel` (also in `FrameworkKernel.so` docstring example); `_torch_xla.so` → `AwsNeuronNkiKernel`. **CONFIRMED.**
-3. **Auto-dispatch is argument-type based: jax Array/ArrayImpl/Tracer→JAXKernel, torch→PyTorchXLAKernel, else→BaremetalKernel.** Re-checked: `Array`, `ArrayImpl`, `Tracer`, `get_backend`, `platform`, `neuron`, `torch`, `JAXKernel`, `PyTorchXLAKernel`, `BaremetalKernel` all in `compile.so`; the JAX-platform guard string `nki only support on neuron, current target: ` is verbatim. Branch *order* (jax-before-torch) is STRONG (from the four `compute_mode` generator closures), not byte-exact. **CONFIRMED (order STRONG).**
-4. **`baremetal`'s compile is `neuronx-cc compile --framework XLA penguin.py …`.** Re-checked: full command template `neuronx-cc compile --framework XLA penguin.py --internal-tensorizer-opt-level=nki --pipeline compile SaveTemps --target ` is one verbatim string in `NumpyKernel.so`. **CONFIRMED.**
-5. **`profile` triggers but does not write the `.ntff`; the runtime does.** Re-checked: `ProfileKernel.execute_neff` calls `Profiler(...).generate_profile()`/`extract_ntff_json_from_profile()`; the `.ntff` bytes are produced by the external `neuron-profile capture` → NRT `modelExecute`, out-of-wheel (D-AD06). `simulate_kernel` overrides `post_process_call` with `IRSimulator`, never compiling. **CONFIRMED.**
+The `jit` split is a symbol-table fact: `__pyx_pw_9neuronxcc_3nki_9jit`, `_jit_dispatch`,
+`' passed to nki.jit'`, `Unknown framework '`, and the `jit` docstring all live in
+`__init__.so`, while `compute_mode`, `_native_mode_map`, and `GenericKernel` live in
+`compile.so`. The two framework custom-call targets are distinct at their definition sites —
+`_jax.so` carries `AwsNeuronCustomNativeKernel` (which also appears in the `FrameworkKernel.so`
+docstring example), `_torch_xla.so` carries `AwsNeuronNkiKernel`.
+
+Auto-dispatch keys on argument type, and every token it tests for is present in `compile.so`:
+`Array`, `ArrayImpl`, `Tracer`, `get_backend`, `platform`, `neuron`, `torch`, alongside the
+three target classes `JAXKernel`, `PyTorchXLAKernel`, `BaremetalKernel` and the verbatim
+platform guard `nki only support on neuron, current target: `. The `baremetal` compile line is
+one contiguous string in `NumpyKernel.so`:
+`neuronx-cc compile --framework XLA penguin.py --internal-tensorizer-opt-level=nki --pipeline compile SaveTemps --target `.
+And the profile boundary is visible in the call sequence — `ProfileKernel.execute_neff` calls
+`Profiler(...).generate_profile()` and `extract_ntff_json_from_profile()`, while the `.ntff`
+bytes themselves come from the external `neuron-profile capture` → NRT `modelExecute` path,
+outside the wheel. `simulate_kernel` overrides `post_process_call` with `IRSimulator` and
+never compiles at all.
+
+One thing is reconstruction rather than observation: the *order* of the branches inside
+`compute_mode` — jax tested before torch — comes from the arrangement of its four generator
+closures, not from a byte-exact trace of the branch sequence.

@@ -59,7 +59,7 @@ bits[2:0]   EdgeKind                   (the 3-bit int field)
 
 `EdgeKind` is the numeric enum `{Invalid0, Ordered1, Anti2, Output3, Flow4}`, ordered by `bir::operator<(EdgeKind,EdgeKind)` @ `0x26add0`. A *single* edge between an ordered pair `(A→B)` carries **one** `EdgeKind` — the MAX of every kind ever added between them — not one node per kind. `EdgePtr::addEdge(kind)` @ `0x26ae80` performs `if (kind > (cur & 7)) ptr = kind | (ptr & ~7)`, i.e. it keeps the stronger kind. So if a pair is both a flow and an anti dependence, the stored kind is `Flow` (4 > 2). The read-side duals partition the single dep-list back out: `getFlowDeps` @ `0x10e8e70` keeps targets where `hasEdge(Flow=4)`; `getAntiDeps` @ `0x10e8f30` keeps targets where `(EdgePtr & 7) == 2`.
 
-> **QUIRK —** because `addEdge` merges by max and `Flow=4` is the maximum, a pair that the anti analyzer *also* finds to be a WAR conflict will keep its `Flow` tag, and `getAntiDeps`'s exact `==2` test will silently not return it. The anti edge is not lost — the ordering it implies is already enforced by the stronger flow edge to the *same* predecessor. A reimplementer who stores a separate node per kind will over-count edges and mis-drive the scheduler. (CONFIRMED — `addEdge` @ `0x26ae80`; `getAntiDeps` `==2` @ `0x10e8f30`.)
+> **QUIRK —** because `addEdge` merges by max and `Flow=4` is the maximum, a pair that the anti analyzer *also* finds to be a WAR conflict will keep its `Flow` tag, and `getAntiDeps`'s exact `==2` test will silently not return it. The anti edge is not lost — the ordering it implies is already enforced by the stronger flow edge to the *same* predecessor. A reimplementer who stores a separate node per kind will over-count edges and mis-drive the scheduler. *Anchors: `addEdge` @ `0x26ae80` (the max-merge); `getAntiDeps` @ `0x10e8f30` (the exact `==2` test).*
 
 ### The insertion primitive
 
@@ -77,7 +77,7 @@ function addDependency(this, Inst* former, EdgeKind kind, bool loop_carried):   
                                          //   addEdge-merge kind on a duplicate hit
 ```
 
-The set is keyed by the *target's name string* (an `EdgeHash`/`EdgeEqual` over `former.name.data`/`.size`), so duplicate edges to the same-named producer collapse and merge their kind. The convention `A.addDependency(former=B)` means "A waits for B": the edge points from the later instruction to the earlier one. Both passes preserve this — every edge they insert goes from the *consumer/later* access to the *producer/earlier* access. (CONFIRMED — `addDependency` @ `0x2e7640` → `0x2e6e90`.)
+The set is keyed by the *target's name string* (an `EdgeHash`/`EdgeEqual` over `former.name.data`/`.size`), so duplicate edges to the same-named producer collapse and merge their kind. The convention `A.addDependency(former=B)` means "A waits for B": the edge points from the later instruction to the earlier one. Both passes preserve this — every edge they insert goes from the *consumer/later* access to the *producer/earlier* access. *Anchors: `addDependency` @ `0x2e7640` → `0x2e6e90`.*
 
 ---
 
@@ -132,7 +132,7 @@ function constructBIRGraph(this, int optlevel, bool addRegDeps):        // 0x158
     log("Build fdeps inserted N edges"); log("Done build fdeps " + ctime())
 ```
 
-Every `addDependency` call in this pass packs `EdgeKind=Flow(4)`. The structural chains (loop / RNG / accumulator) are also Flow edges — they are real ordering constraints the scheduler must honor, modeled as data dependences so the single edge set carries them. (CONFIRMED — string anchors `Start build fdeps. Invocation:`, `Done build fdeps`, `Build fdeps inserted`, `Warning: too many spills, skip build flow dependencies` all verified present in the binary; `constructBIRGraph` @ `0x1588990` is an exported symbol.)
+Every `addDependency` call in this pass packs `EdgeKind=Flow(4)`. The structural chains (loop / RNG / accumulator) are also Flow edges — they are real ordering constraints the scheduler must honor, modeled as data dependences so the single edge set carries them. *Anchors: `constructBIRGraph` @ `0x1588990` (exported), and the log strings `Start build fdeps. Invocation:`, `Done build fdeps`, `Build fdeps inserted`, `Warning: too many spills, skip build flow dependencies`.*
 
 ### Algorithm — per-memloc dispatch (`sub_1587710`)
 
@@ -149,7 +149,7 @@ function per_memloc_flow(memloc):                       // sub_1587710 @0x158771
     // sanity: a non-DRAM memloc's writer count must equal its registered num_writers
 ```
 
-> **NOTE —** the baseline RAW chain is built for *every* memory type. SBUF and PSUM memlocs get an *additional* refinement on top, because their accesses are tiled/strided sub-tensors and the per-`MemoryLocation` granularity is too coarse to catch the exact reduction/accumulation ordering. The refinements are where the byte-level geometry test enters `build_fdeps`. (CONFIRMED — `make_linear_dependencies` @ `0x157ca80`, `make_reduction_sequence` @ `0x1583db0`, `make_accumulation_sequence` @ `0x15876f0` all exported; `MemoryType` enum DRAM=8/SB=16/PSUM=32.)
+> **NOTE —** the baseline RAW chain is built for *every* memory type. SBUF and PSUM memlocs get an *additional* refinement on top, because their accesses are tiled/strided sub-tensors and the per-`MemoryLocation` granularity is too coarse to catch the exact reduction/accumulation ordering. The refinements are where the byte-level geometry test enters `build_fdeps`. *Anchors: `make_linear_dependencies` @ `0x157ca80`, `make_reduction_sequence` @ `0x1583db0`, `make_accumulation_sequence` @ `0x15876f0`, all exported; `MemoryType` DRAM=8 / SB=16 / PSUM=32.*
 
 ### Algorithm — the baseline linear chain
 
@@ -171,7 +171,7 @@ function make_linear_dependencies(readers, writers, programIdx):   // 0x157ca80
             inst.addDependency(former=last_writer, Flow, /*lc=*/0)   // read → most-recent write
 ```
 
-This is textbook RAW: each read depends on the *most recent prior write* to the memloc, and writes serialize through the chain. It is O(n) per memloc, not all-pairs — and it needs no geometry test, because every AP in the call already belongs to the same `MemoryLocation` (the writer/reader use-def lists are per-memloc), so any reader of the memloc conflicts with the last writer by construction. (CONFIRMED — `make_linear_dependencies` @ `0x157ca80`.)
+This is textbook RAW: each read depends on the *most recent prior write* to the memloc, and writes serialize through the chain. It is O(n) per memloc, not all-pairs — and it needs no geometry test, because every AP in the call already belongs to the same `MemoryLocation` (the writer/reader use-def lists are per-memloc), so any reader of the memloc conflicts with the last writer by construction (`make_linear_dependencies` @ `0x157ca80`).
 
 ### The two refinements and the only `doAccessesOverlap` call
 
@@ -190,19 +190,19 @@ function make_reduction_sequence(memloc):                 // 0x1583db0 — SBUF 
             candidate.inst.addDependency(former=producer.inst, Flow, 0)
 ```
 
-`make_accumulation_sequence` (PSUM, `type==32`) mirrors this skeleton — same writers/readers/sort/chain structure, specialized to the PSUM RMW group and gated on the accumulate/calc-start flags. It is the producer side of the matmul-accumulation group; the non-SSA exit logic deliberately exempts this group from value cloning, agreeing that the PSUM accumulate is an intentional RMW chain. (CONFIRMED on `doAccessesOverlap` being called only from `make_reduction_sequence`; STRONG on the `make_accumulation_sequence` body — symbol + dispatch confirmed @ `0x15876f0`, exact PSUM-bank gate constants not field-by-field transcribed.)
+`make_accumulation_sequence` (PSUM, `type==32`) mirrors this skeleton — same writers/readers/sort/chain structure, specialized to the PSUM RMW group and gated on the accumulate/calc-start flags. It is the producer side of the matmul-accumulation group; the non-SSA exit logic deliberately exempts this group from value cloning, agreeing that the PSUM accumulate is an intentional RMW chain. That `doAccessesOverlap` has exactly one caller, `make_reduction_sequence`, is read directly. The `make_accumulation_sequence` body is reconstructed by analogy: its symbol and dispatch are pinned @ `0x15876f0`, but the PSUM-bank gate constants are not transcribed field by field.
 
 ### Function Map — `build_fdeps`
 
 | Symbol | Address | Role | Confidence |
 |---|---|---|---|
-| `build_flow_deps::constructBIRGraph(int,bool)` | `0x1588990` | pass body; module loop, spill guard, parallel_for, structural chains | CONFIRMED (exported) |
-| `sub_1587710` | `0x1587710` | per-`MemoryLocation` RAW dispatch (parallel_for lambda) | CONFIRMED (sole `make_*` caller) |
-| `make_linear_dependencies(vec<AP&>,vec<AP&>)` | `0x157ca80` | baseline program-order producer→consumer chain | CONFIRMED (exported) |
-| `make_reduction_sequence(MemoryLocation*)` | `0x1583db0` | SBUF reduction refinement; only `doAccessesOverlap` caller | CONFIRMED (exported) |
-| `make_accumulation_sequence(MemoryLocation*)` | `0x15876f0` | PSUM accumulation refinement | STRONG (symbol+dispatch; body by analogy) |
-| `add_register_dependencies(Function&)` | `0x1579650` | optional Register RAW chain (`addRegDeps`) | STRONG (exported, gated) |
-| `getFlowDeps(Inst*, vec&)` | `0x10e8e70` | read-side: `hasEdge(Flow=4)` partition | CONFIRMED (exported) |
+| `build_flow_deps::constructBIRGraph(int,bool)` | `0x1588990` | pass body; module loop, spill guard, parallel_for, structural chains | CERTAIN (exported) |
+| `sub_1587710` | `0x1587710` | per-`MemoryLocation` RAW dispatch (parallel_for lambda) | CERTAIN (sole `make_*` caller) |
+| `make_linear_dependencies(vec<AP&>,vec<AP&>)` | `0x157ca80` | baseline program-order producer→consumer chain | CERTAIN (exported) |
+| `make_reduction_sequence(MemoryLocation*)` | `0x1583db0` | SBUF reduction refinement; only `doAccessesOverlap` caller | CERTAIN (exported) |
+| `make_accumulation_sequence(MemoryLocation*)` | `0x15876f0` | PSUM accumulation refinement | HIGH (symbol + dispatch; body by analogy) |
+| `add_register_dependencies(Function&)` | `0x1579650` | optional Register RAW chain (`addRegDeps`) | HIGH (exported, gated) |
+| `getFlowDeps(Inst*, vec&)` | `0x10e8e70` | read-side: `hasEdge(Flow=4)` partition | CERTAIN (exported) |
 
 ---
 
@@ -212,7 +212,7 @@ function make_reduction_sequence(memloc):                 // 0x1583db0 — SBUF 
 
 `anti_dependency_analyzer` builds the name/storage dependences: a later write must wait for an earlier *read* of the same physical location (anti, WAR, `Anti=2`), and two writes to the same physical location must be ordered (output, WAW, `Output=3`). These edges do not exist in SSA — they are created by the allocator coloring distinct tensors onto shared storage. The pass therefore runs at 76, *after* PSUM coloring (44) and SBUF coloring (51) and address rotation, when every access has a concrete physical address. It does **not** call `doAccessesOverlap`; instead it buckets every physical access's byte footprint into `boost::icl` interval maps and treats "same bucket" as "overlap."
 
-The class is registered twice — `register_generator_anti_dependency_analyzer__` and `…_post_shared_dram__` — and constructed with five filter arguments (ctor @ `0x8cac40`): two `AdaAnalysisType` sets, a `bir::TensorKind` set, a `bir::MemoryAddressSpace` set, and a string set. The two registrations differ in which sets they pass: the base run handles SBUF/PSUM/local DRAM; the `_post_shared_dram` variant re-runs after shared-DRAM allocation (the cross-core/collective DRAM that only aliases once shared addresses are assigned). The five-set ctor signature and both `addCoreParallelPassWithName`/`addModParallelPassWithName<AntiDependencyAnalyzer, unordered_set<AdaAnalysisType>, …, unordered_set<TensorKind>, unordered_set<MemoryAddressSpace>>` template instantiations are confirmed in the exported symbol table. (CONFIRMED — ctor @ `0x8cac40`; both pass-manager registration templates @ `0x82cc30`/`0x82df60`; RTTI @ `0x3d897d0`/`0x3d89880`.)
+The class is registered twice — `register_generator_anti_dependency_analyzer__` and `…_post_shared_dram__` — and constructed with five filter arguments (ctor @ `0x8cac40`): two `AdaAnalysisType` sets, a `bir::TensorKind` set, a `bir::MemoryAddressSpace` set, and a string set. The two registrations differ in which sets they pass: the base run handles SBUF/PSUM/local DRAM; the `_post_shared_dram` variant re-runs after shared-DRAM allocation (the cross-core/collective DRAM that only aliases once shared addresses are assigned). The five-set ctor signature and both `addCoreParallelPassWithName` / `addModParallelPassWithName<AntiDependencyAnalyzer, unordered_set<AdaAnalysisType>, …, unordered_set<TensorKind>, unordered_set<MemoryAddressSpace>>` template instantiations appear verbatim in the exported symbol table. *Anchors: ctor @ `0x8cac40`; registration templates @ `0x82cc30` / `0x82df60`; RTTI @ `0x3d897d0` / `0x3d89880`.*
 
 ### Entry Point
 
@@ -255,7 +255,7 @@ The address space is sliced three ways, each gated by the `MemoryAddressSpace` f
 | SBUF (`type==16`) | partition × byte interval | `populateSbUseMap` @ `0x8c6d10` | `getSBPartitionRange(ap)` → walk overlapping intervals, append `ap` |
 | PSUM (`type==32`) | per-bank partition × byte | `populatePsumUseMaps` @ `0x8c73c0` | `getPSUMPartitionRange(ap)` + `getBankId`/vectorized banks |
 
-`run::run` logs `DRAM size: <s> num-bins: <n> bin-size: <b>` and `Number of batches: N (DRAM: a, ALIAS: b, PSUM: c, SB: d)` — both strings verified in the binary. The DRAM binning exists to *partition and parallelize* the WAR/WAW search: each bin becomes an independent `run::Task` so the per-bucket pass runs under a TBB `parallel_for_in_arenas`. (CONFIRMED — `split_interval_map<uint,…,right_open_interval<uint>>` is the exact exported template of `populateSbUseMap` @ `0x8c6d10` and siblings; `DRAM size:`/`Number of batches:` strings present.)
+`run::run` logs `DRAM size: <s> num-bins: <n> bin-size: <b>` and `Number of batches: N (DRAM: a, ALIAS: b, PSUM: c, SB: d)` — both strings verified in the binary. The DRAM binning exists to *partition and parallelize* the WAR/WAW search: each bin becomes an independent `run::Task` so the per-bucket pass runs under a TBB `parallel_for_in_arenas`. *Anchors: `split_interval_map<uint,…,right_open_interval<uint>>` is the exported template of `populateSbUseMap` @ `0x8c6d10` and its siblings.*
 
 ### Algorithm — bucketing one access (`enqueueUseBatch`)
 
@@ -284,7 +284,7 @@ function enqueueUseBatch(ap, batches, aliasMap, aliasBatch, sbMap, psumMaps):   
                 interval.value.push_back(ap)
 ```
 
-The SBUF/PSUM "overlapping interval" walk is the `boost::icl right_open_interval` RB-tree search — it appends `ap` to *every* maximal sub-interval its partition×byte footprint covers, auto-splitting the map. (CONFIRMED — exported signatures; STRONG on the exact `AdaAnalysisType` integer values "2"/"3" — read at the role level, DRAM-direct vs alias, not 2string-confirmed.)
+The SBUF/PSUM "overlapping interval" walk is the `boost::icl right_open_interval` RB-tree search — it appends `ap` to *every* maximal sub-interval its partition×byte footprint covers, auto-splitting the map. The signatures are exported. The `AdaAnalysisType` integers `2` and `3` are read at the role level — DRAM-direct versus alias — rather than off a `2string` table, so the specific ordinals are the softest part of this section.
 
 ### Algorithm — the per-bucket edge insertion
 
@@ -301,9 +301,9 @@ function processDependenciesForAccessPatterns(idxVec, interval, curAP, sets):   
         addDependency(interval, otherAP, curAP, sets)  // 0x8ce660
 ```
 
-The reverse walk plus "stop at first blocking same-kind dep" gives each access an Anti/Output edge to its *nearest prior conflicting access only* — a built-in transitive reduction so the graph never goes quadratic. The `sets` argument is a `std::array<llvm::DenseSet<const Instruction*>, 2>` (one DenseSet per kind), and `addDependency` @ `0x8ce660` indexes it by `3 * (*(byte*)(otherAP+0x2C))` to dedup duplicate WAR (or WAW) edges to the same producer per kind. (CONFIRMED — `processDependenciesForAccessPatterns` @ `0x8cec30` and the per-kind-dedup `addDependency` with the `std::array<llvm::DenseSet<…>,2>` template are both exported byte-for-byte.)
+The reverse walk plus "stop at first blocking same-kind dep" gives each access an Anti/Output edge to its *nearest prior conflicting access only* — a built-in transitive reduction so the graph never goes quadratic. The `sets` argument is a `std::array<llvm::DenseSet<const Instruction*>, 2>` (one DenseSet per kind), and `addDependency` @ `0x8ce660` indexes it by `3 * (*(byte*)(otherAP+0x2C))` to dedup duplicate WAR (or WAW) edges to the same producer per kind. *Anchors: `processDependenciesForAccessPatterns` @ `0x8cec30`, and the per-kind-dedup `addDependency` whose `std::array<llvm::DenseSet<…>,2>` template is exported verbatim.*
 
-> **NOTE —** the per-engine emitters `processInput` @ `0x8c4190`, `processOutput` @ `0x8cf7a0`, `processOutputMatmul` @ `0x8c39d0`, `processOutputGeneric` @ `0x8c32c0`, and `processOutputGenericCoreV4` @ `0x8ced30` are sibling members of `AddressMapFunctor` that specialize the read-side (input) vs write-side (output) handling, and the matmul vs generic vs gen4 PE-array cases. The `{7,9,95}` early-stop in the reverse walk corresponds to the Matmult-base family these `processOutputMatmul`/`Generic` variants split on. (CONFIRMED — all five are exported `AddressMapFunctor` members; STRONG on the exact opcode→family mapping.)
+> **NOTE —** the per-engine emitters `processInput` @ `0x8c4190`, `processOutput` @ `0x8cf7a0`, `processOutputMatmul` @ `0x8c39d0`, `processOutputGeneric` @ `0x8c32c0`, and `processOutputGenericCoreV4` @ `0x8ced30` are sibling members of `AddressMapFunctor` that specialize the read-side (input) vs write-side (output) handling, and the matmul vs generic vs gen4 PE-array cases. The `{7,9,95}` early-stop in the reverse walk corresponds to the Matmult-base family these `processOutputMatmul`/`Generic` variants split on. All five are exported `AddressMapFunctor` members; the opcode→family mapping behind `{7,9,95}` is reconstructed rather than read from a table.
 
 ### Algorithm — edge direction and the loop-carried branch
 
@@ -323,27 +323,27 @@ function addDependency(interval, otherAP, curAP):       // 0x8cc560 — final ed
             ++edge_count
 ```
 
-The edge always points from the *later* instruction to the *earlier* one — matching the `dependencies = predecessors` semantics: `A.addDependency(former=B)` means A waits for B. The `EdgeKind` is the precomputed per-AP byte at `+0x2C`: `Anti(2)` when the pair is (later WRITE, earlier READ) = WAR, `Output(3)` when (later WRITE, earlier WRITE) = WAW. The out-of-program-order branch is what populates the `loop_carried_dependencies` set (`BLK+0x4A8`) for cross-iteration WAR/WAW — only when the two accesses are different memloc sets *and* share a loop nest. (CONFIRMED — `addDependency` @ `0x8cc560`; the `+0x4C` program-index compare, the `inCommonLoopNest` loop-carried branch, and the `addDependency(former,kind,lc)` target are byte-exact in the decompile.)
+The edge always points from the *later* instruction to the *earlier* one — matching the `dependencies = predecessors` semantics: `A.addDependency(former=B)` means A waits for B. The `EdgeKind` is the precomputed per-AP byte at `+0x2C`: `Anti(2)` when the pair is (later WRITE, earlier READ) = WAR, `Output(3)` when (later WRITE, earlier WRITE) = WAW. The out-of-program-order branch is what populates the `loop_carried_dependencies` set (`BLK+0x4A8`) for cross-iteration WAR/WAW — only when the two accesses are different memloc sets *and* share a loop nest. *Anchors: `addDependency` @ `0x8cc560` — the `+0x4C` program-index compare, the `inCommonLoopNest` loop-carried branch, and the `addDependency(former,kind,lc)` target are all explicit in the body.*
 
 ### Function Map — `anti_dependency_analyzer`
 
 | Symbol | Address | Role | Confidence |
 |---|---|---|---|
-| `AntiDependencyAnalyzer::run(Module&)` | `0x8d26e0` | WAR/WAW driver; setup, binning, batch build, dispatch | CONFIRMED (exported) |
-| `AntiDependencyAnalyzer(PassOptions, 5 sets)` | `0x8cac40` | ctor with two `AdaAnalysisType`, `TensorKind`, `MemoryAddressSpace`, string filter sets | CONFIRMED (exported) |
-| `collectPartitionRanges(BasicBlock&,…)` | `0x8cb9f0` | size the per-partition interval-set vector | CONFIRMED (exported) |
-| `collectAccessPatternIntervals(PAP*, bool)` | `0x8c4a90` | materialize an AP's byte intervals (partition-rel vs absolute) | CONFIRMED (exported) |
-| `populateAliasUseMap(Function&,…)` | `0x8c7c00` | DRAM alias-keyed batches | CONFIRMED (exported) |
-| `populatePsumUseMaps(vec<set>,…)` | `0x8c73c0` | per-PSUM-bank interval maps | CONFIRMED (exported) |
-| `populateSbUseMap(set,…)` | `0x8c6d10` | SBUF partition×byte interval map | CONFIRMED (exported) |
-| `enqueueUseBatch(AP&/PAP&,…)` | `0x8c5be0` / `0x8c5260` | classify one access, append to its batch/bucket | CONFIRMED (two overloads exported) |
-| `analyzeDependencies(BasicBlock&,…)` | `0x8c5d50` | fill the use-maps from the block's APs | CONFIRMED (exported) |
-| `getSBPartitionRange` / `getPSUMPartitionRange` / `aligned_length` | `0x8c1860` / `0x8c1700` / `0x8c1920` | partition-range + bin-granularity helpers | CONFIRMED (exported) |
-| `AddressMapFunctor::apply()` | `0x8cf900` | iterate one batch's interval map | CONFIRMED (exported) |
-| `processDependenciesForAccessPatterns(SmallVec<uint,6>,…)` | `0x8cec30` | reverse-order per-bucket pairwise walk | CONFIRMED (exported) |
-| `AddressMapFunctor::addDependency(…, array<DenseSet,2>)` | `0x8ce660` | per-kind dedup guard | CONFIRMED (exported) |
-| `AddressMapFunctor::addDependency(interval,PAP,PAP)` | `0x8cc560` | final edge insert + direction + loop-carried | CONFIRMED (exported) |
-| `getAntiDeps(Inst*, vec&)` | `0x10e8f30` | read-side: `(EdgePtr&7)==2` partition | CONFIRMED (exported) |
+| `AntiDependencyAnalyzer::run(Module&)` | `0x8d26e0` | WAR/WAW driver; setup, binning, batch build, dispatch | CERTAIN (exported) |
+| `AntiDependencyAnalyzer(PassOptions, 5 sets)` | `0x8cac40` | ctor with two `AdaAnalysisType`, `TensorKind`, `MemoryAddressSpace`, string filter sets | CERTAIN (exported) |
+| `collectPartitionRanges(BasicBlock&,…)` | `0x8cb9f0` | size the per-partition interval-set vector | CERTAIN (exported) |
+| `collectAccessPatternIntervals(PAP*, bool)` | `0x8c4a90` | materialize an AP's byte intervals (partition-rel vs absolute) | CERTAIN (exported) |
+| `populateAliasUseMap(Function&,…)` | `0x8c7c00` | DRAM alias-keyed batches | CERTAIN (exported) |
+| `populatePsumUseMaps(vec<set>,…)` | `0x8c73c0` | per-PSUM-bank interval maps | CERTAIN (exported) |
+| `populateSbUseMap(set,…)` | `0x8c6d10` | SBUF partition×byte interval map | CERTAIN (exported) |
+| `enqueueUseBatch(AP&/PAP&,…)` | `0x8c5be0` / `0x8c5260` | classify one access, append to its batch/bucket | CERTAIN (two overloads exported) |
+| `analyzeDependencies(BasicBlock&,…)` | `0x8c5d50` | fill the use-maps from the block's APs | CERTAIN (exported) |
+| `getSBPartitionRange` / `getPSUMPartitionRange` / `aligned_length` | `0x8c1860` / `0x8c1700` / `0x8c1920` | partition-range + bin-granularity helpers | CERTAIN (exported) |
+| `AddressMapFunctor::apply()` | `0x8cf900` | iterate one batch's interval map | CERTAIN (exported) |
+| `processDependenciesForAccessPatterns(SmallVec<uint,6>,…)` | `0x8cec30` | reverse-order per-bucket pairwise walk | CERTAIN (exported) |
+| `AddressMapFunctor::addDependency(…, array<DenseSet,2>)` | `0x8ce660` | per-kind dedup guard | CERTAIN (exported) |
+| `AddressMapFunctor::addDependency(interval,PAP,PAP)` | `0x8cc560` | final edge insert + direction + loop-carried | CERTAIN (exported) |
+| `getAntiDeps(Inst*, vec&)` | `0x10e8f30` | read-side: `(EdgePtr&7)==2` partition | CERTAIN (exported) |
 
 ---
 
@@ -359,7 +359,7 @@ This explains the two different overlap primitives. `build_fdeps` groups by `Mem
 
 ### Considerations
 
-The pre-scheduling pass (33) runs before `build_fdeps` and consumes whatever dependency-set members existed then, *kind-agnostically* — its `MemoryLocation` DAG keeps only topological reachability (`EdgePtr & ~7`), discarding the `Flow`/`Anti`/`Output`/`Ordered` tag. It therefore does not — and cannot — depend on the post-allocation anti/output edges, which do not yet exist. `build_fdeps` then rebuilds the flow graph on the now-materialized `PhysicalAccessPattern`s, and `anti_dependency_analyzer` adds the WAR/WAW edges the post-allocation aliasing introduced. The full three-kind edge set is what the post-scheduling pass and the synchronizer / `alloc_semaphores` / `lower_sync` chain consume to emit the actual hardware semaphores. (CONFIRMED on pass order and the post-allocation precondition; STRONG on the pre-scheduling kind-agnostic consumption.)
+The pre-scheduling pass (33) runs before `build_fdeps` and consumes whatever dependency-set members existed then, *kind-agnostically* — its `MemoryLocation` DAG keeps only topological reachability (`EdgePtr & ~7`), discarding the `Flow`/`Anti`/`Output`/`Ordered` tag. It therefore does not — and cannot — depend on the post-allocation anti/output edges, which do not yet exist. `build_fdeps` then rebuilds the flow graph on the now-materialized `PhysicalAccessPattern`s, and `anti_dependency_analyzer` adds the WAR/WAW edges the post-allocation aliasing introduced. The full three-kind edge set is what the post-scheduling pass and the synchronizer / `alloc_semaphores` / `lower_sync` chain consume to emit the actual hardware semaphores. The pass order and the post-allocation precondition are directly established; that the pre-scheduling pass consumes the edge set kind-agnostically is inferred from its `EdgePtr & ~7` masking rather than stated anywhere.
 
 > **GOTCHA —** a reimplementation that builds anti/output edges *before* allocation will find none (every tensor is its own virtual location) and will then under-synchronize the colored program — two reused buffers will race. The edges only exist as a function of the coloring, so the analysis must be re-run, or run for the first time, *after* every allocator that can introduce storage reuse. The `_post_shared_dram` second registration exists for exactly this reason: shared/collective DRAM aliasing is not known until shared-DRAM allocation, so a second anti pass runs after it.
 

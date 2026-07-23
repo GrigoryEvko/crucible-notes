@@ -1,6 +1,6 @@
 # FindCustomOpData Staging, FunctionId Binding and ucode_lib.json
 
-> *All symbols, offsets, and string-pool addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel). The staging job is the Cython extension `neuronxcc/driver/jobs/support/FindCustomOpData.cpython-310-x86_64-linux-gnu.so` (BuildID `09fe533b…`, `with debug_info, not stripped`). The version-binding and packaging logic live in `neuronxcc/starfish/lib/libwalrus.so` (file offset == VA) and its `NEEDED` sibling `libBIR.so`. cp310/cp311/cp312 wheels share an identical `libwalrus.so` `.text` with a fixed per-build VA delta. Evidence anchors: **D-AC02** (staging job + version binding) and **D-AC01** (`ucode_lib.json` packaging). Treat every address as version-pinned.*
+> *All symbols, offsets, and string-pool addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel). The staging job is the Cython extension `neuronxcc/driver/jobs/support/FindCustomOpData.cpython-310-x86_64-linux-gnu.so` (BuildID `09fe533b…`, `with debug_info, not stripped`). The version-binding and packaging logic live in `neuronxcc/starfish/lib/libwalrus.so` (file offset == VA) and its `NEEDED` sibling `libBIR.so`. cp310/cp311/cp312 wheels share an identical `libwalrus.so` `.text` with a fixed per-build VA delta. Treat every address as version-pinned.*
 
 ## Abstract
 
@@ -35,7 +35,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`findCustomOpDataDir()` answers exactly one question: *where on disk is the wheel's `custom_op` data directory?* The eight prebuilt GPSIMD CPU libraries (the SORT/TOPK builtins) ship inside the installed wheel at `neuronxcc/data/custom_op/`. Because the package can in principle be zip-imported, a raw `os.path.join(__file__, …)` would not always yield a real filesystem path; the job uses `importlib.resources` so the resource is materialized to a concrete directory even from a zip. The job has **no** environment override, **no** version logic, and **no** notion of FunctionId — it is pure path resolution. (CONFIRMED: the module imports neither `getenv`/`environ`/`PyOS_getenv` — `nm -D` shows no such symbol — nor carries any `NEURON_*`/`AWS_*`/`ucode`/`isa_version`/`FunctionId`/version string; exhaustive `strings(1)`.)
+`findCustomOpDataDir()` answers exactly one question: *where on disk is the wheel's `custom_op` data directory?* The eight prebuilt GPSIMD CPU libraries (the SORT/TOPK builtins) ship inside the installed wheel at `neuronxcc/data/custom_op/`. Because the package can in principle be zip-imported, a raw `os.path.join(__file__, …)` would not always yield a real filesystem path; the job uses `importlib.resources` so the resource is materialized to a concrete directory even from a zip. The job has **no** environment override, **no** version logic, and **no** notion of FunctionId — it is pure path resolution. The module imports no `getenv` / `environ` / `PyOS_getenv`, and its string pool holds no `NEURON_*` / `AWS_*` / `ucode` / `isa_version` / `FunctionId` / version token.
 
 ### Entry Point
 
@@ -55,7 +55,7 @@ The complete module vocabulary is a short interned string pool (`.rodata`); the 
 
 ```c
 // neuronxcc/driver/jobs/support/FindCustomOpData.py  (Cython)
-// body @ 0x7410 ; STRONG — string-pool + Cython attr-call disasm
+// body @ 0x7410 ; reconstructed from the string pool + Cython attr-call disasm
 function findCustomOpDataDir():
     // 0x750c: attr "resources" off module `importlib`  -> importlib.resources
     // 0x7582: attr "files" on it; 0x759c: call files('neuronxcc')
@@ -71,7 +71,7 @@ function findCustomOpDataDir():
         return os.path.<...>(customOpDataDir)                // concrete directory string
 ```
 
-The two chained `joinpath` calls reuse the same module-state slot (`+0xC0`), and the two remaining interned `u`-strings `data` and `custom_op` are the only path-component arguments left in the pool — natural order gives `joinpath('data')` then `joinpath('custom_op')`. The `__enter__`/`__exit__`/`os`/`path` strings confirm the `with … as f:` block that turns the `Traversable` into a concrete on-disk path before returning. (STRONG.)
+The two chained `joinpath` calls reuse the same module-state slot (`+0xC0`), and the two remaining interned `u`-strings `data` and `custom_op` are the only path-component arguments left in the pool — natural order gives `joinpath('data')` then `joinpath('custom_op')` — though nothing in the pool orders them explicitly. The `__enter__` / `__exit__` / `os` / `path` strings are the `with … as f:` block that turns the `Traversable` into a concrete on-disk path before returning.
 
 > **NOTE —** the *only* path this function can return is `<site-packages>/neuronxcc/data/custom_op/`. There is no search of external directories, no `NEURON_CUSTOM_OP_PATH`-style env override, and no in-module "not found" handling — the existence check belongs to the caller (`Frontend`). A reimplementation that adds an env hook here is over-engineering the wrong layer.
 
@@ -91,13 +91,13 @@ The two chained `joinpath` calls reuse the same module-state slot (`+0xC0`), and
 
 ### Purpose
 
-`findCustomOpDataDir()` returns a directory; it does not check that anything is *in* it. The Python `Frontend` driver job is the actual stager: it calls `findCustomOpDataDir()`, errors if the directory is missing, then for each of the eight builtin library names joins the name onto the directory and existence-checks it with `.is_file()`. Libraries that pass are wired into the BIR pipeline. (CONFIRMED — Frontend `.rodata` carries `findCustomOpDataDir`, `builtin_customop_names`, `builtin_libnames`, the prefix `libbuiltincustomop_cpu`, the error `Custom op data directory not found`, and `is_file`/`getArch`.)
+`findCustomOpDataDir()` returns a directory; it does not check that anything is *in* it. The Python `Frontend` driver job is the actual stager: it calls `findCustomOpDataDir()`, errors if the directory is missing, then for each of the eight builtin library names joins the name onto the directory and existence-checks it with `.is_file()`. Libraries that pass are wired into the BIR pipeline. *Anchors: `Frontend` `.rodata` carries `findCustomOpDataDir`, `builtin_customop_names`, `builtin_libnames`, the prefix `libbuiltincustomop_cpu`, the error `Custom op data directory not found`, and `is_file` / `getArch`.*
 
 ### Algorithm
 
 ```c
 // neuronxcc/driver/jobs/Frontend  ── custom-op staging step
-// STRONG — string-pool + standard pathlib idiom
+// reconstructed from the string pool + the standard pathlib idiom
 function Frontend_stage_custom_ops(arch):
     data_dir = findCustomOpDataDir()                 // the in-wheel custom_op dir
     if not os.path.isdir(data_dir):
@@ -110,7 +110,7 @@ function Frontend_stage_custom_ops(arch):
     // user custom ops: the user-provided lib dir is wired in separately (getArch-gated)
 ```
 
-The library names are built from the prefix `libbuiltincustomop_cpu` plus an index, matching the eight `*.stripped.so` files on disk. `getArch`/`default` in the same pool indicate the staged set is arch-selected — the builtin set is offered for every target, while user-supplied custom-op directories are wired in per `getArch`. (The precise `getArch` control flow is STRONG, not byte-traced: the `Frontend` body was not fully decompiled, only its string pool mined.)
+The library names are built from the prefix `libbuiltincustomop_cpu` plus an index, matching the eight `*.stripped.so` files on disk. `getArch`/`default` in the same pool indicate the staged set is arch-selected — the builtin set is offered for every target, while user-supplied custom-op directories are wired in per `getArch`. The precise `getArch` control flow is not byte-traced — the `Frontend` body was never fully decompiled, only its string pool read.
 
 ### The staged artifacts
 
@@ -122,7 +122,7 @@ neuronxcc/data/custom_op/
   libbuiltincustomop_cpu7.stripped.so   579380 B   cpu_id 7
 ```
 
-Eight files, identical size, distinct sha256 per RECORD — one per GPSIMD core (`cpu_id = 0..7`, `total_cpus = 8`). These are the `is_builtin=true` SORT/TOPK GPSIMD builtins. (CONFIRMED on disk; the per-lib `cpu_id`/`total_cpus` *byte values* are filled in upstream by codegen — see the registry section — and are INFERRED from the file naming, not statically pinned per lib.)
+Eight files, identical size, distinct sha256 per RECORD — one per GPSIMD core (`cpu_id = 0..7`, `total_cpus = 8`). These are the `is_builtin=true` SORT/TOPK GPSIMD builtins. The files themselves are on disk. The per-lib `cpu_id` / `total_cpus` *byte values* are filled in upstream by codegen (see the registry section) and are [INFERRED] from the file naming rather than statically pinned per library.
 
 > **GOTCHA —** `ucode_lib.json` is **not** shipped in the wheel. The `custom_op` data dir contains only the eight `*.stripped.so`. The JSON is generated per-build and embedded in the NEFF. So a reimplementer cannot read the concrete version numbers off the wheel — they originate from each custom-op library's build metadata at registration time.
 
@@ -148,13 +148,13 @@ bodies in libBIR.so; reached from libwalrus via PLT thunks:
   addCustomOpFunction         thunk @ libwalrus 0x605350
 ```
 
-> **NOTE —** in the shipped `.so` corpus these three symbols resolve only to 6-byte PLT thunks (`jmp cs:off_…`); the real bodies are static-archive copies in `libBIR.so` that Hex-Rays did not lift. The signatures below are recovered from the mangled names and the D-AC01/D-AC02 IDA-DB body analysis; the `.so` sidecars confirm the thunks and the argument types, not the instruction sequences.
+> **NOTE —** in the shipped `.so` corpus these three symbols resolve only to 6-byte PLT thunks (`jmp cs:off_…`); the real bodies are static-archive copies in `libBIR.so` that Hex-Rays did not lift. The signatures below are recovered from the mangled names plus the IDA-database body analysis; the `.so` sidecars give the thunks and the argument types, not the instruction sequences.
 
 ### Algorithm — allocateCustomOpFunctionId
 
 ```c
 // bir::ModuleArtifactInfo::allocateCustomOpFunctionId()
-// STRONG — body from D-AC01/D-AC02 IDA DB; thunk confirmed @ libwalrus 0x603ec0
+// body reconstructed from the IDA database; the corpus exposes only the thunk @ libwalrus 0x603ec0
 uint32 allocateCustomOpFunctionId(this):
     id = this->nextCustomOpFnId;        // uint32 counter (this+0xF0 / +240)
     this->nextCustomOpFnId = id + 1;    // post-increment
@@ -169,8 +169,8 @@ A plain monotonic per-**module** counter: FunctionIds are dense `0,1,2,…` in a
 // bir::ModuleArtifactInfo::addCustomOpLibFile(string file_name, string ulib2ucode,
 //                                             string ulib2isa, bool is_builtin,
 //                                             uint8 cpu_id, uint8 total_cpus)
-// mangled tail ...S6_S6_bhh  =>  (string,string,string, bool,uchar,uchar)  [CONFIRMED sig]
-// body @ libBIR; dedup/version guard from D-AC01 §5 / D-AC02 §3
+// mangled tail ...S6_S6_bhh  =>  (string,string,string, bool,uchar,uchar)
+// body @ libBIR; dedup/version guard reconstructed from the IDA database
 void addCustomOpLibFile(this, file_name, ulib2ucode, ulib2isa, is_builtin, cpu_id, total_cpus):
     it = customOpLibs.find(file_name)            // map @ ModuleArtifactInfo+0xA0 (seed 0xC70F6907)
     if it != end:
@@ -194,7 +194,7 @@ The key is `file_name`, so each of `libbuiltincustomop_cpu0.so … _cpu7.so` is 
 
 ```c
 // bir::ModuleArtifactInfo::addCustomOpFunction(string lib_name, string fn_name, uint id)
-// mangled tail ...S6_j  =>  (string,string, unsigned int)   [CONFIRMED sig]
+// mangled tail ...S6_j  =>  (string,string, unsigned int)
 void addCustomOpFunction(this, lib_name, fn_name, id):
     auto& e = customOpLibs.at(lib_name)          // reportError if lib not yet registered
     e.functions[fn_name] = (uint8)id             // 32-bit id TRUNCATED to one byte
@@ -214,7 +214,7 @@ The library must already exist (so `addCustomOpLibFile` precedes `addCustomOpFun
 | `total_cpus` | `+0x62` | `uint8` | `total_cpus` (json uint, type 6) |
 | `functions` | `+0x78` | `unordered_map<string,uint8>` | `functions` (`name → byte`) |
 
-`sizeof(CustomOpLibInfo) ≈ 0xD0` (the `operator new(0xD0u)` at the emplace site). The three `std::string` fields are `0x20` apart (libstdc++ SSO: data ptr + size + 16-byte SSO buffer). (CONFIRMED offsets from the `to_json` reader and the live-node reads in `writeUCodeLibDefinitions`; the `from_json`/`to_json` bodies are PLT thunks in the corpus, so the struct offsets are grounded in the D-AC01 IDA-DB analysis cross-checked against the packager's live reads.)
+`sizeof(CustomOpLibInfo) ≈ 0xD0` (the `operator new(0xD0u)` at the emplace site). The three `std::string` fields are `0x20` apart (libstdc++ SSO: data ptr + size + 16-byte SSO buffer). The offsets come from the `to_json` reader and the live-node reads in `writeUCodeLibDefinitions`. Because the `from_json` / `to_json` bodies survive only as PLT thunks, those offsets rest on the IDA-database analysis, cross-checked against the packager's live reads.
 
 > **QUIRK —** the *map* value type is `unordered_map<string,uchar>` even though the field name is `functions`. The value byte is the FunctionId/`sub_opcode`, not a pointer. Two serializations of the same struct exist: `libBIR` `to_json` emits `functions` as a JSON object `{name: byte}`; the NEFF packager re-walks the same nodes to emit `functions` as an *array* of `{name, opcode, sub_opcode}`. Same underlying container, two JSON shapes.
 
@@ -242,7 +242,7 @@ writeDefJson  @ libwalrus 0x152a0e0          ── builds def.json, sole caller
 ```c
 // NeffPackager::writeUCodeLibDefinitions(json& defJson, json& ucodeLibDoc,
 //        NeffFileWriter& w, bir::Module const& m, fs::path const& dir)
-// body @ libwalrus 0x1522d60 ; CONFIRMED — JSON key literals in disasm
+// body @ libwalrus 0x1522d60 ; JSON key literals read from the disassembly
 void writeUCodeLibDefinitions(defJson, ucodeLibDoc, w, m, dir):
     if (m[+0x190] == 0) return                    // 0x1522d71 — lib-set count guard; empty => nothing
     json arr = json::array()
@@ -288,7 +288,7 @@ void writeUCodeLibDefinitions(defJson, ucodeLibDoc, w, m, dir):
 }
 ```
 
-Every JSON key is a string literal at a contiguous file-offset run in `libwalrus.so` (CONFIRMED by `strings -t x`): `library` @ `0x1c8664f`, `ulib_to_ucode_version` @ `0x1c86657`, `ulib_to_isa_version` @ `0x1c8666d`, `is_builtin` @ `0x1c86681`, `cpu_id` @ `0x1c8668c`, `total_cpus` @ `0x1c86693`, `ucode_lib` @ `0x1c8669e`, `ucode_lib.json` @ `0x1c866a8`. The short keys `name`/`sub_opcode` are SSO-inlined (strcpy'd into the json node, not pooled), which is why they are absent from the contiguous `0x1c866xx` run; `opcode` is present but pooled separately at `0x1c78808`, outside that run.
+Every JSON key is a string literal in one contiguous file-offset run in `libwalrus.so`: `library` @ `0x1c8664f`, `ulib_to_ucode_version` @ `0x1c86657`, `ulib_to_isa_version` @ `0x1c8666d`, `is_builtin` @ `0x1c86681`, `cpu_id` @ `0x1c8668c`, `total_cpus` @ `0x1c86693`, `ucode_lib` @ `0x1c8669e`, `ucode_lib.json` @ `0x1c866a8`. The short keys `name`/`sub_opcode` are SSO-inlined (strcpy'd into the json node, not pooled), which is why they are absent from the contiguous `0x1c866xx` run; `opcode` is present but pooled separately at `0x1c78808`, outside that run.
 
 > **QUIRK —** `opcode` is **always** the constant `133` (`0x85` = `CUSTOM_OP` header) — it is never read from the struct; the immediate is baked in at `0x1522f61`. The *per-function* discriminator is `sub_opcode`, the FunctionId byte. The nlohmann `value_t` tags confirm `opcode:133` is a **signed** integer (type 5) while `cpu_id`/`total_cpus`/`sub_opcode` are **unsigned** (type 6) and `is_builtin` is a bool (type 4).
 
@@ -325,25 +325,39 @@ The seam is clean: the Python layer owns *location* (no policy), codegen owns *b
 
 ---
 
-## Adversarial verification of the five strongest claims
+## Evidence summary and limits of this reading
 
-| # | Claim | Tag | How re-verified |
-|---|---|---|---|
-| 1 | `findCustomOpDataDir` has **no env probing** | CONFIRMED | `nm -D` on the module shows no `getenv`/`environ`/`PyOS_getenv` import; `strings` shows no `NEURON_*`/`AWS_*`/`getenv`. The 9 `_PATH`-regex hits were all false positives (`__path__`, `data_path`) — none is an env var. |
-| 2 | `findCustomOpDataDir` has **no version/FunctionId logic** | CONFIRMED | Exhaustive `strings(1)`: the only domain nouns are `importlib`/`files`/`joinpath`/`data`/`custom_op`/`os`/`path`; no `ucode`/`isa`/`version`/`FunctionId` (the only "version" hits are Cython binary-version boilerplate). |
-| 3 | `allocateCustomOpFunctionId` is a **monotonic `uint32`** | STRONG | The corpus exposes only a 6-byte PLT thunk (`jmp cs:off_…` @ `0x457fa0`/`0x603ec0`); the post-increment body is from the D-AC01/D-AC02 IDA-DB analysis, consistent with the truncate-to-byte `sub_opcode` cap of ≤256. Not re-derivable from the `.so` sidecars (thunk only) → STRONG not CONFIRMED. |
-| 4 | `addCustomOpLibFile` is the **6-arg** sink | CONFIRMED | Mangled tail `…S6_S6_bhh` decodes to `(string,string,string,bool,uchar,uchar)`; matches the D-AC01 demangled signature. |
-| 5 | `ucode_lib.json` schema keys + `opcode:133` | CONFIRMED | All JSON keys are contiguous string literals at `libwalrus` file offsets `0x1c8664f`–`0x1c866a8` (`strings -t x`); `opcode` is the immediate `133` at `0x1522f61`. |
+Four of this page's claims are settled by direct inspection.
 
-> **CORRECTION (AC02-self) —** an initial grep `_PATH` over `FindCustomOpData` returned 9 hits and momentarily looked like an env-var leak. Inspection showed every hit is a substring of `__path__`/`data_path`/`path` — Python dunder and the local variable, not an environment variable. The no-env finding stands.
+That `findCustomOpDataDir` does **no environment probing** is a negative result read two ways:
+`nm -D` on the module shows no `getenv` / `environ` / `PyOS_getenv` import, and its strings
+contain no `NEURON_*` / `AWS_*` / `getenv` token. (A `_PATH` regex over the module returns
+nine hits, but every one is a substring of `__path__`, `data_path`, or `path` — Python dunders
+and locals, not environment variables.) It likewise has **no version or FunctionId logic**:
+the only domain nouns in its pool are `importlib`, `files`, `joinpath`, `data`, `custom_op`,
+`os`, and `path`; the only "version" hits are Cython binary-version boilerplate.
 
----
+`addCustomOpLibFile` is the six-argument sink — its mangled tail `…S6_S6_bhh` decodes to
+`(string, string, string, bool, uchar, uchar)`. And the `ucode_lib.json` schema is fully
+literal: every key sits in the contiguous `libwalrus` file-offset run
+`0x1c8664f`–`0x1c866a8`, with `opcode` the immediate `133` at `0x1522f61`.
 
-## Open items
+The rest of the page rests on softer ground, all for the same reason — several bodies survive
+in the corpus only as PLT thunks.
 
-- The precise `Frontend` control flow that selects the builtin `cpu0..7` set versus a user-supplied custom-op directory per `getArch` is **STRONG** (string-pool), not byte-traced — the `Frontend` body was not fully decompiled.
-- The `from_json`/`to_json`/`addCustomOp*`/`allocate*` *bodies* survive in the corpus only as PLT thunks; their struct offsets and instruction sequences are grounded in the D-AC01/D-AC02 IDA-DB analysis cross-checked against the packager's live reads, and are marked STRONG where not independently re-derivable here.
-- The per-lib `cpu_id`/`total_cpus`/`is_builtin` **byte values** for the eight shipped builtins (`cpu_id 0..7`, `total_cpus 8`, `is_builtin true`) are INFERRED from the file naming and the field types; they are filled in upstream by `visitInstCustomOp` and not statically pinned per lib in the wheel.
+- `allocateCustomOpFunctionId` being a monotonic `uint32` comes from the IDA-database
+  analysis, not from the `.so` sidecars, which expose only a 6-byte thunk
+  (`jmp cs:off_…` @ `0x457fa0` / `0x603ec0`). It is consistent with the truncate-to-byte
+  `sub_opcode` cap of ≤256, but is not independently re-derivable here.
+- The same applies to the `from_json` / `to_json` / `addCustomOp*` / `allocate*` bodies: their
+  struct offsets and instruction sequences are grounded in that database analysis,
+  cross-checked against the packager's live reads.
+- The `Frontend` control flow that picks the builtin `cpu0..7` set versus a user-supplied
+  custom-op directory per `getArch` is read from the string pool, never byte-traced.
+- The per-library `cpu_id` / `total_cpus` / `is_builtin` **byte values** for the eight shipped
+  builtins (`cpu_id 0..7`, `total_cpus 8`, `is_builtin true`) are [INFERRED] from the file
+  naming and the field types; they are filled in upstream by `visitInstCustomOp` and are not
+  statically pinned per library in the wheel.
 
 ---
 
