@@ -39,7 +39,7 @@ For reimplementation, the contract is:
 
 ### The abstract base is pure-virtual
 
-`bir::Hwm` is declared in `libBIR.so`. Its compiled body is a wall of abort stubs: every per-opcode `getLatency`, the helpers, and the latency-table accessors are pure virtuals that `__assert_fail` when reached on the base. The assert strings are recoverable verbatim from `libBIR.so`, all carrying the `…/neuronxcc/walrus/ir/lib/IR/Hwm.cpp` source path **[CONFIRMED — `strings libBIR.so`]**:
+`bir::Hwm` is declared in `libBIR.so`. Its compiled body is a wall of abort stubs: every per-opcode `getLatency`, the helpers, and the latency-table accessors are pure virtuals that `__assert_fail` when reached on the base. The assert strings are recoverable verbatim from `libBIR.so`, all carrying the `…/neuronxcc/walrus/ir/lib/IR/Hwm.cpp` source path:
 
 ```text
 false && "getLatencyHelper not implemented"
@@ -50,9 +50,9 @@ false && "getSBtoDRAMLatency not implemented"
 … (one per opcode / helper)
 ```
 
-The base therefore carries **no numbers** — it is an interface. Each opcode's cost is a vtable slot; a chip generation supplies its formulas by overriding the slots it cares about, and any opcode a subclass does *not* override hits the base abort and is excluded from cost accounting (control-flow ops — `InstLoop`, `InstDoWhile`, `Return`, barriers — are scheduled on the event model below, not cycle-costed). The base typeinfo is `_ZTIN3bir3HwmE` @ `0x3fd76d8` in `libwalrus.so` **[CONFIRMED — names table]**.
+The base therefore carries **no numbers** — it is an interface. Each opcode's cost is a vtable slot; a chip generation supplies its formulas by overriding the slots it cares about, and any opcode a subclass does *not* override hits the base abort and is excluded from cost accounting (control-flow ops — `InstLoop`, `InstDoWhile`, `Return`, barriers — are scheduled on the event model below, not cycle-costed). The base typeinfo is `_ZTIN3bir3HwmE` @ `0x3fd76d8` in `libwalrus.so`.
 
-> **CONFIRMED — exactly three concrete subclasses.** `nm`/IDA names of `libwalrus.so` contain `_ZTV`/`_ZTI`/`_ZTS` (vtable/typeinfo/typename) triples for precisely **`TrainiumHwm`, `Gen3Hwm`, `CoreV4Hwm`** and no others. There is no separate `SundaHwm` or `CaymanHwm` class — "Sunda"/"Cayman" are the codenames *served by* `Gen3Hwm`. Each subclass also exposes a `registerSingleton()` (`0x7e4c90` / `0x7e4f80` / `0x7e5270`) that installs it into the registry below.
+> **NOTE — exactly three concrete subclasses.** `nm`/IDA names of `libwalrus.so` contain `_ZTV`/`_ZTI`/`_ZTS` (vtable/typeinfo/typename) triples for precisely **`TrainiumHwm`, `Gen3Hwm`, `CoreV4Hwm`** and no others. There is no separate `SundaHwm` or `CaymanHwm` class — "Sunda"/"Cayman" are the codenames *served by* `Gen3Hwm`. Each subclass also exposes a `registerSingleton()` (`0x7e4c90` / `0x7e4f80` / `0x7e5270`) that installs it into the registry below.
 
 | Concrete oracle | Codename / generation | ctor | vtable (`_ZTV…`) | vptr (= symbol + 0x10) |
 |---|---|---|---|---|
@@ -60,7 +60,7 @@ The base therefore carries **no numbers** — it is an interface. Each opcode's 
 | `Gen3Hwm` | Sunda · Cayman / trn2 | `0x185b370` | `0x3da5770` | `0x3da5780` |
 | `CoreV4Hwm` | CoreV4 · Mariana / trn3 | `0x18606c0` | `0x3da6630` | `0x3da6640` |
 
-> **CORRECTION (vs D-G14 §0).** The backing report cited the Trainium/Gen3 vtables as `off_3DA48C0` / `off_3DA61C0`. The `_ZTV` **symbol** bases are `0x3da48b0` / `0x3da5770`; `0x3da48c0` is the *vptr* (symbol + 0x10, past the offset-to-top and typeinfo header). The report's `0x3DA61C0` for Gen3 does not match the symbol table (`_ZTV7Gen3Hwm` @ `0x3da5770`); use the symbol-table values above. This is the standard two-VA / vptr-base artifact — the formula bodies the report cites are unaffected.
+> **GOTCHA — vtable symbol base vs vptr.** The addresses above are `_ZTV` **symbol** bases. The *vptr* an object actually stores is the symbol + 0x10, past the offset-to-top and typeinfo header — so `TrainiumHwm`'s vptr reads as `0x3da48c0`, not `0x3da48b0`. Slot indices measured from the symbol rather than the vptr come out 0x10 too low.
 
 ### The singleton registry
 
@@ -68,10 +68,10 @@ A consumer never constructs a `Hwm` directly. `bir::Hwm::getSingleton(std::strin
 
 ### `getLatency` composes three phases
 
-Every per-opcode `getLatency(InstX)` sums three vtable-dispatched phases, verified firsthand from `TrainiumHwm::getLatency(InstMatmult)` @ `0x1852af0` **[CONFIRMED — D-G14]**:
+Every per-opcode `getLatency(InstX)` sums three vtable-dispatched phases, read from `TrainiumHwm::getLatency(InstMatmult)` @ `0x1852af0`:
 
 ```c
-// bir::Hwm::getLatency(InstX) — the three-phase composition.  [CONFIRMED 0x1852af0]
+// bir::Hwm::getLatency(InstX) — the three-phase composition.
 // Per-opcode the three phase slots sit 880 bytes apart in the vtable (readInit/exec/
 // writeDrain for ONE opcode), and adjacent opcodes are +8 within a phase band.
 uint64 getLatency(const InstX &inst) {
@@ -88,7 +88,7 @@ The phase slots are dispatched through three vtable bands separated by **880 byt
 
 ### The shared 100-cycle-unit machinery
 
-Three helpers do the arithmetic for nearly every opcode. They share a "model-cycle" unit: the constant **100** scaled by a per-engine *frequency divisor* (an elements-per-100-model-cycles throughput number, **not** silicon MHz). Verified firsthand from the `TrainiumHwm` bodies **[CONFIRMED — D-G14]**:
+Three helpers do the arithmetic for nearly every opcode. They share a "model-cycle" unit: the constant **100** scaled by a per-engine *frequency divisor* (an elements-per-100-model-cycles throughput number, **not** silicon MHz). Read from the `TrainiumHwm` bodies:
 
 ```c
 // getLatencyHelper @0x1853140  [TrainiumHwm vtable+88]
@@ -107,7 +107,7 @@ uint64 getOverheadLatencyHelper(double base, double freq, ...)
     { return (uint64) floor( base * 100.0 / freq ); }
 ```
 
-**Engine-frequency divisor table** (`getEngineFrequency`, verified firsthand). The branch tests the internal `bir::EngineType` ordinal: the data/systolic band (`engine ∈ [1,3]`) uses the datapath divisor, the SP/scalar branch (`engine == 5`) uses the SP divisor, and the remaining ordinals abort (they are never the engine on a cost-modeled instruction):
+**Engine-frequency divisor table** (`getEngineFrequency`). The branch tests the internal `bir::EngineType` ordinal: the data/systolic band (`engine ∈ [1,3]`) uses the datapath divisor, the SP/scalar branch (`engine == 5`) uses the SP divisor, and the remaining ordinals abort (they are never the engine on a cost-modeled instruction):
 
 | Engine band | Tonga (`TrainiumHwm`) | Sunda (`Gen3Hwm`) | CoreV4 (`CoreV4Hwm`) | anchor |
 |---|---|---|---|---|
@@ -119,7 +119,7 @@ CoreV4 is unified (120 everywhere). These divisors are the throughput knob: a hi
 
 ### Representative concrete formulas
 
-The standalone K-only estimators (used by pre-schedule passes that have a tile's K dimension but no access patterns) bypass the NEP scan and are verified byte-for-byte **[CONFIRMED — D-G14]**:
+The standalone K-only estimators — used by pre-schedule passes that have a tile's K dimension but no access patterns — bypass the NEP scan entirely:
 
 ```c
 // TrainiumHwm::getLatencyMatmult(uint K)  @0x1851800  (Gen3 0x1857c30, CoreV4 0x185e4d0)
@@ -148,7 +148,7 @@ The **CoreV4 activation** cost (`getLatency(InstActivation)` @ `0x185fb10`) is `
 
 The dtype-size table is three bit-identical 20-qword arrays (Tonga `0x1E1B0C0`, Gen3 `0x1E1B1C0`, CoreV4 `0x1E1B2C0`): `[1,1,2,1,1,1,1,1,4,4,2,2,2,2,4,4,4,4,8,8]` (byte sizes of the 20 BIR dtype codes), consumed by every byte-rate exec formula.
 
-> The full per-opcode formula catalogue (TensorTensor / Select / GenericCopy / CollectiveCompute / Rand / IndirectLoad and the `mult ∈ {1.0, 2.0, 3.0}` dtype selectors) is exhaustively tabulated in the D-G14 backing pass; the items above are the structurally representative ones a reimplementer needs to rebuild the helper machinery.
+> **NOTE —** the items above are the structurally representative formulas: enough to rebuild the helper machinery. The full per-opcode catalogue (TensorTensor / Select / GenericCopy / CollectiveCompute / Rand / IndirectLoad, plus the `mult ∈ {1.0, 2.0, 3.0}` dtype selectors) follows the same three-helper shape.
 
 ---
 
@@ -158,7 +158,7 @@ The dtype-size table is three bit-identical 20-qword arrays (Tonga `0x1E1B0C0`, 
 
 ### The `SimEngineId` enum and `all_timelines[12]`
 
-The simulator keys everything off a twelve-valued engine identifier. The switch in `simEngineId2string` @ `0x1657410` has cases **0,1,2,3,4,5,6, then 8,9,0xA,0xB,0xC** — a deliberate **gap at 7** **[CONFIRMED — decompiled body]**:
+The simulator keys everything off a twelve-valued engine identifier. The switch in `simEngineId2string` @ `0x1657410` has cases **0,1,2,3,4,5,6, then 8,9,0xA,0xB,0xC** — a deliberate **gap at 7**:
 
 ```c
 enum class SimEngineId : uint32 {           // simEngineId2string @0x1657410 switch
@@ -178,9 +178,9 @@ enum class SimEngineId : uint32 {           // simEngineId2string @0x1657410 swi
 };
 ```
 
-`is_collective_compute_sim_engine_id(id) == ((unsigned)(id - 8) <= 3)` — the string `is_collective_compute_sim_engine_id(engine_id)` appears verbatim in the assertion at `perf_sim.cpp:96` **[CONFIRMED — strings]**.
+`is_collective_compute_sim_engine_id(id) == ((unsigned)(id - 8) <= 3)` — the string `is_collective_compute_sim_engine_id(engine_id)` appears verbatim in the assertion at `perf_sim.cpp:96`.
 
-> **CONFIRMED — `all_timelines` has twelve elements.** `PerfSim::init` @ `0x1663850` allocates `all_timelines` (a `std::vector<std::vector<SimEvent>>`) sized to **12** = `NumSimEngineIds`, the vector handle at `PerfSim+96`. `get_overall_end` @ `0x1657c50` iterates exactly these twelve inner vectors (`this+96`, inner-handle stride 24). The DMA-queue vector is a separate, **13**-element array (queue ids 0..12) at `PerfSim+16`.
+> **NOTE — `all_timelines` has twelve elements.** `PerfSim::init` @ `0x1663850` allocates `all_timelines` (a `std::vector<std::vector<SimEvent>>`) sized to **12** = `NumSimEngineIds`, the vector handle at `PerfSim+96`. `get_overall_end` @ `0x1657c50` iterates exactly these twelve inner vectors (`this+96`, inner-handle stride 24). The DMA-queue vector is a separate, **13**-element array (queue ids 0..12) at `PerfSim+16`.
 
 The instruction → engine map lives only in `get_timeline` @ `0x1657730` / `get_sim_engine_id` @ `0x1664d90`; everything else in the simulator is engine-id-agnostic. The decision is on the BIR opcode (`Inst+0x58`), with a quirk worth pinning:
 
@@ -195,14 +195,16 @@ The instruction → engine map lives only in `get_timeline` @ `0x1657730` / `get
 //   default                    -> slot = EngineType field (Inst+0x90)   // Pool/Act/PE/DVE/SP
 ```
 
-> **CORRECTION (adopted from D-AD01 verification pass).** The `byte_1E02420` engine-typed-opcode set is `{19, 22, 32, 41, 42, 43, 44, 45, 46, 67}` — verified by `xxd @0x1E02420` (bytes `==1` at indices 0,3,13,22,23,24,25,26,27,48). The D-AD01 *draft* had listed `{…40…68}`; the truth is `41` and `67`. Among the ten, **only opcode 67 (`InstDMATrigger`) routes by the `EngineType` field**; the other nine land on the DMA timeline. The final `default` fallthrough routes by `EngineType`, **not** to DMA. Do not assume opcode == engine in this build.
+The `byte_1E02420` engine-typed-opcode set is `{19, 22, 32, 41, 42, 43, 44, 45, 46, 67}` — the bytes reading `==1` at indices 0, 3, 13, 22, 23, 24, 25, 26, 27, 48. Among the ten, **only opcode 67 (`InstDMATrigger`) routes by the `EngineType` field**; the other nine land on the DMA timeline. The final `default` fallthrough also routes by `EngineType`, not to DMA.
+
+> **GOTCHA —** opcode is not engine in this build. Nine of the ten engine-typed opcodes go to the DMA timeline regardless of their `EngineType`, and only `InstDMATrigger` (67) consults the field.
 
 ### `SimEvent` is 56 bytes
 
-Each instruction becomes exactly one `SimEvent`. The record is **56 bytes** — confirmed firsthand: `get_event` @ `0x1657810` returns `*get_timeline(inst) + 56*index`, and every timeline realloc copy loop strides 56 **[CONFIRMED — decompiled `get_event`: `… + 56LL * index`]**:
+Each instruction becomes exactly one `SimEvent`. The record is **56 bytes** — confirmed firsthand: `get_event` @ `0x1657810` returns `*get_timeline(inst) + 56*index`, and every timeline realloc copy loop strides 56:
 
 ```c
-struct SimEvent {                 // sizeof == 56 (0x38)   [CONFIRMED 0x1657810]
+struct SimEvent {                 // sizeof == 56 (0x38) 
     uint64            start_time; // [+0]  cycle this op begins
     uint64            duration;   // [+8]  == cost (cycles); end = start + duration
     bir::Instruction *inst;       // [+16] the op
@@ -218,7 +220,7 @@ A timeline is `std::vector<SimEvent>` (24-byte handle); `all_timelines` is `std:
 
 ### `PerfSim` object layout (the fields the algorithm reads)
 
-Triangulated from the ctor (`0x165a7f0`), `init`, and every field read in `add_instruction` / `determine_start_time` / `get_cost` **[mix of CONFIRMED / STRONG — see D-AD01 V8]**:
+Triangulated from the ctor (`0x165a7f0`), `init`, and every field read in `add_instruction` / `determine_start_time` / `get_cost`:
 
 | off | field | role |
 |---|---|---|
@@ -238,11 +240,11 @@ Triangulated from the ctor (`0x165a7f0`), `init`, and every field read in `add_i
 | +280 | `float[70]` = `a4 ? a3 : 0.25` | collective-overlap weight B |
 | +285 | `include_anti_deps` = ctor `a5` | gate in `inst_ready_time`: honor anti-dep (kind-2) edges iff set |
 
-`xmmword_1DD7AC0` @ `0x1DD7AC0` = `14 05 00 00 … 64 00 00 00 …` = `{1300, 100}` (two uint64) **[CONFIRMED — `xxd`]**.
+`xmmword_1DD7AC0` @ `0x1DD7AC0` = `14 05 00 00 … 64 00 00 00 …` = `{1300, 100}` (two uint64).
 
 ### `add_instruction` — the scheduling core
 
-`add_instruction(Inst *I, uint64 floor, SimEngineId override, Inst *dma_xfer)` @ `0x165fa30` places one instruction. In execution order **[CONFIRMED — D-AD01 §3 / V4, all 1068 lines re-read]**:
+`add_instruction(Inst *I, uint64 floor, SimEngineId override, Inst *dma_xfer)` @ `0x165fa30` places one instruction. In execution order:
 
 ```c
 void add_instruction(Inst *I, uint64 floor, SimEngineId override, Inst *xfer) {
@@ -278,11 +280,11 @@ void add_instruction(Inst *I, uint64 floor, SimEngineId override, Inst *xfer) {
 }
 ```
 
-The DMA-trigger assertion is real: the strings `PerfSim::add_instruction requires the DMA transfer instruction as an argument when adding a DMA trigger.` and `…/perf_sim.cpp:654` are both present in `libwalrus.so` (`perf_sim.cpp:654` @ `0x1d83c80`) **[CONFIRMED — strings]**. The queue element is a `std::pair<trigger_inst, transfer_inst>`: the trigger is zero-cost and fast, the transfer lands later, and the simulator tracks both halves through the queue and the `inst_ready_time` recursion below.
+The DMA-trigger assertion is real: the strings `PerfSim::add_instruction requires the DMA transfer instruction as an argument when adding a DMA trigger.` and `…/perf_sim.cpp:654` are both present in `libwalrus.so` (`perf_sim.cpp:654` @ `0x1d83c80`). The queue element is a `std::pair<trigger_inst, transfer_inst>`: the trigger is zero-cost and fast, the transfer lands later, and the simulator tracks both halves through the queue and the `inst_ready_time` recursion below.
 
 ### Dependency stall and the asynchronous-DMA semantics
 
-`inst_ready_time` @ `0x16578c0` walks the producer-edge list and returns the max over producers of each producer's completion time — except a DMA-trigger producer contributes its **issue** time, and the simulator recurses into the paired transfer **[CONFIRMED — D-AD01 §9 / V7]**:
+`inst_ready_time` @ `0x16578c0` walks the producer-edge list and returns the max over producers of each producer's completion time — except a DMA-trigger producer contributes its **issue** time, and the simulator recurses into the paired transfer:
 
 ```c
 uint64 inst_ready_time(Inst *I) {                       // 0x16578c0
@@ -305,7 +307,7 @@ uint64 inst_ready_time(Inst *I) {                       // 0x16578c0
 }
 ```
 
-`get_event_next_dispatch` @ `0x1657650` is the **issue-throughput vs latency** distinction: an engine can issue its *next* op before the current op completes, by an overlap window — **100 cycles for compute engines, 1300 for DMA**, zero for CC streams and `InstDMATrigger` **[CONFIRMED — D-AD01 V3; note the draft had these swapped]**:
+`get_event_next_dispatch` @ `0x1657650` is the **issue-throughput vs latency** distinction: an engine can issue its *next* op before the current op completes, by an overlap window — **100 cycles for compute engines, 1300 for DMA**, zero for CC streams and `InstDMATrigger`:
 
 ```c
 uint64 get_event_next_dispatch(SimEvent &ev) {          // 0x1657650
@@ -320,7 +322,7 @@ uint64 get_event_next_dispatch(SimEvent &ev) {          // 0x1657650
 
 ### Engine-parallelism and serialization
 
-`determine_start_time` @ `0x165ad90` folds every serialization source into the start time **[CONFIRMED — D-AD01 §6 / V5]**:
+`determine_start_time` @ `0x165ad90` folds every serialization source into the start time:
 
 ```c
 uint64 determine_start_time(uint64 ready, SimEngineId e,
@@ -347,7 +349,7 @@ uint64 determine_start_time(uint64 ready, SimEngineId e,
 }
 ```
 
-`xmmword_1DD7AD0` @ `0x1DD7AD0` = `02 00 00 00 05 00 00 00 03 00 00 00 01 00 00 00` = int32 `{2,5,3,1}` = `{Activation, DVE, PE, Pool}`; `determine_start_time` appends a literal `6` (SP) → the engine-7 barrier set is `{Act, DVE, PE, Pool, SP}` **[CONFIRMED — `xxd`]**. Pool (1) and DVE (5) **mutually serialize** on `arch_version <= 29` (they share an issue port); Activation additionally clamps to the Pool/DVE writer-ends. Concurrency is *emergent*: two ops on different engines whose maxes don't reference each other proceed in parallel.
+`xmmword_1DD7AD0` @ `0x1DD7AD0` = `02 00 00 00 05 00 00 00 03 00 00 00 01 00 00 00` = int32 `{2,5,3,1}` = `{Activation, DVE, PE, Pool}`; `determine_start_time` appends a literal `6` (SP) → the engine-7 barrier set is `{Act, DVE, PE, Pool, SP}`. Pool (1) and DVE (5) **mutually serialize** on `arch_version <= 29` (they share an issue port); Activation additionally clamps to the Pool/DVE writer-ends. Concurrency is *emergent*: two ops on different engines whose maxes don't reference each other proceed in parallel.
 
 ### Cost readout and the collective bandwidth divide
 
@@ -362,7 +364,7 @@ uint64 get_cost(Inst *I) {                              // 0x165ba70
 }
 ```
 
-`get_collective_compute_stream_bandwidth` @ `0x165b000` (asserts `eng ∈ 8..11`, `perf_sim.cpp:96`) returns the per-arch HBM-share fraction **[CONFIRMED — D-AD01 §8 / V6]**:
+`get_collective_compute_stream_bandwidth` @ `0x165b000` (asserts `eng ∈ 8..11`, `perf_sim.cpp:96`) returns the per-arch HBM-share fraction:
 
 ```c
 // arch 0 (Trainium): 1.0 for all CC streams
@@ -371,17 +373,17 @@ uint64 get_cost(Inst *I) {                              // 0x165ba70
 // arch 3+:           -1.0 (unmodelled sentinel)
 ```
 
-`flt_1E02410` @ `0x1E02410` = `00 00 00 3f · 00 00 80 3e · 00 00 80 3e · 00 00 00 00` = `{0.5, 0.25, 0.25, 0.0}` **[CONFIRMED — `xxd`]**. A 0.25-bandwidth stream therefore costs 4× its nominal latency — it shares the HBM link four ways.
+`flt_1E02410` @ `0x1E02410` = `00 00 00 3f · 00 00 80 3e · 00 00 80 3e · 00 00 00 00` = `{0.5, 0.25, 0.25, 0.0}`. A 0.25-bandwidth stream therefore costs 4× its nominal latency — it shares the HBM link four ways.
 
 > **OPEN ITEM (honestly flagged, INFERRED selector).** The field the bandwidth switch reads is `PerfSim+40`, but `init` *also* writes `+40` with `max(Inst+0x140)` (the CC stream-id) over the block's collective ops. The switch **values** (`1.0` / `{0.75,0.25}` / `{0.5,0.25,0.25,0}` / `-1`) unmistakably match the three Hwm arch families, so the arch interpretation is kept; the precise selector semantics of `+40` is the one unresolved offset in the reconstruction. The genuine `arch_version` is at `+48` (`= Module[+0xAC]`).
 
 ### The DMA-queue model
 
-`get_dma_queue_id` @ `0x16588e0` maps a DMA/collective instruction to one of 13 lanes by opcode + DMA-kind (`Inst+0xF8`) + triggering engine + tensor direction. The two lanes with finite descriptor depth are seeded by `init`: queue 10 (`max_depth = 4`) and queue 12 (`max_depth = 1`); all others default to 0 **[CONFIRMED — D-AD01 V12]**. `is_dma_queue_ready` @ `0x16590a0` is a finite-descriptor-ring, **issue-throughput** check (not a full-completion barrier): a DMA issues when its queue is under-full, or when the oldest in-flight descriptor has reached its next-dispatch time.
+`get_dma_queue_id` @ `0x16588e0` maps a DMA/collective instruction to one of 13 lanes by opcode + DMA-kind (`Inst+0xF8`) + triggering engine + tensor direction. The two lanes with finite descriptor depth are seeded by `init`: queue 10 (`max_depth = 4`) and queue 12 (`max_depth = 1`); all others default to 0. `is_dma_queue_ready` @ `0x16590a0` is a finite-descriptor-ring, **issue-throughput** check (not a full-completion barrier): a DMA issues when its queue is under-full, or when the oldest in-flight descriptor has reached its next-dispatch time.
 
 ### Critical path and the program-order walk
 
-`perf_estimation` @ `0x1663f60` drives the whole thing **[CONFIRMED — D-AD01 §10 / V10]**:
+`perf_estimation` @ `0x1663f60` drives the whole thing:
 
 ```c
 uint64 perf_estimation(BasicBlock *bb, bool fresh) {    // 0x1663f60
@@ -413,7 +415,7 @@ uint64 get_overall_end() {                              // 0x1657c50
 
 ## Layer 3 — the learned oracle (`MLInstructionLatencyModel`)
 
-When the global `--ml-model-directory` string is non-empty, `PerfSim` constructs an `MLInstructionLatencyModel` (ctor @ `0x183a940`, `getLatency` @ `0x1833950`) and `hwm_cost_setup` uses its prediction *in place of* `Hwm::getLatency`, logging `Using ML latency … instead of getLatency …` on divergence. The learned oracle is a per-opcode regression **[CONFIRMED — symbols; MED on internal structure]**:
+When the global `--ml-model-directory` string is non-empty, `PerfSim` constructs an `MLInstructionLatencyModel` (ctor @ `0x183a940`, `getLatency` @ `0x1833950`) and `hwm_cost_setup` uses its prediction *in place of* `Hwm::getLatency`, logging `Using ML latency … instead of getLatency …` on divergence. The learned oracle is a per-opcode regression:
 
 - `MLInstructionLatencyModel::getLatency` extracts a feature vector and dispatches to a per-opcode `MLSingleOpcodeLatencyModel` (a `std::map` keyed by `InstructionType` name).
 - `MLSingleOpcodeLatencyModel::forward` @ `0x182efe0` is the per-opcode regression. Its helpers — `serialize_feature` @ `0x18318d0`, `serialize_access_pattern` @ `0x1830dc0`, `get_one_hot_from_feature_enums` @ `0x182ded0`, `get_embedding_from_serialization` @ `0x182e2f0` — show the model is **JSON-backed** (the symbols carry `nlohmann::json` parameter types): the weights are loaded from a JSON bundle and indexed by one-hot/embedding feature buckets, returning the estimate in the same 100-cycle units. Weight files are matched by the regex `^latency_models_([0-9]+).*\.npy`.
@@ -430,4 +432,14 @@ The same bundle is consumed by the `TimeAware` scheduler (`InstCostMode == File`
 
 ## Verification ceiling
 
-Independently re-confirmed against `libwalrus.so` / `libBIR.so` this pass: the **three** concrete `Hwm` vtables/typeinfos (and the absence of a fourth); the abstract base's `Hwm.cpp` `"…not implemented"` aborts in `libBIR.so`; the four constant tables by `xxd` (`xmmword_1DD7AC0` = `{1300,100}`, `xmmword_1DD7AD0` = `{2,5,3,1}`, `flt_1E02410` = `{0.5,0.25,0.25,0}`, `byte_1E02420` engine-typed set `{19,22,32,41..46,67}`); the `SimEvent` 56-byte stride (`get_event`'s literal `56*index`); the `SimEngineId` switch with its gap at 7 and `NumSimEngineIds` = 0xC; the twelve-timeline iteration in `get_overall_end`; and the DMA-trigger assert string at `perf_sim.cpp:654` / `0x1c8a094` `backend::PostSchedEstLatency`. The per-opcode formula constants (helpers, DMA divisors, DGE overheads, activation init) are adopted from the firsthand D-G14 pass and spot-checked at the symbol level. The single unresolved offset is the `PerfSim+40` CC-bandwidth selector (arch-class vs max-CC-stream-id aliasing) — flagged INFERRED above. The `MLInstructionLatencyModel` regression internals are confirmed to exist (symbols, JSON parameter types) but **not** byte-decoded — MED.
+Read directly out of `libwalrus.so` / `libBIR.so`:
+
+- The **three** concrete `Hwm` vtables/typeinfos, and the absence of a fourth.
+- The abstract base's `Hwm.cpp` `"…not implemented"` aborts in `libBIR.so`.
+- The four constant tables, by `xxd`: `xmmword_1DD7AC0` = `{1300,100}`, `xmmword_1DD7AD0` = `{2,5,3,1}`, `flt_1E02410` = `{0.5,0.25,0.25,0}`, and the `byte_1E02420` engine-typed set `{19,22,32,41..46,67}`.
+- The `SimEvent` 56-byte stride, from `get_event`'s literal `56*index`.
+- The `SimEngineId` switch with its gap at 7, and `NumSimEngineIds` = 0xC.
+- The twelve-timeline iteration in `get_overall_end`.
+- The DMA-trigger assert string at `perf_sim.cpp:654` / `0x1c8a094` `backend::PostSchedEstLatency`.
+
+Two things are **not** byte-decoded here. The `PerfSim+40` CC-bandwidth selector is the one unresolved offset — arch-class versus max-CC-stream-id aliasing, flagged in §"OPEN ITEM" above. And the `MLInstructionLatencyModel` regression internals are known to exist (symbols, JSON parameter types) but their form is [INFERRED] from symbol shapes, not decoded.

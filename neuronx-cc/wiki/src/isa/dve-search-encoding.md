@@ -8,7 +8,7 @@ This page is the byte-for-byte field map of the **DVE search / match / compactio
 
 Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, `pxor`+`movups`-zeroed in full (so any byte the encoder does not write is a hard `0x00`), header-stamped by `setupHeader` (vtable slot 9), field-filled, ISA-checked by `runISACheck` (`@0x12095A0`), and `fwrite(buf, 1, 0x40, findBin(I))`-ed. The control band is **Family-C** ([2.1 the bundle](instruction-bundle.md)): `+0x20` in-dtype, `+0x21` out-dtype, `+0x22` lane (= `numElementsPerPartition` of src), source access pattern at `+0x0C` / `+0x10`, dest at `+0x2C` / `+0x30` — identical to the BatchNorm family ([2.11](batchnorm-encoding.md)), because Max8 *shares* its wire struct (`NEURON_ISA_TPB_S4D2_BN_STRUCT`) with BatchNormStats.
 
-The bar for this page: a reader can **byte-encode any DVE search/match instruction by hand**, knowing for each control byte its offset, width, semantic, value source, the recovered `s_<op>_*` / `d4_mr_*` / `d2_bn_*` struct-field name, and the disassembly store-site that pins it. Every field row carries a confidence tag (CONFIRMED = exact store/cmp disassembled byte-exact; STRONG = validator/LUT/helper xref cross-checked; INFERRED = zero-init implied, no direct store; SPECULATIVE). No field name is fabricated — every name on this page is a literal string recovered from the `libwalrus.so` `.rodata` predicate-name tables.
+The bar for this page: a reader can **byte-encode any DVE search/match instruction by hand**, knowing for each control byte its offset, width, semantic, value source, the recovered `s_<op>_*` / `d4_mr_*` / `d2_bn_*` struct-field name, and the disassembly store-site that pins it. Every field row carries a confidence tag: **CERTAIN** = exact store/cmp disassembled byte-exact; **HIGH** = validator/LUT/helper xref cross-checked; **MEDIUM** = zero-init implied, no direct store. No field name is fabricated — every name on this page is a literal string recovered from the `libwalrus.so` `.rodata` predicate-name tables.
 
 ## At a glance
 
@@ -30,7 +30,7 @@ The bar for this page: a reader can **byte-encode any DVE search/match instructi
  byte +0x02..+0x03  reserved = 0x0000
 ```
 
-The header is stamped by a `call *0x48(%rax)` to `setupHeader`, which copies the opcode byte from a seed the encoder writes onto the stack (e.g. Max8 `movb $0x6c,-0x6e2(%rbp)` `@0x12732aa`). CONFIRMED — the same vtable-slot-9 idiom as [2.10](pe-matmul-encoding.md).
+The header is stamped by a `call *0x48(%rax)` to `setupHeader`, which copies the opcode byte from a seed the encoder writes onto the stack (e.g. Max8 `movb $0x6c,-0x6e2(%rbp)` `@0x12732aa`) — the same vtable-slot-9 idiom as [2.10](pe-matmul-encoding.md).
 
 > **GOTCHA — `0x6D` (MatchValueLoad) is *not* "MaxIndex".** The argmax/index BIR op is `bir::InstMaxIndex` (IT89), whose CoreV2 encoder `visitInstMaxIndex` emits opcode `0x6E` (FindIndex8) and *co-issues* a `0x6D` (MatchValueLoad) helper bundle ahead of it. There is no standalone "MaxIndex" wire opcode; "MaxIndex" is the BIR/IT-89 name, **FindIndex8 (`0x6E`) is its wire op**, and `0x6D` MatchValueLoad is a separate locate-pass micro-op. Pinned by `dbg_is_valid_find_index8` `cmp $0x6e` (`@0x1306793`), `dbg_is_valid_match_value_load` `cmp $0x6d` (`@0x12bbdbe`).
 
@@ -60,7 +60,7 @@ The DVE "running top-8" reduction: one src row in, **8 fp32 maxvals out** (desce
 
 **Operands:** `getArgument<AccessPattern>(0)` = DATA src; `getOutput<PhysicalAccessPattern>(0)` = MAXVALS dst.
 
-**Pre-emit legality asserts** (CONFIRMED):
+**Pre-emit legality asserts:**
 - src must NOT be a TensorIndirect AP, else `reportError "TODO: support MAX8 with TensorIndirect AP once ISA supports it"`.
 - dst `numElementsPerPartition == 8` — `cmp $0x8,%eax;jne` (`@0x12733a9`).
 - src `numElementsPerPartition` in `[8 .. 16384]` — `cmpl $0x7,…;jbe(err)` (`@0x12733b2`) and `cmpl $0x4000,…;ja(err)` (`@0x12733bf`).
@@ -68,20 +68,20 @@ The DVE "running top-8" reduction: one src row in, **8 fp32 maxvals out** (desce
 
 | Off | W | Field | `s4d2_bn` name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x6C` | `s_max8_opcode` | setupHeader (seed `movb $0x6c` `@0x12732aa`); COLLECT seed `movl $0x6c,-0x150(%rbp)` `@0x1273221` | hdr | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CONFIRMED |
-| `+0x02` | 2 | reserved = `0x0000` | (header pad) | hdr | hdr | CONFIRMED |
-| `+0x04` | .. | semaphore wait/update | (s4d2_bn events) | `setupSyncWait`/`Update` | — | STRONG |
-| `+0x0C` | ~14 | DATA src 4-D mem-pattern | (src `TENSOR4D`) | `assignAccess<TENSOR4D>` `@0x12754f7` | call site | CONFIRMED |
-| `+0x20` | 1 | in-dtype (wire tag) | `in_dtype` | `sub_120E650(src.Dtype@+0x30)` | `0x12754d0` | CONFIRMED |
-| `+0x21` | 1 | out-dtype (wire tag) | `out_dtype` | `sub_120E650(dst.Dtype@+0x30)` | `0x12754ed` | CONFIRMED |
-| `+0x22` | 1 | lane = `numElementsPerPartition(src)` low byte | `d2_bn_ge8_src_element_cnt` | src lane width | `0x12754f1` | CONFIRMED |
-| `+0x30` | 2 | dst `start_addr.addr_immediate` | `s_max8_dst` start_addr | setter (`0x1d6cb40`) | `0x12755d0` | CONFIRMED |
-| `+0x34` | 2 | dst `step_elem[0]` = −(dst step) | dst_mem_pattern.step_elem[0] | setter (`0x1d6caf0`); negated (descending) | `0x1275539` | CONFIRMED |
-| `+0x36` | 2 | dst `step_elem[1]` = `0x0000` | (dst step dim1) | `mov %cx,0x36(%r14)` | `0x127556c` | CONFIRMED |
-| `+0x38` | 2 | dst `num_elem[0]` = `8` | `s_max8_dst` num_elem[0] | setter (`0x1d6cb18`); the 8 maxval slots | `0x127555e` | CONFIRMED |
-| `+0x3A` | 2 | dst `num_elem[1]` = `0x0001` | (dst num dim1) | `mov %si,0x3a(%r14)` | `0x1275571` | CONFIRMED |
-| others | — | reserved-zero | `d2_bn_zero_count` / `d2_bn_reserved_z` | pxor zero-init; asserted `==0` | — | INFERRED |
+| `+0x00` | 1 | opcode = `0x6C` | `s_max8_opcode` | setupHeader (seed `movb $0x6c` `@0x12732aa`); COLLECT seed `movl $0x6c,-0x150(%rbp)` `@0x1273221` | hdr | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CERTAIN |
+| `+0x02` | 2 | reserved = `0x0000` | (header pad) | hdr | hdr | CERTAIN |
+| `+0x04` | .. | semaphore wait/update | (s4d2_bn events) | `setupSyncWait`/`Update` | — | HIGH |
+| `+0x0C` | ~14 | DATA src 4-D mem-pattern | (src `TENSOR4D`) | `assignAccess<TENSOR4D>` `@0x12754f7` | call site | CERTAIN |
+| `+0x20` | 1 | in-dtype (wire tag) | `in_dtype` | `sub_120E650(src.Dtype@+0x30)` | `0x12754d0` | CERTAIN |
+| `+0x21` | 1 | out-dtype (wire tag) | `out_dtype` | `sub_120E650(dst.Dtype@+0x30)` | `0x12754ed` | CERTAIN |
+| `+0x22` | 1 | lane = `numElementsPerPartition(src)` low byte | `d2_bn_ge8_src_element_cnt` | src lane width | `0x12754f1` | CERTAIN |
+| `+0x30` | 2 | dst `start_addr.addr_immediate` | `s_max8_dst` start_addr | setter (`0x1d6cb40`) | `0x12755d0` | CERTAIN |
+| `+0x34` | 2 | dst `step_elem[0]` = −(dst step) | dst_mem_pattern.step_elem[0] | setter (`0x1d6caf0`); negated (descending) | `0x1275539` | CERTAIN |
+| `+0x36` | 2 | dst `step_elem[1]` = `0x0000` | (dst step dim1) | `mov %cx,0x36(%r14)` | `0x127556c` | CERTAIN |
+| `+0x38` | 2 | dst `num_elem[0]` = `8` | `s_max8_dst` num_elem[0] | setter (`0x1d6cb18`); the 8 maxval slots | `0x127555e` | CERTAIN |
+| `+0x3A` | 2 | dst `num_elem[1]` = `0x0001` | (dst num dim1) | `mov %si,0x3a(%r14)` | `0x1275571` | CERTAIN |
+| others | — | reserved-zero | `d2_bn_zero_count` / `d2_bn_reserved_z` | pxor zero-init; asserted `==0` | — | MEDIUM |
 
 **Emit:** `runISACheck` `@0x12755e4`; `findBin` `@0x12755ef`; `fwrite(bundle,1,0x40,bin)` `@0x1275604`; census `++map<0x6C>` `@0x127562d`.
 
@@ -94,7 +94,7 @@ The DVE "running top-8" reduction: one src row in, **8 fp32 maxvals out** (desce
 1. **MatchValueLoad** (opcode `0x6D`) — locate the 8 maxvals in the data row;
 2. **FindIndex8** (opcode `0x6E`) — emit the 8 argmax indices (uint32).
 
-This is why `0x6D` MatchValueLoad has a validator + struct but no standalone `visitInst` encoder: it is only ever produced as the first half of MaxIndex (and of MatchReplace, below). COLLECT inserts `0x6D` *then* `0x6E` into the per-inst opcode set — `movl $0x6d,-0x150(%rbp)` `@0x12546d3` then `movl $0x6e,…` `@0x1254732` — pinning both the pair and its order. CONFIRMED.
+This is why `0x6D` MatchValueLoad has a validator + struct but no standalone `visitInst` encoder: it is only ever produced as the first half of MaxIndex (and of MatchReplace, below). COLLECT inserts `0x6D` *then* `0x6E` into the per-inst opcode set — `movl $0x6d,-0x150(%rbp)` `@0x12546d3` then `movl $0x6e,…` `@0x1254732` — pinning both the pair and its order.
 
 **3 BIR operands:** op0 = MAXVALS, op1 = DATA, op2 = INDICES (out). Distribution: bundle #1 (MatchValueLoad) uses the MAXVALS pattern as its src; bundle #2 (FindIndex8) uses DATA (4-D src) + INDICES (2-D dst). Same TensorIndirect guard as Max8 (`reportError "TODO: support MATCH_VALUE_LOAD with TensorIndirect AP once ISA supports it"`).
 
@@ -102,17 +102,17 @@ This is why `0x6D` MatchValueLoad has a validator + struct but no standalone `vi
 
 | Off | W | Field | Name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x6D` | `s_match_value_load_opcode` | setupHeader (seed `movb $0x6d,-0x994(%rbp)` `@0x1254bba`) | hdr | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CONFIRMED |
-| `+0x10` | 2 | src `start_addr.addr_immediate` | src_mem_pattern.start_addr | setter (`0x1d6a330`) | `0x1255ffd` | CONFIRMED |
-| `+0x14` | 2 | src `step_elem[0]` = −(maxvals step) | src_mem_pattern.step_elem[0] | setter (`0x1d6a4d8`) | `0x1255f55` | CONFIRMED |
-| `+0x16` | 2 | src `step_elem[1]` = `0x0000` | (src step dim1) | `mov %cx,0x16(%r13)` | `0x1255f8e` | CONFIRMED |
-| `+0x18` | 2 | src `num_elem[0]` = `8` | src_mem_pattern.num_elem[0] | setter (`0x1d6a360`); the 8 values to locate | `0x1255f7a` | CONFIRMED |
-| `+0x1A` | 2 | src `num_elem[1]` = `0x0001` | (src num dim1) | `mov %si,0x1a(%r13)` | `0x1255f89` | CONFIRMED |
-| `+0x20` | 1 | in-dtype | `in_dtype` | `sub_120E650(maxvals.Dtype@+0x30)` | `0x1255f14` | CONFIRMED |
-| `+0x22` | 1 | lane = `numElementsPerPartition` | lane / element_cnt | src lane width | `0x1255f10` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0x6D` | `s_match_value_load_opcode` | setupHeader (seed `movb $0x6d,-0x994(%rbp)` `@0x1254bba`) | hdr | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CERTAIN |
+| `+0x10` | 2 | src `start_addr.addr_immediate` | src_mem_pattern.start_addr | setter (`0x1d6a330`) | `0x1255ffd` | CERTAIN |
+| `+0x14` | 2 | src `step_elem[0]` = −(maxvals step) | src_mem_pattern.step_elem[0] | setter (`0x1d6a4d8`) | `0x1255f55` | CERTAIN |
+| `+0x16` | 2 | src `step_elem[1]` = `0x0000` | (src step dim1) | `mov %cx,0x16(%r13)` | `0x1255f8e` | CERTAIN |
+| `+0x18` | 2 | src `num_elem[0]` = `8` | src_mem_pattern.num_elem[0] | setter (`0x1d6a360`); the 8 values to locate | `0x1255f7a` | CERTAIN |
+| `+0x1A` | 2 | src `num_elem[1]` = `0x0001` | (src num dim1) | `mov %si,0x1a(%r13)` | `0x1255f89` | CERTAIN |
+| `+0x20` | 1 | in-dtype | `in_dtype` | `sub_120E650(maxvals.Dtype@+0x30)` | `0x1255f14` | CERTAIN |
+| `+0x22` | 1 | lane = `numElementsPerPartition` | lane / element_cnt | src lane width | `0x1255f10` | CERTAIN |
 
-> **NOTE — no `+0x21` out-dtype on MatchValueLoad.** It is a single-pattern *load* micro-op (one src band, no dst), so `+0x21` is never written and reads `0`. CONFIRMED.
+> **NOTE — no `+0x21` out-dtype on MatchValueLoad.** It is a single-pattern *load* micro-op (one src band, no dst), so `+0x21` is never written and reads `0`.
 
 **Emit:** `runISACheck` `@0x1256010`; `fwrite` `@0x1256030`; census `++map<0x6D>`.
 
@@ -120,13 +120,13 @@ This is why `0x6D` MatchValueLoad has a validator + struct but no standalone `vi
 
 | Off | W | Field | `s4d2_bn` name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x6E` | `s_find_index8_opcode` | setupHeader | hdr | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CONFIRMED |
-| `+0x0C` | ~14 | DATA src 4-D mem-pattern | (src `TENSOR4D`) | `assignAccess<TENSOR4D>` `@0x1257db6` | call site | CONFIRMED |
-| `+0x20` | 1 | in-dtype | `in_dtype` | `sub_120E650(DATA.Dtype@+0x30)` | `0x1257d8f` | CONFIRMED |
-| `+0x21` | 1 | out-dtype (uint32 tag) | `out_dtype` | `sub_120E650(IDX.Dtype@+0x30)` | `0x1257dac` | CONFIRMED |
-| `+0x22` | 1 | lane = `numElementsPerPartition` | `s_find_index8_dst_element_cnt` | src lane width | `0x1257db0` | CONFIRMED |
-| `+0x30` | ~10 | INDICES dst 2-D mem-pattern | (dst `TENSOR2D`; 8 uint32 slots) | `assignAccess<TENSOR2D>` `@0x1257dc7` | call site | CONFIRMED |
+| `+0x00` | 1 | opcode = `0x6E` | `s_find_index8_opcode` | setupHeader | hdr | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CERTAIN |
+| `+0x0C` | ~14 | DATA src 4-D mem-pattern | (src `TENSOR4D`) | `assignAccess<TENSOR4D>` `@0x1257db6` | call site | CERTAIN |
+| `+0x20` | 1 | in-dtype | `in_dtype` | `sub_120E650(DATA.Dtype@+0x30)` | `0x1257d8f` | CERTAIN |
+| `+0x21` | 1 | out-dtype (uint32 tag) | `out_dtype` | `sub_120E650(IDX.Dtype@+0x30)` | `0x1257dac` | CERTAIN |
+| `+0x22` | 1 | lane = `numElementsPerPartition` | `s_find_index8_dst_element_cnt` | src lane width | `0x1257db0` | CERTAIN |
+| `+0x30` | ~10 | INDICES dst 2-D mem-pattern | (dst `TENSOR2D`; 8 uint32 slots) | `assignAccess<TENSOR2D>` `@0x1257dc7` | call site | CERTAIN |
 
 **Emit:** `runISACheck` `@0x1257dda`; `fwrite` `@0x1257dfe`; census `++map<0x6E>`.
 
@@ -138,7 +138,7 @@ The index dst is a flat `[partition, 8]` `TENSOR2D` block of uint32, mirroring M
 
 Both BIR visitors tail-call the **same** generator with a bool selector, the ISA-layer shadow of the codegen-side IT90/IT91 collapse:
 
-- `CoreV2GenImpl::visitInstMatchReplace @0x1247020` is a **2-instruction thunk**: `xor %edx,%edx ; jmp generateInstMatchReplaceWithOptionalMaxIndex(inst, false)` → IT90 (no index out). CONFIRMED — disassembled exactly as `31 d2` / `e9 …` at `0x1247020`.
+- `CoreV2GenImpl::visitInstMatchReplace @0x1247020` is a **2-instruction thunk** — `31 d2` / `e9 …` at `0x1247020`, i.e. `xor %edx,%edx ; jmp generateInstMatchReplaceWithOptionalMaxIndex(inst, false)` → IT90 (no index out).
 - The IT91 path forwards with `bool=true`. CoreV3 has a dedicated `visitInstMaxIndexAndMatchReplace @0x135b670` that FIRST does `mov $0x1,%edx` (`@0x135b684`) then `call generate…` (`@0x135b6b4`) — emitting the `{MatchValueLoad 0x6D, MatchReplace8 0x6F}`+index pair exactly as IT90 — THEN continues with CoreV3-specific argmax-index bundle work.
 
 The real encoder is `generateInstMatchReplaceWithOptionalMaxIndex(InstMatchReplace&, bool) @0x1244ab0`; the bool rides `%edx`, saved to `-0x5d8(%rbp)` and tested `cmpb $0x0,-0x5d8(%rbp)` (`@0x1246a25`). COLLECT inserts `0x6D` then `0x6F`. The op co-issues:
@@ -152,10 +152,10 @@ The real encoder is `generateInstMatchReplaceWithOptionalMaxIndex(InstMatchRepla
 
 | Off | W | Field | Name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x6D` | `s_match_value_load_opcode` | setupHeader | hdr | CONFIRMED |
-| `+0x10` | ~10 | maxvals 2-D src mem-pattern | (src `TENSOR2D`) | `assignAccess<TENSOR2D>` `@0x1246114` | call site | CONFIRMED |
-| `+0x20` | 1 | in-dtype | `in_dtype` | `sub_120E650(maxvals.Dtype)` | `0x1246109` | CONFIRMED |
-| `+0x22` | 1 | lane = `numElementsPerPartition` | lane / element_cnt | src lane width | `0x12460f9` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0x6D` | `s_match_value_load_opcode` | setupHeader | hdr | CERTAIN |
+| `+0x10` | ~10 | maxvals 2-D src mem-pattern | (src `TENSOR2D`) | `assignAccess<TENSOR2D>` `@0x1246114` | call site | CERTAIN |
+| `+0x20` | 1 | in-dtype | `in_dtype` | `sub_120E650(maxvals.Dtype)` | `0x1246109` | CERTAIN |
+| `+0x22` | 1 | lane = `numElementsPerPartition` | lane / element_cnt | src lane width | `0x12460f9` | CERTAIN |
 
 **Emit:** `runISACheck` `@0x1246127`; `fwrite` `@0x1246147`; census `++map<0x6D>` `@0x124617b`.
 
@@ -163,14 +163,14 @@ The real encoder is `generateInstMatchReplaceWithOptionalMaxIndex(InstMatchRepla
 
 | Off | W | Field | `d4_mr` name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x6F` | `s_match_replace8_opcode` | setupHeader | hdr | CONFIRMED |
-| `+0x0C` | ~14 | DATA src 4-D mem-pattern | (src `TENSOR4D`) | `assignAccess<TENSOR4D>` `@0x1246a91` | call site | CONFIRMED |
-| `+0x20` | 1 | in-dtype | `in_dtype` / `match_replace_dtype` | `sub_120E650(DATA.Dtype)` | `0x1246a49` | CONFIRMED |
-| `+0x21` | 1 | out-dtype | `out_dtype` | `sub_120E650(REPLACED.out Dtype)` | `0x1246a67` | CONFIRMED |
-| `+0x22` | 1 | lane = `numElementsPerPartition` | lane / `d4_mr_le16k_src_*` | src lane width | `0x1246a72` | CONFIRMED |
-| `+0x28` | 4 (fp32) | **replace SENTINEL** | `instr.immediate` (replace value) | setter (`0x1244420`) reads `*(float*)(inst+0xF0)` — the codegen-written `imm_value` (`= −inf` in TopK) | `lea 0x28(%r15),%rdi` `@0x1246a5c` | CONFIRMED |
-| `+0x2C` | ~14 | REPLACED dst 4-D mem-pattern | (dst `TENSOR4D`; matches struck out) | `assignAccess<TENSOR4D>` `@0x1246aa2` | call site | CONFIRMED |
-| others | — | reserved-zero / guard | `d4_mr_reserved_zero` / `d4_mr_same_src_dt` | pxor zero-init | — | INFERRED/STRONG |
+| `+0x00` | 1 | opcode = `0x6F` | `s_match_replace8_opcode` | setupHeader | hdr | CERTAIN |
+| `+0x0C` | ~14 | DATA src 4-D mem-pattern | (src `TENSOR4D`) | `assignAccess<TENSOR4D>` `@0x1246a91` | call site | CERTAIN |
+| `+0x20` | 1 | in-dtype | `in_dtype` / `match_replace_dtype` | `sub_120E650(DATA.Dtype)` | `0x1246a49` | CERTAIN |
+| `+0x21` | 1 | out-dtype | `out_dtype` | `sub_120E650(REPLACED.out Dtype)` | `0x1246a67` | CERTAIN |
+| `+0x22` | 1 | lane = `numElementsPerPartition` | lane / `d4_mr_le16k_src_*` | src lane width | `0x1246a72` | CERTAIN |
+| `+0x28` | 4 (fp32) | **replace SENTINEL** | `instr.immediate` (replace value) | setter (`0x1244420`) reads `*(float*)(inst+0xF0)` — the codegen-written `imm_value` (`= −inf` in TopK) | `lea 0x28(%r15),%rdi` `@0x1246a5c` | CERTAIN |
+| `+0x2C` | ~14 | REPLACED dst 4-D mem-pattern | (dst `TENSOR4D`; matches struck out) | `assignAccess<TENSOR4D>` `@0x1246aa2` | call site | CERTAIN |
+| others | — | reserved-zero / guard | `d4_mr_reserved_zero` / `d4_mr_same_src_dt` | pxor zero-init | — | MEDIUM–HIGH |
 
 **Emit:** `runISACheck` `@0x1246ab5`; `fwrite` `@0x1246ad5`; census `++map<0x6F>` `@0x1246af2`.
 
@@ -178,15 +178,15 @@ The real encoder is `generateInstMatchReplaceWithOptionalMaxIndex(InstMatchRepla
 
 > **OPEN — the gen3 IT91 index bundle has no recovered field map.** The `MatchReplace8 0x6F` bundle of IT91 is byte-identical to IT90 (mapped above); what IT91 adds is a *second*, gen3-specific bundle for the argmax-index output, emitted by `CoreV3GenImpl::visitInstMaxIndexAndMatchReplace @0x135b670`. Its wire layout is **not recovered**: the binary exposes the BIR class `bir::InstMaxIndexAndMatchReplace` and its codegen (`codegenMaxIndexAndMatchReplace`, generated module `MaxIndexAndMatchReplaceGen`), but **no** index-output field-name strings (`s_max_index*`, `match_replace_indices`, an `s_*` index struct) exist in the analysed artifacts, and the gen3 emitter body that packs the index bundle's per-byte offsets was not disassembled this pass. The index bundle is named but deliberately left un-byte-mapped rather than fabricated; recovering its `{opcode, idx-dtype, index dst AP}` field map is an open gap for a follow-up pass that disassembles `@0x135b670`.
 
-> **NOTE — the `−1` sentinel convention.** Two distinct `−1`-typed sentinels live in this family, and only one is a *bundle field*: (1) **MatchReplace's replace value** at bundle `+0x28` is a real fp32 immediate (`= −inf`/min-value in a TopK fold), sourced from `inst+0xF0` — CONFIRMED as a wire field. (2) The **FindIndex8 / NonzeroWithCount `−1` index/pad value** for "no match" / "empty slot" is the integer `−1` (`0xFFFFFFFF`). For NonzeroWithCount it *is* a wire field — `paddingVal` at `+0x28` (see below). For FindIndex8 the `-1` index preset is a **simulator init only**, not a FindIndex8 bundle byte. Do not lay a `-1` into the FindIndex8 dst pattern; do lay it into the MatchReplace `+0x28` (as the encoded fp32) and the NonzeroWithCount `paddingVal` `+0x28` (as the int32 `−1`).
+> **NOTE — the `−1` sentinel convention.** Two distinct `−1`-typed sentinels live in this family, and only one is a *bundle field*: (1) **MatchReplace's replace value** at bundle `+0x28` is a real fp32 immediate (`= −inf`/min-value in a TopK fold), sourced from `inst+0xF0`. (2) The **FindIndex8 / NonzeroWithCount `−1` index/pad value** for "no match" / "empty slot" is the integer `−1` (`0xFFFFFFFF`). For NonzeroWithCount it *is* a wire field — `paddingVal` at `+0x28` (see below). For FindIndex8 the `-1` index preset is a **simulator init only**, not a FindIndex8 bundle byte. Do not lay a `-1` into the FindIndex8 dst pattern; do lay it into the MatchReplace `+0x28` (as the encoded fp32) and the NonzeroWithCount `paddingVal` `+0x28` (as the int32 `−1`).
 
 ---
 
 ## `0x69` stream_shuffle — the mask-driven select-load datamove half
 
-> **CORRECTION — opcode `0x69` is `stream_shuffle`, not "LoadMaskSelect".** An earlier draft of this page named the `0x69` bundle *LoadMaskSelect* (with invented `s_load_mask_select_opcode` / `dbg_is_valid_load_mask_select` symbols). The binary does **not** carry any `load_mask_select` / `LoadMaskSelect` / `s_load_mask_select` string anywhere — the only BIR op behind opcode `0x69` is **`bir::InstStreamShuffle`** (mangled `_ZN3bir17InstStreamShuffleC1E…`, codegen `codegenStreamShuffleInst`, cost-model `get_stream_shuffle_latency`). The `0x69` bundle is the **shuffle half** of the StreamShuffle / StreamTranspose lowering, and its canonical, fully-transcribed field map (the 32-byte `immediate.uint8[32]` lane immediate, the `partition_count|0x20` passthrough sentinel, the `Mask.size()==32` assert) lives on its owning page [2.17 DVE datamove encoding](dve-datamove-encoding.md) (`§0x69 stream_shuffle half`, generator `CoreV2GenImpl::visitInstStreamShuffle @0x123b460`). What follows is the same bundle described from the StreamTranspose decomposition site; treat `stream_shuffle` as the name and 2.17 as the field-map authority.
+The only BIR op behind opcode `0x69` is **`bir::InstStreamShuffle`** (mangled `_ZN3bir17InstStreamShuffleC1E…`, codegen `codegenStreamShuffleInst`, cost-model `get_stream_shuffle_latency`); the binary carries no `load_mask_select` / `LoadMaskSelect` string anywhere. Its canonical, fully-transcribed field map — the 32-byte `immediate.uint8[32]` lane immediate, the `partition_count|0x20` passthrough sentinel, the `Mask.size()==32` assert — lives on its owning page, [2.17 DVE datamove encoding](dve-datamove-encoding.md) (`§0x69 stream_shuffle half`, generator `CoreV2GenImpl::visitInstStreamShuffle @0x123b460`). What follows describes the same bundle from the StreamTranspose decomposition site; treat 2.17 as the field-map authority.
 
-The `0x69` (`stream_shuffle`) bundle has **no** standalone `visitInst` of its own — it is one of the bundles that **StreamTranspose** (opcode `0x6B`) and **StreamShuffle** decompose into. `CoreV2GenImpl::visitInstStreamTranspose @0x1266df0` emits a `0x69` bundle (COLLECT seed `movl $0x69,-0x160(%rbp)` `@0x1267459`; GENERATE setupHeader `movb $0x69` `@0x12680d7`) as part of the transpose datamove; `CoreV2GenImpl::visitInstStreamShuffle @0x123b460` emits the same `0x69` half — the co-issued-datamove idiom the Gather family also uses. The pair is covered by `dbg_is_valid_stream_shuffle @0x13281a0` (which validates the `{0x6A/0x6B, 0x69}` pair); there is no separate `dbg_is_valid_load_mask_select` symbol.
+The `0x69` (`stream_shuffle`) bundle has **no** standalone `visitInst` of its own — it is one of the bundles that **StreamTranspose** (opcode `0x6B`) and **StreamShuffle** decompose into. `CoreV2GenImpl::visitInstStreamTranspose @0x1266df0` emits a `0x69` bundle (COLLECT seed `movl $0x69,-0x160(%rbp)` `@0x1267459`; GENERATE setupHeader `movb $0x69` `@0x12680d7`) as part of the transpose datamove; `CoreV2GenImpl::visitInstStreamShuffle @0x123b460` emits the same `0x69` half — the co-issued-datamove idiom the Gather family also uses. The pair is covered by `dbg_is_valid_stream_shuffle @0x13281a0` (which validates the `{0x6A/0x6B, 0x69}` pair); there is no separate validator for the half on its own.
 
 **Key structure — a 32-byte lane immediate at `+0x20..+0x3F` (NOT a dtype band).** Unlike the Max/Match family, the `stream_shuffle` control band is a 32-byte per-lane immediate built in-line with SSE from a single scalar width (`%ebx`, the transpose select count). It is the same `immediate.uint8[32]` lane map that [2.17](dve-datamove-encoding.md) maps byte-for-byte:
 
@@ -198,16 +198,16 @@ The validator reads bundle bytes one-by-one across `+0x20..+0x3F` (`movzbl 0x332
 
 | Off | W | Field | Name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x69` | (`stream_shuffle`) | setupHeader | hdr | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CONFIRMED |
-| `+0x04` | .. | sem / sync region | events | `setupSync` helper (`0x1231240`) | — | STRONG |
-| `+0x20..+0x2F` | 16 | lane immediate low half | `immediate.uint8[0:16]` | `movups %xmm1,0x20(%r8)` (per-lane bits from width `%ebx`) | `0x126828b` | CONFIRMED |
-| `+0x30..+0x3F` | 16 | lane immediate high half | `immediate.uint8[16:32]` | `movups %xmm0,0x30(%r8)` | `0x126838a` | CONFIRMED |
-| `+0x08..+0x1F` | — | load source descriptor / sync | — | zero where unused | — | INFERRED |
+| `+0x00` | 1 | opcode = `0x69` | (`stream_shuffle`) | setupHeader | hdr | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CERTAIN |
+| `+0x04` | .. | sem / sync region | events | `setupSync` helper (`0x1231240`) | — | HIGH |
+| `+0x20..+0x2F` | 16 | lane immediate low half | `immediate.uint8[0:16]` | `movups %xmm1,0x20(%r8)` (per-lane bits from width `%ebx`) | `0x126828b` | CERTAIN |
+| `+0x30..+0x3F` | 16 | lane immediate high half | `immediate.uint8[16:32]` | `movups %xmm0,0x30(%r8)` | `0x126838a` | CERTAIN |
+| `+0x08..+0x1F` | — | load source descriptor / sync | — | zero where unused | — | MEDIUM |
 
 **Emit:** `runISACheck` `sub_12095A0` `@0x1268396`; `fwrite` `@0x12683be`.
 
-**Semantics (STRONG):** the 32-byte immediate is the per-lane select/enable map for which lanes/partitions the streaming shuffle/transpose writes; the SSE builder turns the transpose width into the contiguous enable run. It is a datamove op — no in/out dtype, no AP step/num pattern in `+0x20..+0x3F` (those bytes ARE the immediate). The `0x69` ISA micro-op has no standalone BIR surface name of its own; it is purely the `stream_shuffle` bundle that `InstStreamShuffle` / `InstStreamTranspose` lower to (no `LoadMaskSelect` node exists in the binary). Field-map authority: [2.17](dve-datamove-encoding.md).
+**Semantics.** The 32-byte immediate is the per-lane select/enable map for which lanes/partitions the streaming shuffle/transpose writes; the SSE builder turns the transpose width into the contiguous enable run. It is a datamove op — no in/out dtype, no AP step/num pattern in `+0x20..+0x3F`, because those bytes *are* the immediate. The `0x69` micro-op has no standalone BIR surface name; it is purely the `stream_shuffle` bundle that `InstStreamShuffle` / `InstStreamTranspose` lower to. Field-map authority: [2.17](dve-datamove-encoding.md).
 
 ---
 
@@ -221,24 +221,23 @@ The sparse / MoE-routing **compaction** op. Wire struct `NEURON_ISA_TPB_S3D3_NON
 
 | Off | W | Field | `S3D3` name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xF2` | `s_nonzero_with_count_opcode` | setupHeader (seed `movb $0xf2` `@0x1355b87`); COLLECT `movl $0xf2,-0xb0(%rbp)` `@0x1355b18` | hdr | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CONFIRMED |
-| `+0x04` | .. | sem wait/update region | events | `setupSync<S3D3_…>` | — | STRONG |
-| `+0x0C` | 1 | src AP last-pair dim byte | (src 3-D pattern hdr) | `mov %al,0xc(%r13)` | `0x1355bd8` | CONFIRMED |
-| `+0x0D` | 1 | in-dtype | `s_valid_nonzero_with_count_dtype` (in) | CoreV3 LUT `sub_1348870(input.Dtype)` | `0x1355be9` | CONFIRMED |
-| `+0x0E` | 1 | out-dtype | out_dtype | CoreV3 LUT `sub_1348870(output.Dtype)` | `0x1355c88` | CONFIRMED |
-| `+0x0F` | 1 | reserved = `0` | `d3_nonzero_with_count_reserved_z` | `movb $0,0xf(%r13)` | `0x1355bf2` | CONFIRMED |
-| `+0x10` | ~10 | INPUT 3-D data mem-pattern | (src `TENSOR3D`) | `assignAccess<TENSOR3D>` `@0x1355bc0` | call site | CONFIRMED |
-| `+0x20` | 4 (i32) | `indexOffset` | indexOffset | `ImmediateValue(0).getValue<int>` (base added to each emitted idx) | `0x1355c1b` | CONFIRMED |
-| `+0x24` | 1 | reserved = `0` | reserved_z | `movb $0,0x24(%r13)` | `0x1355c2c` | CONFIRMED |
-| `+0x28` | 4 (i32) | `paddingVal` = `−1` | paddingVal (PADDING_VALUE) | `ImmediateValue(1).getValue<int>` | `0x1355c53` | CONFIRMED |
-| `+0x2C` | ~10 | OUTPUT 3-D compaction pattern | (dst `TENSOR3D`; `container_nonzero_cardinality`) | `assignAccess<TENSOR3D>` `@0x1355c74` | call site | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xF2` | `s_nonzero_with_count_opcode` | setupHeader (seed `movb $0xf2` `@0x1355b87`); COLLECT `movl $0xf2,-0xb0(%rbp)` `@0x1355b18` | hdr | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CERTAIN |
+| `+0x04` | .. | sem wait/update region | events | `setupSync<S3D3_…>` | — | HIGH |
+| `+0x0C` | 1 | src AP last-pair dim byte | (src 3-D pattern hdr) | `mov %al,0xc(%r13)` | `0x1355bd8` | CERTAIN |
+| `+0x0D` | 1 | in-dtype | `s_valid_nonzero_with_count_dtype` (in) | CoreV3 LUT `sub_1348870(input.Dtype)` | `0x1355be9` | CERTAIN |
+| `+0x0E` | 1 | out-dtype | out_dtype | CoreV3 LUT `sub_1348870(output.Dtype)` | `0x1355c88` | CERTAIN |
+| `+0x0F` | 1 | reserved = `0` | `d3_nonzero_with_count_reserved_z` | `movb $0,0xf(%r13)` | `0x1355bf2` | CERTAIN |
+| `+0x10` | ~10 | INPUT 3-D data mem-pattern | (src `TENSOR3D`) | `assignAccess<TENSOR3D>` `@0x1355bc0` | call site | CERTAIN |
+| `+0x20` | 4 (i32) | `indexOffset` | indexOffset | `ImmediateValue(0).getValue<int>` (base added to each emitted idx) | `0x1355c1b` | CERTAIN |
+| `+0x24` | 1 | reserved = `0` | reserved_z | `movb $0,0x24(%r13)` | `0x1355c2c` | CERTAIN |
+| `+0x28` | 4 (i32) | `paddingVal` = `−1` | paddingVal (PADDING_VALUE) | `ImmediateValue(1).getValue<int>` | `0x1355c53` | CERTAIN |
+| `+0x2C` | ~10 | OUTPUT 3-D compaction pattern | (dst `TENSOR3D`; `container_nonzero_cardinality`) | `assignAccess<TENSOR3D>` `@0x1355c74` | call site | CERTAIN |
 
 **Emit:** `runISACheck` `@0x1355c90`; `findBin`; `fwrite` `@0x1355cb0`; census `++map<0xF2>` `@0x1355ccd`.
 
 **Semantics:** output `[idx1, idx2, …, −1, −1, …, count]` int32 — nonzero-element indices packed front (each `+ indexOffset`), tail padded with `paddingVal` (`−1`), total nonzero count last. The slot-count metadata (`container_nonzero_cardinality` / `count_element_co*`) rides the output 3-D pattern dims; `s_valid_nonzero_with_count_dtype` is the dtype-pair legality predicate. **Engine: Pool** (not DVE). The op is lowered to real CoreV3/V4 hardware bundles even though the BIR simulator stubs it.
 
-> **CORRECTION — opcode roster.** Earlier drafts that listed "MaxIndex / FindIndex8 = `0x6D` / `0x6E`" are wrong: `0x6D` is **MatchValueLoad** (a separate co-issued micro-op) and FindIndex8 is `0x6E`. The correct ordinals, re-pinned by the `cmp` in each `dbg_is_valid_*` validator, are: Max8 `0x6C`, MatchValueLoad `0x6D`, FindIndex8 `0x6E`, MatchReplace8 `0x6F`, `stream_shuffle` `0x69` (see [2.17](dve-datamove-encoding.md)), NonzeroWithCount `0xF2`.
 
 ---
 
@@ -248,7 +247,7 @@ The **Max family** (`0x6C` / `0x6D` / `0x6E` / `0x6F`) has **no** separate CoreV
 
 ## Confidence ledger
 
-**CONFIRMED** (direct store/cmp/seed disassembled byte-exact this task):
+**CERTAIN** — direct store / cmp / seed, disassembled byte-exact:
 - Opcodes pinned by validator `cmp`: Max8 `0x6C` (`@0x13047fb`), MatchValueLoad `0x6D` (`@0x12bbdbe`), FindIndex8 `0x6E` (`@0x1306793`), MatchReplace8 `0x6F` (`@0x1316ca2`), `stream_shuffle` `0x69` (covered by `dbg_is_valid_stream_shuffle @0x13281a0`; field map in [2.17](dve-datamove-encoding.md)), NonzeroWithCount `0xF2` (`@0x13d8f05`).
 - Encoder/thunk addresses: `visitInstMax @0x1273120`, `visitInstMaxIndex @0x1254650`, `visitInstMatchReplace @0x1247020` (`xor %edx,%edx; jmp 0x61eff0`), `generateInstMatchReplaceWithOptionalMaxIndex @0x1244ab0`, `visitInstNonzeroWithCount @0x1355a30`, `visitInstMaxIndexAndMatchReplace @0x135b670` (`mov $0x1,%edx; call`), `visitInstStreamTranspose @0x1266df0` — all from `nm -DC`.
 - Max8 field stores `+0x20/+0x21/+0x22` (`@0x12754d0/ed/f1`), `+0x36/+0x3a`, dst `cmp $0x8` (`@0x12733a9`), src bounds `cmpl $0x7`/`$0x4000` (`@0x12733b2/bf`); COLLECT `movl $0x6c` (`@0x1273221`).
@@ -257,9 +256,9 @@ The **Max family** (`0x6C` / `0x6D` / `0x6E` / `0x6F`) has **no** separate CoreV
 - `stream_shuffle` (`0x69`) seed `movl $0x69` (`@0x1267459`); lane immediate `movups %xmm1,0x20(%r8)` (`@0x126828b`) / `movups %xmm0,0x30(%r8)` (`@0x126838a`).
 - NonzeroWithCount `+0xc/+0xd/+0xe/+0xf` (`@0x1355bd8/be9/c88/bf2`), `+0x20` idxOff (`@0x1355c1b`), `+0x24` reserved (`@0x1355c2c`), `+0x28` padVal (`@0x1355c53`).
 
-**STRONG** (validator / rodata-name xref): wire-struct field names `s_max8_*`, `s_find_index8_dst_element_cnt`, `s_match_value_load_opcode`, `s_match_replace8_opcode`, `s_nonzero_with_count_opcode`, `d2_bn_ge8_src_element_cnt`, `d2_bn_zero_count`, `d4_mr_reserved_zero`, `d4_mr_le16k_src_*`, `d4_mr_same_src_dt`, `match_replace_dtype`, `d3_nonzero_with_count_reserved_z`, `container_nonzero_cardinality`, `count_element_co*`, `s_valid_nonzero_with_count_dtype` — all recovered as literal strings from `libwalrus.so` `.rodata`; the struct tags `NEURON_ISA_TPB_S4D2_BN_STRUCT` / `…_D4_MR_STRUCT` / `S4D4_MR` / `…_S3D3_NONZERO_WITH_COUNT_STRUCT` likewise. The sem/sync `+0x04` regions and `assignAccess` interiors are N-strand common code.
+**HIGH** — validator / rodata-name xref. Wire-struct field names `s_max8_*`, `s_find_index8_dst_element_cnt`, `s_match_value_load_opcode`, `s_match_replace8_opcode`, `s_nonzero_with_count_opcode`, `d2_bn_ge8_src_element_cnt`, `d2_bn_zero_count`, `d4_mr_reserved_zero`, `d4_mr_le16k_src_*`, `d4_mr_same_src_dt`, `match_replace_dtype`, `d3_nonzero_with_count_reserved_z`, `container_nonzero_cardinality`, `count_element_co*`, `s_valid_nonzero_with_count_dtype` — all recovered as literal strings from `libwalrus.so` `.rodata`; the struct tags `NEURON_ISA_TPB_S4D2_BN_STRUCT` / `…_D4_MR_STRUCT` / `S4D4_MR` / `…_S3D3_NONZERO_WITH_COUNT_STRUCT` likewise. The sem/sync `+0x04` regions and `assignAccess` interiors are N-strand common code.
 
-**INFERRED** (zero-init only): reserved-zero pad bytes (`d2_bn_reserved_z`, `d4_mr_*` guards, NonzeroWithCount `+0x24`); the FindIndex8 `−1` index preset (simulator init, not a bundle field); `stream_shuffle` (`0x69`) `+0x08..+0x1F` sync/descriptor region.
+**MEDIUM** — zero-init only. Reserved-zero pad bytes (`d2_bn_reserved_z`, `d4_mr_*` guards, NonzeroWithCount `+0x24`); the FindIndex8 `−1` index preset (simulator init, not a bundle field); `stream_shuffle` (`0x69`) `+0x08..+0x1F` sync/descriptor region.
 
 **OPEN / cross-ref:** the exact bit-width / packing of `container_nonzero_cardinality` + `count_element_co*` within the output `TENSOR3D` descriptor (they ride the dst AP dims — [2.4 TENSOR4D / MEM_PATTERN4D](tensor4d-mempattern4d.md)); the full StreamTranspose decomposition (which other bundles co-issue with the `0x69`) — see [2.17 DVE datamove encoding](dve-datamove-encoding.md); CoreV4 Max-family bodies (reuse CoreV2; dtype-LUT delta only).
 

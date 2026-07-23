@@ -28,7 +28,7 @@ For reimplementation, the contract is:
 | **Producer** | `LowerPWPImpl::generateInstLoadActFuncSet` (`libwalrus.so`, stripped) |
 | **Catalog scope** | 35 sets, 409 funcs, 32,759 `bkt` + 3,071 `ctrl` records — zero mismatch vs JSON |
 
-Confidence labels used below: **CONFIRMED** = decoded firsthand from the shipped bytes and matched to JSON this session; **STRONG** = symbol/disasm grounded; **INFERRED** = derived rule verified over the catalog; **SPECULATIVE** = flagged. Evidence in this page is from `D-M06`, `D-T04`, `D-T05`, `D-AG07`.
+Confidence labels used below: **CERTAIN** = decoded from the shipped bytes and matched against the JSON; **HIGH** = symbol/disasm grounded; **MEDIUM** = a derived rule checked over the catalog.
 
 ---
 
@@ -50,7 +50,7 @@ neuronxcc/pwp/pwp_jsons/             per-FUNCTION source profiles <func>_<Np>.js
 
 ### Manifest fields (`<set>.json`)
 
-`exp_and_others.json` has nine keys (CONFIRMED, `jq`):
+`exp_and_others.json` has nine keys:
 
 ```text
 bkt_bin                "exp_and_others_bkt.bin"
@@ -63,7 +63,7 @@ func_exp_to_bkt_start_idx / func_exp_to_ctl_start_idx   # per-exponent variant i
 profile_meta_data[]    # one 30-field scalar control object per co-resident func (§6)
 ```
 
-The blobs are **prebuilt**, not regenerated at compile time. `bkt_entry_cnt × 32 = bkt file size` and `ctl_entry_cnt × stride = ctrl file size` are exact with zero remainder (CONFIRMED):
+The blobs are **prebuilt**, not regenerated at compile time. `bkt_entry_cnt × 32 = bkt file size` and `ctl_entry_cnt × stride = ctrl file size` are exact with zero remainder:
 
 ```text
 exp_and_others_bkt.bin   30112 B / 941 = 32.0     small_bkt.bin    1664 B /  52 = 32.0
@@ -117,7 +117,7 @@ static void bkt_parse(const uint8_t *blob, size_t i, pwp_bkt_t *out) {
 
 ### Worked parse — `exp_and_others_bkt.bin[0]`
 
-This is the first LUT section of `exp` (the near-zero negative octave). Raw 32 bytes from `xxd -s 0 -l 32` (CONFIRMED, firsthand):
+This is the first LUT section of `exp` (the near-zero negative octave). Raw 32 bytes from `xxd -s 0 -l 32`:
 
 ```text
 00000000: d0ff 7f3f d0ff 7f3f d0ff ff3e 8baa 2a3e   <- d0 d1 d2 d3
@@ -135,15 +135,15 @@ Reading little-endian words:
 | `x`  | `ff ff 3f b6` | `0xb63fffff` | `−2.861e-06` |
 | pad  | `00 × 12` | `0` | — |
 
-The matching JSON section, `exp_400p.json :: neg_exponents[0].exponent_sections[0]`, has `.int` members `x=b63fffff, d0=3f7fffd0, d1=3f7fffd0, d2=3effffd0, d3=3e2aaa8b` — **byte-identical** (CONFIRMED). This is the `e^t` Taylor expansion about `x ≈ −2.86e-06`: `f(t) ≈ 1 + t + t²/2 + t³/6`.
+The matching JSON section, `exp_400p.json :: neg_exponents[0].exponent_sections[0]`, has `.int` members `x=b63fffff, d0=3f7fffd0, d1=3f7fffd0, d2=3effffd0, d3=3e2aaa8b` — **byte-identical**. This is the `e^t` Taylor expansion about `x ≈ −2.86e-06`: `f(t) ≈ 1 + t + t²/2 + t³/6`.
 
 > **QUIRK — disk order is `x`-LAST, but the simulator's in-memory struct is `x`-FIRST.** The on-disk record is `[d0, d1, d2, d3, x]` (`x` at `+16`). The `PWPSim` in-memory `exponent_sect` (20 bytes, no pad) is reordered to `[x, d0, d1, d2, d3]` (`x` at `+0`). The loader reorders the disk d0-first record into the sim/HW x-first struct — the field *set* is identical, the *order* differs. A reader of the `.bin` must use `x @ +16`; a reader of the sim struct must use `x @ +0`. Do not assume disk == memory.
 
-> **CORRECTION — the disk field is `x`, not `−x`.** Some surrounding analysis (`D-AG07 §2/§7`) describes the HW evaluation as `dx = in + slot4` with `slot4 = −x`, framing the breakpoint field as a *negated* breakpoint baked for a fused-add datapath. On disk that field is the **un-negated** `x`: `bkt[0].x = 0xb63fffff` equals `exp_400p.json`'s `.x.int = 0xb63fffff` bit-for-bit (same sign). The HW may internally fold `t = v − x` into an add-with-negated-constant, but the **stored** field is `x` itself — a parser reads `x` directly and computes `t = v − x`. (CONFIRMED, firsthand byte compare.)
+> **GOTCHA — the disk field is `x`, not `−x`.** Descriptions of the hardware evaluation as `dx = in + slot4` with `slot4 = −x` frame the breakpoint as a *negated* constant baked for a fused-add datapath. On disk the field is **un-negated**: `bkt[0].x = 0xb63fffff` matches `exp_400p.json`'s `.x.int = 0xb63fffff` bit-for-bit, same sign. The hardware may internally fold `t = v − x` into an add-with-negated-constant, but a parser reads `x` directly and computes `t = v − x` itself.
 
 ### The four saturation slots
 
-After a func's LUT body, four `bkt` records are appended — the saturation-clamp polynomials, in the fixed disk order `[pos_low, neg_low, pos_high, neg_high]`. They are pointed to by `profile_meta_data`'s four `*_signal_pwl_control` fields (which are `bkt` indices, **not** `ctrl` indices). For `exp` these are `bkt[777..780]` (CONFIRMED, `xxd`):
+After a func's LUT body, four `bkt` records are appended — the saturation-clamp polynomials, in the fixed disk order `[pos_low, neg_low, pos_high, neg_high]`. They are pointed to by `profile_meta_data`'s four `*_signal_pwl_control` fields (which are `bkt` indices, **not** `ctrl` indices). For `exp` these are `bkt[777..780]`:
 
 | Slot | `bkt` idx | Bytes | Decoded | Meaning |
 |---|---|---|---|---|
@@ -170,16 +170,16 @@ func_to_bkt_start_idx[f] = absolute index where f's block begins
 bkt_entry_cnt(set)       = Σ_f (lut_size(f) + 4)     # the 4 sat slots per func
 ```
 
-For `exp`: `lut_size = 777`, with 26 neg + 26 pos octaves whose actual section counts sum to `406 + 371 = 777` (CONFIRMED, `jq`). The neg block fills `bkt[0..405]`, the pos block `bkt[406..776]`, then sat slots `bkt[777..780]`.
+For `exp`: `lut_size = 777`, with 26 neg + 26 pos octaves whose actual section counts sum to `406 + 371 = 777`. The neg block fills `bkt[0..405]`, the pos block `bkt[406..776]`, then sat slots `bkt[777..780]`.
 
 A firsthand programmatic sweep this session decoded all 777 `exp` LUT records with `struct.unpack("<5I")` at disk order `[d0,d1,d2,d3,x]` and diffed each against the neg-then-pos flattened JSON `.int` fields:
 
 ```text
-exp LUT body : 777 sections — mismatches = 0, nonzero-pad = 0      (CONFIRMED, firsthand)
+exp LUT body : 777 sections — mismatches = 0, nonzero-pad = 0
 FULL CATALOG : 35 sets, 409 funcs, 32,759 bkt records — 0 mismatch, 0 bad pad   (D-T04/M06)
 ```
 
-Independent heroes corroborate (CONFIRMED): `sqrt_65536p` (1113 pos-only LINEAR sections — `d2=d3=0`, a tangent line per power-of-two octave — at `bkt_start=52` behind the 13 universal residents); `derivative_gelu_apprx_sigmoid_4096p` (the densest single octave: `extract_size=10` ⇒ 1024 cubic segments in one octave). `cp310/11/12` are md5-identical.
+Independent heroes corroborate: `sqrt_65536p` (1113 pos-only LINEAR sections — `d2=d3=0`, a tangent line per power-of-two octave — at `bkt_start=52` behind the 13 universal residents); `derivative_gelu_apprx_sigmoid_4096p` (the densest single octave: `extract_size=10` ⇒ 1024 cubic segments in one octave). `cp310/11/12` are md5-identical.
 
 ---
 
@@ -202,7 +202,7 @@ The `ctrl` table is the **outer** index of the two-level LUT: one record per IEE
 | `[16:24]` | `0xFF`  | `extract_size` | number of top mantissa bits used as the in-octave bucket index (octave addresses `2^extract_size` sections) |
 | `[24:32]` | `0xFF`  | reserved | **zero** across the entire catalog (scan: 0 entries with any bit ≥ 24 set) |
 
-The 11-bit `bkt_base` width is not arbitrary: the codegen DMAs `bkt` sections in **2048-entry tiles** (`2^11`), so a section base is addressed within a 2048-tile (STRONG — `libwalrus` `num_2048_tiles_cur_section` asserts). The shipped sets never overflow it: max observed `bkt_base = 1443` (trainium) / `1223` (with_ln), both < 2048. Max `extract_size = 10`.
+The 11-bit `bkt_base` width is not arbitrary: the codegen DMAs `bkt` sections in **2048-entry tiles** (`2^11`), so a section base is addressed within a 2048-tile — the `libwalrus` `num_2048_tiles_cur_section` asserts name the tiling. The shipped sets never overflow it: max observed `bkt_base = 1443` (trainium) / `1223` (with_ln), both < 2048. Max `extract_size = 10`.
 
 ### Annotated unpack and the invariant
 
@@ -230,7 +230,7 @@ static uint32_t ctrl_pack(uint16_t bkt_base, uint8_t extract_size) {
 }
 ```
 
-The reconstructed `ctrl_pack` reproduces all 52 `exp` `ctrl` words byte-for-byte (CONFIRMED). Note `extract_lsb` is **derived** from `extract_size`; a packer never stores an independent value.
+The reconstructed `ctrl_pack` reproduces all 52 `exp` `ctrl` words byte-for-byte. Note `extract_lsb` is **derived** from `extract_size`; a packer never stores an independent value.
 
 ### Stride — target-dependent
 
@@ -240,7 +240,7 @@ ctrl stride: pwp_bin_trainium = 32 B/entry   (e.g. exp 2848 B / 89 = 32.0)
 bkt stride : 32 B in BOTH targets.
 ```
 
-The 4-byte `ctrl` *word* is identical between targets for a co-resident func with the same `bkt` placement; only the trailing zero pad (28 B vs 12 B) differs. The `with_ln` entry-0 dump `00 b8 00 00 | 00 …` shows the word `0x0000b800` followed by 12 zero bytes (CONFIRMED).
+The 4-byte `ctrl` *word* is identical between targets for a co-resident func with the same `bkt` placement; only the trailing zero pad (28 B vs 12 B) differs. The `with_ln` entry-0 dump `00 b8 00 00 | 00 …` shows the word `0x0000b800` followed by 12 zero bytes.
 
 > **GOTCHA — reading `with_ln` `ctrl` with a 32-byte stride reads every *other* entry and overflows.** The stride is target-dependent. Resolve it from the manifest: `stride = ctrl_file_size / ctl_entry_cnt`. Do **not** assume 32 B from the Trainium case.
 
@@ -256,7 +256,7 @@ ctl_entry_cnt(set) = Σ_f (len(neg_exponents) + len(pos_exponents))
 
 ## 5. Exponent-Stepped Addressing
 
-The two blobs form a two-level lookup keyed by the IEEE-754 decomposition of the (sign-folded, pre-scaled) input `v`: the **biased exponent** selects the octave (`ctrl` record), and the **top mantissa bits** select the bucket within it (`bkt` record). This is the `find_pwp_nonsat_section` math at `libpwp_sim.so` offset `0x9340` (CONFIRMED, symboled disasm).
+The two blobs form a two-level lookup keyed by the IEEE-754 decomposition of the (sign-folded, pre-scaled) input `v`: the **biased exponent** selects the octave (`ctrl` record), and the **top mantissa bits** select the bucket within it (`bkt` record). This is the `find_pwp_nonsat_section` math at `libpwp_sim.so` offset `0x9340`, in symboled disassembly.
 
 ### Selection algorithm
 
@@ -295,11 +295,13 @@ bkt_base(func f, octave i) = func_to_bkt_start_idx[f]
 
 This is why the pos block of `exp` begins at `bkt_base = 406` (= the 406 actual neg sections) rather than at `Σ num_sections` (which would overcount). The slack — the high buckets of a saturating octave — is caught by the high-saturation clamp before it is ever bucket-indexed.
 
-> **CORRECTION — `bkt_base` is `Σ` of *materialized* sections, not `Σ num_sections`.** An earlier framing (`D-M06 §4`) implied `bkt_base == Σ num_sections` (the `2^extract_size` capacity); that overcounts (`exp` would give 1056 vs the true `lut_size` 777). The exact accumulator (`D-T05 §2`, catalog-proven) walks `len(exponent_sections)` — the *actual* stored sections. Worked: `exp` octave `+6` (biased exp 133) declares `num_sections = 256` (`extract_size = 8`) but materializes only **99** (pos) / **134** (neg); `large_pos_signal_mantissa_threshold = 3240472`, and `3240472 >> (23 − 8) = 3240472 >> 15 = 98` ⇒ buckets `0..98` exist (= 99), bucket ≥ 99 hits the `+inf` clamp (CONFIRMED, firsthand). The mantissa threshold *is* the LUT truncation point.
+The accumulator walks `len(exponent_sections)` — the *actual* stored sections — and not `num_sections`, the `2^extract_size` capacity. The difference is large: summing capacities gives `exp` 1056 against its true `lut_size` of 777. Worked through, `exp` octave `+6` (biased exponent 133) declares `num_sections = 256` (`extract_size = 8`) but materializes only **99** sections on the positive side and **134** on the negative. `large_pos_signal_mantissa_threshold = 3240472`, and `3240472 >> (23 − 8) = 3240472 >> 15 = 98`, so buckets `0..98` exist (99 of them) and anything at bucket ≥ 99 hits the `+inf` clamp. The mantissa threshold *is* the LUT truncation point.
+
+> **GOTCHA —** `bkt_base` accumulates *materialized* sections, not declared `num_sections`. Summing the declared capacities overcounts every func with a truncated top octave.
 
 ### Worked `ctrl` decodes
 
-From `exp_and_others_ctrl.bin`, trainium, 32-byte stride (CONFIRMED, `xxd` + bitfield split):
+From `exp_and_others_ctrl.bin`, trainium, 32-byte stride (`xxd` + bitfield split):
 
 | `ctrl` idx | offset | word | `bkt_base` | `extract_lsb` | `extract_size` | octave |
 |---|---|---|---|---|---|---|
@@ -324,17 +326,17 @@ FULL CATALOG: 35 sets, 3,071 ctrl words — 0 mismatch on (base, lsb, size);  (D
               bits[24:32] == 0 always.
 ```
 
-> **NOTE — cross-target `ctrl` word identity holds only for a set's *first* func.** `exp`'s 52 `ctrl` words are byte-identical between Trainium and `with_ln` *because* `exp` is the first func in both `exp_and_others` sets (`func_to_bkt_start_idx[exp] = 0`), so its absolute `bkt_base` coincides. In general only the per-octave shape `(extract_lsb, extract_size)` is target-independent; `bkt_base` shifts by the `func_to_bkt_start_idx` delta. `sigmoid` sits at `bkt_start` 136 (trainium) vs 132 (`with_ln`), so every `sigmoid` octave's base differs by exactly +4 (CONFIRMED, `D-T05 §8`).
+> **NOTE — cross-target `ctrl` word identity holds only for a set's *first* func.** `exp`'s 52 `ctrl` words are byte-identical between Trainium and `with_ln` *because* `exp` is the first func in both `exp_and_others` sets (`func_to_bkt_start_idx[exp] = 0`), so its absolute `bkt_base` coincides. In general only the per-octave shape `(extract_lsb, extract_size)` is target-independent; `bkt_base` shifts by the `func_to_bkt_start_idx` delta. `sigmoid` sits at `bkt_start` 136 (trainium) vs 132 (`with_ln`), so every `sigmoid` octave's base differs by exactly +4.
 
 ---
 
 ## 6. `func_id` and the Per-Function Control Config
 
-The `ctrl.bin` table is per-*octave*; the per-*function* config — which selects the func variant, its symmetry fold, its clamps, and its special-value results — lives in the manifest's `profile_meta_data[]`, one 30-field scalar object per co-resident func, in func-array order (CONFIRMED, uniform 30-key schema across all 409 funcs).
+The `ctrl.bin` table is per-*octave*; the per-*function* config — which selects the func variant, its symmetry fold, its clamps, and its special-value results — lives in the manifest's `profile_meta_data[]`, one 30-field scalar object per co-resident func, in func-array order — a uniform 30-key schema across all 409 funcs.
 
 ### `func_id` — the silicon LUT selector
 
-`func_id` is the **chip-arch-native** activation opcode id the engine uses to pick this func within the loaded set. It is **target-dependent** (CONFIRMED, catalog: 309/309 trainium == the profile's `sunda_id`, 100/100 with_ln == `tonga_id`, zero exceptions):
+`func_id` is the **chip-arch-native** activation opcode id the engine uses to pick this func within the loaded set. It is **target-dependent**: across the catalog, 309/309 trainium ids equal the profile's `sunda_id` and 100/100 with_ln ids equal `tonga_id`, with no exceptions.
 
 ```text
 func_id  ==  sunda_id   on pwp_bin_trainium
@@ -345,7 +347,7 @@ For `exp`, `func_id = 7 = sunda_id = tonga_id` (coincidentally equal on both arc
 
 ### The 30 scalar fields (grouped)
 
-`profile_meta_data[exp]` (CONFIRMED, `jq`) — every field is a denormalized copy of the func's `pwp_jsons` profile:
+`profile_meta_data[exp]` — every field is a denormalized copy of the func's `pwp_jsons` profile:
 
 ```text
 selector :   func_name="exp_400p", func_id=7
@@ -364,13 +366,13 @@ range    :   lower_bound  upper_bound (raw fp32)  use_multipass=false
 
 > **GOTCHA — two distinct index spaces in `profile_meta_data`.** `pwl_control_base_pos`/`_neg` are **`ctrl`-table** indices (where the func's pos/neg octave sub-block starts; `exp`: 26 / 0). The four `*_signal_pwl_control` are **`bkt`-table** indices (the four clamp slots; `exp`: 777–780). The latter exceed `ctl_entry_cnt = 89` precisely because they live in the 941-entry `bkt` table. Confusing them mis-addresses the clamps.
 
-A few catalog-wide facts worth a reimplementer's attention (CONFIRMED): `imm_bias = 1` for exactly `{reciprocal_400p, copy_1p, memset_zero_1p, is_finite_1p}`; nonzero `fma_const_*` / `fma_indirection_src_sel` for *only* `parametric_relu_1p` (the prelu slope blend, `fma_const_0 = 0x3f800000`, `src_sel = 2`); `use_multipass = false` for every shipped meta (the two-pass `ln_4p_0mp/1mp` profiles exist in `pwp_jsons` but are not bound into any shipped set). The four `*_low` (small-signal) regions carry **no** mantissa threshold — `sat_point_*_low.mantissa_point == 0` for all 409 funcs.
+A few catalog-wide facts worth a reimplementer's attention. `imm_bias = 1` for exactly `{reciprocal_400p, copy_1p, memset_zero_1p, is_finite_1p}`; nonzero `fma_const_*` / `fma_indirection_src_sel` for *only* `parametric_relu_1p` (the prelu slope blend, `fma_const_0 = 0x3f800000`, `src_sel = 2`); `use_multipass = false` for every shipped meta (the two-pass `ln_4p_0mp/1mp` profiles exist in `pwp_jsons` but are not bound into any shipped set). The four `*_low` (small-signal) regions carry **no** mantissa threshold — `sat_point_*_low.mantissa_point == 0` for all 409 funcs.
 
 ---
 
 ## 7. End-to-End: a Worked Evaluation
 
-Putting §2, §4, §5, §6 together — the full chain from the loaded set to a scalar result, validated on `exp(0.5)` (CONFIRMED, `D-T04 §7`):
+Putting §2, §4, §5, §6 together — the full chain from the loaded set to a scalar result, validated on `exp(0.5)`:
 
 ```text
 v = 0.5  ->  bits = 0x3f000000,  biased_exp = 126 (unbiased -1),  mant = 0
@@ -414,8 +416,8 @@ To **pack** a fresh set from per-func profiles:
 
 ## 9. Confidence and Cross-References
 
-**CONFIRMED** (firsthand byte decode + JSON match this session, full 35-set / 409-func / 32,759-bkt + 3,071-ctrl catalog, zero mismatch): the 32-byte `bkt` record `[d0,d1,d2,d3,x]+12B-zero-pad` (disk d0-first, raw IEEE-754 = profile `.int`); neg-octaves-then-pos disk ordering; the 4 saturation slots `[pos_low,neg_low,pos_high,neg_high]`; the `ctrl` `uint32` bitfields `base[0:11] / lsb[11:16] / size[16:24]`, reserved `[24:32]=0`; `extract_lsb == 23 − extract_size`; `ctrl` stride 32 B trainium / 16 B with_ln (word identical); `bkt_base` = `func_to_bkt_start_idx` + Σ actual sections; `func_id = sunda_id`/`tonga_id`; cp310/11/12 byte-identical.
+**CERTAIN** — byte decode plus JSON match across the full 35-set / 409-func / 32,759-bkt + 3,071-ctrl catalog, zero mismatch: the 32-byte `bkt` record `[d0,d1,d2,d3,x]+12B-zero-pad` (disk d0-first, raw IEEE-754 = profile `.int`); neg-octaves-then-pos disk ordering; the 4 saturation slots `[pos_low,neg_low,pos_high,neg_high]`; the `ctrl` `uint32` bitfields `base[0:11] / lsb[11:16] / size[16:24]`, reserved `[24:32]=0`; `extract_lsb == 23 − extract_size`; `ctrl` stride 32 B trainium / 16 B with_ln (word identical); `bkt_base` = `func_to_bkt_start_idx` + Σ actual sections; `func_id = sunda_id`/`tonga_id`; cp310/11/12 byte-identical.
 
-**STRONG**: the consumer selection math (`find_pwp_nonsat_section @0x9340`, `libpwp_sim.so`, symboled disasm — `sectid = mant >> (23 − extract_size)`, `region = base + 40·expo`); the 2048-tile DMA rationale for the 11-bit `bkt_base` (`libwalrus` `num_2048_tiles_cur_section` rodata asserts). **INFERRED**: the blobs are precomputed offline (KaenaPWP) and merely selected/referenced by `LowerPWPImpl`, not recomputed at compile time. **GAP** (→ §10.6): the `generateInstLoadActFuncSet` IT6 wire layout and the exact `(size<<16)|((23−size)<<11)|base` packing instruction (the producing lib is stripped, so the bitfield split is proven from the *bytes* and the *consumer*, not from the packer code itself).
+**HIGH**: the consumer selection math (`find_pwp_nonsat_section @0x9340`, `libpwp_sim.so`, symboled disasm — `sectid = mant >> (23 − extract_size)`, `region = base + 40·expo`); the 2048-tile DMA rationale for the 11-bit `bkt_base` (`libwalrus` `num_2048_tiles_cur_section` rodata asserts). **MEDIUM**: the blobs are precomputed offline (KaenaPWP) and merely selected/referenced by `LowerPWPImpl`, not recomputed at compile time. **GAP** (→ §10.6): the `generateInstLoadActFuncSet` IT6 wire layout and the exact `(size<<16)|((23−size)<<11)|base` packing instruction (the producing lib is stripped, so the bitfield split is proven from the *bytes* and the *consumer*, not from the packer code itself).
 
 Cross-references: [10.1 (`pwp-model.md`)](pwp-model.md) for the evaluation model and the `find_pwp_nonsat_section` algorithm this format feeds; [10.5 (activation profile-json)](activation-profile-json.md) for the per-set `profile_json` manifest that indexes these blobs (the per-*function* coefficient source of truth is `pwp_jsons`, §10.1); [10.6 (LoadActFuncSet)](loadactfuncset.md) and [10.7 (set-cover)](set-cover.md) for the set-selection and `LoadActFuncSet` codegen.

@@ -8,7 +8,7 @@
 
 Each grid cell is one call to `runVNSplitterOnce(50000, threshold, level)` (`@0xd6f440`), dispatched through `std::async` over an independent **clone** of the PGA object, so the 64 candidates run as 64 `std::future<std::tuple<float,int>>` in parallel and never share mutable module state. A candidate re-loads the baseline module from a serialized BIR snapshot, runs `VNSplitter::runTransform` with the cell's `(threshold, level)`, re-fuses with `VerticalFusion::runTransform`, then runs `PerformanceProfiler::runProfile` to get an in-process `(memeff, cycles)` estimate — the same perf-sim metric serialized elsewhere as `tensorizer_metric_store.json` (the `metricstore` page, in flight, covers the serialized form), read here straight out of the live profiler result struct rather than from a file.
 
-The metric is the VN-Splitter knobs the search tunes; the [`vnsplitter-shrink`](vnsplitter-shrink.md) page documents the pass itself (pass 24, `vn_splitter`, whose standalone body runs **split-then-fold** — `VNSplitter::runTransform` first, then `VerticalFusion::runTransform`). The PGA candidate body runs the **same** two transforms in the **same** split-then-fold order, so there is no order difference between the standalone pass and the autotuner candidate (see the [§2 QUIRK](#2-runvnsplitteronce--one-candidate-confirmed)). PGA is a **grid search**, and it should not be confused with the separate penguin-frontend MCTS autotuner (the [`penguin-autotuner`](penguin-autotuner.md) page) which searches a tile/schedule space with Monte-Carlo tree search — a fundamentally different algorithm. The two share the word "autotuner" and nothing else.
+The metric is the VN-Splitter knobs the search tunes; the [`vnsplitter-shrink`](vnsplitter-shrink.md) page documents the pass itself (pass 24, `vn_splitter`, whose standalone body runs **split-then-fold** — `VNSplitter::runTransform` first, then `VerticalFusion::runTransform`). The PGA candidate body runs the **same** two transforms in the **same** split-then-fold order, so there is no order difference between the standalone pass and the autotuner candidate (see [§2](#2-runvnsplitteronce--one-candidate)). PGA is a **grid search**, and it should not be confused with the separate penguin-frontend MCTS autotuner (the [`penguin-autotuner`](penguin-autotuner.md) page) which searches a tile/schedule space with Monte-Carlo tree search — a fundamentally different algorithm. The two share the word "autotuner" and nothing else.
 
 > **CRITICAL — the winning-config commit path is UNRESOLVED.** `runPGA` only **logs** each candidate's `(memeff, cycles) → (level, threshold)`. It performs **no** `comiss`/`minss` argmin over the 64 results, computes **no** scalar reward, and the result vectors are simply freed in the epilogue. *Whether and how the best configuration is selected and re-applied to the real module is not proven in this binary.* `run(bir::Module&)` (`@0xd713f0`) — the `Pass`-interface entry — is a 14-byte stub that returns an empty result. Do not assume PGA commits anything; treat it, on the evidence here, as a **dispatcher + telemetry logger** whose optimization effect (if any) is a side effect inside `VNSplitter::runTransform`'s own per-split accept rule. See [§5](#5-the-commit-path-unresolved).
 
@@ -38,7 +38,7 @@ To rebuild the PGA feedback path you must reproduce:
 
 ---
 
-## 1. `runPGA` — the grid-search driver `[CONFIRMED]`
+## 1. `runPGA` — the grid-search driver
 
 `runPGA` is two nested loops that launch 64 async candidates, followed by a join loop that logs each candidate's score. The loop bounds are immediate operands and are directly visible in the prologue.
 
@@ -69,9 +69,9 @@ So the grid is:
 | `threshold` (`ebx/100.0`) | init `0x69`, step `0x19`, exit `0x131` | `{1.05, 1.30, 1.55, 1.80, 2.05, 2.30, 2.55, 2.80}` | 8 |
 | `budget` (1st arg) | `movl $0xc350` (`d6e768`/`d6e792`/`d6e871`) | `50000` — fixed | 1 |
 
-> **CORRECTION — threshold tops out at 2.80, not 3.05.** The backing report's 5-line index says the threshold sweep is `1.05..3.05`; that is wrong. The inner counter exits at `ebx == 0x131` (305), so the **last value used is 280**, i.e. `2.80f`. `0x131/100 = 3.05` is the *exit sentinel*, never passed to `runVNSplitterOnce`. (The report's body §(a) already states `2.80` correctly — the index line is the slip.) The 8 thresholds are `{1.05, 1.30, 1.55, 1.80, 2.05, 2.30, 2.55, 2.80}`, step `0.25`.
+> **GOTCHA — the threshold sweep tops out at 2.80, not 3.05.** `0x131` (305) is the loop's *exit sentinel*, so the last value actually passed to `runVNSplitterOnce` is 280, i.e. `2.80f`. Reading the exit constant as a swept value inflates the grid to a threshold that never runs. The eight thresholds are `{1.05, 1.30, 1.55, 1.80, 2.05, 2.30, 2.55, 2.80}`, step `0.25`.
 
-The divisor constant is byte-confirmed: `.rodata @0x1dd8bf8` reads `… 0000c842 …`, so the dword at `0x1dd8bfc` is little-endian `0x42c80000`, which is exactly `100.0f`. `[CONFIRMED]`
+The divisor constant reads byte-exact: `.rodata @0x1dd8bf8` contains `… 0000c842 …`, so the dword at `0x1dd8bfc` is little-endian `0x42c80000` — exactly `100.0f`.
 
 ### The async fan-out
 
@@ -88,7 +88,7 @@ std::thread::_M_start_thread(...);              // d6e8f8  LAUNCH candidate
 futures._M_realloc_insert(future);              // d6e9c5  vector<future<tuple<float,int>>> push
 ```
 
-The copy at `d6e88b` is the entire reason the search is data-race-free: each candidate captures its **own** clone of the PGA object (which carries the serialized baseline module at field `+0x70`, see [§2](#2-runvnsplitteronce--one-candidate-confirmed)), so the 64 threads each `load` and mutate a private module. `[CONFIRMED]`
+The copy at `d6e88b` is the entire reason the search is data-race-free: each candidate captures its **own** clone of the PGA object (which carries the serialized baseline module at field `+0x70`, see [§2](#2-runvnsplitteronce--one-candidate-confirmed)), so the 64 threads each `load` and mutate a private module.
 
 The launch policy is the default `std::launch::async|deferred`. The binary instantiates **both** state classes for the same invoker type:
 
@@ -98,7 +98,7 @@ std::__future_base::_Async_state_impl< _Invoker<tuple< (PGA::*)(int,float,int),
 std::__future_base::_Deferred_state<   …same invoker… , tuple<float,int> >            @0xd707d0 _M_is_deferred_future
 ```
 
-Both `_Async_state_impl::_M_run` (`@0xd727c0`, a real `std::thread`) and `_Deferred_state` (lazy) are present, which is the signature of the default policy: the runtime picks a real thread when it can and falls back to lazy evaluation otherwise. `[CONFIRMED — both instantiations nm-visible]`
+Both `_Async_state_impl::_M_run` (`@0xd727c0`, a real `std::thread`) and `_Deferred_state` (lazy) are present, which is the signature of the default policy: the runtime picks a real thread when it can and falls back to lazy evaluation otherwise. Both instantiations are `nm`-visible.
 
 ### The join + log loop
 
@@ -120,13 +120,13 @@ for (auto &f : futures) {
 // epilogue d6f0ec..d6f14a: operator delete on the config vec and the result vec. runPGA returns void.
 ```
 
-The three format literals each appear **exactly once** in `.rodata` (`rg -a` count = 1 apiece), confirming this is the only emission site. There is **no** `comiss`/`minss` reducing the 64 outcomes to a winner — they are logged and the vectors freed. `[CONFIRMED]`
+The three format literals each appear **exactly once** in `.rodata` (`rg -a` count = 1 apiece), confirming this is the only emission site. There is **no** `comiss`/`minss` reducing the 64 outcomes to a winner — they are logged and the vectors freed.
 
 > **QUIRK — `__libc_single_threaded` fast path.** Around `d6e946`/`d6e94d` the future-state refcount ops branch on `__libc_single_threaded`, toggling between locked and unlocked `shared_ptr` decrements. This is libstdc++ boilerplate, not PGA logic, but it shows up in the disassembly of the launch loop and can confuse a reimplementer expecting a single code path.
 
 ---
 
-## 2. `runVNSplitterOnce` — one candidate `[CONFIRMED]`
+## 2. `runVNSplitterOnce` — one candidate
 
 One grid cell is one call to `runVNSplitterOnce(int budget, float threshold, int level)` returning `std::tuple<float memeff, int cycles>` by value. The SysV ABI for a member function returning a struct by value places the hidden return pointer in `rdi`, `this` in `rsi`, and the three scalar args in `edx`/`xmm0`/`ecx`:
 
@@ -154,41 +154,41 @@ std::tuple<float,int> runVNSplitterOnce(int budget /*=50000*/, float threshold, 
 }
 ```
 
-Every call above is a confirmed `…@plt` target: `bir::Module::Module(string)` (`d6f4ed`), `bir::Module::load(string)` (`d6f517`), `getArch`/`getArchModel` (`d6fa4c`/`d6fa61`), `system_clock::now` (`d6fabd`), `VNSplitter::runTransform` (`d6fad2`), `VerticalFusion::runTransform` (`d6febf`), `PerformanceProfiler::runProfile` (`d7013f`). `[CONFIRMED — all seven]`
+Every call above is a confirmed `…@plt` target: `bir::Module::Module(string)` (`d6f4ed`), `bir::Module::load(string)` (`d6f517`), `getArch`/`getArchModel` (`d6fa4c`/`d6fa61`), `system_clock::now` (`d6fabd`), `VNSplitter::runTransform` (`d6fad2`), `VerticalFusion::runTransform` (`d6febf`), `PerformanceProfiler::runProfile` (`d7013f`).
 
 ### Argument semantics
 
 | Arg | Reg | Value | Meaning | Confidence |
 |---|---|---|---|---|
-| 1 `budget` | `edx` | `50000` (`0xc350`) | per-attempt size/cost cap; **never swept** | `[CONFIRMED const]` / `[INFERRED semantic]` |
-| 2 `threshold` | `xmm0` | `1.05 … 2.80` | split threshold = duplication-factor tolerance (`maxDupFactorSBSplit`) | `[STRONG]` |
-| 3 `level` | `ecx` | `2560 … 20480` | SB-size level = SBUF byte-budget granularity (`minEligibleSBSplitSize`) | `[STRONG]` |
+| 1 `budget` | `edx` | `50000` (`0xc350`) | per-attempt size/cost cap; **never swept** | CERTAIN (value) / MEDIUM (semantic) |
+| 2 `threshold` | `xmm0` | `1.05 … 2.80` | split threshold = duplication-factor tolerance (`maxDupFactorSBSplit`) | HIGH |
+| 3 `level` | `ecx` | `2560 … 20480` | SB-size level = SBUF byte-budget granularity (`minEligibleSBSplitSize`) | HIGH |
 
-The threshold being `> 1.0` and fed as the `float` arg to `VNSplitter::analyze(MemoryLocation*, float, int, int)` is what grounds the "duplication factor" reading; the VN-Splitter carries the strings `maxDupFactorSBSplit` and `min_split_size`. The same three-argument shape appears on the sibling page under a different naming — [`vnsplitter-shrink`](vnsplitter-shrink.md) calls it `runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`. The two namings agree on structure (int budget/limit, float ratio/threshold, int level/per-split cap); the exact field semantics behind `budget` are not byte-confirmed against a named struct field. `[INFERRED]`
+The threshold being `> 1.0` and fed as the `float` arg to `VNSplitter::analyze(MemoryLocation*, float, int, int)` is what grounds the "duplication factor" reading; the VN-Splitter carries the strings `maxDupFactorSBSplit` and `min_split_size`. The same three-argument shape appears on the sibling page under a different naming — [`vnsplitter-shrink`](vnsplitter-shrink.md) calls it `runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`. The two namings agree on structure (int budget/limit, float ratio/threshold, int level/per-split cap); the exact field semantics behind `budget` are not pinned to a named struct field. [INFERRED]
 
 ### The scoring struct and the `-1.0f` sentinel
 
-`runProfile` writes the result into the profiler at `+0x190` (`memeff`, float) and `+0x194` (`cycles`, int). Before the call, `memeff` is pre-set to `-1.0f` (`movl $0xbf800000,0x190(%rsp)` at `d7012c`). This is the **failure default**: a split that violates SB capacity or otherwise produces an infeasible module returns `memeff = -1`, which — under a "higher memeff is better" rule — loses to any feasible candidate automatically. `[CONFIRMED sentinel; INFERRED units]`
+`runProfile` writes the result into the profiler at `+0x190` (`memeff`, float) and `+0x194` (`cycles`, int). Before the call, `memeff` is pre-set to `-1.0f` (`movl $0xbf800000,0x190(%rsp)` at `d7012c`). This is the **failure default**: a split that violates SB capacity or otherwise produces an infeasible module returns `memeff = -1`, which — under a "higher memeff is better" rule — loses to any feasible candidate automatically. The sentinel itself is pinned; the units of `memeff` are [INFERRED].
 
-The returned tuple is GCC's reverse field order: `{int cycles; float memeff}` in memory, so `std::get<float>` is `memeff` and `std::get<int>` is `cycles`. The join loop in `runPGA` reads them back at `+0x10`/`+0x14` of the future result (see [§1](#the-join--log-loop)). `[CONFIRMED]`
+The returned tuple is GCC's reverse field order: `{int cycles; float memeff}` in memory, so `std::get<float>` is `memeff` and `std::get<int>` is `cycles`. The join loop in `runPGA` reads them back at `+0x10`/`+0x14` of the future result (see [§1](#the-join--log-loop)).
 
-> **CORRECTION — both drivers are split-then-fold; there is NO order difference.** An earlier revision of this page claimed the standalone `VNSplitterPass::run` runs *fold-then-split* while the PGA candidate runs the opposite — that contrast is **false**. Both run split first, then fold. The standalone `VNSplitterPass::run` (`@0xd73890`, documented on [`vnsplitter-shrink`](vnsplitter-shrink.md)) calls `VNSplitter::runTransform` (SPLIT) at `d73d6a` **before** `VerticalFusion::runTransform` (FOLD) at `d74162`. The PGA candidate body runs the identical order: `VNSplitter::runTransform` (`d6fad2`) *before* `VerticalFusion::runTransform` (`d6febf`). A reimplementer can rely on the two sharing one order — split with the tuned knobs first, then fold to measure the net footprint. `[CONFIRMED — call order directly disassembled in both bodies]`
+The candidate body and the standalone pass run the two transforms in the **same** order — split first, then fold. `VNSplitterPass::run` (`@0xd73890`, documented on [`vnsplitter-shrink`](vnsplitter-shrink.md)) calls `VNSplitter::runTransform` at `d73d6a` before `VerticalFusion::runTransform` at `d74162`; the PGA candidate calls them at `d6fad2` and `d6febf` respectively. A reimplementer can rely on one order throughout: split with the tuned knobs, then fold to measure the net footprint.
 
 ---
 
-## 3. The metric: in-process perf-sim, not a file `[CONFIRMED / STRONG]`
+## 3. The metric: in-process perf-sim, not a file
 
 The `(memeff, cycles)` score is read **directly** from `PerformanceProfiler::runProfile`'s result struct inside each async candidate. There is no JSON round-trip in this code path. `runProfile` (`@0xd6b080`) is the in-process perf-sim: it calls `bir::Module::getDMAProfile(int)` (`@0xd6b0b1`) and walks the module's `PhysicalAccessPattern`s to produce a latency estimate.
 
-The serialized `tensorizer_metric_store.json` leg — `BackendMetricType` 42, `PostSchedEstLatency` — is the **on-disk form of this same `cycles` estimate**. PGA consumes it in-memory; the `metricstore` page (in flight) documents the serialized store. The relationship is: same metric, two consumers — the metric store serializes it for cross-stage hand-off, PGA reads it live for the inner search. `[STRONG]`
+The serialized `tensorizer_metric_store.json` leg — `BackendMetricType` 42, `PostSchedEstLatency` — is the **on-disk form of this same `cycles` estimate**. PGA consumes it in-memory; the `metricstore` page (in flight) documents the serialized store. The relationship is: same metric, two consumers — the metric store serializes it for cross-stage hand-off, PGA reads it live for the inner search.
 
-There is **no reward arithmetic** in `runPGA`. Both `memeff` and `cycles` are kept as a raw pair and only logged — no weighting, no scalarization, no annealing temperature update. The "reward" is the `(memeff, cycles)` pair itself; any selection of the winning split is internal to `VNSplitter::runTransform`'s own per-split accept rule (each committed split must satisfy `ApGroup::isValidForSB(SBModel)` and improve packing), with PGA enumerating the grid around it. `[CONFIRMED no-reward-math; STRONG on the accept-rule reading]`
+There is **no reward arithmetic** in `runPGA`. Both `memeff` and `cycles` are kept as a raw pair and only logged — no weighting, no scalarization, no annealing temperature update. The "reward" is the `(memeff, cycles)` pair itself; any selection of the winning split is internal to `VNSplitter::runTransform`'s own per-split accept rule (each committed split must satisfy `ApGroup::isValidForSB(SBModel)` and improve packing), with PGA enumerating the grid around it. The absence of reward arithmetic is read directly; the accept-rule reading comes from the VN-Splitter side.
 
 ---
 
-## 4. The gate: `enable_bir_vnsplitter`, not `--enable-pga` `[CONFIRMED]`
+## 4. The gate: `enable_bir_vnsplitter`, not `--enable-pga`
 
-There is **no** `--enable-pga`, `--run-pga`, or `enable_pga` string anywhere in `libwalrus.so` or the walrus driver (`rg -a` count = 0). PGA is not user-toggled by name. `[CONFIRMED absent]`
+There is **no** `--enable-pga`, `--run-pga`, or `enable_pga` string anywhere in `libwalrus.so` or the walrus driver (`rg -a` count = 0). PGA is not user-toggled by name.
 
 The path is gated by the VN-Splitter pipeline option, which lives in the **Cython** front-end, not in `libwalrus.so`. The string pool of `CompileCommand.cpython-310-…so` carries both forms:
 
@@ -197,9 +197,9 @@ __pyx_kp_u_enable_bir_vnsplitter  -> "--enable-bir-vnsplitter"   (CLI long-optio
 __pyx_n_s_enable_bir_vnsplitter_2 -> "enable_bir_vnsplitter"     (Python option identifier)
 ```
 
-Both appear in `CompileCommand.cpython-310-…so` and `WalrusDriver.cpython-310-…so` (and identically in the cp311/cp312 rebuilds). When the VN-Splitter pass is scheduled, PGA runs programmatically — the grid is hard-coded, so there is no user-facing numeric `level` knob. `[CONFIRMED string; STRONG on "PGA runs when the pass is scheduled"]`
+Both appear in `CompileCommand.cpython-310-…so` and `WalrusDriver.cpython-310-…so` (and identically in the cp311/cp312 rebuilds). When the VN-Splitter pass is scheduled, PGA runs programmatically — the grid is hard-coded, so there is no user-facing numeric `level` knob.
 
-> **CORRECTION — there *is* a CLI flag, just not `--enable-pga`.** The backing report frames the gate as "the Python pipeline option `enable_bir_vnsplitter`" and emphasises the *absence* of `--enable-pga`. Both are true, but the gate is **also** exposed as a CLI long-option `--enable-bir-vnsplitter` (`__pyx_kp_u_enable_bir_vnsplitter`), not only a Python identifier. A user enabling the VN-Splitter from the command line therefore enables the PGA sweep transitively — there is simply no separate PGA flag.
+The gate is exposed *both* ways: as a Python pipeline identifier `enable_bir_vnsplitter` and as the CLI long-option `--enable-bir-vnsplitter` (`__pyx_kp_u_enable_bir_vnsplitter`). Enabling the VN-Splitter from the command line therefore enables the PGA sweep transitively — there is simply no separate PGA flag to find.
 
 ---
 
@@ -219,15 +219,15 @@ This is the honest ceiling of the analysis, and it is stated here in full so no 
 
 It returns an empty result and drives nothing. So **from this binary alone, the outer orchestration that picks the best `(level, threshold)` and re-applies it to the real module is not recovered.** Two possibilities are consistent with the evidence and *neither* is proven:
 
-1. **No commit** — PGA is pure telemetry; the real optimization happens inside `VNSplitter::runTransform`'s own per-split accept rule (which `runVNSplitterOnce` invokes 64 times on clones, discarding all 64). On this reading the grid measures, a human/log reads the result, and the "feedback" is offline. `[INFERRED]`
-2. **External commit** — a caller (not `runPGA`, not `run`) parses the logged results or a result vector handed back through a different path and re-runs the splitter with the winner. No such caller was located from these symbols. `[SPECULATIVE]`
+1. **No commit** — PGA is pure telemetry; the real optimization happens inside `VNSplitter::runTransform`'s own per-split accept rule (which `runVNSplitterOnce` invokes 64 times on clones, discarding all 64). On this reading the grid measures, a human or log consumer reads the result, and the "feedback" is offline. [INFERRED]
+2. **External commit** — a caller (not `runPGA`, not `run`) parses the logged results or a result vector handed back through a different path and re-runs the splitter with the winner. No such caller was located from these symbols. [SPECULATIVE]
 
 A reimplementer building a *closing* feedback loop must supply the argmin + re-apply themselves; this binary's `runPGA` does not contain it. **Do not fabricate a commit path.** `[UNRESOLVED]`
 
 Two further honest caveats, carried from the analysis:
 
-- The `budget = 50000` *semantic* (cost cap vs iteration count vs cycle ceiling) is inferred from it being the fixed first argument sitting alongside SBModel limit constants; it is not byte-confirmed against a named field. `[INFERRED]`
-- `memeff` units (ratio `[0,1]` vs percentage) are not confirmed — only the `-1.0f` failure sentinel and the implied "higher is better" ordering are visible. `[INFERRED]`
+- The `budget = 50000` *semantic* (cost cap vs iteration count vs cycle ceiling) is inferred from it being the fixed first argument sitting alongside SBModel limit constants; it is not pinned to a named field. [INFERRED]
+- `memeff` units (ratio `[0,1]` vs percentage) are not confirmed — only the `-1.0f` failure sentinel and the implied "higher is better" ordering are visible. [INFERRED]
 
 ---
 
