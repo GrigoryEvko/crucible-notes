@@ -89,7 +89,7 @@ StatusOr<bool> Run(HloModule* module, ExecThreads exec_threads):
 
 ### The Two dtype DenseMaps
 
-Both are function-static `llvm::DenseMap<xla::PrimitiveType, std::string>` built once by the init-list ctor at `0x1eec220`. Keys are `PrimitiveType` enum integers (XLA `xla_data.proto`: `S32=4`, `S64=5`, `U32=8`, `U64=9`, `F16=10`, `F32=11`, `BF16=16`). The values are decoded directly from the little-endian immediate stores in the `Run` body and are **CERTAIN** (every store address verified).
+Both are function-static `llvm::DenseMap<xla::PrimitiveType, std::string>` built once by the init-list ctor at `0x1eec220`. Keys are `PrimitiveType` enum integers (XLA `xla_data.proto`: `S32=4`, `S64=5`, `U32=8`, `U64=9`, `F16=10`, `F32=11`, `BF16=16`). The values are decoded from the little-endian immediate stores in the `Run` body; every store address is cited in the tables below.
 
 `fnames` — 4 entries, single-char index-width code, **integer types only**:
 
@@ -173,7 +173,7 @@ The `pair.second` is the comparator-direction selector handed to the engine: **A
 
 ### Purpose
 
-Consume the canonical custom-call and emit the iota + reduce + compare + arithmetic-index subgraph that replaces it. This is the only function that builds Create*-HLO; every other function on this page either normalizes (forward), dispatches (inverse), or is a helper called from here. Reconstructed from the disasm Create* call sequence — every call address is cited and verified.
+Consume the canonical custom-call and emit the iota + reduce + compare + arithmetic-index subgraph that replaces it. This is the only function that builds `Create*` HLO; every other function on this page either normalizes (forward), dispatches (inverse), or is a helper called from here. The sequence below follows the `Create*` call order in the disassembly, with each call address cited inline.
 
 ### Algorithm
 
@@ -238,7 +238,7 @@ The "select the index whose value equals the extremum" step is implemented **ari
 
 The `GetMin`/`GetMaxNonInfValue` sentinels keep the value-reduce identity off ±Inf so the comparator never has to reason about infinities. The whole shape is data-flow only: two reduces, a compare, an iota, three converts, two broadcast-scalars, and three binary ops — **no branch on tensor data**. This is precisely why it lowers onto the DVE `Max8`/`FindIndex8` search primitives (Part 2.16): the value-reduce is the `Max8` tree and the masked-iota index-reduce is the `FindIndex8` companion.
 
-### Op Tally (CERTAIN — exact `edx` immediates)
+### Op Tally
 
 | Op | HloOpcode | Immediate | Site | Role |
 |---|---|---|---|---|
@@ -251,9 +251,9 @@ The `GetMin`/`GetMaxNonInfValue` sentinels keep the value-reduce identity off ±
 
 Plus: 2× `CreateReduce` (0x1f0595c, 0x1f06357), 1× `CreateBroadcast` (0x1f059e8), 3× `CreateConvert` (0x1f05c0a mask→S32, 0x1f05e09 iota→working, 0x1f06649 result), 1× `CreateIota` (0x1f05d9e, S32), 1× `CreateConstant` (reduce init), 2× `BroadcastScalar` sentinels (0x1f05f46, 0x1f06471).
 
-> **NOTE —** the index comparator at `0x1f061f0` is loaded with `esi = 0x43`, the **same** direction as the value comparator (this trace is on the ArgMax path; ArgMin loads `0x44`). The second reduce uses the same min/max sense as the first — confirmed by the immediate, correcting any assumption that the index reduce always uses `max`.
+> **NOTE —** the index comparator at `0x1f061f0` is loaded with `esi = 0x43`, the **same** direction as the value comparator (this trace is on the ArgMax path; ArgMin loads `0x44`). The second reduce uses the same min/max sense as the first; it is not fixed to `max`.
 
-> **CORRECTION (D-B01) —** an earlier sketch (S2-02 §4.5) attributed the whole "iota + reduce + compare" graph to `LegalizeAwsNeuronArgMax`. That is wrong: the forward pass emits only `CreateConstant` (the iota literal) and `CreateCustomCall`. Every `CreateReduce`/`CreateCompare`/`CreateIota`/`CreateBroadcast`/`CreateConvert` call lives in `handleArgMinMaxCustomCall` (pass #19), not in the forward `Run`. Verified: the forward disasm has no `CreateReduce`/`CreateIota`/`CreateCompare` call sites.
+> **GOTCHA —** the "iota" in the forward pass is only an iota *literal*. `LegalizeAwsNeuronArgMax` emits exactly two builders — `CreateConstant` (the int64 index literal) and `CreateCustomCall` — and its disassembly contains no `CreateReduce`, `CreateIota`, or `CreateCompare` call site at all. The whole iota + reduce + compare graph is built in `handleArgMinMaxCustomCall` (pass #19). Attributing the expansion to the forward pass puts the dtype gate and the graph construction in the same stage, which the binary does not do.
 
 ---
 
@@ -355,21 +355,26 @@ All strings verified against `hlo-opt` `strings.json` / `rodata.bin` (`.rodata` 
 
 The structured NCC diagnostics route through `hilo::formatErrorMessage<…>(ErrorCode, …)` @ `0x1eeb8d0`, which calls `hilo::lookup_resolution(ErrorCode)` (@ rel `0x1eeb907`) and `hilo::lookup_cause(ErrorCode)` (@ rel `0x1eeb916`) — a code → {cause, resolution} table keyed by the `hilo::ErrorCode` enum. `EUDT001` and `EUOC001` are members of that enum.
 
-> **NOTE —** `NCC_EUOC001` is cited from `strings.json` (`0x27a77c`) as the inverse-pass diagnostic tag; its exact xref inside the engine disasm was not isolated in this trace (the failure-path block is reached via the `goto error` chains at `0x1f069ef`/`0x1f06a1c`). The string and its association with the inverse pass are CERTAIN; the precise emit site is INFERRED.
+> **NOTE —** `NCC_EUOC001` is cited from `strings.json` (`0x27a77c`) as the inverse-pass diagnostic tag; its exact xref inside the engine disasm was not isolated in this trace (the failure-path block is reached via the `goto error` chains at `0x1f069ef`/`0x1f06a1c`). The string and its association with the inverse pass are direct readings; the precise emit site is not [UNRESOLVED].
 
 ---
 
-## Self-Verification
+## Evidence summary
 
-Five strongest claims, re-challenged against the binary:
+| Claim | Anchor |
+|---|---|
+| Forward and inverse `Run` addresses and roles | demangled symbols `_ZN3xla23LegalizeAwsNeuronArgMax3RunE…_0x1eecd30` and `_ZN3xla24LowerArgMinMaxCustomCall3RunE…_0x1f06c60`; the role split follows from the `Create*` inventory — forward has only `CreateConstant`/`CreateCustomCall`, inverse `Run` only matches and calls the engine |
+| The expansion is subtract/multiply/subtract with no `kSelect` | `mov edx,0x72` @ `0x1f0603e` and `0x1f06559` (kSubtract), `mov edx,0x45` @ `0x1f06114` (kMultiply); no `kSelect` immediate occurs anywhere in the engine |
+| Two reduces, two comparators, same direction | `CreateReduce` @ `0x1f0595c` and `0x1f06357` (both `r9d=1`, single dim); `addReduceMinMaxComputation` called twice, the second loading `esi=0x43` @ `0x1f061f0` — the same `kMaximum` the dispatcher used for the value comparator on the ArgMax path |
+| Supported dtype set `{F16,BF16,F32,S32,S64,U32,U64}` | all seven `retNames` dword stores at `0x1eeddbf`..`0x1eedebf`; the four `fnames` byte stores (`4`/`2`) at `0x1eed9c8`..`0x1eeda40` |
+| Sentinel direction: ArgMax → `GetMinNonInfValue`, ArgMin → `GetMaxNonInfValue` | `GetMaxNonInfValue` call @ `0x1f0582d` (ArgMin branch), `GetMinNonInfValue` @ `0x1f06820` (ArgMax branch), branch keyed on `opcode == 0x43` |
 
-1. **Forward and inverse Run addresses + roles.** CONFIRMED — disasm filenames carry the demangled symbols `_ZN3xla23LegalizeAwsNeuronArgMax3RunE…_0x1eecd30` and `_ZN3xla24LowerArgMinMaxCustomCall3RunE…_0x1f06c60`. Roles confirmed by the Create* call inventory (forward has only `CreateConstant`/`CreateCustomCall`; inverse `Run` only matches + calls the engine).
-2. **The expansion uses subtract/multiply/subtract, no `kSelect`.** CONFIRMED — `mov edx,0x72` @ `0x1f0603e` and `0x1f06559` (kSubtract), `mov edx,0x45` @ `0x1f06114` (kMultiply). Grep for any `kSelect` immediate in the engine returns nothing. The "select" is arithmetic.
-3. **Two reduces, two comparators, both same direction.** CONFIRMED — `CreateReduce` @ `0x1f0595c` and `0x1f06357` (both `r9d=1`, single dim); `addReduceMinMaxComputation` called twice, the 2nd loading `esi=0x43` @ `0x1f061f0` (same `kMaximum` as the dispatcher's value comparator on the ArgMax path).
-4. **Supported dtype set {F16,BF16,F32,S32,S64,U32,U64}.** CONFIRMED — all 7 `retNames` dword stores verified at `0x1eeddbf`..`0x1eedebf` (`_f32`,`_f16`,`_bf16`,`_s64`,`_s32`,`_u64`,`_u32`); `fnames` 4 byte stores (`4`/`2`) at `0x1eed9c8`..`0x1eeda40`.
-5. **Sentinel direction: ArgMax→GetMinNonInfValue, ArgMin→GetMaxNonInfValue.** CONFIRMED — `GetMaxNonInfValue` call @ `0x1f0582d` (ArgMin branch), `GetMinNonInfValue` @ `0x1f06820` (ArgMax branch); branch keyed on `opcode==0x43`.
+## Limits of this reading
 
-INFERRED / not pinned: the exact `NCC_EUOC001` emit site inside the engine (string and association CERTAIN, emit block INFERRED); whether the inverse engine consumes the forward's int64 iota *constant* operand or rebuilds the S32 `iota` fresh (the engine reads `operand(0)` = the data tensor and builds its own S32 iota at `0x1f05d9e` — the constant-operand consumption is MED); precise broadcast-dimension spans (MED, the ops emitted are CERTAIN). No Hex-Rays pseudocode exists for either `Run` or the engine (`NVOPEN_IDA_SKIP_DECOMPILE`); instruction order is the disasm Create* call order.
+- The exact `NCC_EUOC001` emit site inside the engine was not isolated; the failure path is reached through the `goto error` chains at `0x1f069ef` / `0x1f06a1c`.
+- Whether the inverse engine consumes the forward pass's int64 iota *constant* operand, or ignores it and rebuilds an S32 `iota` fresh, is unresolved. The engine reads `operand(0)` (the data tensor) and does build its own S32 iota at `0x1f05d9e`, which leaves the constant's fate open.
+- The precise broadcast-dimension spans are reconstructed; the set of ops emitted is read directly.
+- No decompiler output exists for either `Run` or the engine (`NVOPEN_IDA_SKIP_DECOMPILE`), so the statement order above follows the `Create*` call order in the disassembly rather than recovered source structure.
 
 ---
 
