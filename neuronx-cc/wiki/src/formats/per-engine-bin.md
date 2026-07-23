@@ -8,13 +8,13 @@ A NEFF is a [PAX tar of named members](neff-container.md), not an ELF; the bytes
 
 The single most error-prone fact about these members is an **engine-name duality**. The on-disk basenames are **TitleCase** (`PE`, `Pool`, `Activation`, `SP`, `DVE`) — they come from `bir::EngineInfo2string` and are the names the shipped consumer `analyze_neff_artifacts.py` opens by. But the `def.json` `"definition"` index — the per-core table that tells the loader which basename belongs to which engine — keys engines by a **lowercase** token (`pool`, `act`, `pe`, `dma`, `dve`, `sp`) produced by a *different*, NEFF-local formatter (`sub_15248C0`, `neff_packager.cpp:49`), suffixed `_instr` / `_dbg` / `_asm_dbg`. A reimplementer who emits TitleCase keys into `def.json`, or lowercase basenames on disk, produces a NEFF the runtime cannot resolve. Both spellings, and the mapping between them, are pinned below.
 
-The headline quirk concerns the **MD5 "IR signature"**. The NEFF writer hashes a *subset* of members and logs `IR signature (MD5): <hex>`. The membership predicate is byte-resolved in `addToBom` (`0x153fb80`): a member is hashed iff its basename **contains `.dbg`** or **equals `.npy`**, plus `info.json` (pre-seeded by the writer's constructor). The five engine `.bin` instruction streams — the actual program — are **not in the signature set**. The signature certifies the debug-info and constant-weight members, not the code. This page proves that exclusion from the disassembly, names the real symbols, and gives the full per-member layout table.
+The headline quirk concerns the **MD5 "IR signature"**. The NEFF writer hashes a *subset* of members and logs `IR signature (MD5): <hex>`. The membership predicate is byte-resolved in `addToBom` (`0x153fb80`): a member is hashed iff its **extension contains `.dbg`** or **equals `.npy`**, plus `info.json` (pre-seeded by the writer's constructor). The extension test means every `*.npy` constant-weight file is signed. The five engine `.bin` instruction streams — the actual program — are **not in the signature set** (extension `.bin` matches neither predicate). The signature certifies the debug-info and constant-weight members, not the code. This page proves that exclusion from the disassembly, names the real symbols, and gives the full per-member layout table.
 
 For reimplementation, the contract is:
 
 - **The member roster** — the five TitleCase `<Engine>.bin` instruction streams, their five same-stem `.json` DMA-descriptor sidecars, and the one-to-one pairing the producer asserts.
 - **The engine-name duality** — TitleCase basenames (`bir::EngineInfo2string`, libBIR) vs. lowercase `def.json` tokens (`sub_15248C0`, `neff_packager.cpp:49`); the ordinal map; the `_instr`/`_dbg`/`_asm_dbg` suffixing.
-- **The signature-subset predicate** — the `addToBom` `.npy`-equals / `.dbg`-contains test that selects MD5 membership, the `info.json` constructor seed, and the proof that `.bin` streams are excluded.
+- **The signature-subset predicate** — the `addToBom` extension test (`extension()==".npy"` / `extension()` contains `.dbg`) that selects MD5 membership, the `info.json` constructor seed, and the proof that `.bin` streams are excluded.
 
 | | |
 |---|---|
@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **`def.json` token formatter** | `sub_15248C0` (standalone engine→string fn; jump table @ `0x15248f1`) — **lowercase** `{1:pool,2:act,3:pe,4:dma,5:dve,6:sp}` |
 | **Token → key suffix** | `<tok>_instr` / `<tok>_dbg` / `<tok>_asm_dbg` (`writeDefJson` `_M_append`) |
 | **Pairing assert** | `bom.getEngInstrFile().count(eng)==1 && bom.getEngDMADescFile().count(eng)==1` (`DescGen::dumpToFile` `0x11dd610`) |
-| **MD5-signed iff** | basename **contains `.dbg`** OR **equals `.npy`**, plus `info.json` |
+| **MD5-signed iff** | **extension contains `.dbg`** OR **extension equals `.npy`** (every `*.npy`), plus `info.json` |
 | **`.bin` streams signed?** | **No** — not matched by either predicate; not in the signature set |
 | **Consumer oracle** | `analyze_neff_artifacts.py` (md5 `125d8537…`) lines 24–28 / 74–75 |
 
@@ -160,36 +160,35 @@ After the archive is written, the NEFF writer finalizes an MD5 over a *subset* o
 `addToBom` (`0x153fb80`) computes the entry's basename, then runs two independent string tests against it; a hit on either inserts the entry name into the IR-signature `std::set<std::string>` at `writer+0xD8` (= +216). Disassembled directly:
 
 ```text
-0x153fc65:  lea  rsi, aMlp0BiasNpy+0Bh        ; rsi -> ".npy"   (suffix of "mlp0/bias.npy")
-0x153fc6c:  mov  rdi, rbp                      ; rdi = basename
+0x153fc28:  call sub_175D1C0                   ; ext = file.extension()  (filename() then rfind('.'))
+0x153fc65:  lea  rsi, aMlp0BiasNpy+0Bh        ; rsi -> ".npy"   (the ".npy" tail of "mlp0/bias.npy")
+0x153fc6c:  mov  rdi, rbp                      ; rdi = ext  (the file's extension string)
 0x153fc6f:  call std::string::compare(char const*)
-            ; if compare(".npy") == 0:
+            ; if ext.compare(".npy") == 0:      // TRUE for every *.npy file
 0x153fc7d:  lea  rdi, [r12+0D8h]               ; rdi = writer+0xD8  (the IR-sig std::set)
 0x153fc85:  call _Rb_tree::_M_insert_unique(entry)
 
 0x153fc91:  lea  rsi, aDbg                     ; rsi -> ".dbg"
-0x153fc98:  mov  rdi, rbp                      ; rdi = basename
+0x153fc98:  mov  rdi, rbp                      ; rdi = ext
 0x153fc9b:  call std::string::find(char const*, ulong, ulong)
-            ; if find(".dbg") != npos:
+            ; if ext.find(".dbg") != npos:
 0x153fcab:  lea  rdi, [r12+0D8h]               ; rdi = writer+0xD8
 0x153fcb3:  call _Rb_tree::_M_insert_unique(entry)
 ```
 
-with `r12 = this` (`mov r12, rdi` at the `0x153fb8b` prologue). As annotated pseudocode:
+with `r12 = this` (`mov r12, rdi` at the `0x153fb8b` prologue). The tested string `rbp` is the file's **extension**, not its whole basename: `sub_175D1C0` (`0x153fc28`) first calls the filename helper `sub_175B780` (rfind `'/'`) and then `rfind('.')` (`0x175d252: mov esi,0x2e`), returning the tail from the last dot — i.e. `boost::filesystem::path::extension()`. The `.npy` literal it compares against is itself the `.npy` tail of a weight-name string in `.rodata`. As annotated pseudocode:
 
 ```c
 // NeffFileWriter::addToBom(file, entryNameOverride)  — 0x153fb80
 void addToBom(this, path file, optional<string> entryNameOverride):
-    out   = computeOutputPath(file)                       // 0x153c7a0  -> BOM map KEY
-    entry = entryNameOverride ? *entryNameOverride
-                              : file.filename()            // sub_175D1C0 -> BOM map VALUE
-    base  = filename(out)                                  // basename of the on-disk path
+    entry = computeOutputPath(file)                       // 0x153fbc6 -> the member name inserted
+    ext   = file.extension()                              // sub_175D1C0: filename() then rfind('.')
 
     // ---- IR-signature membership (the headline predicate) ----
-    if base.compare(".npy") == 0:                          // 0x153fc6f, full-string EQUALS
+    if ext.compare(".npy") == 0:                          // 0x153fc6f — extension EQUALS ".npy"
+        this->irSigSet.insert(entry)                       // fires for every *.npy weight file
+    if ext.find(".dbg") != npos:                          // 0x153fc9b — extension contains ".dbg"
         this->irSigSet.insert(entry)                       // [this+0xD8] = writer+216
-    if base.find(".dbg") != npos:                          // 0x153fc9b, CONTAINS
-        this->irSigSet.insert(entry)                       // [this+0xD8]
 
     // ---- BOM upsert: path -> member name (no type/offset/hash field) ----
     node = rb_tree_find_or_insert(this->bom /*+0x90*/, file)   // root @ +0xA0
@@ -209,17 +208,17 @@ How solid is that seed? `0x1543eb0` is the `NeffFileWriter` constructor and it d
 So the byte-proven signature set is exactly:
 
 ```text
-IR-signature set  =  { info.json }  ∪  { members whose basename CONTAINS ".dbg" }
-                                     ∪  { members whose basename EQUALS  ".npy" }
+IR-signature set  =  { info.json }  ∪  { members whose extension CONTAINS ".dbg" }
+                                     ∪  { members whose extension EQUALS  ".npy" (every *.npy) }
 ```
 
 `writeArchiveFile` (`0x153e030`) then, for each tar member in BOM key order, `_Rb_tree`-searches this set by the member name; on a hit it feeds the member's bytes (8 KiB `fread` chunks) into the MD5 and logs `Adding <n> bytes of <file> to the IR Signature.` — every literal is present in `libwalrus.so`.
 
-> **QUIRK — the program is not signed; the debug info and weights are.** The five `<Engine>.bin` instruction streams are the compiled program, yet **none** of them enter the signature set: a basename like `PE.bin` neither equals `.npy` nor contains `.dbg`, and only `info.json` is constructor-seeded. The MD5 "IR signature" therefore certifies the **debug-info** (`*.dbg`) and **constant-weight** (`*.npy`) members plus the `info.json` header — *not* the instruction bytes. A reimplementer who assumes the signature covers the code (a natural reading of "IR signature") is wrong, and a NEFF-diff that relies on the signature to detect code changes will silently miss them.
+> **QUIRK — the program is not signed; the debug info and weights are.** The five `<Engine>.bin` instruction streams are the compiled program, yet **none** of them enter the signature set: `PE.bin`'s extension is `.bin`, which is neither `.npy` nor contains `.dbg`, and only `info.json` is constructor-seeded. The MD5 "IR signature" therefore certifies the **debug-info** (`*.dbg`) and **constant-weight** (`*.npy`) members plus the `info.json` header — *not* the instruction bytes. A reimplementer who assumes the signature covers the code (a natural reading of "IR signature") is wrong, and a NEFF-diff that relies on the signature to detect code changes will silently miss them.
 
-*Anchors: the predicate is read from the `addToBom` disassembly — `.npy` compare @ `0x153fc6f`, `.dbg` find @ `0x153fc9b`, both inserting into `[r12+0xD8]` — plus the constructor seed in `NeffFileWriter` @ `0x1543eb0`, which loads `"info.json"` @ `0x15440cf`.*
+*Anchors: the predicate is read from the `addToBom` disassembly — `.npy` compare @ `0x153fc6f`, `.dbg` find @ `0x153fc9b`, both against the extension string from `sub_175D1C0` and both inserting into `[r12+0xD8]` — plus the constructor seed in `NeffFileWriter` @ `0x1543eb0`, which loads `"info.json"` @ `0x15440cf`.*
 
-> **NOTE — `.npy` is an EQUALS test, not a suffix test.** `compare(".npy") == 0` fires only when a basename is *literally* `".npy"` (an extension-only name). A real weight named `"weight.npy"` would **fail** this test — it would enter the signature set only via some other path, or not at all. Whether any constant file is ever named exactly `.npy` is unproven; the `.dbg`-contains branch and the `info.json` seed are the predicates that demonstrably carry the signature. The `.npy` branch may be vestigial. (Byte-truth: it is `compare()==0`, not `endsWith`.)
+> **GOTCHA — the `.npy` test is against the file EXTENSION, so every `*.npy` weight is signed.** The compared string (`rbp`) is `sub_175D1C0`'s return — `file.filename()` then `rfind('.')`, i.e. `path::extension()` — not the whole basename. For a real weight `mlp_0_bias.npy`, `extension()` is `".npy"`, so `extension().compare(".npy") == 0` is **true** and the member is signed. Reading `compare(".npy") == 0` as "basename must literally be `.npy`" is the trap: `compare` runs on the extension substring, which equals `.npy` for the whole weight family. The `.npy` branch is live, not vestigial.
 
 ### Why typing is name-convention, not an enum
 

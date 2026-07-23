@@ -147,13 +147,13 @@ function addToBom(path file, optional<string> entryNameOverride):  // 0x153fb80
                                               //   else joins to the writer base dir
     entry = entryNameOverride.has_value()     // disasm: cmp byte [a3+0x20],0 @0x153fbcb
               ? *entryNameOverride
-              : file.filename();              // 0x175D1C0 = basename -> the MAP VALUE
+              : out;                          // else the computeOutputPath result -> the MAP VALUE
 
     // --- IR-signature classification (writer+0xD8, a std::set<string>) ---
-    base = out.filename();                    // basename of the ON-DISK path
-    if (base.compare(".npy") == 0)            // @0x153fc6f; ".npy" @rodata 0x1c8b929
-        irsig_set.insert(entry);              // full-string equal (NOT endsWith) — see Gap G1
-    if (base.find(".dbg", 0, 4) != npos)      // @0x153fc9b; ".dbg" @rodata 0x1c86c5b (n=4,pos=0)
+    ext = file.extension();                   // 0x175D1C0 = filename() then rfind('.') = path::extension()
+    if (ext.compare(".npy") == 0)             // @0x153fc6f; ".npy" @rodata 0x1c8b929 — every *.npy matches
+        irsig_set.insert(entry);              // extension equals ".npy"
+    if (ext.find(".dbg", 0, 4) != npos)       // @0x153fc9b; ".dbg" @rodata 0x1c86c5b (n=4,pos=0)
         irsig_set.insert(entry);
 
     // --- BOM map UPSERT (last-write-wins on the path key) ---
@@ -165,11 +165,11 @@ function addToBom(path file, optional<string> entryNameOverride):  // 0x153fb80
 
 ### Which members are MD5-signed
 
-The `addToBom` predicate admits a member into the IR-signature set iff its on-disk basename **equals `".npy"`** or **contains `".dbg"`**. Adding the `"info.json"` pre-seed the `NeffFileWriter` constructor contributes, the signed set is `{info.json} ∪ {*.dbg debug-info} ∪ {*.npy const/weight}`. The per-engine `.bin` instruction streams are **not** signed.
+The `addToBom` predicate admits a member into the IR-signature set iff its file **extension equals `".npy"`** or **contains `".dbg"`**. Adding the `"info.json"` pre-seed the `NeffFileWriter` constructor contributes, the signed set is `{info.json} ∪ {*.dbg debug-info} ∪ {*.npy const/weight}`. Because the test is on the extension, **every** `*.npy` weight is signed. The per-engine `.bin` instruction streams are **not** signed (extension `.bin`).
 
-*Anchors: the predicate sits at `0x153fc6f`/`0x153fc9b`, with targets `0x1c8b929=".npy"` and `0x1c86c5b=".dbg"`, both byte-resolved. The `info.json` seed is well-corroborated but [INFERRED]: `0x1543eb0` is the `NeffFileWriter` constructor and it does load `"info.json"` at `0x15440cf` (via `aKernelDebugInfoJson+0Dh`), but the entry itself is the ctor's `__cxa_demangle`→`strlen`→`strstr` preamble, not the insert into the IR-sig set, and the path to `_M_get_insert_hint_unique_pos` was not single-stepped.*
+*Anchors: the predicate sits at `0x153fc6f`/`0x153fc9b`, testing the extension string that `sub_175D1C0` (`0x153fc28`) returns — `filename()` (`sub_175B780`, rfind `'/'`) then `rfind('.')` (`0x175d252: mov esi,0x2e`) = `path::extension()` — against targets `0x1c8b929=".npy"` and `0x1c86c5b=".dbg"`, both byte-resolved. The `info.json` seed is well-corroborated but [INFERRED]: `0x1543eb0` is the `NeffFileWriter` constructor and it does load `"info.json"` at `0x15440cf` (via `aKernelDebugInfoJson+0Dh`), but the entry itself is the ctor's `__cxa_demangle`→`strlen`→`strstr` preamble, not the insert into the IR-sig set, and the path to `_M_get_insert_hint_unique_pos` was not single-stepped.*
 
-> **GOTCHA — the `.npy` branch is `compare(".npy")==0`, a full-string equality.** It fires only when a basename is literally `".npy"` — an extension-only name. A real weight named `"<w>.npy"` **fails** the test. If const files carry `<weight>.npy` names, the `.npy` branch is vestigial and the signature rests on `info.json` plus the `.dbg` files. The comparison is `compare()==0`, not `endsWith`.
+> **GOTCHA — `compare(".npy")==0` runs on the EXTENSION, so every `*.npy` weight is signed.** The compared string is `sub_175D1C0`'s return — `file.filename()` then `rfind('.')`, i.e. `path::extension()` — not the whole basename. A real weight `mlp_0_bias.npy` has `extension() == ".npy"`, so `compare()` returns 0 and it is signed. Reading `compare(".npy")==0` as "the basename must literally be `.npy`" is the trap: `compare` operates on the extension substring, which equals `.npy` for the whole weight family. The `.npy` branch is live, and the `.npy` literal it uses is itself the `.npy` tail of a weight-name string in `.rodata`.
 
 ---
 
@@ -262,7 +262,8 @@ A `*.neff` is one PAX tar of these members (one on-disk file each), emitted in B
 | `<eng token>` (×5) | `PE/Pool/…/DVE.json` | per-engine DMA-descriptor table | n | C |
 | `kelf-0.json` (`kelf-<N>`) | `kelf-<N>.json` | per-core KELF engine-offset index | n | C |
 | `ucode_lib.json` | `ucode_lib.json` | custom-op µcode lib | n | C |
-| `<const>.bin` / `<w>.npy` | `*.bin` / `*.npy` | const/weight backing data (de-dup'd) | Y | C |
+| `<w>.npy` | `*.npy` | weight backing data (de-dup'd) — extension `.npy` | Y | C |
+| `<const>.bin` | `*.bin` | const backing data (de-dup'd) — extension `.bin`, not signed | n | C |
 | `<eng>_dbg` / `debug_info` | `debug_info_backend.<eng>.dbg` | protobuf BIR debug info | Y | C |
 | `<eng>_asm_dbg` / `debug_info` | `debug_info_asm.<eng>.dbg` | protobuf ASM debug info | Y | C |
 | `kernel_debug_info.json` | `kernel_debug_info.json` | JSON ext kernel debug | n | T |
