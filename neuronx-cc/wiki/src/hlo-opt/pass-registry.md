@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **Registry accessor** | `xla::hilo::GetHloPassRegistry()` @ `0x1ebc570` |
 | **Registry storage** | `xla::hilo::hloPassRegistry` @ `0x9a38ee0` (`.bss`, managed-static) |
 | **Container type** | `llvm::StringMap<std::function<std::unique_ptr<xla::HloPassInterface>()>>` |
-| **Pass count** | **112** (= 112 `RegisterHloPass` call sites in the registrar — CONFIRMED) |
+| **Pass count** | **112** (= 112 `RegisterHloPass` call sites in the registrar) |
 | **Key for each pass** | C-string from `pass->name()` (vtable vptr+0x10) |
 | **Selection flags** | `xla_enable_hlo_passes_only` (=`--passes`), `xla_disable_hlo_passes` (=`--skip-pass`), `xla_disable_all_hlo_passes` |
 | **Pipeline driver** | `xla::HloPassPipeline::RunPassesInternal<HloModule>` (consumes the disable set as `flat_hash_set<string_view>`) |
@@ -92,7 +92,7 @@ c3              ret
 
 `RegisterHloPass` consumes that pair at `0x1ebc437`. All 112 declared lengths equal `strlen(name)` (length integrity check passes for every row). Verified verbatim against the binary for, among others, `dce` (len 3 @ `0x913dc30`), `lower-to-nki-kernels` (len 20 @ `0x1f3f690`), `aws_neuron_default_metadata` (len 27 @ `0x1f964c0`), and the 59-char `aws_neuron_rewrite_all_reduce_dynamic_slice_multiple_groups` (@ `0x2003870`).
 
-> **NOTE —** `hloPassRegistry` (@ `0x9a38ee0`, `.bss`) is a managed static initialized through a `_GLOBAL__sub_I_` guard. It is read once by `GetHloPassRegistry` (@ `0x1ebc570`), which has exactly **one** call site in the ELF — the driver path that resolves a requested name to its factory. `RegisterHiloHloPasses` likewise has exactly one call site (the startup initializer). (CONFIRMED — call-target scan of the disassembly.)
+> **NOTE —** `hloPassRegistry` (@ `0x9a38ee0`, `.bss`) is a managed static initialized through a `_GLOBAL__sub_I_` guard. It is read once by `GetHloPassRegistry` (@ `0x1ebc570`), which has exactly **one** call site in the ELF — the driver path that resolves a requested name to its factory. `RegisterHiloHloPasses` likewise has exactly one call site, the startup initializer. Both counts come from a call-target scan of the disassembly.
 
 ---
 
@@ -108,7 +108,7 @@ This is the canonical table every Part-4 page slots into. Columns:
 - **Kind** — `HloPass` (own `Run`) vs `OpExpander` (overrides `InstructionMatchesPattern`/`ExpandInstruction`, shares the base `Run`). **25** of 112 are OpExpander.
 - **Src** — `N` = Neuron-authored (`xla::hilo::Neuron*` or a Neuron-only `xla::hilo::*` / `xla::*` class), `S` = stock XLA class reused unchanged. See [§4](#4-stock-vs-neuron-split) for the rule.
 
-All rows below were recovered by the method in [§1](#1-how-a-registry-key-is-bound); name string + length are read from the binary and length-validated, and vtable + factory + registration order are disassembly-verified. Confidence is **CERTAIN** for every row unless flagged.
+All rows below were recovered by the method in [§1](#1-how-a-registry-key-is-bound): the name string and its length are read from the binary and length-validated, and vtable, factory and registration order are disassembly-verified.
 
 | # | PassName | Class | Vtable | Entry | Kind | Src |
 |---|---|---|---|---|---|---|
@@ -241,9 +241,9 @@ The registry is a superset. The driver narrows it to a run-list. `hlo-opt` does 
 
 | DebugOptions field | CLI surface | Semantics (verbatim from the binary) | Confidence |
 |---|---|---|---|
-| `xla_enable_hlo_passes_only` | `--passes` | "Comma-separated list of hlo passes to be **enabled**. These names must exactly match the passes' names; no whitespace around commas. The unspecified passes are all disabled." | CONFIRMED (string @ binary) |
-| `xla_disable_hlo_passes` | `--skip-pass` | "Comma-separated list of hlo passes to be **disabled**. These names must exactly match the passes' names; no whitespace around commas." | CONFIRMED (string @ binary) |
-| `xla_disable_all_hlo_passes` | (`--disable-all-passes`) | "*All* passes disabled by `--xla_disable_all_hlo_passes`." | CONFIRMED (string @ binary) |
+| `xla_enable_hlo_passes_only` | `--passes` | "Comma-separated list of hlo passes to be **enabled**. These names must exactly match the passes' names; no whitespace around commas. The unspecified passes are all disabled." | CERTAIN |
+| `xla_disable_hlo_passes` | `--skip-pass` | "Comma-separated list of hlo passes to be **disabled**. These names must exactly match the passes' names; no whitespace around commas." | CERTAIN |
+| `xla_disable_all_hlo_passes` | (`--disable-all-passes`) | "*All* passes disabled by `--xla_disable_all_hlo_passes`." | CERTAIN |
 
 > **QUIRK —** "enable-only" is **whitelist** semantics, not "also enable". `xla_enable_hlo_passes_only` makes the listed names the *entire* run-set and disables everything else; an empty list with this flag set disables all passes. `xla_disable_hlo_passes` is the **blacklist**: run everything except the named passes. Setting both is legal — disable wins on conflict (a name in both lists does not run). This is exactly stock XLA `HloPassPipeline` filter semantics; Neuron added no new arbitration.
 
@@ -291,7 +291,13 @@ Of the 112 registered passes, **109 are Neuron-authored** and **3 are stock XLA 
 
 All three are plain `xla::` (no `hilo`) classes whose vtables sit in the high `0xd2…`/`0x48…` ranges shared with the rest of the bundled XLA runtime, and their `Run` bodies are the large stock implementations (`HloDCE::Run` @ `0x913fb70`, `CallInliner::Run` @ `0x9135790`).
 
-> **CORRECTION (D-A03) —** earlier strand notes treated `all-reduce-combiner` (#79, `xla::AllReduceCombiner`) as a fourth stock pass because it is a plain `xla::` class. The binary shows it is the stock combiner *driven by a Neuron combine-key*: the class is stock XLA, but its factory is constructed with Neuron-specific combiner parameters and its real entry is `RunWithKeyCombiner` (Neuron supplies the `CombineKey` callback). It is therefore classified **N** (Neuron-configured) here, not pure stock. The two *true* Neuron collective combiners, #77 `all-gather-combiner` (`xla::hilo::NeuronAllGatherCombiner`) and #78 `reduce-scatter-combiner` (`xla::hilo::NeuronReduceScatterCombiner`), are Neuron subclasses with their own `Run`.
+### The near-miss: `all-reduce-combiner`
+
+Row #79 `all-reduce-combiner` looks like a fourth stock pass — its class `xla::AllReduceCombiner` is plain `xla::` with no `hilo` — but it is the stock combiner *driven by a Neuron combine-key*. Its factory is constructed with Neuron-specific combiner parameters, and its real entry is `RunWithKeyCombiner`, to which Neuron supplies the `CombineKey` callback. The **Src** column therefore marks it `N` (Neuron-configured) rather than pure stock.
+
+The two *true* Neuron collective combiners are different animals again: #77 `all-gather-combiner` (`xla::hilo::NeuronAllGatherCombiner`) and #78 `reduce-scatter-combiner` (`xla::hilo::NeuronReduceScatterCombiner`) are Neuron subclasses with their own `Run`.
+
+> **GOTCHA — a plain `xla::` class name does not mean a stock pass.** Provenance has to be read from the factory's constructor arguments and entry point, not from the namespace: #79 is stock-classed but Neuron-parameterised, and many `xla::`-namespace passes are wholly Neuron-authored (see below).
 
 ### Namespace topology
 
@@ -316,17 +322,21 @@ The combiner-threshold / replica-count values in that registrar config struct ar
 
 ---
 
-## 5. Adversarial Self-Verification
+## 5. Evidence summary and limits
 
-The five strongest claims on this page, each re-challenged against the binary:
+### Evidence summary
 
-1. **There are exactly 112 passes.** An objdump of the `RegisterHiloHloPasses` body (`0x1e72270`–`0x1e744af`) shows **112** `call` instructions whose rel32 target is `RegisterHloPass` (`0x1ebc3f0`). Count = 112. **CONFIRMED.**
-2. **`RegisterHiloHloPasses` is the registrar @ `0x1e72270`.** `nm` resolves `_ZN3xla4hilo21RegisterHiloHloPassesEv` (weak) at that exact address; it has one call site (the startup guard). **CONFIRMED.**
-3. **The registry is an `llvm::StringMap` keyed by `pass->name()`.** `RegisterHloPass` @ `0x1ebc3f0` calls the factory, then `[vptr+0x10]` (=`name()`), then `StringMapImpl::hash` / `LookupBucketFor`, inserting into `hloPassRegistry` @ `0x9a38ee0`. The `name()` stub form (`mov eax,len; mov edx,offset str; ret`) was read directly for multiple rows. **CONFIRMED.**
-4. **The 112 keys and classes in [§2](#2-the-112-row-master-pass-index) are real.** A 12-key string sample (`tuple-simplifier`, `call-inliner`, `legalize-quantize-mx`, `lower-to-nki-kernels`, `neuron-hlo-inst-comb`, `aws_neuron_default_metadata`, `neuron-preprocess-kernel-duplicate-remover`, `aws_neuron_rewrite_all_reduce_dynamic_slice_multiple_groups`, `while_loop_unroller`, `upcast-all-to-fp32`, `all-gather-combiner`, `aws_neuron_rewrite_all_gather_trip_count`) all `strings`-FOUND, and 8 sampled vtables (`TupleSimplifier` `0x486f60`, `HloDCE` `0xd26ec8`, `LegalizeQuantizeMX` `0x40e168`, `Stub` `0x4105a8`, `RemoveAliases` `0x410188`, `ResolveSelfComparison` `0x413080`, `NeuronLoopedEinsumReplacer` `0x411d68`, `NeuronReduceScatterCombiner` `0x412150`) match the table. The remaining rows were not each independently re-derived in this pass; the table is carried from the disassembly-verified D-A03 enumeration at **CERTAIN** confidence, with the 8-row spot-check as corroboration. **CONFIRMED (sampled).**
-5. **Selection is stock-XLA `DebugOptions`, not a Neuron engine.** The strings `xla_enable_hlo_passes_only` ("…unspecified passes are all disabled"), `xla_disable_hlo_passes`, `xla_disable_all_hlo_passes`, the diagnostics `Passes enabled by --xla_enable_hlo_passes_only: ` / `Passes disabled by --xla_disable_hlo_passes: ` / `*All* passes disabled by --xla_disable_all_hlo_passes.` / `Skipping pass: `, and the `HloPassPipeline::RunPassesInternal<HloModule>(…, flat_hash_set<string_view> const&)` symbol are all present. **CONFIRMED.**
+- **The count of 112.** An objdump of the `RegisterHiloHloPasses` body (`0x1e72270`–`0x1e744af`) contains exactly 112 `call` instructions whose rel32 target is `RegisterHloPass` (`0x1ebc3f0`).
+- **The registrar's identity.** `nm` resolves `_ZN3xla4hilo21RegisterHiloHloPassesEv` (weak) at `0x1e72270`, with a single call site in the startup guard.
+- **The container and its key.** `RegisterHloPass` @ `0x1ebc3f0` calls the factory, then `[vptr+0x10]` (= `name()`), then `StringMapImpl::hash` / `LookupBucketFor`, inserting into `hloPassRegistry` @ `0x9a38ee0`. The `name()` stub form (`mov eax,len; mov edx,offset str; ret`) was read directly for multiple rows.
+- **The keys and classes.** Every key in [§2](#2-the-112-row-master-pass-index) is a verbatim `name()` literal recovered from a real vtable — none is reconstructed from a class name. A 12-key string sample (`tuple-simplifier`, `call-inliner`, `legalize-quantize-mx`, `lower-to-nki-kernels`, `neuron-hlo-inst-comb`, `aws_neuron_default_metadata`, `neuron-preprocess-kernel-duplicate-remover`, `aws_neuron_rewrite_all_reduce_dynamic_slice_multiple_groups`, `while_loop_unroller`, `upcast-all-to-fp32`, `all-gather-combiner`, `aws_neuron_rewrite_all_gather_trip_count`) was located in `strings`, and eight sampled vtables (`TupleSimplifier` `0x486f60`, `HloDCE` `0xd26ec8`, `LegalizeQuantizeMX` `0x40e168`, `Stub` `0x4105a8`, `RemoveAliases` `0x410188`, `ResolveSelfComparison` `0x413080`, `NeuronLoopedEinsumReplacer` `0x411d68`, `NeuronReduceScatterCombiner` `0x412150`) match the table.
+- **Stock-XLA selection.** The strings `xla_enable_hlo_passes_only` ("…unspecified passes are all disabled"), `xla_disable_hlo_passes` and `xla_disable_all_hlo_passes`, the diagnostics `Passes enabled by --xla_enable_hlo_passes_only: ` / `Passes disabled by --xla_disable_hlo_passes: ` / `*All* passes disabled by --xla_disable_all_hlo_passes.` / `Skipping pass: `, and the `HloPassPipeline::RunPassesInternal<HloModule>(…, flat_hash_set<string_view> const&)` symbol are all present in the ELF.
 
-No fabricated pass names: every key in [§2](#2-the-112-row-master-pass-index) is the verbatim `name()` literal recovered from a real vtable. The CLI surface spellings `--passes`/`--skip-pass` are mapped to their `DebugOptions` backing fields above; the exact argv-parsing glue (which option library binds `--passes` → `xla_enable_hlo_passes_only`) was not traced and is tagged **INFERRED** for the spelling, **CONFIRMED** for the underlying field semantics.
+### Limits of this reading
+
+The table is a full disassembly-derived enumeration, but only the eight vtables listed above were re-derived independently as a spot-check; the remaining rows rest on the single enumeration pass.
+
+Two things sit outside what was traced. The CLI spellings `--passes` / `--skip-pass` are mapped to their `DebugOptions` backing fields above, but the argv-parsing glue that binds them — which option library performs `--passes` → `xla_enable_hlo_passes_only` — was not followed, so the spelling is [INFERRED] while the field semantics are read from the binary. And the **run order** is not here at all: the registry is unordered, and the executed pipeline is an ordered name subset assembled outside `hlo-opt`'s registrar. The registration order in [§2](#2-the-112-row-master-pass-index) is a good proxy for the default pipeline but is not itself the run order. The combiner-threshold and replica-count values in the registrar's config struct are likewise out of scope.
 
 ---
 

@@ -194,7 +194,7 @@ StatusOr<bool> Run(HloModule* module, const flat_hash_set<string_view>& threads)
 ### Legality — `IsAllReduceMovable` @ `0x1fefc90`
 
 This is upstream XLA's anonymous-namespace `IsAllReduceMovable`
-(`_ZN3xla12_GLOBAL__N_118IsAllReduceMovableE…`, CONFIRMED demangle), ~9166 B.
+(`_ZN3xla12_GLOBAL__N_118IsAllReduceMovableE…`), ~9166 B.
 Its job is to decide whether the collective's operand is a *loop accumulator*
 that can be reduced once post-loop. It enforces, in order:
 
@@ -240,10 +240,10 @@ during the scan; `AccumulationContext` is the per-accumulator metadata
 `gte_user->opcode() == HloOpcode::kAdd` (`0x2ac0d8`) re-confirms the `+=` idiom at
 rewrite time.
 
-> **NOTE —** `AccumulationContext`'s field offsets were not enumerated (no
-> `structures.json` hit); only its container type and the
-> `get_origin_tuple_index` / `get_output_tuple_index` diagnostics recovered it.
-> (INFERRED layout.)
+> **NOTE — `AccumulationContext`'s field layout is [INFERRED].** Its offsets were never
+> enumerated (no `structures.json` hit); what is recovered is its container type plus the
+> `get_origin_tuple_index` / `get_output_tuple_index` diagnostics, which name the fields
+> without fixing their positions.
 
 ---
 
@@ -470,7 +470,7 @@ iteration. A loop whose replica grouping varies per iteration must not be hoiste
 
 ### Algorithm
 
-This is a small (240 B / 11 bb) fully-read function — semantics are CONFIRMED:
+At 240 B / 11 basic blocks the function was read end to end, so its semantics are exact:
 
 ```c
 // neuron::HasMatchingReplicaGroups @ 0x1f7e060
@@ -502,55 +502,55 @@ trip-count/DUS-dimension match instead.
 | `#103` MoveReduceScatter | iterate computations; `inst->opcode()==kWhile` (`0x79`@`0x1fbf248`) | `kReduceScatter` (0x57) + `kAllReduce` (0x07) | `MatchReduceScatterPattern`: known trip count required; DUS leading dim **must equal** trip count; `HasMatchingReplicaGroups` **not** used | **Sink** after; explicit trip-count↔DUS match; reshape buffer to full |
 | `#105` MoveAllGather | iterate computations; `inst->opcode()==kWhile` (`0x79`@`0x1fb864b`) | `kAllGather` on `gte` or `convert(gte)` | carried param must be a tuple; AG/convert/tuple users must permit removal (3 guards); `HasMatchingReplicaGroups` | **Hoist** before; resize tuple, `fixGTE`, then `#106` remover + DCE |
 
-**Opcode offset (CONFIRMED).** All three read the opcode as the single byte at
+**Opcode offset.** All three read the opcode as the single byte at
 `HloInstruction+0x14`. Observed constants: `kAllReduce=0x07`, `kReduceScatter=0x57`,
 `kWhile=0x79` — consistent with XLA's alphabetised `HloOpcode` enum.
 
 ---
 
-## Adversarial Self-Verification
+> **GOTCHA — all three pass names understate their scope.** `NeuronWhileLoopAllReduceCodeMotion`
+> hoists **reduce-scatter as well as all-reduce** (its final summary counts both, and it builds
+> RS via `CreateReduceScatter` @ `0x1ff4ac2`), and `NeuronMoveReduceScatterWhileLoop` sinks
+> **all-reduce as well as reduce-scatter** (`FindReduceScatterAndAllReduce` collects both `0x57`
+> and `0x07`, feeding a dedicated `MoveAllReduceOutOfWhileLoop` @ `0x1fbc9a0`).
 
-The five strongest claims, re-challenged against the binary:
+## Evidence summary
 
-1. **The three `Run` addresses (`0x1ff39f0` / `0x1fbf1a0` / `0x1fb85c0`).**
-   CONFIRMED — each is an exact entry in `function_addresses.json` with the full
-   demangled `xla::hilo::Neuron…::Run(HloModule*, flat_hash_set<string_view>&)`
-   symbol (each also has a paired `.cold` at `0x1ff35ac` / `0x1fbf07e` / `0x1fb7f36`).
-2. **`IsAllReduceMovable` is upstream XLA's, not a Neuron method.** CONFIRMED — the
-   symbol is `_ZN3xla12_GLOBAL__N_118IsAllReduceMovableEPNS_27HloAllReduceInstructionBaseE…`
-   @ `0x1fefc90`: namespace `xla::(anonymous)`, taking `HloAllReduceInstructionBase*`
-   and two `unique_ptr<HloReplicationAnalysis>`. `ChangeAccumulatorShapesInLoopBodies`
-   (`0x1ff2370`) and the `AccumulationContext` map type are likewise `xla::_GLOBAL__N_1`.
-   This pins `#101` as the XLA port. (Corrects any earlier "Neuron-native legality"
-   framing.)
-3. **`HasMatchingReplicaGroups` is exact replica-group equality.** CONFIRMED — the
-   240-byte fn was fully read; the `+0x10` count field and `+0x18+i*8` id stride
-   are direct from the loop's load offsets. Symbol `_ZN6neuron24HasMatchingReplicaGroupsE…`
-   @ `0x1f7e060`. Shared by `#101` (`0x1ff41a1`) and `#105` (`0x1fb8925`); absent
-   from `#103`'s callee set — re-verified.
-4. **`#103` sinks, `#105` hoists.** CONFIRMED by direction-specific evidence:
-   `#103` builds `"Created new reduce-scatter: "` (`0x25b097`) over a full-shape
-   `"New full shape: "` accumulation (after-loop), while `#105` does
-   `CloneWithNewOperands` (`0x1fb8de5`) onto a per-shard operand and emits
-   `"Moved all-gather … out of while loop: "` (`0x3c2708`) (before-loop). Both
-   directions feed the combiners.
-5. **`#105` inlines `#106`.** CONFIRMED — `NeuronMoveAllGatherWhileLoop::Run`
-   contains a call to `NeuronDuplicateParameterAllGatherRemover::Run` @ `0x1f8e890`
-   (the `#106` `Run`), bracketed by `"Remover is start"` (`0x20ca3c`) and
-   `"Remover is done"` (`0x218ef2`).
+What the central claims rest on:
 
-Every diagnostic string cited on this page was re-grepped from `strings.json` and
-matched its address verbatim. Items tagged INFERRED: the exact data-flow stitching
-between call anchors in the rewrite bodies (no Hex-Rays pseudocode exists), the
-`AccumulationContext` field layout, and `MatchReduceScatterPattern`'s predicate
-beyond its two trip-count invariants.
+- **The three `Run` addresses** (`0x1ff39f0` / `0x1fbf1a0` / `0x1fb85c0`) are exact entries in
+  `function_addresses.json`, each carrying the full demangled
+  `xla::hilo::Neuron…::Run(HloModule*, flat_hash_set<string_view>&)` symbol and a paired
+  `.cold` at `0x1ff35ac` / `0x1fbf07e` / `0x1fb7f36`.
+- **`IsAllReduceMovable` belongs to upstream XLA, not to Neuron.** Its symbol is
+  `_ZN3xla12_GLOBAL__N_118IsAllReduceMovableEPNS_27HloAllReduceInstructionBaseE…` @ `0x1fefc90`
+  — namespace `xla::(anonymous)`, taking `HloAllReduceInstructionBase*` and two
+  `unique_ptr<HloReplicationAnalysis>`. `ChangeAccumulatorShapesInLoopBodies` (`0x1ff2370`) and
+  the `AccumulationContext` map type are likewise `xla::_GLOBAL__N_1`, which is what pins the
+  code-motion pass as a port rather than a rewrite.
+- **The replica-group gate is exact equality.** The 240-byte
+  `_ZN6neuron24HasMatchingReplicaGroupsE…` @ `0x1f7e060` was read end to end; the `+0x10` count
+  field and `+0x18 + i*8` id stride come straight from the loop's load offsets. It is called
+  from the code-motion pass (`0x1ff41a1`) and the all-gather mover (`0x1fb8925`), and is absent
+  from the reduce-scatter mover's callee set.
+- **Direction of motion.** The reduce-scatter mover builds `"Created new reduce-scatter: "`
+  (`0x25b097`) over a full-shape `"New full shape: "` accumulation, placing it after the loop;
+  the all-gather mover calls `CloneWithNewOperands` (`0x1fb8de5`) on a per-shard operand and
+  emits `"Moved all-gather … out of while loop: "` (`0x3c2708`), placing it before.
+- **The coupling of the mover and the remover.** `NeuronMoveAllGatherWhileLoop::Run` calls
+  `NeuronDuplicateParameterAllGatherRemover::Run` @ `0x1f8e890` directly, bracketed by
+  `"Remover is start"` (`0x20ca3c`) and `"Remover is done"` (`0x218ef2`).
 
-> **CORRECTION (D-B17) —** earlier registry surveys listed `#101` as "hoist
-> all-reduce" and `#103` as "move reduce-scatter". Both scopes are wider: `#101`
-> hoists **all-reduce and reduce-scatter** (final summary counts both, builds RS
-> via `CreateReduceScatter` @ `0x1ff4ac2`); `#103` sinks **reduce-scatter and
-> all-reduce** (`FindReduceScatterAndAllReduce` collects `0x57` and `0x07`, with a
-> dedicated `MoveAllReduceOutOfWhileLoop` @ `0x1fbc9a0`).
+Every diagnostic string cited on this page was re-grepped from `strings.json` and matched its
+address verbatim.
+
+## Limits of this reading
+
+This binary was decompiled without Hex-Rays output, so no pseudocode exists for any `Run` body
+and the reconstruction rests on the symbol table, `.rodata` diagnostics and disasm compares.
+Three things are consequently reconstructed rather than read: the exact data-flow stitching
+between call anchors inside the rewrite bodies, the `AccumulationContext` field layout, and
+`MatchReduceScatterPattern`'s predicate beyond its two trip-count invariants.
 
 ---
 

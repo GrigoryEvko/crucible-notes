@@ -1,6 +1,6 @@
 # BirCodeGenLoop DMA and Indirect Codegens
 
-> *All addresses on this page apply to neuronx_cc 2.24.5133.0+58f8de22 (cp310 wheel), module `neuronxcc/starfish/penguin/targets/codegen/BirCodeGenLoop.cpython-310-x86_64-linux-gnu.so` (BuildID `cb19fae04f37f9a7ef7acc610b6d32d36ac816f1`, 11,139,256 B, `with debug_info, NOT stripped`). Other versions and the cp311/cp312 twins will differ in address but not in shape. Provenance: D-P11.*
+> *All addresses on this page apply to neuronx_cc 2.24.5133.0+58f8de22 (cp310 wheel), module `neuronxcc/starfish/penguin/targets/codegen/BirCodeGenLoop.cpython-310-x86_64-linux-gnu.so` (BuildID `cb19fae04f37f9a7ef7acc610b6d32d36ac816f1`, 11,139,256 B, `with debug_info, NOT stripped`). Other versions and the cp311/cp312 twins will differ in address but not in shape.*
 
 ## Abstract
 
@@ -81,7 +81,7 @@ methods inline their body into the wrapper). The roster, with the verified addre
 | `_143` | `codegenNeuronReadTensorPtr` | `0x1bd150` | 1810 | dynamic-offset tensor-ptr read |
 | `_107` | `codegenNeuronPrintInst` | `0x1aaae0` | 1540 | on-device print/dump |
 
-Supporting functions, all CONFIRMED in `function_addresses`:
+Supporting functions, all present in `function_addresses`:
 
 | Idx | Function | Address | Role |
 |---|---|---|---|
@@ -90,14 +90,11 @@ Supporting functions, all CONFIRMED in `function_addresses`:
 | `_293` | `addBatchTransposeAP` | `0x132e70` | rank-4 batch-transpose AP build |
 | `_289` | `reshapeAccessPattern` | `0x1cd690` | canonical multi-dim AP reshape (called by `addComplicatedDMAAP`) |
 
-> **CORRECTION (D-P11) —** the backing report's §0.1 roster cited "source lines" that are the
-> `def`-line of each method, whereas the `_Pyx_AddTraceback` anchor in the decompiled body
-> emits the line of the *first call inside the method body* — they differ by a small skew
-> (e.g. `addComplicatedDMAAP` def cited as py 3581 vs the verified body anchor py 3574;
-> `codegenNeuronIndirectRMW` def unstated vs body anchor py 1985). This page cites the
-> **body-anchor** pyline throughout, since that is the line directly read from the binary.
-> A reimplementer correlating to a `.py` listing should expect the method `def` a few lines
-> *above* the anchors quoted here.
+> **GOTCHA — the pylines quoted here are body anchors, not `def` lines.** A
+> `_Pyx_AddTraceback` anchor records the line of the *first call inside* the method body, which
+> sits a few lines below the method's `def` (`addComplicatedDMAAP` anchors at py 3574 against a
+> `def` near 3581). Correlating these numbers against a `.py` listing means looking slightly
+> *above* each anchor to find the definition.
 
 ### The two-class emit model
 
@@ -131,7 +128,7 @@ this is the instruction handle, not a basic block.
 
 ### BIR opcode and enum tokens used by this family
 
-The following tokens are all present in the module `_strings.json` (CONFIRMED, one hit each):
+The following tokens are all present in the module `_strings.json`, one hit each:
 
 ```text
 DMACopy   GenericIndirectLoad   GenericIndirectSave
@@ -189,10 +186,10 @@ the decompile reads `cpy.dma_qos` via `tp_getattro` (line 793) and assigns it on
 | `convert_to_bir_type` | (module fn) | Penguin `DGEMode` → birpy `DGEType` | CERTAIN |
 | `codegenNdDMAAP` | `0x1433b0` | AP construction delegate (§4) | CERTAIN |
 
-> **NOTE —** the literal value of the `CopyMode` mode tuple (the constant `__pyx_tuple__`
-> passed to `setmode`) was not byte-decoded; it is INFERRED to be the `Copy` form by parity
-> with the klr path's `CopyMode +0x128 = Copy(0)`. The fact that `setmode` is called and the
-> call ordering are CONFIRMED.
+> **NOTE — the `CopyMode` tuple value is reconstructed.** That `setmode` is called, and where
+> it falls in the emit order, is read from the body; the literal value of the constant
+> `__pyx_tuple__` passed to it was not byte-decoded. It is [INFERRED] to be the `Copy` form by
+> parity with the klr path's `CopyMode +0x128 = Copy(0)`.
 
 ---
 
@@ -222,8 +219,8 @@ function codegenDMATranspose(self, transpose, bb):   // 0x6ded0, body py1111
 
 `addBatchTransposeAP` (`0x132e70`) builds the rank-4 transpose access pattern from
 `{y_size, batch_size}` — the batched 2-D-tile-stacked transpose. The names
-`addBatchTransposeAP`, `batch_size`, `y_size`, `setTransposeOp`, `dma_qos` are all CONFIRMED
-in the decompiled body.
+`addBatchTransposeAP`, `batch_size`, `y_size`, `setTransposeOp` and `dma_qos` all appear as
+resolved name loads in the decompiled body.
 
 ### Algorithm — codegenDMAIndirectTranspose
 
@@ -246,7 +243,7 @@ function codegenDMAIndirectTranspose(self, transpose, bb):   // 0xb0150, body py
 So `DMAIndirectTranspose = DMATranspose + {set_indirect_dims(generic_dims),
 addAP(generic_addrs), Pool-pin, OOB-skip}` — it fuses the §4 indirect index AP into the §3
 transpose. The names `birEngineType`, `Pool`, `set_engine`, `set_indirect_dims`,
-`generic_dims`, `generic_addrs`, `OOBMode`, `SKIP`, `setOobIsErr` are CONFIRMED in the body.
+`generic_dims`, `generic_addrs`, `OOBMode`, `SKIP` and `setOobIsErr` all appear in the body.
 
 > **NOTE —** the rank-4 requirement of the transpose AP and the precise XZYW constant value
 > are asserted upstream / in the Gen base; here the override only sets `setTransposeOp` to the
@@ -291,8 +288,8 @@ function codegenNdDMAAP(self, birinst, inst, strip_fp32r=False):   // 0x1433b0, 
 ```
 
 The names `extract_offloaded_memcpy_shape_block`, `step_n_steps`, `free_ap`,
-`neuron_max_strides`, `target`, `addAP`, `addComplicatedDMAAP`, `strip_fp32r` are all
-CONFIRMED in the decompiled body.
+`neuron_max_strides`, `target`, `addAP`, `addComplicatedDMAAP` and `strip_fp32r` all appear as
+resolved name loads in the decompiled body.
 
 **The complicated-DMA definition.** A DMA is *complicated* when its free-axis access pattern,
 after the offloaded-memcpy collapse, cannot be expressed as a single standard strided AP
@@ -347,18 +344,19 @@ function addComplicatedDMAAP(self, birinst, access, reshape, isOutput, strip_fp3
                                                                 //   OUTPUT (isOutput=True)
 ```
 
-Every step name and the call ordering are CONFIRMED: `reshapeAccessPattern`, `float32r`,
-`float32`, `strip_fp32r`, `tensorname`, `local_access_partition_size`, `input_hull_size`,
-`tonga_partition_ap`, `partition_ap`, `NeuronAP`, `createAP`, `addrs`, `access_shape`,
-`addArgumentOrOutput`, `isOutput` are all the resolved `__pyx_n_s_` loads in the body.
+Every step name and the call ordering come straight out of the body:
+`reshapeAccessPattern`, `float32r`, `float32`, `strip_fp32r`, `tensorname`,
+`local_access_partition_size`, `input_hull_size`, `tonga_partition_ap`, `partition_ap`,
+`NeuronAP`, `createAP`, `addrs`, `access_shape`, `addArgumentOrOutput` and `isOutput` are the
+resolved `__pyx_n_s_` loads, in that sequence.
 
 **The partition-AP re-derivation.** When the *local access partition size* differs from the
 op's *input hull size* — i.e. the partition dim spans more than the tile's hull — a TONGA
 partition AP is synthesized in place of the literal `access.partition_ap`, re-deriving the
 partition stride to fit the hardware partition band. Otherwise the op's own partition AP is
-used unchanged. (The compare at decompile lines 810/827 is a `RichCompare`; whether it is `>`
-or `!=` was not byte-decoded — the *re-derivation behavior* is CONFIRMED, the exact comparison
-operator is STRONG by context.)
+used unchanged. The compare at decompile lines 810/827 is a `RichCompare` whose operator was
+not byte-decoded: the re-derivation behaviour is read directly, but whether the test is `>` or
+`!=` is [INFERRED] from context.
 
 **The createAP kwargs.** `createAP` is invoked with a freshly built keyword dict: the
 decompile shows `PyDict_New()` (line 1675) followed by `PyDict_SetItem` for `addrs`
@@ -411,8 +409,8 @@ function codegenNeuronIndirectRMW(self, inst, bb):   // 0x63430, body py1985
     return self.codegenNeuronIndirectSave(inst, bb)
 ```
 
-CONFIRMED: the 553-line decompiled body contains exactly one `getattr` of
-`codegenNeuronIndirectSave` (line 166) and one `PyObject_Call` (line 211). The
+The 553-line decompiled body contains exactly one `getattr` of
+`codegenNeuronIndirectSave` (line 166) and one `PyObject_Call` (line 211) — nothing else. The
 RMW-vs-overwrite split lives **inside** `codegenNeuronIndirectSave`, gated by
 `isinstance(inst, NeuronIndirectRMW)`.
 
@@ -457,13 +455,13 @@ function codegenNeuronIndirectSave(self, inst, bb):   // 0x158510, body py1859
             self.addAP(bb, side, generic_addrs=...)
 ```
 
-All branch tokens are CONFIRMED in the decompiled body: `NeuronIndirectRMW`,
+All branch tokens appear in the decompiled body: `NeuronIndirectRMW`,
 `enable_dge_on_dst_reduce`, `unique_indices`, `DMACopy`, `setCceOp`, `ALUOpcode`, `add`,
 `OOBMode`, `SKIP`, `setOobIsErr`, `GenericIndirectSave`, `is_offset_dma`,
 `enable_dge_on_vector_indirect_dm[a]`, `setReplicaGroups`, `set_dge_type`,
 `convert_to_bir_type`, `dge_mode`, `setop`, `set_indirect_dims`, `generic_dims`,
 `generic_addrs`, `extract_offloaded_memcpy_shape_block`, `addComplicatedDMAAP`, `addAP`. The
-guard literal **`"IndirectRMW does not support dynamic DMA mode"`** is CONFIRMED verbatim in
+guard literal **`"IndirectRMW does not support dynamic DMA mode"`** appears verbatim in
 `_strings.json`.
 
 > **GOTCHA —** scatter-overwrite emits `Opcode.GenericIndirectSave` with **no** `setCceOp`;
@@ -503,8 +501,8 @@ function codegenNeuronIndirectLoad(self, inst, bb):   // 0x1b4e10, body py1816
 
 Names `is_offset_dma`, `enable_dge_on_vector_indirect_dm[a]`, `DMACopy`,
 `GenericIndirectLoad`, `has_dynamic_iv`, `setReplicaGroups`, `set_indirect_dims`,
-`generic_dims`, `generic_addrs`, `addComplicatedDMAAP`, `addAP`, `NeuronAP` are CONFIRMED.
-`generic_addrs` is the per-index base-address AP attached to the **source**.
+`generic_dims`, `generic_addrs`, `addComplicatedDMAAP`, `addAP` and `NeuronAP` all appear in
+the body. `generic_addrs` is the per-index base-address AP attached to the **source**.
 
 ### Function Map
 
@@ -529,8 +527,9 @@ function codegenIndirectCopy(self, inst, bb):   // 0x1c4d40, body py1926
     self.addAP(bb, inst.dst)                          // dst gather AP (NeuronAP)
 ```
 
-CONFIRMED names `set_num_valid_indices`, `compute_num_valid_indices`, `accumulated_tripcount`,
-`free_indices_2`, `set_num_elem_per_idx`, `addAP`, `dst`. The valid-index count is computed
+The body resolves `set_num_valid_indices`, `compute_num_valid_indices`,
+`accumulated_tripcount`, `free_indices_2`, `set_num_elem_per_idx`, `addAP` and `dst`. The
+valid-index count is computed
 from the accumulated trip-count over the free indices (the per-core index budget of the local
 gather).
 
@@ -549,8 +548,9 @@ function codegenNeuronReadTensorPtr(self, inst, bb):   // 0x1bd150, body py1810
 Both are minimal overrides: the gather index/data and the register/Opcode binding are set in
 the Gen base; the impl override only attaches the dst AP. `codegenNeuronReadTensorPtr` reads a
 tensor pointer's dst access pattern — the dynamic-offset register read (the source of
-`is_offset_dma` offsets). CONFIRMED names; the "tensor-ptr read" semantics are STRONG by the
-upstream Penguin `load_tensor_to_register` correspondence.
+`is_offset_dma` offsets). The names are read from the body; the "tensor-ptr read" reading of
+its semantics rests on the correspondence with the upstream Penguin `load_tensor_to_register`
+rather than on anything in this module.
 
 ### codegenNeuronPrintInst — the device print
 
@@ -561,8 +561,8 @@ function codegenNeuronPrintInst(self, inst, bb):   // 0x1aaae0, body py1540
     bb.setOutputBuffer(convert_to_bir_type(inst.output_buffer))   // a DebugDeviceBuffer
 ```
 
-CONFIRMED names `setPrefix`, `prefix`, `setOutputBuffer`, `convert_to_bir_type`,
-`output_buffer`, `DebugDeviceBuffer`. The on-device print/dump = `{prefix, DebugDeviceBuffer
+The body resolves `setPrefix`, `prefix`, `setOutputBuffer`, `convert_to_bir_type`,
+`output_buffer` and `DebugDeviceBuffer`. The on-device print/dump = `{prefix, DebugDeviceBuffer
 output_buffer}`; a related toggle `set_enable_device_dump` is present in the module strings.
 
 ### Function Map
@@ -587,7 +587,8 @@ builder `add_sb_to_sb_cc_ap` (`0x13b540`) — with its inner `add_delinearized_a
 (`0x89210`) to flatten the multi-dim collective AP — is used, together with `setReplicaGroups`
 on the inst. This is why every DMA codegen here calls `setReplicaGroups` and
 `has_cc_expr_in_access`: the same `DMACopy` Inst class carries the collective (SB-to-SB CC)
-variant. CONFIRMED names; the cc-AP build path is STRONG.
+variant. The function names and call sites are read from the module; the shape of the cc-AP
+build path itself is reconstructed from those names rather than traced end to end.
 
 ### The DGE / OOB / QoS setter surface
 
@@ -641,38 +642,41 @@ front-loads the multi-dim descriptor decision.
 
 ---
 
-## 9. Confidence and Re-Verification Ceiling
+## 9. Evidence summary and limits
 
-CONFIRMED (decompiled-body name trace + `_Pyx_AddTraceback` pylines + `function_addresses`
-symtab + `_strings.json` of this binary): the eleven roster methods at the cited
-addresses/pylines; the two-class `super()`-override emit model (the `_pyx_builtin_super` →
-`PyObject_Call` → `getattr(codegenDMACopyOp)` sequence at DMACopyOp lines 598/604/613);
-`codegenNeuronIndirectRMW` as the trampoline (single getattr + call); the
-`codegenNeuronIndirectSave` Save-vs-RMW branch tokens; the `is_offset_dma` →
-`enable_dge_on_vector_indirect_dma` → `DMACopy`(offset-dma) vs `GenericIndirect*` fork; the
-full setter surface; `codegenNdDMAAP`'s complicated-vs-simple decision via
-`extract_offloaded_memcpy_shape_block` + `neuron_max_strides`; the complete
-`addComplicatedDMAAP` algorithm (every step name + decompile line); the validation literals
-`"Cannot legalize strided load!"` / `"…store!"` / `"IndirectRMW does not support dynamic DMA
-mode"` quoted verbatim; the `_has_cc_expr_in_access` + `add_sb_to_sb_cc_ap` +
-`add_delinearized_access` roster; the absence of the `TENSOR`/`MEM_PATTERN`/`ADDR4` descriptor
-names (grep count 0 → wire descriptor is downstream).
+### Evidence summary
 
-STRONG: the §8 convergence/divergence table and the QoS-set-here-vs-deferred-in-klr delta; the
-tonga-partition re-derivation rationale; the `ReadTensorPtr` = dynamic-offset tensor-ptr-read
-semantics.
+The page is grounded in four artifacts of this one binary: the decompiled Hex-Rays bodies in
+the cp310 IDA sidecar, the `_Pyx_AddTraceback` pylines, the `function_addresses` symtab, and
+the module `_strings.json`. Read directly from those:
 
-INFERRED: the exact `setmode` constant values (the mode tuples were not byte-decoded — the
-`Copy`/`Transpose` enum values are inferred by parity with the klr `CopyMode +0x128`); whether
-the §4.2 partition compare is `>` or `!=` (the re-derivation behavior is CONFIRMED, the
-operator is STRONG by context).
+- the eleven roster methods at the cited addresses and pylines;
+- the two-class `super()`-override emit model — the `_pyx_builtin_super` → `PyObject_Call` →
+  `getattr(codegenDMACopyOp)` sequence at DMACopyOp lines 598/604/613;
+- `codegenNeuronIndirectRMW` as a pure trampoline (one getattr, one call, nothing else);
+- the `codegenNeuronIndirectSave` Save-vs-RMW branch tokens, and the `is_offset_dma` →
+  `enable_dge_on_vector_indirect_dma` → `DMACopy`(offset-dma) vs `GenericIndirect*` fork;
+- the complete setter surface, and `codegenNdDMAAP`'s complicated-vs-simple decision via
+  `extract_offloaded_memcpy_shape_block` + `neuron_max_strides`;
+- the whole `addComplicatedDMAAP` algorithm, every step name pinned to a decompile line;
+- the validation literals `"Cannot legalize strided load!"` / `"…store!"` / `"IndirectRMW does
+  not support dynamic DMA mode"`, quoted verbatim;
+- the `_has_cc_expr_in_access` + `add_sb_to_sb_cc_ap` + `add_delinearized_access` roster;
+- the *absence* of the `TENSOR` / `MEM_PATTERN` / `ADDR4` descriptor names (grep count 0),
+  which is what places the wire descriptor downstream.
 
-**Re-verification ceiling.** Every function on this page was re-disassembled from its complete
-decompiled `.c` body in the cp310 IDA sidecar; none was truncated. The mode-tuple constant
-values and the partition RichCompare operator are the only two facts that resisted byte-level
-decode — both are flagged inline. The upstream Penguin op field layouts and the downstream
-J-encoder wire mapping live in other modules (see Cross-References) and were not
-re-disassembled here.
+### Limits of this reading
+
+Every function on this page was re-disassembled from its complete decompiled `.c` body; none
+was truncated. Two facts resisted byte-level decode and are flagged where they appear: the
+`setmode` mode-tuple constant values (the `Copy` / `Transpose` enum values are reconstructed by
+parity with the klr `CopyMode +0x128`), and the operator of the §4.2 partition `RichCompare`.
+
+Three further readings are reconstruction rather than transcription: the §8
+convergence/divergence table and its QoS-set-here-versus-deferred-in-klr delta, the rationale
+behind the tonga-partition re-derivation, and the identification of `ReadTensorPtr` as the
+dynamic-offset tensor-pointer read. The upstream Penguin op field layouts and the downstream
+J-encoder wire mapping live in other modules and were not disassembled for this page.
 
 ---
 
