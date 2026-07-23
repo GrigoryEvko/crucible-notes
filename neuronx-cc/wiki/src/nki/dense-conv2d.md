@@ -122,7 +122,9 @@ nisa.nc_matmul(
         pattern=img_pattern, offset=img_offset)) // (C_in·H_REP) × (k0·k1·n)
 ```
 
-> **CORRECTION / signature note (STRONG) —** the public stub `neuronxcc-stubs/nki/isa/__init__.pyi` L915 declares `nc_matmul(stationary, moving, *, ...)` — `stationary` is the *first positional*, computing `stationary.T @ moving` (stationary free ≤ 128, moving free ≤ 512, partition ≤ 128). But `conv.py` calls it **dest-first**: the leading unnamed positional is the OUTPUT PSUM, then `stationary=` / `moving=` are passed by keyword. The front-end binds a dest-taking form whose real implementation is compiled into the backend `.so`; the call sites + stub together fix the semantics as `PSUM += stationary.T @ moving`. Do not assume the stub's positional order at a `conv.py` call site.
+The public stub `neuronxcc-stubs/nki/isa/__init__.pyi` L915 declares `nc_matmul(stationary, moving, *, ...)` — `stationary` first positional, computing `stationary.T @ moving`, with stationary free ≤ 128, moving free ≤ 512 and partition ≤ 128. `conv.py` instead binds a **dest-taking** form whose implementation is compiled into the backend `.so`: the leading unnamed positional is the output PSUM and both real operands arrive by keyword. Call sites and stub together fix the semantics as `PSUM += stationary.T @ moving`.
+
+> **GOTCHA — the stub's positional order does not hold at a `conv.py` call site.** Reading `nc_matmul(x, stationary=…, moving=…)` against the stub signature binds the PSUM destination to `stationary`; the leading positional here is the accumulator, not an operand.
 
 ### Operand layouts
 
@@ -299,25 +301,26 @@ dma_copy(dst = reduced.ap([[K0*K1, bgc_actual], [1, K0*K1]], offset=0),         
 
 `_column_packing_1` actually routes through the **dispatcher** `conv2d_dw_...Pcinh` (L2876) (so it picks `_default`/`_stride` for its dense block), whereas `conv2d_column_packing` (L3792) and `_io10` (L4203) call the `_column_packing` engine directly. The dense `BGC×BGC` matmul is wasteful by construction, but for these layouts it is faster/simpler than scattering a true grouped conv, and the diagonal extract is one strided DMA.
 
-> **NOTE (INFERRED) —** the source never literally states "we discard the off-diagonal". The conclusion is forced by the `dsts_shapes = [[BGC, BGC, K0, K1]]` dense-block allocation (L2710) combined with the diagonal-only `(BGC+1)`-stride extraction (L2911). The math + the `+1` stride make it certain; the *rationale* (why pay for the dense block) is reconstructed, not transcribed.
+> **NOTE — discarding the off-diagonal is read from the shapes, not stated.** The source never says "we discard the off-diagonal"; the conclusion is forced by the `dsts_shapes = [[BGC, BGC, K0, K1]]` dense-block allocation (L2710) together with the diagonal-only `(BGC+1)`-stride extraction (L2911). The mechanism is beyond doubt; the *rationale* — why it is worth paying for the full dense block — is [INFERRED], not transcribed.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+What the central claims rest on:
 
-1. **"H_REP is stacked onto the *contraction* (partition) axis."** — CONFIRMED. `filter_partition_dim = C_in·H_REP` (L1408) is the **leading** stride pair element for *both* operands: `stationary` pattern `[[filter_free_dim, filter_partition_dim], …]` (L1770) and `moving` pattern `[[img_tile_free, filter_partition_dim], …]` (L1756). A shared leading partition stride is the matmul contraction by definition. Not the free axis (that is `c_out_count` / `k0·k1·n`).
+- **H_REP rides the contraction axis.** `filter_partition_dim = C_in·H_REP` (L1408) is the **leading** stride-pair element for *both* operands — `stationary` pattern `[[filter_free_dim, filter_partition_dim], …]` (L1770) and `moving` pattern `[[img_tile_free, filter_partition_dim], …]` (L1756). A shared leading partition stride is the matmul contraction by definition; the free axes are `c_out_count` and `k0·k1·n` respectively.
+- **This family is the PE-array path.** The depthwise region L121–L1104 contains no `nc_matmul` token at all, while this family has exactly three call sites (L1767 / L2400 / L3354), and the intrinsic is `nisa.nc_matmul` rather than an `nl.*` op. The contrast with [§6.8.2](depthwise-conv.md) is structural.
+- **The dest-first call.** L1767 shows the leading positional as `psum_banks[...]` with `stationary=` / `moving=` following as keywords.
+- **Column-packing reuses the dense engine.** `_column_packing` is called from L3792 and L4203, and `_1` routes through the dispatcher at L2876. The `+1` diagonal-of-a-square stride appears at L2911 / L3824 / L4235.
+- **Stride lives in the moving access-pattern, not the DMA.** `_stride` stages a contiguous `img_h_span` window (L2155) while the moving AP carries `[h_stride·W_padded, k0_count]` and `[w_stride, k1_count]` (L2384); the DMA at L2288 reads a contiguous run and the PE does the subsampling.
 
-2. **"This is the PE-array path; depthwise is not."** — CONFIRMED. `rg nc_matmul` over the depthwise region L121–L1104 returns **zero** hits; this family has exactly three (`L1767/L2400/L3354`). The intrinsic is `nisa.nc_matmul` (the PE-array op), not `nl.*`. Contrast with [§6.8.2](depthwise-conv.md) is structural, not stylistic.
+## Limits of this reading
 
-3. **"`nc_matmul` is called dest-first."** — CONFIRMED at the call site (L1767: leading positional is `psum_banks[...]`, then `stationary=`/`moving=` keywords) but the *signature* is STRONG-not-CERTAIN: the stub (`.pyi` L915) declares `(stationary, moving, *, …)` keyword-only-after-two, the real impl is compiled `.so`. The dest-taking form is a front-end binding inferred from call-site + stub. Flagged in-text.
+`conv.py` ships as readable Python, so everything traceable in it and in the `.pyi` stub is pinned to the line. Two things are not:
 
-4. **"Column-packing = dense `Pcinh` for a diagonal."** — engine reuse CONFIRMED (`_column_packing` is called by L3792/L4203; `_1` routes the dispatcher at L2876); the *diagonal discard* is INFERRED from `dsts_shapes` + the `(BGC+1)` stride, marked so above. The `+1` diagonal-of-a-square stride is itself CONFIRMED (L2911/L3824/L4235).
-
-5. **"Stride lives in the moving AP, not the DMA."** — CONFIRMED. `_stride` stages a contiguous `img_h_span` window (L2155) and the moving AP carries `[h_stride·W_padded, k0_count]` / `[w_stride, k1_count]` (L2384). The DMA load (L2288) reads a contiguous run; the PE does the subsampling.
-
-**Re-verification ceiling.** Everything traceable in `conv.py` and the `.pyi` is CONFIRMED to the line. The two genuine ceilings: (a) the `nc_matmul` *internal* PSUM-accumulate semantics live in the backend `.so` and are inferred from call structure + stub doc; (b) the depthwise-as-dense *rationale* is reconstructed, though its mechanism (dense block + diagonal stride) is verbatim.
+- The **internal PSUM-accumulate semantics of `nc_matmul`** live in the backend `.so`. The dest-taking front-end binding is reconstructed from the call sites plus the stub's documented `stationary.T @ moving` behaviour, not read from the implementation.
+- The **rationale** for running a depthwise problem as a dense `BGC×BGC` block is reconstructed. Its mechanism — dense-block allocation plus the `(BGC+1)`-stride diagonal extract — is verbatim in the source.
 
 ---
 

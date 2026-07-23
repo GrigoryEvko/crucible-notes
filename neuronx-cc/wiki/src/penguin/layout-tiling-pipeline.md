@@ -8,7 +8,7 @@ This is the Penguin middle-end pass that turns **whole-tensor** operations into 
 
 The driver chain is three nested SuperPass pipelines: `PGLayoutTilingPipeline` (the modern top-level driver, `LayoutTilingPipeline` module `__init__` @ `0x16870`) wraps layout analysis and PAG layout selection around `PGTiling` (@ `0x109b0`), which is the graph→tile worker pipeline. Inside `PGTiling`, two passes do the actual cutting — `PComputeCutting` ("compute tiling of the **partition (P)** dimensions") drives `DAGTiler.tile_dag_par_axes`, and `BFComputeCutting` ("compute tiling of the **block (B) and free (F)** dimensions") drives `DAGTiler.tile_dag_free_axes`. All tile-shape arithmetic bottoms out in two primitives in `PGTilingHelpers`: `computeCut` (@ `0xba670`) picks which dim to cut and how big the tile is, and `cut_axes` (@ `0xbd9a0`) mechanically splits one axis list into *loop axes* (outside the tile) and *tonga axes* (in the tile). The output is a `TiledDAG`; the inter-tile dependency graph is built by `PGAnalysisForTiling`.
 
-> **CORRECTION (NAMING) —** there is **no** Penguin transform literally named "Tensorizer". The `Tensorizer` name belongs to the MLIR/`hlo2penguin` stage (`CanonicalizeForTensorizer`, `TensorizerLegalizationPass`) that *prepares* MHLO for the Penguin dialect — see [4.31](../hlo-opt/canonicalize-for-tensorizer.md) / [4.32](../hlo-opt/tensorizer-legalization.md) — and those do **not** tile. The Penguin-side "graph→tile" transform is this layout-tiling pipeline. The collision is purely lexical: a directory scan of `penguin/targets/transforms/` finds `PComputeCutting`, `BFComputeCutting`, `PGTilingHelpers`, `LayoutTilingPipeline`, `PGAnalysisForTiling` modules but **no** `Tensorizer*` module.
+> **GOTCHA — "Tensorizer" names an MLIR stage, not a Penguin transform.** The `Tensorizer` name belongs to the `hlo2penguin` passes `CanonicalizeForTensorizer` and `TensorizerLegalizationPass` ([4.31](../hlo-opt/canonicalize-for-tensorizer.md) / [4.32](../hlo-opt/tensorizer-legalization.md)), which prepare MHLO for the Penguin dialect and do **not** tile. `penguin/targets/transforms/` holds `PComputeCutting`, `BFComputeCutting`, `PGTilingHelpers`, `LayoutTilingPipeline` and `PGAnalysisForTiling` — but no `Tensorizer*` module, so the collision is purely lexical.
 
 For reimplementation, the contract is:
 
@@ -101,7 +101,7 @@ Every tile-shape decision is expressed as a `DimCut` — *which* dimension to cu
 
 `computeCut(shape, cut_size, stop_condition=…, uniform_tile=False) -> DimCut` (@ `0xba670`) chooses the cut dim and the tile size on that dim. `cut_size` is a **per-tile element budget** (default 512). The recovered docstring states the priority rule: *"Left dimensions are higher priority to fit into the cut … Return None for cut dim if we can fit the whole cut dim within tensor and don't need to cut."*
 
-The body arithmetic is compiled-opaque, but the shipped docstring worked-examples fully specify the behaviour (this reconstruction is **STRONG** — pinned by the examples, not the code body):
+The body arithmetic is compiled-opaque, so the scan below is reconstructed from the shipped docstring worked-examples rather than read off the code; those examples pin the output for every case, which makes the behaviour fully specified even though the instructions are not:
 
 ```c
 function computeCut(shape, cut_size=512, uniform_tile=False):   // @ 0xba670
@@ -321,7 +321,7 @@ The recovered docstrings: `estimate` / `_do_estimate` — *"Template method that
 
 ### Cost currency — tripcounts
 
-Cost is the product of generated loop trip counts (number of tiles) plus reduce overhead. The estimator's outputs are the `__pyx` constants `f_tripcount_after_tiling`, `inner_tile_tripcount`, `outer_tile_tripcount`, `accum_tripcount`, `loop_red_tripcount`, `decayed_red_axes_tripcount`, `partition_reduce_tiled_tripcount`, `cascaded_reduction_dags_tiled_tripcount`, `dag{1,2}_tiled_tripcount_{p,f,b}`, all capped by `max_tripcount`. The estimator minimises total tiles / reduce overhead subject to PSUM/SBUF fit (**STRONG** — pinned by the constant names, not the cost-formula body). Specialised estimators: `PartitionReduceTilingEstimator` (assert *"Exactly a single aggr idx axis of tripcount 2 must be unmapped"*) and `CascadedReductionDagsTilingEstimator` (*"Mock cascaded reduction dag tiling based on ordering information"*).
+Cost is the product of generated loop trip counts (number of tiles) plus reduce overhead. The estimator's outputs are the `__pyx` constants `f_tripcount_after_tiling`, `inner_tile_tripcount`, `outer_tile_tripcount`, `accum_tripcount`, `loop_red_tripcount`, `decayed_red_axes_tripcount`, `partition_reduce_tiled_tripcount`, `cascaded_reduction_dags_tiled_tripcount`, `dag{1,2}_tiled_tripcount_{p,f,b}`, all capped by `max_tripcount`. The estimator minimises total tiles / reduce overhead subject to PSUM/SBUF fit — an objective read from the constant names, since the cost-formula body itself is compiled-opaque. Specialised estimators: `PartitionReduceTilingEstimator` (assert *"Exactly a single aggr idx axis of tripcount 2 must be unmapped"*) and `CascadedReductionDagsTilingEstimator` (*"Mock cascaded reduction dag tiling based on ordering information"*).
 
 ### PSUM-overflow abort
 
@@ -374,7 +374,7 @@ A `PartitionGroup` is the maximal set of DAGs whose partition axes all *match* (
 
 The source/sink definition (verbatim): *"PG source_dags: TC/Transpose DAGs whose DST partition layout matches PG partition layout. PG sink_dags: TC/Transpose DAGs whose SRC partition layout matches PG partition layout. note1: a TC/Transpose DAG can be both source and sink for a PG. note2: each Normal DAG maps exactly to 1 PG; for TC/Transpose DAG, SRC maps exactly to 1 PG, and DST maps exactly to 1 PG."*
 
-The tile-level dependency model: tiles within a PG share a partition layout and tile loop space; data flowing *between* PGs crosses a TC/Transpose split-DAG, and those producer→consumer edges are the inter-tile dependencies recorded for the downstream scheduler (CONFIRMED structures; "handed to scheduler" is INFERRED from `PartitionGroup.finalize` @ `0x23870` and `PGAnalysisForTiling.finalize` emitting them).
+The tile-level dependency model: tiles within a PG share a partition layout and tile loop space; data flowing *between* PGs crosses a TC/Transpose split-DAG, and those producer→consumer edges are the inter-tile dependencies recorded for the downstream scheduler. The edge structures themselves are read directly from the module; that the scheduler is their consumer is [INFERRED] from `PartitionGroup.finalize` @ `0x23870` and `PGAnalysisForTiling.finalize` emitting them, and is not traced into a scheduler-side reader.
 
 > **NOTE — cross-PG reverse-tile legality.** `PartitionGroup.is_reverse_tile_par_dim_candidate` (@ `0x2fe20`) constrains reverse-tiling across PGs: an axis reverse-tiled in one PG forces a matching reverse-tile in its complement PG, and is forbidden if it would make the access-pattern of the same axis inconsistent elsewhere (*"only tile to the right when single partition axis; reverse tiling multiple par axes to the right can cause AP inconsistencies"*). `mapPG2Color` / `assignColorToNodes` graph-color each PG so co-tiled / conflicting PGs are distinguishable.
 
@@ -384,11 +384,11 @@ The PG tiler does **not** hard-code 128 / 512. It reads them as attributes of th
 
 | Attr name (Target) | Meaning | Value | Confidence |
 |---|---|---|---|
-| `num_partitions` / `statebuf_num_partitions` | SBUF/PE partition count; the in-tile P axis is capped here | 128 (ArchLevel 20: Trn1/Inf2/Sunda); 64 (ArchLevel 10) | CONFIRMED name; value cross-strand |
-| `psum_par_fp32_per_bank` | PSUM bank free-column width in fp32 lanes; bounds the matmul free tile | 512 | CONFIRMED name; value STRONG |
-| `partition_multiple` | partition-dim alignment multiple the par tile must be a multiple of | per-arch | CONFIRMED name |
-| `max_prefetch_buffer_size_in_bytes` | SBUF prefetch (outer-loop) buffer byte cap | per-arch | CONFIRMED name |
-| `max_tripcount` | cap on emitted tile-loop trip count (estimator constraint) | per-arch | CONFIRMED name |
+| `num_partitions` / `statebuf_num_partitions` | SBUF/PE partition count; the in-tile P axis is capped here | 128 (ArchLevel 20: Trn1/Inf2/Sunda); 64 (ArchLevel 10) | CERTAIN (name); HIGH (value) |
+| `psum_par_fp32_per_bank` | PSUM bank free-column width in fp32 lanes; bounds the matmul free tile | 512 | CERTAIN (name); HIGH (value) |
+| `partition_multiple` | partition-dim alignment multiple the par tile must be a multiple of | per-arch | CERTAIN (name) |
+| `max_prefetch_buffer_size_in_bytes` | SBUF prefetch (outer-loop) buffer byte cap | per-arch | CERTAIN (name) |
+| `max_tripcount` | cap on emitted tile-loop trip count (estimator constraint) | per-arch | CERTAIN (name) |
 
 > **NOTE — the 512 default and the PSUM-bank bound are the same number for a reason.** The generic non-MM `cut_size` default (512 elements) is sized to *one PSUM bank column* (`psum_par_fp32_per_bank` = 512 fp32). The same overflow check (*"exclude axes that cannot be tiled without overflowing PSum"*) reappears in the libwalrus C++ backend loop-tiler — the Python tiler applies it at *graph* level to pick tile shapes; the backend re-checks it at *loop* level. Same arithmetic, two layers.
 
@@ -417,17 +417,26 @@ end-to-end pipeline position:
 
 > **NOTE — `TileCCOps` is a *separate* collective-comm tiler, not this path.** `TileCCOps` (methods `transformAllGatherOp` / `transformAllReduceOp` / `transformReduceScatterOp`) tiles collective-communication ops across the LNC/replica dimension only (string *"weights are in FSDP setting, which will not be tiled"*). It is sometimes mistaken for "the tensorizer"; the general whole-tensor compute tiler is the `DAGTiler`/PG path on this page.
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+What this page rests on, claim by claim:
 
-1. **"`PGTiling` order is AGOrdering → PComputeCutting → BFComputeCutting → LoopSplitting → MacroGeneration."** Re-checked: `PGTiling.__init__` is at `LayoutTilingPipeline` @ `0x109b0` (confirmed via `function_addresses.json`); the order is the source-order pass-reference order in the decompiled `__init__`. The two cut passes are independently confirmed as real modules with `transformStmts` entries (`PComputeCutting.transformStmts` @ `0x277d0`, `BFComputeCutting.transformStmts` @ `0x155f0`). **CONFIRMED** modules + entry; **STRONG** ordering (decompile-order inference).
-2. **"`computeCut` is a right-to-left budget scan with `cut_size`=512 default."** The function exists @ `0xba670`; the algorithm is reconstructed from the six verbatim docstring examples, which fully pin the output for every case. The *body arithmetic* is compiled-opaque. Tagged **STRONG** (examples pin behaviour) — the code body itself is **not traced**.
-3. **"Partition tile ≤ 128, free tile ≤ PSUM bank (512 fp32)."** No literal 128/512 lives in `PGTilingHelpers.so` — confirmed by the absence of the constants; only the attr *names* `num_partitions`/`statebuf_num_partitions`/`psum_par_fp32_per_bank` appear as `__pyx_n_s_` strings. Values are cross-strand (geometry tables, gemm_moving_fmax). Tagged **CONFIRMED** (attribute is the bound) / **STRONG** (numeric value).
-4. **"No transform is named Tensorizer."** Re-verified by directory scan: `penguin/targets/transforms/` contains `PComputeCutting`, `BFComputeCutting`, `PGTilingHelpers`, `LayoutTilingPipeline`, `PGAnalysisForTiling` but **no** `Tensorizer*` module; the `Tensorizer` name resolves to the `hlo2penguin` MLIR passes (different binary, MHLO not Penguin). **CONFIRMED.**
-5. **"Inter-tile deps = `dag_to_producer_edges` / `dag_to_consumer_edges` across TC/Transpose split-DAGs, handed to the scheduler."** The edge structures are confirmed `__pyx_n_s_` constants in `PGAnalysisForTiling`; `buildPGRelationGraph` and `PartitionGroup.enumerate_loadstore_edges` are confirmed methods; `finalize` is @ `0x23870` (PartitionGroup) / `0x22e40` (PGAnalysisForTiling). The structures are **CONFIRMED**; "handed to the scheduler" is **INFERRED** from the edge-graph purpose + `finalize` emitting them — not directly traced into a scheduler consumer.
+- **Pipeline composition.** `PGTiling.__init__` is at `LayoutTilingPipeline` @ `0x109b0` (via `function_addresses.json`), and both cut passes are real modules with their own `transformStmts` entries — `PComputeCutting.transformStmts` @ `0x277d0`, `BFComputeCutting.transformStmts` @ `0x155f0`. The *order* AGOrdering → PComputeCutting → BFComputeCutting → LoopSplitting → MacroGeneration is the source-order of pass references in the decompiled `__init__`.
+- **`computeCut` behaviour.** The function is @ `0xba670` and its six verbatim docstring examples pin the output for every input case, including the empty shape and the exactly-fits case.
+- **The 128 / 512 budgets.** These are Target attributes, not constants: only the attr *names* `num_partitions` / `statebuf_num_partitions` / `psum_par_fp32_per_bank` appear as `__pyx_n_s_` strings, and no literal 128 or 512 lives in `PGTilingHelpers.so`. The numeric values come from the per-arch geometry tables and `gemm_moving_fmax`.
+- **The naming split.** A directory scan of `penguin/targets/transforms/` yields the five tiling modules named above and no `Tensorizer*` module; the `Tensorizer` name resolves to `hlo2penguin` MLIR passes in a different binary, operating on MHLO rather than Penguin IR.
+- **Inter-tile dependency edges.** `dag_to_producer_edges` / `dag_to_consumer_edges` are `__pyx_n_s_` constants in `PGAnalysisForTiling`; `buildPGRelationGraph` and `PartitionGroup.enumerate_loadstore_edges` are recovered methods, and `finalize` sits @ `0x23870` (PartitionGroup) / `0x22e40` (PGAnalysisForTiling).
 
-> **NOTE — recoverability honesty.** CONFIRMED on this page = verbatim docstrings, `__pyx` qualnames, `__pyx_n_s_` attr-name constants, and decompiled `__init__` pass-ordering. Compiled-opaque (NOT recovered): the exact body arithmetic of `computeCut`'s scan, the precise `_do_estimate` cost formula, the exact `should_swap_tile` decision, and the per-op dispatch from a Penguin op to its `DAGTiler` subclass. These are reconstructed at STRONG/INFERRED level from the docstring worked-examples and constant names — the worked examples make the tile-shape selection essentially fully specified even though the code body is opaque.
+## Limits of this reading
+
+The recovered surface is docstrings, `__pyx` qualnames, `__pyx_n_s_` attribute-name constants, and decompiled `__init__` pass-ordering. Four things are compiled-opaque and are reconstructed rather than read:
+
+- the exact body arithmetic of `computeCut`'s budget scan (the docstring examples fully determine its outputs, but the instruction sequence is not traced);
+- the precise `_do_estimate` cost formula;
+- the exact `should_swap_tile` decision;
+- the per-op dispatch from a Penguin op to its `DAGTiler` subclass.
+
+One open question remains: the edge structures are read directly, but their consumption by the backend scheduler is inferred from the edge-graph's purpose and from `finalize` emitting them — no scheduler-side reader was traced.
 
 ## Cross-References
 
