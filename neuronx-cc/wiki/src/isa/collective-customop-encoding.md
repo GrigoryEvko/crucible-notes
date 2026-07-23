@@ -13,7 +13,7 @@ Every bundle is the same `std::array<unsigned char, 64>`: emplaced, `pxor`-zeroe
 
 The recurring structural finding of this family: **collective *geometry* is not on the wire.** Replica groups, source-target pairs, the symbolic peer rank, and the collective dimension all live in the `bir::Module`'s NEFF metadata side-tables or are folded into an access pattern's axis selection. The 64-byte word carries only the per-leg `{reduce-op, dtype, kind, one access pattern}` and a per-instruction sync band. A reimplementer who tries to find a "replica_groups" field in the bundle will not find one — it is `Module::addReplicaGroupIDs`, not a bundle byte.
 
-The bar for this page: a reader can **byte-encode any collective, the GPSIMD SB2SB mover, or a custom-op invocation by hand**, knowing for each control byte its offset, width, semantic, value source, and the disassembly store-site that pins it. Every field row carries a confidence tag (CONFIRMED = exact store disassembled this pass; STRONG = LUT/predicate/layout cross-checked; INFERRED = zero-init implied; SPECULATIVE). No ordinal is fabricated.
+The bar for this page: a reader can **byte-encode any collective, the GPSIMD SB2SB mover, or a custom-op invocation by hand**, knowing for each control byte its offset, width, semantic, value source, and the disassembly store-site that pins it. Every field row carries a confidence tag: **CERTAIN** = the exact store is disassembled; **HIGH** = LUT-, predicate- or layout-cross-checked; **MEDIUM** = implied by zero-init. No ordinal is fabricated.
 
 ## At a glance
 
@@ -45,7 +45,7 @@ All encoder addresses are confirmed against `nm -DC libwalrus.so`. The opcodes a
  byte +0x04..+0x0B SyncInfo band     (semaphore wait/update + value + branch-hint PC)
 ```
 
-The header is stamped by `setupHeader` (`@0x1172120`=V2, `@0x1369280`=V3; byte-identical bodies — see [2.10](pe-matmul-encoding.md)). The 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian. The `SyncInfo` band at `+0x04..+0x0B` is the **same** generic BIR per-instruction sync overlay used by every family in this book: a semaphore-wait selector (wire LUT `07/05/85`), a semaphore-update selector (identity), wait/update values, and a branch-hint PC. It is *not* collective-specific; it is written by a pair of `getSyncInfo` helpers (the "header/first" and "last" twins) shared across all encoders. CONFIRMED — the same `sub_122ed00`/`sub_122ea40`-class twins appear in RankId, TensorCompletion, Collective, GPSIMD, and CustomOp bodies.
+The header is stamped by `setupHeader` (`@0x1172120`=V2, `@0x1369280`=V3; byte-identical bodies — see [2.10](pe-matmul-encoding.md)). The 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian. The `SyncInfo` band at `+0x04..+0x0B` is the **same** generic BIR per-instruction sync overlay used by every family in this book: a semaphore-wait selector (wire LUT `07/05/85`), a semaphore-update selector (identity), wait/update values, and a branch-hint PC. It is *not* collective-specific; it is written by a pair of `getSyncInfo` helpers (the "header/first" and "last" twins) shared across all encoders. Anchors: the same `sub_122ed00`/`sub_122ea40`-class twins appear in RankId, TensorCompletion, Collective, GPSIMD, and CustomOp bodies.
 
 > **NOTE — "VA == file offset" holds for `.text` (`0x62d660+`) and `.rodata` (`0x1c72000+`) only.** The `.data` section carries a `+0x400000` VMA≠file-offset delta. Every LUT cited here (`unk_1DF5790` collective-kind, the AluOp jump table) is `.rodata`-resident, so `objdump`/`xxd` at the cited VA reads the right bytes directly.
 
@@ -67,7 +67,7 @@ Before the per-opcode maps, fix the two "reduce while you copy" selectors the br
 | 8 | `max` | `0x08` | max-reduce *(wire-encodable, not shipped)* |
 | 9 | `min` | `0x09` | min-reduce *(wire-encodable, not shipped)* |
 
-**Shipped subset.** The CCE field width admits the full `AluOpType` space, but the in-build legalization only emits `{bypass=0, add=4}` (`cce_op @rodata 0x1C80730`). The same field surfaces as `InstDMACopy::getCceOp()` on the CCE-DMA path. CONFIRMED — the `+0x0C` store and the `convert<AluOpType>` jump table are both disassembled; the shipped-subset claim is STRONG (rodata legalization table cross-checked).
+**Shipped subset.** The CCE field width admits the full `AluOpType` space, but the in-build legalization only emits `{bypass=0, add=4}` (`cce_op @rodata 0x1C80730`). The same field surfaces as `InstDMACopy::getCceOp()` on the CCE-DMA path. Anchors: the `+0x0C` store and the `convert<AluOpType>` jump table are both disassembled; the shipped-subset claim is HIGH (rodata legalization table cross-checked).
 
 ### 1.2 `_DGE_COMPUTE_OP` — the SW-DGE descriptor reduce op `{1 none, 2 add}`
 
@@ -87,7 +87,7 @@ Before the per-opcode maps, fix the two "reduce while you copy" selectors the br
 | 1 | `none` | `bypass` (0) |
 | 2 | `add` | `add` (4) |
 
-CONFIRMED — `AluOpType2DGEComputeOp @0x120b9e0` disassembled; the two-branch body proves only `{bypass→none, add→add}` are legal.
+*Anchors: `AluOpType2DGEComputeOp` @ `0x120b9e0` — the two-branch body admits only `{bypass→none, add→add}`.*
 
 > **NOTE — CCE-op and DGE-compute-op are the *same semantic concept in two layers.*** "Reduce-on-copy" expressed (a) on the `InstCollectiveCompute` wire word at `+0x0C` (full `AluOpType`, gated to `{bypass,add}`) and (b) on the DMA descriptor (`{none=1, add=2}`). Both trace to `AluOp::{bypass, add}`. A reimplementer should model them as one knob with two encodings.
 
@@ -107,19 +107,19 @@ The full `bir::CollectiveKind` enum (member names from `CollectiveKind` `to_stri
 
 | Kind ordinal | name | wire byte | wire-encodable here? | Conf |
 |---|---|---|---|---|
-| 0 | `SendRecv` | — | **No** — uses opcode `0xCB` (§4) | CONFIRMED |
-| 1 | `SendRecvCCE` | — | **No** — uses opcode `0xCB` | CONFIRMED |
-| 2 | `AllReduce` | `0x01` | yes (`0xD9` kind byte) | CONFIRMED |
-| 3 | `ReduceScatter` | `0x02` | yes | CONFIRMED |
-| 4 | `AllGather` | `0x03` | yes | CONFIRMED |
-| 5 | `AllToAll` | `0x04` | yes | CONFIRMED |
-| 6 | `AllToAllV` | `0x09` | yes **(out of sequence)** | CONFIRMED |
-| 7 | `Permute` | `0x05` | yes | CONFIRMED |
-| 8 | `PermuteReduce` | `0x06` | yes | CONFIRMED |
-| 9 | `PermuteImplicit` | `0x07` | yes | CONFIRMED |
-| 10 | `PermuteReduceImplicit` | `0x08` | yes | CONFIRMED |
+| 0 | `SendRecv` | — | **No** — uses opcode `0xCB` (§4) | CERTAIN |
+| 1 | `SendRecvCCE` | — | **No** — uses opcode `0xCB` | CERTAIN |
+| 2 | `AllReduce` | `0x01` | yes (`0xD9` kind byte) | CERTAIN |
+| 3 | `ReduceScatter` | `0x02` | yes | CERTAIN |
+| 4 | `AllGather` | `0x03` | yes | CERTAIN |
+| 5 | `AllToAll` | `0x04` | yes | CERTAIN |
+| 6 | `AllToAllV` | `0x09` | yes **(out of sequence)** | CERTAIN |
+| 7 | `Permute` | `0x05` | yes | CERTAIN |
+| 8 | `PermuteReduce` | `0x06` | yes | CERTAIN |
+| 9 | `PermuteImplicit` | `0x07` | yes | CERTAIN |
+| 10 | `PermuteReduceImplicit` | `0x08` | yes | CERTAIN |
 
-> **QUIRK — `AllToAllV` (kind 6) maps to wire `0x09`, out of sequence.** Every other kind is a `−1` shift from its ordinal (`kind 2 → 0x01`, `kind 3 → 0x02`, …). `AllToAllV` breaks the pattern: it jumps to `0x09`, and the `Permute` family (`0x05..0x08`) slides down to fill the contiguous block `kind 7..10 → 0x05..0x08`. This is a deliberate reorder that groups the permute opcodes contiguously on the wire. A naive `wire = kind − 1` reimplementation will mis-encode `AllToAllV` and the entire permute family. Use the LUT verbatim. CONFIRMED — the 9-byte LUT `01 02 03 04 09 05 06 07 08` is `xxd`-verified at `0x1DF5790` and matches `movzbl (%rax,%rdi,1),%eax` at `0x1203795`.
+> **QUIRK — `AllToAllV` (kind 6) maps to wire `0x09`, out of sequence.** Every other kind is a `−1` shift from its ordinal (`kind 2 → 0x01`, `kind 3 → 0x02`, …). `AllToAllV` breaks the pattern: it jumps to `0x09`, and the `Permute` family (`0x05..0x08`) slides down to fill the contiguous block `kind 7..10 → 0x05..0x08`. This is a deliberate reorder that groups the permute opcodes contiguously on the wire. A naive `wire = kind − 1` reimplementation will mis-encode `AllToAllV` and the entire permute family. Use the LUT verbatim. Anchors: the 9-byte LUT `01 02 03 04 09 05 06 07 08` is `xxd`-verified at `0x1DF5790` and matches `movzbl (%rax,%rdi,1),%eax` at `0x1203795`.
 
 > **GOTCHA — `SendRecv(0)` / `SendRecvCCE(1)` are NOT wire-encodable through this LUT.** They sit *below* the LUT base (which starts at `kind 2`); the `convert<CollectiveKind>` `sub edi,2` would underflow. These two kinds reach the wire through the **dedicated** `SendRecv` opcode `0xCB` (§4) and the `Sb2sbCollective` opcode `0xBF` (§5), not through `CollectiveCompute`. The KLR layer mints local send/recv swaps as `CollectiveKind=SendRecv(0), is_local=true`, which the `lower_local_collectives` pass ([Part 8 — walrus passes](../walrus/) §H23, planned) either drops onto `0xCB` or routes to the GPSIMD `0xBF` mover under the size ceiling.
 
@@ -135,15 +135,15 @@ Field offsets are identical at all three verified arms (`0x126ce80..`, `0x126d7b
 
 | off | Sz | field | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xD9` (217) | `setupHeader` (template `movb $0xd9,-0x110` @`0x126ce50`) | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | shared sync overlay | STRONG |
-| `0x0C` | 1 | **CCE / reduce-op** wire byte | `convert<AluOpType>(I+0x180) @0x12039c0` → `mov %al,0xc(%rcx)` @`0x126cee2` | CONFIRMED |
-| `0x0D` | 1 | **dtype** wire byte | `getReinterpretedCopyDtype(I.dtype)` → dtype→wire LUT → `mov %al,0xd(%rcx)` @`0x126cecc` | CONFIRMED |
-| `0x0E` | 1 | **collective-kind** wire byte | `convert<CollectiveKind>(I+0xF8) @0x1203770` (LUT `unk_1DF5790`, §2) → `mov %al,0xe(%rcx)` @`0x126cefb` | CONFIRMED |
-| `0x0F` | 1 | reserved = `0` | `movb $0x0,0xf(%rcx)` @`0x126cefe` | CONFIRMED |
-| `0x10` | 48 | **SRC ADDR8 `TENSOR2D`** descriptor | `assignAddr8Tensor2D(buf+0x10, srcAP) @0x1260cc0` (the 64-bit base + 2-D AP; ADDR8 family) | CONFIRMED |
+| `0x00` | 1 | opcode = `0xD9` (217) | `setupHeader` (template `movb $0xd9,-0x110` @`0x126ce50`) | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | shared sync overlay | HIGH |
+| `0x0C` | 1 | **CCE / reduce-op** wire byte | `convert<AluOpType>(I+0x180) @0x12039c0` → `mov %al,0xc(%rcx)` @`0x126cee2` | CERTAIN |
+| `0x0D` | 1 | **dtype** wire byte | `getReinterpretedCopyDtype(I.dtype)` → dtype→wire LUT → `mov %al,0xd(%rcx)` @`0x126cecc` | CERTAIN |
+| `0x0E` | 1 | **collective-kind** wire byte | `convert<CollectiveKind>(I+0xF8) @0x1203770` (LUT `unk_1DF5790`, §2) → `mov %al,0xe(%rcx)` @`0x126cefb` | CERTAIN |
+| `0x0F` | 1 | reserved = `0` | `movb $0x0,0xf(%rcx)` @`0x126cefe` | CERTAIN |
+| `0x10` | 48 | **SRC ADDR8 `TENSOR2D`** descriptor | `assignAddr8Tensor2D(buf+0x10, srcAP) @0x1260cc0` (the 64-bit base + 2-D AP; ADDR8 family) | CERTAIN |
 
 One `0xD9` record fully describes a single collective leg: `{reduce-op, dtype, kind, one ADDR8 TENSOR2D tile}`. The three byte-stores `mov %al,0xc/0xd/0xe(%rcx)` and `movb $0x0,0xf(%rcx)` are disassembled verbatim at `0x126cecc..0x126cefe`.
 
@@ -166,12 +166,12 @@ Emitted for 2-source CCOps (`is2SrcCCOp` true) and for the source-target-pair le
 
 | off | Sz | field | source | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xDA` (218) | `movb $0xDA,(%rax)` @`0x126d02a` (raw stamp, not template) | CONFIRMED |
-| `0x04` | 2 | `instr.channel_id` (u16) — **permute arms only** | §3.4 | CONFIRMED |
-| `0x0C..0x0F` | 4 | same `{CCE-op, dtype, kind, 0}` trio | mirrors §3.1 | STRONG |
-| `0x10` | 48 | 2nd-operand ADDR8 AP | `assignAddr8Tensor2D` | STRONG |
+| `0x00` | 1 | opcode = `0xDA` (218) | `movb $0xDA,(%rax)` @`0x126d02a` (raw stamp, not template) | CERTAIN |
+| `0x04` | 2 | `instr.channel_id` (u16) — **permute arms only** | §3.4 | CERTAIN |
+| `0x0C..0x0F` | 4 | same `{CCE-op, dtype, kind, 0}` trio | mirrors §3.1 | HIGH |
+| `0x10` | 48 | 2nd-operand ADDR8 AP | `assignAddr8Tensor2D` | HIGH |
 
-CONFIRMED for the opcode and the raw-stamp emit; the exact `0xDA` body field offsets mirror the `0xD9` trio (STRONG — same arms, same packer).
+The opcode and the raw-stamp emit are byte-pinned; the exact `0xDA` body field offsets mirror the `0xD9` trio (HIGH — same arms, same packer).
 
 ### 3.3 Replica-groups / source-target-pairs → module side-table, not the wire word
 
@@ -180,21 +180,21 @@ The literal replica-group geometry and the permute source-target pairs are **not
 - `bir::Module::addReplicaGroupIDs(I+0x100)` — called at `0x126dc6c` / `0x126dc88` / `0x126e59e` / `0x126eb90`.
 - `bir::Module::addSrcTargetPairIDs(...)` — called at `0x126d0e1` / `0x126d539`.
 
-The return id is **discarded** at these call sites — the groups go into the Module's global replica-group registry, and the runtime collective engine reads *that* registry, not the per-instruction word. CONFIRMED — `addReplicaGroupIDs` reads `I+0x100` (the `replica_groups` vector) but stores Module-side; both helpers are imported (`U`) symbols whose call sites and argument register are disassembled.
+The return id is **discarded** at these call sites — the groups go into the Module's global replica-group registry, and the runtime collective engine reads *that* registry, not the per-instruction word. Anchors: `addReplicaGroupIDs` reads `I+0x100` (the `replica_groups` vector) but stores Module-side; both helpers are imported (`U`) symbols whose call sites and argument register are disassembled.
 
 > **GOTCHA — there is no `replica_groups`, `neff_collective_has_offset`, or peer-rank field in the bundle.** Reimplementers must build the Module-side replica-group / source-target-pair registry separately and serialise the per-leg `{kind, op, dtype, AP}` only. The collective topology is NEFF metadata; the wire word is per-leg data.
 
 ### 3.4 `channel_id` is a permute-only wire field
 
-The permute / 2-source CCOp arms additionally wire-encode `instr.channel_id` (uint16, from `I+0x160`) into the `0xDA` record at bundle `+0x04`, via a uint16 writer at `0x126d237` (`lea 0x4(%rax),%rdi; call 0x123ca60`) and again at `0x126d685`; the field-name string `"instr.channel_id"` is verbatim `.rodata`. This is the collective stream/channel the permute leg uses. The group-collective arms (`AllReduce`/`ReduceScatter`/`AllGather`/`AllToAll`) do **not** wire a `channel_id` — their replica-group geometry is module-side (§3.3). So `channel_id` is a **permute-family wire field**, not a universal collective field. CONFIRMED — `lea 0x4(%rax),%rdi` → uint16-writer call disassembled at `0x126d237`.
+The permute / 2-source CCOp arms additionally wire-encode `instr.channel_id` (uint16, from `I+0x160`) into the `0xDA` record at bundle `+0x04`, via a uint16 writer at `0x126d237` (`lea 0x4(%rax),%rdi; call 0x123ca60`) and again at `0x126d685`; the field-name string `"instr.channel_id"` is verbatim `.rodata`. This is the collective stream/channel the permute leg uses. The group-collective arms (`AllReduce`/`ReduceScatter`/`AllGather`/`AllToAll`) do **not** wire a `channel_id` — their replica-group geometry is module-side (§3.3). So `channel_id` is a **permute-family wire field**, not a universal collective field. Anchors: `lea 0x4(%rax),%rdi` → uint16-writer call disassembled at `0x126d237`.
 
 ### 3.5 `cc_dim` (`I+0x27C`) — validated, folded into the AP
 
-`I+0x27C` (the `CollectiveDimension` set from `concatDim ∈ {0,1}` = Partition/Free) is read (`mov 0x27c(%r15),%edi` at `0x126e128` etc.) and passed to a validator that asserts `dim ∈ {0,1}` (`cmp $0x0` / `cmp $0x1`) and `reportError`s otherwise. The dim is **not** stored as its own bundle byte — it selects *which axis* (partition vs free) the `assignAddr8Tensor2D` descriptor at `+0x10` addresses, i.e. it is folded into the AP geometry. CONFIRMED — the only consumer of `+0x27C` is the `{0,1}` validator plus the AP axis selection; no standalone dim byte exists in the word.
+`I+0x27C` (the `CollectiveDimension` set from `concatDim ∈ {0,1}` = Partition/Free) is read (`mov 0x27c(%r15),%edi` at `0x126e128` etc.) and passed to a validator that asserts `dim ∈ {0,1}` (`cmp $0x0` / `cmp $0x1`) and `reportError`s otherwise. The dim is **not** stored as its own bundle byte — it selects *which axis* (partition vs free) the `assignAddr8Tensor2D` descriptor at `+0x10` addresses, i.e. it is folded into the AP geometry. Anchors: the only consumer of `+0x27C` is the `{0,1}` validator plus the AP axis selection; no standalone dim byte exists in the word.
 
 ### 3.6 Arch
 
-CoreV2-only; V3/V4 inherit. There is no `CoreV3`/`CoreV4` `visitInstCollectiveCompute` symbol (`nm` sweep). The collective-compute wire is arch-common across Sunda/Cayman/Mariana. CONFIRMED.
+CoreV2-only; V3/V4 inherit. There is no `CoreV3`/`CoreV4` `visitInstCollectiveCompute` symbol (`nm` sweep). The collective-compute wire is arch-common across Sunda/Cayman/Mariana.
 
 ---
 
@@ -206,13 +206,13 @@ CoreV2-only; V3/V4 inherit. There is no `CoreV3`/`CoreV4` `visitInstCollectiveCo
 
 | off | Sz | field | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xCB` (203) | `setupHeader` (`movb $0xcb,-0xd1` @`0x127285c`) | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | RegisterMove-region sync overlay | STRONG |
-| `0x10` | 8 | operand ADDR8 base / **`instr.tensor_id`** | `mov %rax,0x10(%r13)` @`0x12726aa` (AP base; field-name string `"instr.tensor_id"`) | CONFIRMED |
-| `0x30` | 8 | tensor base addr (`I+0xD0`) | `mov %rax,0x30(%r13)` @`0x1272709` | CONFIRMED |
-| `0x38` | 8 | `numElementsPerPartition`-derived | `getNumElementsPerPartition(AP)` → `mov %r15,0x38(%r13)` @`0x12726e5` | CONFIRMED |
+| `0x00` | 1 | opcode = `0xCB` (203) | `setupHeader` (`movb $0xcb,-0xd1` @`0x127285c`) | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | RegisterMove-region sync overlay | HIGH |
+| `0x10` | 8 | operand ADDR8 base / **`instr.tensor_id`** | `mov %rax,0x10(%r13)` @`0x12726aa` (AP base; field-name string `"instr.tensor_id"`) | CERTAIN |
+| `0x30` | 8 | tensor base addr (`I+0xD0`) | `mov %rax,0x30(%r13)` @`0x1272709` | CERTAIN |
+| `0x38` | 8 | `numElementsPerPartition`-derived | `getNumElementsPerPartition(AP)` → `mov %r15,0x38(%r13)` @`0x12726e5` | CERTAIN |
 
 **Peer / channel** is registered module-side via `Module::setAttribute(kind=2, value) @0x1272728` (the same NEFF send/recv-pairing metadata the runtime collective library reads). The wire word carries `tensor_id` + AP; the symbolic peer rank is module-attribute metadata, **not** a wire byte. The AP-shape gate `"Hardware Restriction: DMA or Collective…"` (`@0x1d6c6d8`) validates the shape.
 
@@ -228,7 +228,9 @@ module_setAttribute(module, /*kind=*/2, peer_pair);     /* direction + peer rank
 fwrite(bundle, 1, 0x40, bin);
 ```
 
-CONFIRMED — both encoders disassembled: each stamps `movb $0xcb`, the three `0x10/0x30/0x38(%r13)` stores are byte-pinned, and `setAttribute(kind=2)` is the peer carrier. Send and Recv are a **unified `0xCB` micro-bundle**: opcode + sync + one tensor_id + one ADDR8 AP; direction and peer are module-attribute metadata. (See [Part 13 — Distribution / Collectives](../distribution/), planned, for the runtime side.)
+Send and Recv are a **unified `0xCB` micro-bundle**: opcode + sync + one tensor_id + one ADDR8 AP, with direction and peer carried as module-attribute metadata. (See [Part 13 — Distribution / Collectives](../distribution/), planned, for the runtime side.)
+
+*Anchors: both encoders stamp `movb $0xcb`; the three `0x10`/`0x30`/`0x38(%r13)` stores are byte-pinned; `setAttribute(kind=2)` is the peer carrier.*
 
 ---
 
@@ -238,16 +240,16 @@ CONFIRMED — both encoders disassembled: each stamps `movb $0xcb`, the three `0
 
 | off | Sz | field | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xBF` (191) | `setupHeader` (CoreV3); template `movb $0xbf,-0x2a0` @`0x1359a15` | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | CoreV3 sync twins (`sub_13594c0`+`sub_1359230`) @`0x1359a25`/`a30` | CONFIRMED |
-| `0x0C` | 1 | **SRC dtype** wire byte | `dtype→wire(srcAP.dtype)` → `mov %al,0xc(%r13)` @`0x1359a3d` | CONFIRMED |
-| `0x0D` | 1 | **DST dtype** wire byte | `dtype→wire(dstAP.dtype)` → `mov %al,0xd(%r13)` @`0x1359a54` | CONFIRMED |
-| `0x10` | 16 | **SRC `TENSOR3D`** descriptor (local) | `Generator::assignAccess<TENSOR3D>(buf+0x10, srcAP)`; `lea 0x10(%r13),%rsi` @`0x1359a4d` | CONFIRMED |
-| `0x20` | 1 | **cross-core enable = 1** (LNC2) | `movb $0x1,0x20(%r13)` @`0x1359a74` (constant, post-gate) | CONFIRMED |
-| `0x21` | 1 | **peer-core SB partition addr** | `*(*(srcAP+0x50)+8)` (2nd APPair elem) → `mov %al,0x21(%r13)` @`0x1359a9f` | CONFIRMED |
-| `0x30` | 16 | **DST `TENSOR3D`** descriptor (peer) | `Generator::assignAccess<TENSOR3D>(buf+0x30, dstAP)`; `lea 0x30(%r13),%rsi` @`0x1359a94` | CONFIRMED |
+| `0x00` | 1 | opcode = `0xBF` (191) | `setupHeader` (CoreV3); template `movb $0xbf,-0x2a0` @`0x1359a15` | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | CoreV3 sync twins (`sub_13594c0`+`sub_1359230`) @`0x1359a25`/`a30` | CERTAIN |
+| `0x0C` | 1 | **SRC dtype** wire byte | `dtype→wire(srcAP.dtype)` → `mov %al,0xc(%r13)` @`0x1359a3d` | CERTAIN |
+| `0x0D` | 1 | **DST dtype** wire byte | `dtype→wire(dstAP.dtype)` → `mov %al,0xd(%r13)` @`0x1359a54` | CERTAIN |
+| `0x10` | 16 | **SRC `TENSOR3D`** descriptor (local) | `Generator::assignAccess<TENSOR3D>(buf+0x10, srcAP)`; `lea 0x10(%r13),%rsi` @`0x1359a4d` | CERTAIN |
+| `0x20` | 1 | **cross-core enable = 1** (LNC2) | `movb $0x1,0x20(%r13)` @`0x1359a74` (constant, post-gate) | CERTAIN |
+| `0x21` | 1 | **peer-core SB partition addr** | `*(*(srcAP+0x50)+8)` (2nd APPair elem) → `mov %al,0x21(%r13)` @`0x1359a9f` | CERTAIN |
+| `0x30` | 16 | **DST `TENSOR3D`** descriptor (peer) | `Generator::assignAccess<TENSOR3D>(buf+0x30, dstAP)`; `lea 0x30(%r13),%rsi` @`0x1359a94` | CERTAIN |
 
 **LNC2 gate.** `cmpl $0x2,0x1A4(arch)` at `0x1359a67` (GENERATE) — the per-arch `cores-per-LNC` field (the same `lnc_size` field [1.13](../arch/gpsimd-engine.md) and [1.07](../arch/lnc-memory-model.md) cite). The entry verify also reads `arch+0x1A4` (`mov 0x1a4(%rax),%esi` @`0x1359870`). A mismatch raises an assert. There is **no core-index or core-count field** in the word — the LNC2 topology is structural, and the peer is named only by the single scalar partition address at `+0x21`.
 
@@ -266,7 +268,7 @@ assignAccess_TENSOR3D(&bundle[0x30], inst->dstAP); /* peer write AP             
 fwrite(bundle, 1, 0x40, bin);
 ```
 
-CONFIRMED — every store re-disassembled this pass; the map is byte-identical to [1.13](../arch/gpsimd-engine.md). The AP packer is the generic `Generator::assignAccess<NEURON_ISA_TPB_TENSOR3D>` (`@0x133dc60` V2 / `@0x1425850` V3) — the **same** one `GetSequenceBounds` (§6) uses; not a bespoke per-op packer.
+The map above is byte-identical to [1.13](../arch/gpsimd-engine.md). The AP packer is the generic `Generator::assignAccess<NEURON_ISA_TPB_TENSOR3D>` (`@0x133dc60` V2 / `@0x1425850` V3) — the **same** one `GetSequenceBounds` (§6) uses, not a bespoke per-op packer.
 
 > **NOTE — consistency with [1.13](../arch/gpsimd-engine.md) holds in full.** Opcode `0xBF`, the `S3D3_COLLECTIVE` wire class, the encoder address, the `arch+0x1A4 == 2` gate, and the "no core-index field" finding all match. The size ceiling that decides GPSIMD-vs-DMA (`≤1024 bytes/partition`, `MaxBytesPerPartition @0x784a00 = 0x400`) lives in `libBIR`, not this encoder — it is a `lower_local_collectives` routing decision, not a bundle byte.
 
@@ -278,17 +280,17 @@ CONFIRMED — every store re-disassembled this pass; the map is byte-identical t
 
 | off | Sz | field | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xBE` (190) | `setupHeader` (CoreV3); `movb $0xbe,-0xb1` @`0x13551ab` | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | CoreV3 sync overlay | STRONG |
-| `0x0C` | 1 | input(segmentIds) AP-status / flag byte | `assignAccess<TENSOR3D>` `%al` return → `mov %al,0xc(%r12)` @`0x13551fd` | CONFIRMED |
-| `0x0E` | 1 | input(segmentIds) **dtype** wire byte | `dtype→wire(inAP.dtype)` → `mov %al,0xe(%r12)` @`0x135520f` | CONFIRMED |
-| `0x0F` | 1 | output(dst/bounds) **dtype** wire byte | `dtype→wire(outAP.dtype)` → `mov %al,0xf(%r12)` @`0x135523d` | CONFIRMED |
-| `0x10` | 16 | **INPUT segmentIds `TENSOR3D`** AP | `assignAccess<TENSOR3D>(buf+0x10, inAP)`; `lea 0x10(%r12),%rsi` @`0x13551d5` | CONFIRMED |
-| `0x20` | 16 | **OUTPUT bounds `TENSOR3D`** AP | `assignAccess<TENSOR3D>(buf+0x20, outAP)`; `lea 0x20(%r12),%rsi` @`0x135521b` | CONFIRMED |
+| `0x00` | 1 | opcode = `0xBE` (190) | `setupHeader` (CoreV3); `movb $0xbe,-0xb1` @`0x13551ab` | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | CoreV3 sync overlay | HIGH |
+| `0x0C` | 1 | input(segmentIds) AP-status / flag byte | `assignAccess<TENSOR3D>` `%al` return → `mov %al,0xc(%r12)` @`0x13551fd` | CERTAIN |
+| `0x0E` | 1 | input(segmentIds) **dtype** wire byte | `dtype→wire(inAP.dtype)` → `mov %al,0xe(%r12)` @`0x135520f` | CERTAIN |
+| `0x0F` | 1 | output(dst/bounds) **dtype** wire byte | `dtype→wire(outAP.dtype)` → `mov %al,0xf(%r12)` @`0x135523d` | CERTAIN |
+| `0x10` | 16 | **INPUT segmentIds `TENSOR3D`** AP | `assignAccess<TENSOR3D>(buf+0x10, inAP)`; `lea 0x10(%r12),%rsi` @`0x13551d5` | CERTAIN |
+| `0x20` | 16 | **OUTPUT bounds `TENSOR3D`** AP | `assignAccess<TENSOR3D>(buf+0x20, outAP)`; `lea 0x20(%r12),%rsi` @`0x135521b` | CERTAIN |
 
-GetSequenceBounds is a 2-tensor bundle: input `segmentIds` `TENSOR3D` @`+0x10` + output `bounds` `TENSOR3D` @`+0x20`, with three flag/dtype bytes at `+0x0C/+0x0E/+0x0F`. CONFIRMED — both `lea` AP stores and all three flag/dtype stores disassembled; the dtype converter is the same one GPSIMDSB2SB (§5) uses.
+GetSequenceBounds is a 2-tensor bundle: input `segmentIds` `TENSOR3D` @`+0x10` + output `bounds` `TENSOR3D` @`+0x20`, with three flag/dtype bytes at `+0x0C/+0x0E/+0x0F`. Anchors: both `lea` AP stores and all three flag/dtype stores disassembled; the dtype converter is the same one GPSIMDSB2SB (§5) uses.
 
 ---
 
@@ -298,17 +300,17 @@ GetSequenceBounds is a 2-tensor bundle: input `segmentIds` `TENSOR3D` @`+0x10` +
 
 | off | Sz | field | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xD8` (216) | `setupHeader` (CoreV3); `movb $0xd8,-0x60` @`0x135669f` | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | CoreV3 sync overlay | STRONG |
-| `0x0C` | 4 | **HW barrier-register id** (u32) | `getNextCoreBarrierId() @0x1346150` → `mov %eax,0xc(%r12)` @`0x13566e7` | CONFIRMED |
-| `0x0D` | 1 | barrier data-AP dtype byte | `assignAccess<TENSOR1D>` `%al` (arg AP) | CONFIRMED |
-| `0x0F` | 1 | barrier data-AP dtype byte (2) | `assignAccess<TENSOR1D>` `%al` (out AP) | CONFIRMED |
-| `0x10` | 4 | **barrier INSTANCE / module index** | renumbered barrier index → `mov %eax,0x10(%r12)` @`0x13566d6` | CONFIRMED |
-| `0x20` | 16 | **semaphore `TENSOR4D`** AP (RMW) | `assignAccess<TENSOR4D>(buf+0x20, sem AP)` (`@0x133e710`) | CONFIRMED |
+| `0x00` | 1 | opcode = `0xD8` (216) | `setupHeader` (CoreV3); `movb $0xd8,-0x60` @`0x135669f` | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | CoreV3 sync overlay | HIGH |
+| `0x0C` | 4 | **HW barrier-register id** (u32) | `getNextCoreBarrierId() @0x1346150` → `mov %eax,0xc(%r12)` @`0x13566e7` | CERTAIN |
+| `0x0D` | 1 | barrier data-AP dtype byte | `assignAccess<TENSOR1D>` `%al` (arg AP) | CERTAIN |
+| `0x0F` | 1 | barrier data-AP dtype byte (2) | `assignAccess<TENSOR1D>` `%al` (out AP) | CERTAIN |
+| `0x10` | 4 | **barrier INSTANCE / module index** | renumbered barrier index → `mov %eax,0x10(%r12)` @`0x13566d6` | CERTAIN |
+| `0x20` | 16 | **semaphore `TENSOR4D`** AP (RMW) | `assignAccess<TENSOR4D>(buf+0x20, sem AP)` (`@0x133e710`) | CERTAIN |
 
-> **NOTE — the barrier carries TWO ids.** The per-emit **HW barrier-register id** at `+0x0C` (allocated by `getNextCoreBarrierId` at SASS-emit time) and the module-wide **renumbered barrier instance index** at `+0x10` (assigned earlier by a barrier-renumber pass). The active-core list is consumed by `getNextCoreBarrierId`'s allocation, not stored raw in the word. The semaphore is a `TENSOR4D` AP at `+0x20` — and it is *both* the arg and the out (a read-modify-write over the SBUF barrier semaphore tile). CONFIRMED — two distinct id stores (`mov %eax,0xc/0x10(%r12)`) and the `TENSOR4D` semaphore AP disassembled.
+> **NOTE — the barrier carries TWO ids.** The per-emit **HW barrier-register id** at `+0x0C` (allocated by `getNextCoreBarrierId` at SASS-emit time) and the module-wide **renumbered barrier instance index** at `+0x10` (assigned earlier by a barrier-renumber pass). The active-core list is consumed by `getNextCoreBarrierId`'s allocation, not stored raw in the word. The semaphore is a `TENSOR4D` AP at `+0x20` — and it is *both* the arg and the out (a read-modify-write over the SBUF barrier semaphore tile). Anchors: two distinct id stores (`mov %eax,0xc/0x10(%r12)`) and the `TENSOR4D` semaphore AP disassembled.
 
 ---
 
@@ -320,14 +322,14 @@ Both produce a scalar rank into a sequencer register. But they are **structurall
 
 | off | Sz | field | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xDC` (220) | `setupHeader` (`movb $0xdc,-0xc0` @`0x126104a`) | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | shared sync overlay | STRONG |
-| `0x0C` | 1 | output-register **VALID flag** = `1` | `movb $0x1,0xc(%r13)` @`0x1261094` | CONFIRMED |
-| `0x17` | 1 | **OUTPUT register id** (u8) | `getOutput(I,0)→RegisterAccess→getRegId` → `mov %al,0x17(%r13)` @`0x12610a8` | CONFIRMED |
+| `0x00` | 1 | opcode = `0xDC` (220) | `setupHeader` (`movb $0xdc,-0xc0` @`0x126104a`) | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | shared sync overlay | HIGH |
+| `0x0C` | 1 | output-register **VALID flag** = `1` | `movb $0x1,0xc(%r13)` @`0x1261094` | CERTAIN |
+| `0x17` | 1 | **OUTPUT register id** (u8) | `getOutput(I,0)→RegisterAccess→getRegId` → `mov %al,0x17(%r13)` @`0x12610a8` | CERTAIN |
 
-**Guard.** The output tag must `== 0x0B` (`cmp $0xb,%eax` @`0x126108b`) — the output must be a `RegisterAccess` (StorageBase kind 11); else `reportError`. GetGlobalRankId writes **one** byte of payload (the dst register id at `+0x17`) plus the valid flag at `+0x0C`. The absolute worker rank value is computed at runtime; the wire only names where it lands. CONFIRMED.
+**Guard.** The output tag must `== 0x0B` (`cmp $0xb,%eax` @`0x126108b`) — the output must be a `RegisterAccess` (StorageBase kind 11); else `reportError`. GetGlobalRankId writes **one** byte of payload (the dst register id at `+0x17`) plus the valid flag at `+0x0C`. The absolute worker rank value is computed at runtime; the wire only names where it lands.
 
 ### 8.2 GetCurProcessingRankID — `0xDB`, the rich group quad
 
@@ -335,17 +337,19 @@ Unlike GetGlobalRankId, `GetCurProcessingRankID` wire-encodes the full collectiv
 
 | off | Sz | field (wire name) | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xDB` (219) | `setupHeader` (`movb $0xdb,-0x1d2` @`0x124e03e`) | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | shared sync overlay | STRONG |
-| `0x0C` | 1 | `instr.group_id` (u8) | `[I+0x138]`; `lea 0xc(%r13),%rdi` @`0x124e0b0` | CONFIRMED |
-| `0x0E` | 1 | `instr.channel_id` (u8) | `[I+0x118]`; `lea 0xe(%r13),%rdi` @`0x124e0e2` | CONFIRMED |
-| `0x10` | 1 | `instr.iteration_id` (u8) | `[I+0xF0]`; `lea 0x10(%r13),%rdi` @`0x124e11a` | CONFIRMED |
-| `0x12` | 1 | **OUTPUT register id** (u8) | `getOutput<RegisterAccess>(I,0)→getRegId` → `mov %bl,0x12(%r13)` @`0x124e204` | CONFIRMED |
-| `0x14` | 2 | `instr.stream_id` (u16) | `[I+0x140]`; `lea 0x14(%r13),%rdi` @`0x124e15c`, masked `and $0xffff` | CONFIRMED |
+| `0x00` | 1 | opcode = `0xDB` (219) | `setupHeader` (`movb $0xdb,-0x1d2` @`0x124e03e`) | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | shared sync overlay | HIGH |
+| `0x0C` | 1 | `instr.group_id` (u8) | `[I+0x138]`; `lea 0xc(%r13),%rdi` @`0x124e0b0` | CERTAIN |
+| `0x0E` | 1 | `instr.channel_id` (u8) | `[I+0x118]`; `lea 0xe(%r13),%rdi` @`0x124e0e2` | CERTAIN |
+| `0x10` | 1 | `instr.iteration_id` (u8) | `[I+0xF0]`; `lea 0x10(%r13),%rdi` @`0x124e11a` | CERTAIN |
+| `0x12` | 1 | **OUTPUT register id** (u8) | `getOutput<RegisterAccess>(I,0)→getRegId` → `mov %bl,0x12(%r13)` @`0x124e204` | CERTAIN |
+| `0x14` | 2 | `instr.stream_id` (u16) | `[I+0x140]`; `lea 0x14(%r13),%rdi` @`0x124e15c`, masked `and $0xffff` | CERTAIN |
 
-> **CORRECTION — GetCurProcessingRankID is NOT a bare regId emit.** It wire-encodes the full group-geometry quad `{group_id@+0x0C, channel_id@+0x0E, iteration_id@+0x10, stream_id@+0x14 (u16)}` plus the output regId at `+0x12`. The hardware/runtime uses these to resolve the TP rank *within the current processing group* (keyed by channel/iteration). This differs from `GetGlobalRankId`, which emits only `{valid@+0xC, regId@+0x17}` — the absolute worker rank needs no group geometry. **The two ops have distinct ISA structs and distinct regId offsets (`0x12` vs `0x17`).** CONFIRMED — the four named-field bounded writes (`lea 0xc/0xe/0x10/0x14(%r13)`) and the `mov %bl,0x12(%r13)` regId store are byte-pinned; the field-name strings `instr.group_id/channel_id/iteration_id/stream_id` are all present in `.rodata`.
+> **GOTCHA — `GetCurProcessingRankID` is not a bare regId emit.** It wire-encodes the full group-geometry quad `{group_id@+0x0C, channel_id@+0x0E, iteration_id@+0x10, stream_id@+0x14 (u16)}` *plus* the output regId at `+0x12`; the runtime uses the quad to resolve the TP rank *within the current processing group*, keyed by channel and iteration. `GetGlobalRankId` is the one that emits only `{valid@+0xC, regId@+0x17}` — an absolute worker rank needs no group geometry. The two ops have distinct ISA structs and, critically, distinct regId offsets: `0x12` versus `0x17`.
+
+*Anchors: the four named-field bounded writes (`lea 0xc/0xe/0x10/0x14(%r13)`) and the `mov %bl,0x12(%r13)` regId store; the field-name strings `instr.group_id` / `channel_id` / `iteration_id` / `stream_id` are all in `.rodata`.*
 
 ---
 
@@ -355,14 +359,14 @@ Unlike GetGlobalRankId, `GetCurProcessingRankID` wire-encodes the full collectiv
 
 | off | Sz | field | source (encoder) | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0xDE` (222) | `setupHeader` (`movb $0xde,-0x110` @`0x12195b3`) | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | EventSemaphore-region sync overlay | STRONG |
-| `0x0C` | 4 | **completion target / MemLoc id** (u32) | `getArgument<PhysAP>(I,0)→location→[MemLoc+0x234]` → `mov %eax,0xc(%r13)` @`0x121972f` | CONFIRMED |
-| `0x10` | 1 | AP/dtype-derived completion byte | derived from the same AP (`call *(%rax)`, `%al` result) → `mov %al,0x10(%r13)` @`0x1219749` | CONFIRMED |
+| `0x00` | 1 | opcode = `0xDE` (222) | `setupHeader` (`movb $0xde,-0x110` @`0x12195b3`) | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | EventSemaphore-region sync overlay | HIGH |
+| `0x0C` | 4 | **completion target / MemLoc id** (u32) | `getArgument<PhysAP>(I,0)→location→[MemLoc+0x234]` → `mov %eax,0xc(%r13)` @`0x121972f` | CERTAIN |
+| `0x10` | 1 | AP/dtype-derived completion byte | derived from the same AP (`call *(%rax)`, `%al` result) → `mov %al,0x10(%r13)` @`0x1219749` | CERTAIN |
 
-`[MemLoc+0x234]` is the per-tensor completion/handle id the runtime matches the PTCOM token against (`mov 0x234(%rax),%eax` appears twice — once into staging, once into bundle `+0x0C`). The instruction carries no opcode-specific enum; it is a pure sync/handshake bundle keyed on one tensor's completion id. CONFIRMED structure; the exact `MemLoc+0x234` = "completion handle" semantic is STRONG (cross-referenced from the SB2SB completion path).
+`[MemLoc+0x234]` is the per-tensor completion/handle id the runtime matches the PTCOM token against (`mov 0x234(%rax),%eax` appears twice — once into staging, once into bundle `+0x0C`). The instruction carries no opcode-specific enum; it is a pure sync/handshake bundle keyed on one tensor's completion id. The structure is byte-pinned; reading `MemLoc+0x234` specifically as "the completion handle" is HIGH, cross-referenced from the SB2SB completion path.
 
 ---
 
@@ -372,24 +376,24 @@ Unlike GetGlobalRankId, `GetCurProcessingRankID` wire-encodes the full collectiv
 
 | off | Sz | field | source | Conf |
 |---|---|---|---|---|
-| `0x00` | 1 | opcode = `0x85` (133) header / `0x86` (134) payload | `movl $0x85,-0x200` @`0x12623d7`; `movl $0x86,-0x200` @`0x126243c` | CONFIRMED |
-| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CONFIRMED |
-| `0x02` | 2 | reserved = `0` | `setupHeader` | CONFIRMED |
-| `0x04` | 8 | `SyncInfo` band | shared sync overlay | CONFIRMED |
-| `0x0C` (header) | 2 | `instr.num_payloads` (u16) = N+2 | field string `"instr.num_payloads"` (`.rodata`) | STRONG |
-| `0x0E` (header) | 1 | `FunctionId` | (the resolved custom-op function id) | STRONG |
-| `0x0F` (header) | 1 | `instr.num_arguments` (u8) = N | field string `"instr.num_arguments"` (`.rodata`) | STRONG |
-| `0x10` (header) | — | reserved = `0` + scratch metadata zone | `custom_op_header_reserved_zero` (pybind) | CONFIRMED |
-| `0x0F` (payload) | 1 | payload-present flag = `1` | (D-Q08) | STRONG |
-| `0x10` (payload) | — | ADDR4 AP (output, then N args) | ADDR4 access pattern | STRONG |
+| `0x00` | 1 | opcode = `0x85` (133) header / `0x86` (134) payload | `movl $0x85,-0x200` @`0x12623d7`; `movl $0x86,-0x200` @`0x126243c` | CERTAIN |
+| `0x01` | 1 | `inst_word_len` = `0x10` | `setupHeader` | CERTAIN |
+| `0x02` | 2 | reserved = `0` | `setupHeader` | CERTAIN |
+| `0x04` | 8 | `SyncInfo` band | shared sync overlay | CERTAIN |
+| `0x0C` (header) | 2 | `instr.num_payloads` (u16) = N+2 | field string `"instr.num_payloads"` (`.rodata`) | HIGH |
+| `0x0E` (header) | 1 | `FunctionId` | (the resolved custom-op function id) | HIGH |
+| `0x0F` (header) | 1 | `instr.num_arguments` (u8) = N | field string `"instr.num_arguments"` (`.rodata`) | HIGH |
+| `0x10` (header) | — | reserved = `0` + scratch metadata zone | `custom_op_header_reserved_zero` (pybind) | CERTAIN |
+| `0x0F` (payload) | 1 | payload-present flag = `1` | payload arm | HIGH |
+| `0x10` (payload) | — | ADDR4 AP (output, then N args) | ADDR4 access pattern | HIGH |
 
 The opcode bytes are confirmed: `movl $0x85` (header) and `movl $0x86` (payload) both disassembled at `0x12623d7`/`0x126243c` and re-stamped at several arms. The `num_payloads` / `num_arguments` field-name strings are verbatim `.rodata` (`"instr.num_payloads"`, `"instr.num_arguments"`, both present in the binary).
 
-> **NOTE — `num_payloads` is byte-pinned at header `+0x0C`, u16 (re-verified).** The `+0x0C` slot here is byte-proven from the encoder body and survives re-grounding against `libwalrus.so`. Two stamps in `CoreV2GenImpl::visitInstCustomOp` (`0x12613c0`) call the bounded u16 setter `sub_123CA60` (the `utils.h:292` checker — asserts `value == (u16)value`, then `*a1 = value` with **no internal offset**) with its destination pointer set by `lea rdi, [r13+0Ch]` at `0x1262f75` (machine bytes `49 8d 7d 0c`; `r13` = the 64-byte header base) and again by `lea rdi, […+0Ch]` at `0x1263201` (the COLLECT scratch arm). The decompiler renders the same store as `sub_123CA60((_WORD *)hdr + 6, "instr.num_payloads", …)` — and because `hdr` is typed `_WORD*` (u16) there, `+ 6` is **u16-pointer arithmetic = 6 × 2 = +0x0C bytes**, not a +6 byte offset. The `"instr.num_payloads"` string is the setter's diagnostic-label argument (`lea rsi` immediately before each call), not a stored value. By contrast `num_arguments` is stamped via `lea rdi, [r13+0Fh]` (a genuine `_BYTE*` `+ 15`), which is why it lands at `+0x0F`. CONFIRMED — `.text` code store (VMA == file-offset frame; no `.data` delta or two-VA-frame artifact in play).
->
-> An earlier reconcile on the sibling page [Part 11 — CustomOp Wire Layout](../custom-ops/customop-wire-layout.md) §2.1 placed `num_payloads` at `+0x06` and stamped a `> **CORRECTION (D-Q08)**` against this section. That reconcile mis-read the decompiler's `(_WORD *)hdr + 6` as a +6 **byte** offset rather than u16-pointer arithmetic; the `lea [r13+0Ch]` machine bytes settle it at `+0x0C`. This section's `+0x0C` is the byte-proven value; the sibling page's `+0x06` is the one to fix.
+> **GOTCHA — `num_payloads` sits at header `+0x0C`, and the decompiler makes it look like `+0x06`.** Hex-Rays renders the store as `sub_123CA60((_WORD *)hdr + 6, "instr.num_payloads", …)`. Because `hdr` is typed `_WORD*` there, `+ 6` is **u16-pointer arithmetic — 6 × 2 = +0x0C bytes**, not a six-byte offset. The machine bytes settle it: `lea rdi, [r13+0Ch]` at `0x1262f75` (`49 8d 7d 0c`, with `r13` the 64-byte header base) and again at `0x1263201` on the COLLECT scratch arm. By contrast `num_arguments` is stamped via `lea rdi, [r13+0Fh]` — a genuine `_BYTE*` `+ 15` — which is why *it* lands at `+0x0F`.
 
-> **NOTE — the `custom_op_header_scratch_space_val` field.** The CUSTOM_OP_HEADER pybind struct names a header field `custom_op_header_scratch_space_val` that does not surface as a distinct store in the byte walk — it occupies the header metadata region (the `[0x10..]` reserved zone), and is the per-custom-op scratch SBUF/DRAM budget the Xtensa CPU op may request. **In this build's encoder it is left at its zero default** on the GENERATE path (no non-zero store observed; the whole region is zero-filled). The pybind exposes it for round-trip; the compiler emits `0`. A non-zero `scratch_space_val` would require a custom op that declares scratch — not exercised on this path. STRONG (pybind name confirmed; zero-default emit matches the byte walk; the exact byte offset within `[0x10..0x3F]` is pybind-implied, not independently store-pinned).
+`sub_123CA60` is the bounded u16 setter (the `utils.h:292` checker: assert `value == (u16)value`, then `*a1 = value`, with no internal offset of its own). The `"instr.num_payloads"` string is its diagnostic-label argument — a `lea rsi` immediately before each call — not a stored value.
+
+> **NOTE — the `custom_op_header_scratch_space_val` field.** The CUSTOM_OP_HEADER pybind struct names a header field `custom_op_header_scratch_space_val` that does not surface as a distinct store in the byte walk — it occupies the header metadata region (the `[0x10..]` reserved zone), and is the per-custom-op scratch SBUF/DRAM budget the Xtensa CPU op may request. **In this build's encoder it is left at its zero default** on the GENERATE path (no non-zero store observed; the whole region is zero-filled). The pybind exposes it for round-trip; the compiler emits `0`. A non-zero `scratch_space_val` would require a custom op that declares scratch, which this path never exercises. The pybind name is read directly and the zero-default emit matches the byte walk; the exact byte offset within `[0x10..0x3F]` is pybind-implied rather than store-pinned, so it is HIGH.
 
 > **GOTCHA — the Xtensa custom-op CPU cluster is NOT the Pool-alias "GPSIMD" of §5.** The `libbuiltincustomop_cpu0..7.stripped.so` libraries (Xtensa, `clang 10.0.1`) are a programmable general-purpose processor array for user custom ops, dispatched by this `0x85`/`0x86` pair. They have **nothing to do with `InstGPSIMDSB2SB` or the `Pool(1)` engine.** [1.13](../arch/gpsimd-engine.md) documents the three-way "GPSIMD" name collision in full; this page's `0xBF` op is the Pool alias, and this section's `0x85`/`0x86` pair is the Xtensa cluster dispatch.
 
@@ -417,11 +421,11 @@ All: `[0]`=opcode `[1]`=`0x10` `[2..3]`=0 (setupHeader); `[4..0xB]`=shared BIR `
 
 ## Confidence ledger
 
-- **CONFIRMED** (byte-store + opcode + field disassembly this pass): all eleven opcodes; the `0xD9` primary trio `{CCE-op@+0xC, dtype@+0xD, kind@+0xE}` + ADDR8 `TENSOR2D`@`+0x10`; the `0xDA` raw stamp; the collective-kind LUT bytes (`01 02 03 04 09 05 06 07 08`, `xxd`-verified at `0x1DF5790`); the GetCurProc group quad + regId@`+0x12`; GetGlobalRankId `{valid@+0xC, regId@+0x17}` + the `cmp $0xb` guard; TensorCompletion `{handle@+0xC, byte@+0x10}`; GetSequenceBounds `{flags@+0xC/+0xE/+0xF, in TENSOR3D@+0x10, out TENSOR3D@+0x20}`; CoreBarrier `{barrierId@+0xC, idx@+0x10, sema TENSOR4D@+0x20}`; the **GPSIMDSB2SB full map**, re-verified byte-identical to [1.13](../arch/gpsimd-engine.md); Send/Recv `0xCB` + tensor_id + `setAttribute(2)`; the `channel_id@+0x4` permute field; CustomOp `0x85`/`0x86`; module-side `addReplicaGroupIDs`/`addSrcTargetPairIDs`; the `AluOpType2DGEComputeOp` two-branch body.
-- **STRONG**: the `0xDA` secondary-record field detail (mirrors the `0xD9` trio); the `SyncInfo` band sub-layout (shared skeleton, not re-decoded here); `custom_op_header_scratch_space_val` byte offset (pybind-implied, zero-emitted); TensorCompletion `MemLoc+0x234` handle semantics; CustomOp `num_payloads`/`FunctionId`/`num_arguments` field semantics (cross-referenced to Part 11).
-- **INFERRED / DEFER**: the 48-byte ADDR4/ADDR8 AP internal packing ([2.3 ADDR8](tensor-descriptors.md), [2.21 DMA](dma-encoding.md)); the runtime completion-handle and scratch-window semantics (Part 11 / Part 13).
+- **CERTAIN** (byte-store, opcode and field disassembly): all eleven opcodes; the `0xD9` primary trio `{CCE-op@+0xC, dtype@+0xD, kind@+0xE}` + ADDR8 `TENSOR2D`@`+0x10`; the `0xDA` raw stamp; the collective-kind LUT bytes (`01 02 03 04 09 05 06 07 08`, `xxd`-verified at `0x1DF5790`); the GetCurProc group quad + regId@`+0x12`; GetGlobalRankId `{valid@+0xC, regId@+0x17}` + the `cmp $0xb` guard; TensorCompletion `{handle@+0xC, byte@+0x10}`; GetSequenceBounds `{flags@+0xC/+0xE/+0xF, in TENSOR3D@+0x10, out TENSOR3D@+0x20}`; CoreBarrier `{barrierId@+0xC, idx@+0x10, sema TENSOR4D@+0x20}`; the **GPSIMDSB2SB full map**, re-verified byte-identical to [1.13](../arch/gpsimd-engine.md); Send/Recv `0xCB` + tensor_id + `setAttribute(2)`; the `channel_id@+0x4` permute field; CustomOp `0x85`/`0x86`; module-side `addReplicaGroupIDs`/`addSrcTargetPairIDs`; the `AluOpType2DGEComputeOp` two-branch body.
+- **HIGH**: the `0xDA` secondary-record field detail (mirrors the `0xD9` trio); the `SyncInfo` band sub-layout (shared skeleton, not re-decoded here); `custom_op_header_scratch_space_val` byte offset (pybind-implied, zero-emitted); TensorCompletion `MemLoc+0x234` handle semantics; CustomOp `num_payloads`/`FunctionId`/`num_arguments` field semantics (cross-referenced to Part 11).
+- **MEDIUM / deferred**: the 48-byte ADDR4/ADDR8 AP internal packing ([2.3 ADDR8](tensor-descriptors.md), [2.21 DMA](dma-encoding.md)); the runtime completion-handle and scratch-window semantics (Part 11 / Part 13).
 
-The binary is authoritative for every offset cited. No SPECULATIVE claims.
+The binary is authoritative for every offset cited.
 
 ## Cross-References
 

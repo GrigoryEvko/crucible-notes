@@ -8,7 +8,7 @@ In this toolchain the name **"GPSIMD" is not a programmable SIMD core.** It is t
 
 The page reverse-engineers four things a reimplementer must reproduce. **(1) The one instruction** — `InstGPSIMDSB2SB`, opcode `0xBF`, a 64-byte `S3D3_COLLECTIVE` wire bundle emitted by the sole encoder `CoreV3GenImpl::visitInstGPSIMDSB2SB @0x1359840`. **(2) The cross-core addressing** — one bundle reads this core's SBUF (a full `TENSOR3D` access pattern) and writes the *peer* core's SBUF, addressing the peer by a **single scalar partition address** plus a one-bit "go cross-core" enable; there is **no core-index field and no core-count field**. **(3) The LNC2 hard-coding** — the op is legal only when the per-arch `cores-per-LNC` field (`arch+0x1A4`, the same field [1.07](lnc-memory-model.md) calls `lnc_size`) equals **2**; the encoder, the libBIR legality gate, and the simulator each compare it to the literal `2`. **(4) The GPSIMD-vs-DMA decision** — `lower_local_collectives` picks GPSIMD over DMA only for *small*, shape-compatible on-chip SendRecv swaps, under a hard `≤1024 bytes/partition` ceiling that lives in `libBIR`, not the encoder.
 
-> **CORRECTION (two-GPSIMD name collision) — there are THREE unrelated "GPSIMD"s in this wheel; this page documents exactly one.** (a) **This page's GPSIMD** = the backend-internal *external alias of the `Pool` engine* (`EngineType Pool(1)`), whose only op is the SB2SB mover. (b) A **separate Xtensa custom-op CPU cluster** — the `libbuiltincustomop_cpu0..7.stripped.so` libraries are compiled with `XtensaTools-14.09 clang version 10.0.1`; that is a programmable general-purpose processor array for user custom ops, documented in [Part 11 — Custom Ops & GPSIMD](../customop/), and has **nothing to do with `InstGPSIMDSB2SB` or the Pool engine.** (c) The **NKI front-door `nki.isa.engine.gpsimd = 3`** ("GpSimd Engine", "eight GpSimd cores ... 16 contiguous SBUF partitions") is a *third* namespace — the silicon programmable GP-SIMD array surfaced to kernel authors at engine index `3`, again **distinct** from this backend's `Pool(1)` alias. A reimplementer who conflates the Pool-alias SB2SB mover with the Xtensa cluster or the NKI engine-3 array will mis-model all three. Whenever this page says "GPSIMD" unqualified, it means **(a): the Pool alias.**
+> **GOTCHA — three unrelated "GPSIMD"s ship in this wheel; this page documents exactly one.** (a) **This page's GPSIMD** = the backend-internal *external alias of the `Pool` engine* (`EngineType Pool(1)`), whose only op is the SB2SB mover. (b) A **separate Xtensa custom-op CPU cluster** — the `libbuiltincustomop_cpu0..7.stripped.so` libraries are compiled with `XtensaTools-14.09 clang version 10.0.1`; that is a programmable general-purpose processor array for user custom ops, documented in [Part 11 — Custom Ops & GPSIMD](../customop/), and has **nothing to do with `InstGPSIMDSB2SB` or the Pool engine.** (c) The **NKI front-door `nki.isa.engine.gpsimd = 3`** ("GpSimd Engine", "eight GpSimd cores ... 16 contiguous SBUF partitions") is a *third* namespace — the silicon programmable GP-SIMD array surfaced to kernel authors at engine index `3`, again **distinct** from this backend's `Pool(1)` alias. A reimplementer who conflates the Pool-alias SB2SB mover with the Xtensa cluster or the NKI engine-3 array will mis-model all three. Whenever this page says "GPSIMD" unqualified, it means **(a): the Pool alias.**
 
 For reimplementation, the contract is:
 
@@ -87,7 +87,7 @@ Before any encoding detail matters, a reimplementer must internalize that **GPSI
 ExternalEngineType used as EngineType. External: GPSIMD Internal: Pool
 ```
 
-Both `Pool` and `GPSIMD` appear in the `EngineType` string pool (the internal `EngineType2string @0x47fa80` and external `EngineType2ExternalName @0x47fca0` tables), confirming they are two surface names for one engine slot. *(CONFIRMED — string verbatim in `libBIR.so`; `EngineType2ExternalName @0x47fca0` and `EngineType2string @0x47fa80` symbols present.)*
+Both `Pool` and `GPSIMD` appear in the `EngineType` string pool (the internal `EngineType2string @0x47fa80` and external `EngineType2ExternalName @0x47fca0` tables), confirming they are two surface names for one engine slot. *Anchors: string verbatim in `libBIR.so`; `EngineType2ExternalName @0x47fca0` and `EngineType2string @0x47fa80` symbols present.*
 
 ### Proof the SB2SB Op Runs on Pool
 
@@ -99,13 +99,13 @@ Both `Pool` and `GPSIMD` appear in the `EngineType` string pool (the internal `E
 3e2cf5:  c3                   ret
 ```
 
-The constant `1` is `EngineType Pool`. Combined with the `External: GPSIMD Internal: Pool` alias, the chain is airtight: **the op named `GPSIMDSB2SB` defaults to the `Pool` engine, which is externally named `GPSIMD`.** *(CONFIRMED — `getDefaultEngine @0x3e2cf0` re-disassembled; `mov $0x1` = `Pool(1)`.)*
+The constant `1` is `EngineType Pool`. Combined with the `External: GPSIMD Internal: Pool` alias, the chain is airtight: **the op named `GPSIMDSB2SB` defaults to the `Pool` engine, which is externally named `GPSIMD`.** *Anchors: `getDefaultEngine @0x3e2cf0` re-disassembled; `mov $0x1` = `Pool(1)`.*
 
 ### It Is a Pure Data Move
 
-`InstGPSIMDSB2SB::ArithOps() @0x3e2ef0` routes to `StaticProfiler::ArithOpsZeroArithInst @0x49d490` — the zero-arithmetic classifier. The op counts **zero** MACs: it is a mover, not a compute op. The only transform it may carry is a per-side dtype reinterpret/cast (the `+0x0C`/`+0x0D` wire dtypes, and the simulator casts the moved `MemObj` to FP32); no reduction or ALU is applied by the op itself. *(CONFIRMED — `ArithOps @0x3e2ef0` → `ArithOpsZeroArithInst @0x49d490`.)*
+`InstGPSIMDSB2SB::ArithOps() @0x3e2ef0` routes to `StaticProfiler::ArithOpsZeroArithInst @0x49d490` — the zero-arithmetic classifier. The op counts **zero** MACs: it is a mover, not a compute op. The only transform it may carry is a per-side dtype reinterpret/cast (the `+0x0C`/`+0x0D` wire dtypes, and the simulator casts the moved `MemObj` to FP32); no reduction or ALU is applied by the op itself. *Anchors: `ArithOps @0x3e2ef0` → `ArithOpsZeroArithInst @0x49d490`.*
 
-> **NOTE — GPSIMD is *not* a "run arbitrary code" instruction class.** The silicon GP-SIMD array (the NKI engine-3 array, eight cores × 16 partitions) is programmable, but the **compiler's exposed BIR ISA surface for the Pool-alias GPSIMD is exactly one fixed-function op**: the SB2SB copy. There is no GPSIMD `add`/`mul`/kernel opcode. User custom code targets `CustomOp`/`NKIKernel` instruction classes and (for CPU custom ops) the Xtensa cluster ([Part 11](../customop/)) — not a GPSIMD opcode. *(CONFIRMED for the ISA surface — exactly one `GenImpl::visitInstGPSIMDSB2SB` encoder symbol in `libwalrus.so`; the HW-programmability of the silicon array is out of binary scope.)*
+> **NOTE — GPSIMD is *not* a "run arbitrary code" instruction class.** The silicon GP-SIMD array (the NKI engine-3 array, eight cores × 16 partitions) is programmable, but the **compiler's exposed BIR ISA surface for the Pool-alias GPSIMD is exactly one fixed-function op**: the SB2SB copy. There is no GPSIMD `add`/`mul`/kernel opcode. User custom code targets `CustomOp`/`NKIKernel` instruction classes and (for CPU custom ops) the Xtensa cluster ([Part 11](../customop/)) — not a GPSIMD opcode. *Anchors (the ISA surface): exactly one `GenImpl::visitInstGPSIMDSB2SB` encoder symbol in `libwalrus.so`; the HW-programmability of the silicon array is out of binary scope.*
 
 ---
 
@@ -121,17 +121,17 @@ The single GPSIMD machine op. It copies an SBUF tile from this physical core int
 
 | Symbol | Address | Role | Confidence |
 |---|---|---|---|
-| `getDefaultEngine()` | `0x3e2cf0` | `mov $0x1` → `Pool(1)` | CONFIRMED |
-| `ArithOps()` | `0x3e2ef0` | → `ArithOpsZeroArithInst @0x49d490` (zero MACs) | CONFIRMED |
-| `getValidEngines()` | `0x43f1f0` | loads `validEngines` table (runtime-populated; gen3+ only) | CONFIRMED |
-| `verify(arch, emitErr)` | (libBIR `verify`) | first call from the encoder; tail-calls `isCompatible` | CONFIRMED |
-| `isCompatible(ctx, mod, srcAP, dstAP, I)` | `0x2931d0` | the legality gate (ctx==2, ranks, SBUF, ≤1024 B) | CONFIRMED |
-| `getEffectiveBytesPerPartition(elems, dtype)` | `0x291a50` | dtype-padded byte budget feeding the ceiling | CONFIRMED |
-| `MaxBytesPerPartition` | `0x784a00` | `.rodata` constant = `0x400` = 1024 | CONFIRMED |
-| `hasSideEffect()` / `canDstBePartialAccess()` / `isSymbolic()` | weak | side-effect / partial-dst / symbolic predicates | CONFIRMED |
-| `createFromJson` / `evalFieldsInto` / `updateAffineExprs` | — | JSON round-trip + affine plumbing | CONFIRMED |
+| `getDefaultEngine()` | `0x3e2cf0` | `mov $0x1` → `Pool(1)` | CERTAIN |
+| `ArithOps()` | `0x3e2ef0` | → `ArithOpsZeroArithInst @0x49d490` (zero MACs) | CERTAIN |
+| `getValidEngines()` | `0x43f1f0` | loads `validEngines` table (runtime-populated; gen3+ only) | CERTAIN |
+| `verify(arch, emitErr)` | (libBIR `verify`) | first call from the encoder; tail-calls `isCompatible` | CERTAIN |
+| `isCompatible(ctx, mod, srcAP, dstAP, I)` | `0x2931d0` | the legality gate (ctx==2, ranks, SBUF, ≤1024 B) | CERTAIN |
+| `getEffectiveBytesPerPartition(elems, dtype)` | `0x291a50` | dtype-padded byte budget feeding the ceiling | CERTAIN |
+| `MaxBytesPerPartition` | `0x784a00` | `.rodata` constant = `0x400` = 1024 | CERTAIN |
+| `hasSideEffect()` / `canDstBePartialAccess()` / `isSymbolic()` | weak | side-effect / partial-dst / symbolic predicates | CERTAIN |
+| `createFromJson` / `evalFieldsInto` / `updateAffineExprs` | — | JSON round-trip + affine plumbing | CERTAIN |
 
-*(CONFIRMED — all symbols enumerated from `nm -DC libBIR.so`.)*
+*All symbols above are enumerated from `nm -DC libBIR.so`.*
 
 ### The 64-Byte Wire Bundle (`S3D3_COLLECTIVE`)
 
@@ -139,23 +139,23 @@ The encoder stamps the header (`opcode = 0xBF`, `inst_word_len = 16` dwords = 64
 
 | Offset | Sz | Field | Source (encoder) | Anchor | Conf |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xBF` | `setupHeader` (`movb $0xbf`) | `@0x1359a15` | CONFIRMED |
-| `+0x01` | 1 | `inst_word_len` = 16 (⇒ 64 B) | `setupHeader` | — | CONFIRMED |
-| `+0x02` | 2 | reserved = 0 | `setupHeader` | — | CONFIRMED |
-| `+0x04` | 1 | wait[0] mode (wire LUT) | sync-wait helper | — | CONFIRMED |
-| `+0x05` | 1 | wait[0] semaphore index | `SyncRef::getId` | — | CONFIRMED |
-| `+0x06` | 1 | update mode (wire LUT) | sync-update helper | — | CONFIRMED |
-| `+0x07` | 1 | update semaphore index | `SyncRef::getId` | — | CONFIRMED |
-| `+0x08` | 4 | wait/update value | shared dword | — | CONFIRMED |
-| `+0x0C` | 1 | **src dtype** (this core) | dtype-tag(srcAP.Dtype) | `mov %al,0xc(%r13)` `@0x1359a3d` | CONFIRMED |
-| `+0x0D` | 1 | **dst dtype** (this core) | dtype-tag(dstAP.Dtype) | `mov %al,0xd(%r13)` `@0x1359a54` | CONFIRMED |
-| `+0x10` | 16 | **SRC `TENSOR3D`** (local source tile) | `assignAccess<TENSOR3D>(buf+0x10, srcAP)` | `lea 0x10(%r13)` | CONFIRMED |
-| `+0x20` | 1 | **cross-core enable = 1** (LNC2 marker) | const 1 | `movb $0x1,0x20(%r13)` `@0x1359a74` | CONFIRMED |
-| `+0x21` | 1 | **peer-core SB partition addr** | 2nd APPair element `*(*(srcAP+0x50)+8)` | `mov %al,0x21(%r13)` `@0x1359a9f` | CONFIRMED |
-| `+0x30` | 16 | **DST `TENSOR3D`** (destination tile) | `assignAccess<TENSOR3D>(buf+0x30, dstAP)` | `lea 0x30(%r13)` | CONFIRMED |
-| `+0x40` | — | end (`fwrite 0x40`) | `fwrite` | `@0x1359ada` | CONFIRMED |
+| `+0x00` | 1 | opcode = `0xBF` | `setupHeader` (`movb $0xbf`) | `@0x1359a15` | CERTAIN |
+| `+0x01` | 1 | `inst_word_len` = 16 (⇒ 64 B) | `setupHeader` | — | CERTAIN |
+| `+0x02` | 2 | reserved = 0 | `setupHeader` | — | CERTAIN |
+| `+0x04` | 1 | wait[0] mode (wire LUT) | sync-wait helper | — | CERTAIN |
+| `+0x05` | 1 | wait[0] semaphore index | `SyncRef::getId` | — | CERTAIN |
+| `+0x06` | 1 | update mode (wire LUT) | sync-update helper | — | CERTAIN |
+| `+0x07` | 1 | update semaphore index | `SyncRef::getId` | — | CERTAIN |
+| `+0x08` | 4 | wait/update value | shared dword | — | CERTAIN |
+| `+0x0C` | 1 | **src dtype** (this core) | dtype-tag(srcAP.Dtype) | `mov %al,0xc(%r13)` `@0x1359a3d` | CERTAIN |
+| `+0x0D` | 1 | **dst dtype** (this core) | dtype-tag(dstAP.Dtype) | `mov %al,0xd(%r13)` `@0x1359a54` | CERTAIN |
+| `+0x10` | 16 | **SRC `TENSOR3D`** (local source tile) | `assignAccess<TENSOR3D>(buf+0x10, srcAP)` | `lea 0x10(%r13)` | CERTAIN |
+| `+0x20` | 1 | **cross-core enable = 1** (LNC2 marker) | const 1 | `movb $0x1,0x20(%r13)` `@0x1359a74` | CERTAIN |
+| `+0x21` | 1 | **peer-core SB partition addr** | 2nd APPair element `*(*(srcAP+0x50)+8)` | `mov %al,0x21(%r13)` `@0x1359a9f` | CERTAIN |
+| `+0x30` | 16 | **DST `TENSOR3D`** (destination tile) | `assignAccess<TENSOR3D>(buf+0x30, dstAP)` | `lea 0x30(%r13)` | CERTAIN |
+| `+0x40` | — | end (`fwrite 0x40`) | `fwrite` | `@0x1359ada` | CERTAIN |
 
-> **GOTCHA — the peer address must exist, or the encoder asserts.** The peer partition address is the **second** element of the source AP's `APPair` vector. The encoder reads `*(*(srcAP+0x50)+8)`; if the `APPair` count (`[srcAP+0x58]`) is zero, the underlying `SmallVector` fires an `idx < size()` assert. A reimplementer must ensure the upstream lowering (`lower_local_collectives`, below) has populated the second `APPair` element with the resolved peer address before the encoder runs. *(CONFIRMED — the 2nd-element read is the source of `bundle+0x21`.)*
+> **GOTCHA — the peer address must exist, or the encoder asserts.** The peer partition address is the **second** element of the source AP's `APPair` vector. The encoder reads `*(*(srcAP+0x50)+8)`; if the `APPair` count (`[srcAP+0x58]`) is zero, the underlying `SmallVector` fires an `idx < size()` assert. A reimplementer must ensure the upstream lowering (`lower_local_collectives`, below) has populated the second `APPair` element with the resolved peer address before the encoder runs. *Anchors: the 2nd-element read is the source of `bundle+0x21`.*
 
 ### Algorithm
 
@@ -186,7 +186,7 @@ function visitInstGPSIMDSB2SB(InstGPSIMDSB2SB &I):
     fwrite(bundle, 1, 0x40, bin)                     // @0x1359ada — exactly 64 bytes
 ```
 
-A parallel **CHECK** path (`RUN_ISA_CHECKS`, no `fwrite`) repeats the same gate at `@0x1359da1` (`cmpl $0x2,0x1a4(%rax)`) and the same enable stamp, validating into stack scratch. *(CONFIRMED — both `cmpl $0x2,0x1a4` sites and the two `movb $0xbf` seeds disassembled.)*
+A parallel **CHECK** path (`RUN_ISA_CHECKS`, no `fwrite`) repeats the same gate at `@0x1359da1` (`cmpl $0x2,0x1a4(%rax)`) and the same enable stamp, validating into stack scratch. *Anchors: both `cmpl $0x2,0x1a4` sites and the two `movb $0xbf` seeds disassembled.*
 
 ---
 
@@ -212,16 +212,16 @@ This is the headline. The 2-core LNC addressing model uses **two addresses per c
 
 ### Why One Scalar Peer Address, No Core Index
 
-The LNC has **exactly two** physical cores (LNC2). From any core, "the other core" is unambiguous, so the hardware needs only (a) a one-bit "go cross-core" enable and (b) the peer's SBUF partition address. The compiler bakes the 2-core assumption in via the `+0x1A4 == 2` gate (next section). **There is no core-index field, no core-count field, and no multi-peer loop** anywhere in the encoder, the verifier, or the simulator. A 4-core LNC could not be expressed — there is no slot for a second peer. *(CONFIRMED — the encoder writes exactly one peer byte; no peer-index field exists.)*
+The LNC has **exactly two** physical cores (LNC2). From any core, "the other core" is unambiguous, so the hardware needs only (a) a one-bit "go cross-core" enable and (b) the peer's SBUF partition address. The compiler bakes the 2-core assumption in via the `+0x1A4 == 2` gate (next section). **There is no core-index field, no core-count field, and no multi-peer loop** anywhere in the encoder, the verifier, or the simulator. A 4-core LNC could not be expressed — there is no slot for a second peer. *Anchors: the encoder writes exactly one peer byte; no peer-index field exists.*
 
-The peer's *symbolic* identity is resolved **upstream** by `lower_local_collectives`. `LowerLocalCollectives::getMemoryLocation @0x161ab30` mints a remote target named `<tensor>_remote_<core>` and marks it via `MemoryLocation::setRemoteLocalTarget`; `createRemoteAP @0x161cad0` builds the peer's `PhysicalAccessPattern`; the linker's `vnc_remote_addr_map`/`vnc_link` later resolve that target to the concrete peer-core SBUF partition that lands in `bundle+0x21`. *(CONFIRMED — `getMemoryLocation @0x161ab30`, `createRemoteAP @0x161cad0`, `setRemoteLocalTarget` / `getRemoteLocalTarget` symbols present.)*
+The peer's *symbolic* identity is resolved **upstream** by `lower_local_collectives`. `LowerLocalCollectives::getMemoryLocation @0x161ab30` mints a remote target named `<tensor>_remote_<core>` and marks it via `MemoryLocation::setRemoteLocalTarget`; `createRemoteAP @0x161cad0` builds the peer's `PhysicalAccessPattern`; the linker's `vnc_remote_addr_map`/`vnc_link` later resolve that target to the concrete peer-core SBUF partition that lands in `bundle+0x21`. *Anchors: `getMemoryLocation @0x161ab30`, `createRemoteAP @0x161cad0`, `setRemoteLocalTarget` / `getRemoteLocalTarget` symbols present.*
 
 ### Simulator Confirmation (functional semantics)
 
 The reference model in `libBIRSimulator.so` (`InstVisitor::visitInstGPSIMDSB2SB @0x1f7590`) embodies the 2-core topology in its first statement and a `(coreId+1)&1` peer arithmetic:
 
 ```c
-// birsim visitInstGPSIMDSB2SB @0x1f7590  (CONFIRMED)
+// birsim visitInstGPSIMDSB2SB @0x1f7590
 assert NeuronCoresManager::getNumCoresPerLNC() == 2     // cmp $0x2,%rax; je @0x1f75ba
 coreId  = this+0xE0
 partner = (coreId + 1) & 1                              // the OTHER core in the pair
@@ -231,7 +231,7 @@ dst     = getInOutPhysicalAP(I, 0, /*isOutput=*/1)
 mem.write(dst) <- srcMO.cast(FP32)
 ```
 
-The op pulls the **partner** core's collective-compute output `MemObj` into this core's State Buffer through the shared `NeuronCoresManager` `CcOp` map. The `(coreId+1)&1` arithmetic is the runtime embodiment of the compiled-in 2-core topology, valid **only** when `getNumCoresPerLNC() == 2`. *(CONFIRMED — `getNumCoresPerLNC()==2` gate at `@0x1f75ba`; `getCcOpInMemObjForCore @0x272aa0`, `getCollectiveComputeInstIdx @0x273e50` symbols present.)*
+The op pulls the **partner** core's collective-compute output `MemObj` into this core's State Buffer through the shared `NeuronCoresManager` `CcOp` map. The `(coreId+1)&1` arithmetic is the runtime embodiment of the compiled-in 2-core topology, valid **only** when `getNumCoresPerLNC() == 2`. *Anchors: `getNumCoresPerLNC()==2` gate at `@0x1f75ba`; `getCcOpInMemObjForCore @0x272aa0`, `getCollectiveComputeInstIdx @0x273e50` symbols present.*
 
 ---
 
@@ -275,9 +275,9 @@ The 2-physical-core topology is not a parameter the encoder generalizes; it is *
 2931fc:  4d 85 c0             test   %r8,%r8            ; both operands present ?
 ```
 
-*(CONFIRMED — all four sites disassembled directly: `0x1359a67`, `0x1359da1`, `0x2931f2`, `0x1f75ba`.)*
+*Anchors: all four sites disassembled directly: `0x1359a67`, `0x1359da1`, `0x2931f2`, `0x1f75ba`.*
 
-> **NOTE — `gpsimd_version` and `lnc_size` are the SAME field.** Earlier strand notes that called the encoder's compared value a `gpsimd_version` and other notes that called it `lnc_size`/`cores-per-LNC` are describing one field, `+0x1A4`. The gate is literally "this op is legal only when the LNC has exactly 2 cores." A 4-core LNC (a different `+0x1A4`) fails the encoder assert — there is no peer-index field to express more than one peer. This is the identical `arch+0x1A4 == 2` immediate cited by [1.07 The multi-core (LNC) memory model](lnc-memory-model.md); the two pages agree by construction. *(CONFIRMED — both call sites read `+0x1A4`; consistent with [1.07].)*
+> **GOTCHA — `gpsimd_version` and `lnc_size` name the same field.** The value the encoder compares is `arch+0x1A4`, and it is described in different places as a "gpsimd version" and as `lnc_size` / `cores-per-LNC`. There is only one field. The gate is literally "this op is legal only when the LNC has exactly 2 cores." A 4-core LNC (a different `+0x1A4`) fails the encoder assert — there is no peer-index field to express more than one peer. This is the identical `arch+0x1A4 == 2` immediate cited by [1.07 The multi-core (LNC) memory model](lnc-memory-model.md); the two pages agree by construction. *Anchors: both call sites read `+0x1A4`; consistent with [1.07].*
 
 ### Does CoreV4 Generalize It? No.
 
@@ -285,11 +285,11 @@ The 2-physical-core topology is not a parameter the encoder generalizes; it is *
 
 | Generation | Encoder | LNC2 gate | Cost model | Confidence |
 |---|---|---|---|---|
-| **CoreV2** (Sunda, single core) | none — op absent | n/a (single-core, no cross-core swap) | n/a | CONFIRMED |
-| **CoreV3** (Cayman / gen3, Trn2 LNC2) | `visitInstGPSIMDSB2SB @0x1359840` (sole body) | `cmpl $0x2,0x1a4` | `Gen3Hwm::getInstGPSIMDSB2SBLatency @0x185ca10` | CONFIRMED |
-| **CoreV4** | **inherits** the CoreV3 encoder | same `== 2` gate | `CoreV4Hwm::getInstGPSIMDSB2SBLatency @0x1861ea0` (distinct curve) | CONFIRMED |
+| **CoreV2** (Sunda, single core) | none — op absent | n/a (single-core, no cross-core swap) | n/a | CERTAIN |
+| **CoreV3** (Cayman / gen3, Trn2 LNC2) | `visitInstGPSIMDSB2SB @0x1359840` (sole body) | `cmpl $0x2,0x1a4` | `Gen3Hwm::getInstGPSIMDSB2SBLatency @0x185ca10` | CERTAIN |
+| **CoreV4** | **inherits** the CoreV3 encoder | same `== 2` gate | `CoreV4Hwm::getInstGPSIMDSB2SBLatency @0x1861ea0` (distinct curve) | CERTAIN |
 
-Both generations also carry a `dbg_is_valid_sb2sb_collective` validator (`neuronxcc::core_v3::` and `neuronxcc::core_v4::`), confirming the op survives into CoreV4 with the same wire layout. Gen4 did **not** widen the LNC beyond 2 for this op. *(CONFIRMED — single `CoreV3GenImpl` encoder symbol; both Hwm latency symbols; both `core_v3`/`core_v4` `dbg_is_valid_sb2sb_collective` symbols present.)*
+Both generations also carry a `dbg_is_valid_sb2sb_collective` validator (`neuronxcc::core_v3::` and `neuronxcc::core_v4::`), confirming the op survives into CoreV4 with the same wire layout. Gen4 did **not** widen the LNC beyond 2 for this op. *Anchors: single `CoreV3GenImpl` encoder symbol; both Hwm latency symbols; both `core_v3`/`core_v4` `dbg_is_valid_sb2sb_collective` symbols present.*
 
 ---
 
@@ -314,7 +314,7 @@ Both generations also carry a `dbg_is_valid_sb2sb_collective` validator (`neuron
                          the REMOTE / ICI cross-NODE path (runtime collective library).
 ```
 
-So the on-chip (within-LNC) vs remote split is exactly which kinds get a local lowering — only `0`/`1`/`2`. **GPSIMD is reachable only on the `kind 0 SendRecv` arm.** *(CONFIRMED — `lowerSendRecv @0x161cc70`, `lowerSendRecvCCE @0x161f130`, `lowerAllReduce @0x1621a80` symbols present; dispatch structure per the kind handlers.)*
+So the on-chip (within-LNC) vs remote split is exactly which kinds get a local lowering — only `0`/`1`/`2`. **GPSIMD is reachable only on the `kind 0 SendRecv` arm.** *Anchors: `lowerSendRecv @0x161cc70`, `lowerSendRecvCCE @0x161f130`, `lowerAllReduce @0x1621a80` symbols present; dispatch structure per the kind handlers.*
 
 ### The Engine Pick (kind 0 SendRecv only)
 
@@ -331,7 +331,7 @@ function pickSendRecvEngine(srcAP, dstAP, I):
     return InstGPSIMDSB2SB                           // small + compatible → the GPSIMD fast path
 ```
 
-GPSIMD is chosen for **small, shape-compatible** SendRecv swaps; everything larger or incompatible falls to DMA. The pass knob `sendrecv-to-gpsimd-max-bpp` ("Bytes/partition under which local swapping SendRecvs will be mapped to GPSIMDSB2SB", string verbatim in `libwalrus.so`) sits **under** the hard libBIR ceiling of 1024 B/partition. *(CONFIRMED — knob string verbatim; `getEffectiveBytesPerPartition @0x291a50`, `isCompatible @0x2931d0` symbols present.)*
+GPSIMD is chosen for **small, shape-compatible** SendRecv swaps; everything larger or incompatible falls to DMA. The pass knob `sendrecv-to-gpsimd-max-bpp` ("Bytes/partition under which local swapping SendRecvs will be mapped to GPSIMDSB2SB", string verbatim in `libwalrus.so`) sits **under** the hard libBIR ceiling of 1024 B/partition. *Anchors: knob string verbatim; `getEffectiveBytesPerPartition @0x291a50`, `isCompatible @0x2931d0` symbols present.*
 
 ### The `isCompatible` Legality Gate
 
@@ -339,17 +339,17 @@ GPSIMD is chosen for **small, shape-compatible** SendRecv swaps; everything larg
 
 | Predicate | Anchor | Confidence |
 |---|---|---|
-| `ctx == 2` (cores-per-LNC == 2) | `cmp $0x2,%rdi` `@0x2931f2` | CONFIRMED |
-| both operands present (`r8 != 0`) | `test %r8,%r8` `@0x2931fc` | CONFIRMED |
-| partition base / model gate | `cmp ...,0x1d` (29) | STRONG |
-| src/dst rank ∈ {2..5}, equal elems/partition, matching dtype, BOTH operands SBUF, physical AP | enumerated predicate list | STRONG |
-| effective bytes/partition ≤ `MaxBytesPerPartition` = 1024 | `MaxBytesPerPartition @0x784a00` = `0x400` | CONFIRMED |
+| `ctx == 2` (cores-per-LNC == 2) | `cmp $0x2,%rdi` `@0x2931f2` | CERTAIN |
+| both operands present (`r8 != 0`) | `test %r8,%r8` `@0x2931fc` | CERTAIN |
+| partition base / model gate | `cmp ...,0x1d` (29) | HIGH |
+| src/dst rank ∈ {2..5}, equal elems/partition, matching dtype, BOTH operands SBUF, physical AP | enumerated predicate list | HIGH |
+| effective bytes/partition ≤ `MaxBytesPerPartition` = 1024 | `MaxBytesPerPartition @0x784a00` = `0x400` | CERTAIN |
 
-The `≤1024 B/partition` ceiling lives in **libBIR**, not the encoder — the encoder's first statement is `verify(...)`, which tail-calls `isCompatible`, and the codegen body trusts that gate and never re-checks bytes. The budget is computed on **dtype-padded** bytes by `getEffectiveBytesPerPartition` *before* the comparison, so a 2-byte or 4-byte dtype consumes the budget faster than its element count alone implies. *(CONFIRMED — `MaxBytesPerPartition @0x784a00` byte-read `00 04 00 00` = 1024; `isCompatible` opcodes at `0x2931f2`/`0x2931fc`.)*
+The `≤1024 B/partition` ceiling lives in **libBIR**, not the encoder — the encoder's first statement is `verify(...)`, which tail-calls `isCompatible`, and the codegen body trusts that gate and never re-checks bytes. The budget is computed on **dtype-padded** bytes by `getEffectiveBytesPerPartition` *before* the comparison, so a 2-byte or 4-byte dtype consumes the budget faster than its element count alone implies. *Anchors: `MaxBytesPerPartition @0x784a00` byte-read `00 04 00 00` = 1024; `isCompatible` opcodes at `0x2931f2`/`0x2931fc`.*
 
 ### Sync / Completion
 
-GPSIMDSB2SB swaps are fenced by `InstCoreBarrier` (CoreV3-only, `CoreV3GenImpl::visitInstCoreBarrier`) inserted by `lower_local_collectives`, and finalized by point-to-point completion tokens placed at the writers' common-postdominator block (the `_sb2sb` completion family). The `_remote_<core>` cross-core targets minted by `getMemoryLocation` are resolved by the linker's `vnc_remote_addr_map`/`vnc_link`. *(CONFIRMED — `InstCoreBarrier` encoder + `getRemoteLocalTarget` machinery present; the completion-token placement is the `lower_local_collectives` post-pass.)*
+GPSIMDSB2SB swaps are fenced by `InstCoreBarrier` (CoreV3-only, `CoreV3GenImpl::visitInstCoreBarrier`) inserted by `lower_local_collectives`, and finalized by point-to-point completion tokens placed at the writers' common-postdominator block (the `_sb2sb` completion family). The `_remote_<core>` cross-core targets minted by `getMemoryLocation` are resolved by the linker's `vnc_remote_addr_map`/`vnc_link`. *Anchors: `InstCoreBarrier` encoder + `getRemoteLocalTarget` machinery present; the completion-token placement is the `lower_local_collectives` post-pass.*
 
 ### The Reimplementer's Decision Rule
 
@@ -363,18 +363,18 @@ GPSIMDSB2SB swaps are fenced by `InstCoreBarrier` (CoreV3-only, `CoreV3GenImpl::
   kind ≥3                           → CoreBarrier fence only; op survives → ICI / runtime lib.
 ```
 
-GPSIMD is the narrow "small on-chip SBUF swap" fast path; DMA is the general on-chip mover; the ICI/collective library is the cross-node path. *(CONFIRMED synthesis — each arm anchored above.)*
+GPSIMD is the narrow "small on-chip SBUF swap" fast path; DMA is the general on-chip mover; the ICI/collective library is the cross-node path. *Anchors: each arm anchored above.*
 
 ---
 
 ## Perf-Sim Cost (Gen3Hwm / CoreV4Hwm)
 
-`Gen3Hwm::getInstGPSIMDSB2SBLatency @0x185ca10` models latency as piecewise-linear in transferred bytes with a breakpoint near 56 bytes — a cheap small-transfer regime and a steeper large-transfer slope. `CoreV4Hwm::getInstGPSIMDSB2SBLatency @0x1861ea0` carries its own distinct curve. `getLatencyExec` selects between them by `ArchLevel` (`gen3` vs `core_v4`). The slope/offset constants are hardware fits read from `.rodata`, not derivable from first principles; they are documented in the perf-sim cost-model page rather than here. *(CONFIRMED — both Hwm latency symbols present; the piecewise constants are HW fits.)*
+`Gen3Hwm::getInstGPSIMDSB2SBLatency @0x185ca10` models latency as piecewise-linear in transferred bytes with a breakpoint near 56 bytes — a cheap small-transfer regime and a steeper large-transfer slope. `CoreV4Hwm::getInstGPSIMDSB2SBLatency @0x1861ea0` carries its own distinct curve. `getLatencyExec` selects between them by `ArchLevel` (`gen3` vs `core_v4`). The slope/offset constants are hardware fits read from `.rodata`, not derivable from first principles; they are documented in the perf-sim cost-model page rather than here. *Anchors: both Hwm latency symbols present; the piecewise constants are HW fits.*
 
 | Generation | Latency symbol | Address | Confidence |
 |---|---|---|---|
-| gen3 (CoreV3) | `Gen3Hwm::getInstGPSIMDSB2SBLatency` | `0x185ca10` | CONFIRMED |
-| gen4 (CoreV4) | `CoreV4Hwm::getInstGPSIMDSB2SBLatency` | `0x1861ea0` | CONFIRMED |
+| gen3 (CoreV3) | `Gen3Hwm::getInstGPSIMDSB2SBLatency` | `0x185ca10` | CERTAIN |
+| gen4 (CoreV4) | `CoreV4Hwm::getInstGPSIMDSB2SBLatency` | `0x1861ea0` | CERTAIN |
 
 ---
 
@@ -382,21 +382,21 @@ GPSIMD is the narrow "small on-chip SBUF swap" fast path; DMA is the general on-
 
 | Claim | Tag | Basis (this page) |
 |---|---|---|
-| GPSIMD == external alias of `EngineType Pool(1)` | CONFIRMED | string `External: GPSIMD Internal: Pool`; `EngineType2ExternalName @0x47fca0` |
-| SB2SB op defaults to `Pool(1)` | CONFIRMED | `getDefaultEngine @0x3e2cf0` = `mov $0x1; ret` |
-| Exactly one GPSIMD machine op (`InstGPSIMDSB2SB`, opcode `0xBF`) | CONFIRMED | sole `CoreV3GenImpl::visitInstGPSIMDSB2SB @0x1359840`; `movb $0xbf @0x1359a15` |
-| Pure data move (zero MACs) | CONFIRMED | `ArithOps @0x3e2ef0` → `ArithOpsZeroArithInst @0x49d490` |
-| Cross-core: local src/dst `TENSOR3D` + one scalar peer addr + enable | CONFIRMED | `+0x10`/`+0x30` `lea`, `+0x20` `movb $0x1` `@0x1359a74`, `+0x21` `mov %al` `@0x1359a9f` |
-| LNC2 gate `arch+0x1A4 == 2` (encoder) | CONFIRMED | `cmpl $0x2,0x1a4(%rax)` `@0x1359a67` / `@0x1359da1` |
-| LNC2 gate (libBIR `isCompatible`) | CONFIRMED | `cmp $0x2,%rdi` `@0x2931f2` |
-| LNC2 gate (simulator) | CONFIRMED | `getNumCoresPerLNC()==2` `@0x1f75ba`; `partner=(coreId+1)&1` |
-| `+0x1A4` is the same field as `lnc_size` in [1.07] | CONFIRMED | identical offset; both pages' call sites read `+0x1A4` |
-| `≤1024 B/partition` ceiling in libBIR | CONFIRMED | `MaxBytesPerPartition @0x784a00` = `00 04 00 00` = 1024 |
-| CoreV4 inherits the CoreV3 encoder (no >2-core generalization) | CONFIRMED | single encoder symbol; both Hwm latencies; `core_v3`/`core_v4` `dbg_is_valid_sb2sb_collective` |
-| Minted by `lower_local_collectives` from kind-0 SendRecv only | CONFIRMED | `lowerSendRecv @0x161cc70`; kind 1/2 → DMA; kind ≥3 → ICI |
-| GPSIMD-vs-DMA pick under `sendrecv-to-gpsimd-max-bpp` | CONFIRMED | knob string verbatim; `getEffectiveBytesPerPartition @0x291a50` |
-| Two-/three-GPSIMD name collision (Pool-alias vs Xtensa vs NKI engine-3) | CONFIRMED | `External: GPSIMD Internal: Pool`; `XtensaTools-14.09` in custom-op libs; `nki.isa.engine.gpsimd=3` |
-| `isCompatible` rank/SBUF/dtype predicate list | STRONG | enumerated from the `isCompatible` body; opcodes byte-verified, full message decode beyond binary |
+| GPSIMD == external alias of `EngineType Pool(1)` | CERTAIN | string `External: GPSIMD Internal: Pool`; `EngineType2ExternalName @0x47fca0` |
+| SB2SB op defaults to `Pool(1)` | CERTAIN | `getDefaultEngine @0x3e2cf0` = `mov $0x1; ret` |
+| Exactly one GPSIMD machine op (`InstGPSIMDSB2SB`, opcode `0xBF`) | CERTAIN | sole `CoreV3GenImpl::visitInstGPSIMDSB2SB @0x1359840`; `movb $0xbf @0x1359a15` |
+| Pure data move (zero MACs) | CERTAIN | `ArithOps @0x3e2ef0` → `ArithOpsZeroArithInst @0x49d490` |
+| Cross-core: local src/dst `TENSOR3D` + one scalar peer addr + enable | CERTAIN | `+0x10`/`+0x30` `lea`, `+0x20` `movb $0x1` `@0x1359a74`, `+0x21` `mov %al` `@0x1359a9f` |
+| LNC2 gate `arch+0x1A4 == 2` (encoder) | CERTAIN | `cmpl $0x2,0x1a4(%rax)` `@0x1359a67` / `@0x1359da1` |
+| LNC2 gate (libBIR `isCompatible`) | CERTAIN | `cmp $0x2,%rdi` `@0x2931f2` |
+| LNC2 gate (simulator) | CERTAIN | `getNumCoresPerLNC()==2` `@0x1f75ba`; `partner=(coreId+1)&1` |
+| `+0x1A4` is the same field as `lnc_size` in [1.07] | CERTAIN | identical offset; both pages' call sites read `+0x1A4` |
+| `≤1024 B/partition` ceiling in libBIR | CERTAIN | `MaxBytesPerPartition @0x784a00` = `00 04 00 00` = 1024 |
+| CoreV4 inherits the CoreV3 encoder (no >2-core generalization) | CERTAIN | single encoder symbol; both Hwm latencies; `core_v3`/`core_v4` `dbg_is_valid_sb2sb_collective` |
+| Minted by `lower_local_collectives` from kind-0 SendRecv only | CERTAIN | `lowerSendRecv @0x161cc70`; kind 1/2 → DMA; kind ≥3 → ICI |
+| GPSIMD-vs-DMA pick under `sendrecv-to-gpsimd-max-bpp` | CERTAIN | knob string verbatim; `getEffectiveBytesPerPartition @0x291a50` |
+| Two-/three-GPSIMD name collision (Pool-alias vs Xtensa vs NKI engine-3) | CERTAIN | `External: GPSIMD Internal: Pool`; `XtensaTools-14.09` in custom-op libs; `nki.isa.engine.gpsimd=3` |
+| `isCompatible` rank/SBUF/dtype predicate list | HIGH | enumerated from the `isCompatible` body; opcodes byte-verified, full message decode beyond binary |
 
 ---
 
