@@ -1,14 +1,14 @@
 # KlirToBirCodegen: the dispatch core & the master routing table
 
-> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 twins present). Subject binary: `neuronxcc/starfish/lib/libwalrus.so` — the **Strand-I** backend shared object. It retains its **full dynamic symbol table**: `nm -DC libwalrus.so | rg KlirToBirCodegen` yields **176** demangled `class → method → address` rows directly, the authoritative roster used throughout. `.text` (`0xf00000+`) and `.rodata` (`0x1c72000+`) have VA == file-offset, so jump tables are read by file offset. All evidence below is from this binary: `nm`, `objdump -d` disasm, `strings`, and a Python decode of the `.rodata` jump table. Every claim is tagged CONFIRMED (read directly off this binary) / STRONG (multi-evidence) / INFERRED / SPECULATIVE.*
+> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 twins present). Subject binary: `neuronxcc/starfish/lib/libwalrus.so` — the **Strand-I** backend shared object. It retains its **full dynamic symbol table**: `nm -DC libwalrus.so | rg KlirToBirCodegen` yields **176** demangled `class → method → address` rows directly, the authoritative roster used throughout. `.text` (`0xf00000+`) and `.rodata` (`0x1c72000+`) have VA == file-offset, so jump tables are read by file offset. All evidence below is from this binary: `nm`, `objdump -d` disasm, `strings`, and a Python decode of the `.rodata` jump table. Anything not read directly off this binary is marked [INFERRED] or [SPECULATIVE] inline.*
 
 ## Abstract
 
 `KlirToBirCodegen` is the **beta2** lowering core that turns a serialized-KLR NKI kernel — a tree of `klr::Stmt` / `klr::Operator` nodes — into a graph of `bir::Instruction` nodes (the L1 Backend IR the walrus allocator and scheduler consume). It is one of **two parallel front-ends onto the same BIR node model**, not a stage in a pipeline. The sibling, `BirCodeGenLoop` (the **beta3** driver, documented in [6.5.10 BirCodeGenLoop](../nki/bircodegenloop.md)), **builds** a `bir::Module` top-down from the Penguin tensoriser-IR tree; `KlirToBirCodegen` instead **mutates** an already-built `bir::Module` in place, patching the contents of a serialized-KLR `bir::InstNKIKLIRKernel` placeholder into it. They converge on the identical `bir::Inst` data model from two different inputs (Penguin IR vs. KLR). This is a *sibling* relationship — neither feeds the other.
 
-> **NOTE — beta2 is the dormant path in this build.** The active default driver is beta3 (`BirCodeGenLoop`). The beta2 internal-retrace path that consumes serialized KLR through `KlirToBirCodegen` is present and complete in `libwalrus.so` but is **largely dormant** at this version: it is the lowering used for the legacy `nki_klr` retrace, not the default Penguin lowering. The code is shipped (every leaf, the full 77-case switch, the context struct are all present and citeable), but it is exercised by a non-default front-end. Treat this page as the specification of a complete-but-secondary lowering path, kept in parity with beta3 on the BIR side. [STRONG — beta3 is the documented default driver; both build identical `bir::Inst` nodes]
+> **NOTE — beta2 is the dormant path in this build.** The active default driver is beta3 (`BirCodeGenLoop`). The beta2 internal-retrace path that consumes serialized KLR through `KlirToBirCodegen` is present and complete in `libwalrus.so` but is **largely dormant** at this version: it is the lowering used for the legacy `nki_klr` retrace, not the default Penguin lowering. The code is shipped (every leaf, the full 77-case switch, the context struct are all present and citeable), but it is exercised by a non-default front-end. Treat this page as the specification of a complete-but-secondary lowering path, kept in parity with beta3 on the BIR side. [INFERRED] Dormancy is an architectural reading — beta3 is the documented default driver and both build identical `bir::Inst` nodes — not a runtime trace.
 
-> **METHOD — where the dispatch lives.** `KlirToBirCodegen` lives **only** in `libwalrus.so`. The `nki_klr_sim` driver is stripped and links `libBIRSimulator`/`libpwp_sim`/`libBIR` — it contains **zero** `KlirToBirCodegen` symbols (`nm -DC` + `readelf -d` confirm). The `0x5e9020–0x62d650` band in `libwalrus` is `.plt` thunks (each tail-jumps to a real body `>0xf00000`); every address cited below is the **real body** (an `nm` `T`/`W` row), never a thunk alias. [CONFIRMED]
+> **METHOD — where the dispatch lives.** `KlirToBirCodegen` lives **only** in `libwalrus.so`. The `nki_klr_sim` driver is stripped and links `libBIRSimulator`/`libpwp_sim`/`libBIR` — it contains **zero** `KlirToBirCodegen` symbols (`nm -DC` + `readelf -d` confirm). The `0x5e9020–0x62d650` band in `libwalrus` is `.plt` thunks (each tail-jumps to a real body `>0xf00000`); every address cited below is the **real body** (an `nm` `T`/`W` row), never a thunk alias.
 
 | | |
 |---|---|
@@ -36,12 +36,12 @@ codegenLncKernel / inlineNoReorderBlock           [LEVEL 0]  statement-list WALK
                       └─ codegen<Op>(shared_ptr<klr::Op>)  [LEAF] builds bir::Instruction*
 ```
 
-CONFIRMED — all four core addresses are `nm -DC` rows and the chain is read off the disasm (§§2–5).
+All four core addresses are `nm -DC` rows, and the chain is read off the disasm (§§2–5).
 
 ### LEVEL 0 — the per-statement walk
 
 ```c
-// codegenLncKernel(shared_ptr<klr::LncKernel>)  @0xf34140  [CONFIRMED]
+// codegenLncKernel(shared_ptr<klr::LncKernel>)  @0xf34140
 bir::Instruction* codegenLncKernel(KlirToBirCodegen *this, klr::LncKernel *k) {
     // Pre-resolve per-statement names against the already-built BIR Function:
     //   bir::Function::getMemoryLocationByName / getBasicBlockByName  (name-keyed lookup)
@@ -58,12 +58,12 @@ bir::Instruction* codegenLncKernel(KlirToBirCodegen *this, klr::LncKernel *k) {
 }
 ```
 
-The walk pre-resolves BasicBlock and MemoryLocation names against the **already-built** `bir::Function` before the loop — the first concrete sign that this driver *patches into* an existing Module rather than constructing one. Each statement is lowered inside a `try`/`catch`; a thrown `std::runtime_error` is formatted and funneled into `collectError` (@ `0xf1f190`) for later retrieval via `getFormattedErrors` (@ `0xf14450`) — lowering does not abort on the first bad node. After the walk, **one** call to `codegenDependencyEdges` wires the BIR dependency edges across all emitted instructions. `inlineNoReorderBlock` (@ `0xf335a0`) is the secondary walker that re-enters `codegenStmt` for inlined no-reorder statement groups; per the callgraph these two are the **only** callers of `codegenStmt`. [CONFIRMED both callers]
+The walk pre-resolves BasicBlock and MemoryLocation names against the **already-built** `bir::Function` before the loop — the first concrete sign that this driver *patches into* an existing Module rather than constructing one. Each statement is lowered inside a `try`/`catch`; a thrown `std::runtime_error` is formatted and funneled into `collectError` (@ `0xf1f190`) for later retrieval via `getFormattedErrors` (@ `0xf14450`) — lowering does not abort on the first bad node. After the walk, **one** call to `codegenDependencyEdges` wires the BIR dependency edges across all emitted instructions. `inlineNoReorderBlock` (@ `0xf335a0`) is the secondary walker that re-enters `codegenStmt` for inlined no-reorder statement groups; per the callgraph these two are the **only** callers of `codegenStmt`.
 
 ### LEVEL 1 — `codegenStmt`: the Stmt-kind guard
 
 ```c
-// codegenStmt(shared_ptr<klr::Stmt>)  @0xf33520  [CONFIRMED full body]
+// codegenStmt(shared_ptr<klr::Stmt>)  @0xf33520
 //   0xf3352a:  cmpl $0x1, (%rax)        ; *(int*)(*sp) == klr::Stmt kind @ offset 0
 //   0xf3352d:  jne  6def3c              ; -> throw "Unsupported statement type encountered"
 bir::Instruction* codegenStmt(KlirToBirCodegen *this, shared_ptr<klr::Stmt> stmt) {
@@ -75,7 +75,7 @@ bir::Instruction* codegenStmt(KlirToBirCodegen *this, shared_ptr<klr::Stmt> stmt
 }
 ```
 
-Only `klr::Stmt` **kind == 1** is accepted — that one kind is a `klr::StmtOperWrapper`. The disasm shows `cmpl $0x1,(%rax)` immediately followed by `jne` to the throw site at `0x6def3c`. Control-flow and other non-operator statement kinds are rejected here: in this lowering path **every** statement is operator-bearing. The `shared_ptr` is reinterpreted onto the same control block (refcount bumped) and forwarded down. [STRONG — kind==1 == StmtOperWrapper, from the guard + the only downstream call target]
+Only `klr::Stmt` **kind == 1** is accepted — that one kind is a `klr::StmtOperWrapper`. The disasm shows `cmpl $0x1,(%rax)` immediately followed by `jne` to the throw site at `0x6def3c`. Control-flow and other non-operator statement kinds are rejected here: in this lowering path **every** statement is operator-bearing. The `shared_ptr` is reinterpreted onto the same control block (refcount bumped) and forwarded down. The identification of kind 1 with `StmtOperWrapper` comes from the guard plus the single downstream call target.
 
 ### LEVEL 2 — `codegenStmtOperWrapper`: unwrap, debug-info, device-print
 
@@ -89,7 +89,7 @@ This is the only level that does post-lowering bookkeeping; the wrapper level be
 | `+64` | `klr::*` | node carrying the kernel-name string at `+176`/`+184` |
 
 ```c
-// codegenStmtOperWrapper(shared_ptr<klr::StmtOperWrapper>)  @0xf325a0  [CONFIRMED]
+// codegenStmtOperWrapper(shared_ptr<klr::StmtOperWrapper>)  @0xf325a0
 bir::Instruction* codegenStmtOperWrapper(KlirToBirCodegen *this, klr::StmtOperWrapper *w) {
     // A — LOWER
     bir::Instruction *inst = codegenOperator(this, &w[+8]);   // LEVEL 3 (line 113)
@@ -115,12 +115,12 @@ bir::Instruction* codegenStmtOperWrapper(KlirToBirCodegen *this, klr::StmtOperWr
 }
 ```
 
-Three things happen here. **(A)** It calls down into the op switch and bails on a null result. **(B)** It stamps the produced `bir::Instruction` with an `OpDebugInfo` (op label = the wrapper's name string or the literal `"nki-op"`; kernel name pulled from the `+64.+176` node), writes the lowered-origin marker `*(int*)(inst+0x38) = 2`, and — when the wrapper carries a name and the instruction is not a collective — names the instruction via `BasicBlock::setNameForElement`. **(C)** When the device-dump flag (`this+0x1B0`, set by `setDeviceDump`) is on, it injects an `InstDevicePrint` for every output AccessPattern whose `MemoryLocation` dtype is not fp32 (`!= 32`), named `"COMPILER-GENERATED-COREID-<id>-DevicePrint-"`. This is the source of the `COREID` device-print spam in device-dump builds. The literals `"nki-op"`, `"dummy_dbg_info"`, and `"COMPILER-GENERATED-COREID-"` are all present in `.rodata` (verified via `strings`). [STRONG]
+Three things happen here. **(A)** It calls down into the op switch and bails on a null result. **(B)** It stamps the produced `bir::Instruction` with an `OpDebugInfo` (op label = the wrapper's name string or the literal `"nki-op"`; kernel name pulled from the `+64.+176` node), writes the lowered-origin marker `*(int*)(inst+0x38) = 2`, and — when the wrapper carries a name and the instruction is not a collective — names the instruction via `BasicBlock::setNameForElement`. **(C)** When the device-dump flag (`this+0x1B0`, set by `setDeviceDump`) is on, it injects an `InstDevicePrint` for every output AccessPattern whose `MemoryLocation` dtype is not fp32 (`!= 32`), named `"COMPILER-GENERATED-COREID-<id>-DevicePrint-"`. This is the source of the `COREID` device-print spam in device-dump builds. The literals `"nki-op"`, `"dummy_dbg_info"`, and `"COMPILER-GENERATED-COREID-"` are all present in `.rodata`.
 
 ### LEVEL 3 — `codegenOperator`: the master switch
 
 ```c
-// codegenOperator(shared_ptr<klr::Operator>)  @0xf30db0  [CONFIRMED full body + switch]
+// codegenOperator(shared_ptr<klr::Operator>)  @0xf30db0
 //   0xf310df:  mov  (%rax),%rax           ; *(*a2)
 //   0xf310e2:  cmpl $0x4c, (%rax)         ; kind > 76 ?  (0x4c == 76)
 //   0xf310e5:  ja   6de4be                ; -> default throw
@@ -142,12 +142,12 @@ bir::Instruction* codegenOperator(KlirToBirCodegen *this, shared_ptr<klr::Operat
 }
 ```
 
-The discriminant is the `klr::Operator` kind field at **offset 0**. The bound check `cmpl $0x4c` (76) with `ja` to the default site confirms the case domain is exactly kinds **0..76 — 77 cases**. The jump table base `0x1de95f8` is materialized by `lea 0xeb8504(%rip)`, entries are 4-byte **signed self-relative** offsets, and dispatch is the indirect `jmp *%rdx` at `0xf310fb`. A `boost::log` debug record carrying the decimal kind is emitted before the switch — a per-op trace log. Each valid case is uniform: alias the inner `shared_ptr` (refcount-bump), call the matching `codegenOperator<Op>Wrapper`, refcount-drop, return the instruction. [CONFIRMED — `switches.json` analogue reproduced by directly decoding the 77 `.rodata` entries; see §3]
+The discriminant is the `klr::Operator` kind field at **offset 0**. The bound check `cmpl $0x4c` (76) with `ja` to the default site confirms the case domain is exactly kinds **0..76 — 77 cases**. The jump table base `0x1de95f8` is materialized by `lea 0xeb8504(%rip)`, entries are 4-byte **signed self-relative** offsets, and dispatch is the indirect `jmp *%rdx` at `0xf310fb`. A `boost::log` debug record carrying the decimal kind is emitted before the switch — a per-op trace log. Each valid case is uniform: alias the inner `shared_ptr` (refcount-bump), call the matching `codegenOperator<Op>Wrapper`, refcount-drop, return the instruction. The case table was reproduced by directly decoding the 77 `.rodata` entries (see §3).
 
 ### LEVEL 4 — `codegenOperator<Op>Wrapper`: the templated refcount shim
 
 ```c
-// codegenOperatorNcMatMulWrapper(shared_ptr<klr::OperatorNcMatMulWrapper>)  @0xf19cf0  [CONFIRMED]
+// codegenOperatorNcMatMulWrapper(shared_ptr<klr::OperatorNcMatMulWrapper>)  @0xf19cf0
 //   0xf19cf6:  mov    (%rsi),%rax
 //   0xf19cf9:  movdqu 0x8(%rax),%xmm0     ; concrete klr::NcMatMul shared_ptr @ +8
 //   0xf19d1a:  addl   $0x1,0x8(%rax)      ; refcount-bump
@@ -163,7 +163,7 @@ bir::Instruction* codegenOperatorNcMatMulWrapper(KlirToBirCodegen *this, klr::Op
 }
 ```
 
-`klr` emits a uniform `klr::Operator` base whose concrete subclass is `klr::Operator<Op>Wrapper` — a thin envelope around the bare `klr::<Op>` node, holding the concrete node's `shared_ptr` at `+8`. The wrapper's only job is to **strip that envelope**: load `+8`, own a ref, forward to the same-named leaf, drop the ref. No naming, debug, or device-print logic lives here — all of that is in LEVEL 2. This is the instantiation pattern for **all 60 wrappers**; the disasm above (NcMatMul) is the canonical exemplar. [STRONG — pattern confirmed against the NcMatMul shim; 60 wrappers share the layout]
+`klr` emits a uniform `klr::Operator` base whose concrete subclass is `klr::Operator<Op>Wrapper` — a thin envelope around the bare `klr::<Op>` node, holding the concrete node's `shared_ptr` at `+8`. The wrapper's only job is to **strip that envelope**: load `+8`, own a ref, forward to the same-named leaf, drop the ref. No naming, debug, or device-print logic lives here — all of that is in LEVEL 2. This is the instantiation pattern for **all 60 wrappers**; the disasm above (NcMatMul) is the canonical exemplar, and the 60 wrappers share its layout.
 
 ---
 
@@ -175,7 +175,7 @@ The two intermediate layers (`StmtOperWrapper`, `Operator<Op>Wrapper`) exist bec
 
 ## 3. The master routing table — `klr::Operator` kind → wrapper → leaf
 
-The table below is the I-strand index: each row is one valid switch case in `codegenOperator` (@ `0xf30db0`). Wrapper and leaf addresses are `nm -DC` bodies. The 77-entry jump table at `0x1de95f8` was decoded directly from `.rodata`: **17 entries point at the default-throw target `0x6de4be`** (kinds `{0,1,4,8,11,17,18,19,21,24,27,30,43,58,62,63,70}`), and the remaining **60 entries** point at 60 distinct wrappers — yielding **61 distinct jump targets** (60 wrappers + 1 default). [CONFIRMED — Python decode of the 77 `.rodata` int32 entries reproduced the exact reserved-kind set]
+Each row below is one valid switch case in `codegenOperator` (@ `0xf30db0`). Wrapper and leaf addresses are `nm -DC` bodies. The 77-entry jump table at `0x1de95f8` was decoded directly from `.rodata`: **17 entries point at the default-throw target `0x6de4be`** (kinds `{0,1,4,8,11,17,18,19,21,24,27,30,43,58,62,63,70}`), and the remaining **60 entries** point at 60 distinct wrappers — yielding **61 distinct jump targets** (60 wrappers + 1 default).
 
 | kind | Wrapper `@addr` | Leaf `codegen…@addr` | klr node | notes |
 |----|----|----|----|----|
@@ -240,19 +240,19 @@ The table below is the I-strand index: each row is one valid switch case in `cod
 | 75 | Exponential `@0xf24550` | codegenExponential `@0xf23fb0` | `klr::Exponential` | |
 | 76 | Activate2 `@0xf2f9d0` | codegenActivate2 `@0xf2f3a0` | `klr::Activate2` | act |
 
-**Reserved / default-throw kinds** (jump-table entry → `0x6de4be`): `0, 1, 4, 8, 11, 17, 18, 19, 21, 24, 27, 30, 43, 58, 62, 63, 70`. These 17 kinds raise `std::runtime_error("Unsupported operator <kind>")`. [CONFIRMED]
+**Reserved / default-throw kinds** (jump-table entry → `0x6de4be`): `0, 1, 4, 8, 11, 17, 18, 19, 21, 24, 27, 30, 43, 58, 62, 63, 70`. These 17 kinds raise `std::runtime_error("Unsupported operator <kind>")`.
 
-> **† Collectives share one body.** Kinds 52–57 and 59 are seven distinct wrappers and seven thin leaves, but every leaf delegates to the shared helper `codegenCollectiveOp(shared_ptr<klr::CollectiveOp>, bir::CollectiveKind)` @ `0xf229a0`. The per-op leaf does nothing but pin the `bir::CollectiveKind` argument (AllReduce / AllGather / ReduceScatter / AllToAll / CollectivePermute[Implicit][Reduce]) and tail into the shared body. [CONFIRMED]
+> **† Collectives share one body.** Kinds 52–57 and 59 are seven distinct wrappers and seven thin leaves, but every leaf delegates to the shared helper `codegenCollectiveOp(shared_ptr<klr::CollectiveOp>, bir::CollectiveKind)` @ `0xf229a0`. The per-op leaf does nothing but pin the `bir::CollectiveKind` argument (AllReduce / AllGather / ReduceScatter / AllToAll / CollectivePermute[Implicit][Reduce]) and tail into the shared body.
 
-> **NcActivate shared by two kinds.** Kinds 2 (`NcActivate`) and 3 (`ActivationReduce`) both route to leaf `codegenNcActivate` @ `0xf18ba0` (two wrappers, one leaf): they share the activation-engine codegen and differ only by reduce-fold flags. [CONFIRMED — `nm` shows a single `codegenNcActivate`, two `…Wrapper` shims]
+> **NcActivate shared by two kinds.** Kinds 2 (`NcActivate`) and 3 (`ActivationReduce`) both route to leaf `codegenNcActivate` @ `0xf18ba0` (two wrappers, one leaf): they share the activation-engine codegen and differ only by reduce-fold flags — `nm` shows a single `codegenNcActivate` against two `…Wrapper` shims.
 
-**Routing arithmetic.** 60 valid kinds → 60 wrappers → **57 distinct leaves**: the activation engine is shared by 2 kinds (−1 leaf), and the 7 collective kinds reach 7 thin leaves all over the *one* shared `codegenCollectiveOp` body (so the seven thin leaves exist as symbols but route to a single substantive codegen). [STRONG]
+**Routing arithmetic.** 60 valid kinds → 60 wrappers → **57 distinct leaves**: the activation engine is shared by 2 kinds (−1 leaf), and the 7 collective kinds reach 7 thin leaves all over the *one* shared `codegenCollectiveOp` body (so the seven thin leaves exist as symbols but route to a single substantive codegen).
 
 ---
 
 ## 4. Sub-encoders — the operand grammar shared by the leaves
 
-The leaf bodies are not self-contained: they share a set of value-codegen / sub-encoder helpers that translate KLR operand sub-trees into BIR arguments and access patterns. These are **not** op-dispatched — they are called directly by the leaves. The full `codegen*` roster in `libwalrus` is **82** `codegen*` methods that are neither the 60 wrappers nor the 3 dispatch-core entries nor the LncKernel walk; of these, ~57 are the per-op leaves of §3 and the remainder are the sub-encoders below plus a few variant leaves (`codegenGenericIndirectSave`, `codegenImmediateIntWrapper`, `codegenImmediateFloatWrapper`). [CONFIRMED `nm` enumeration — see §6 GOTCHA on the 81-vs-82 count]
+The leaf bodies are not self-contained: they share a set of value-codegen / sub-encoder helpers that translate KLR operand sub-trees into BIR arguments and access patterns. These are **not** op-dispatched — they are called directly by the leaves. The full `codegen*` roster in `libwalrus` is **82** `codegen*` methods that are neither the 60 wrappers nor the 3 dispatch-core entries nor the LncKernel walk; of these, ~57 are the per-op leaves of §3 and the remainder are the sub-encoders below plus a few variant leaves (`codegenGenericIndirectSave`, `codegenImmediateIntWrapper`, `codegenImmediateFloatWrapper`). The 82 is an `nm` enumeration — see the counting note in §6.
 
 | Sub-encoder `@addr` | Role |
 |---|---|
@@ -281,7 +281,7 @@ These sub-encoders are documented per-family in the leaf pages: access/indexing 
 ## 5. The codegen context — `KlirToBirCodegen` object state
 
 ```c
-// ctor: KlirToBirCodegen(bir::Function*)  @0xf0faa0  [CONFIRMED ctor + getters]
+// ctor: KlirToBirCodegen(bir::Function*)  @0xf0faa0
 //  - BASE at offset 0: logging::Logger (constructed from the demangled type-name
 //    "neuronxcc::backend::KlirToBirCodegen" via __cxa_demangle). The object IS-A Logger,
 //    which is why the boost::log open_record calls in codegenOperator/StmtOperWrapper log through `this`.
@@ -305,29 +305,29 @@ The codegen object is a stateful sink: it IS-A `logging::Logger` (its base subob
 
 Supporting state: a name-uniquing hashtable (`Hashtable<string,string>` near `+0x1E8`/`+496`) used in `codegenLncKernel` to de-duplicate instruction names; an `OpDebugInfo` scratch (`"dummy_dbg_info"` template, set in ctor); and the deferred error log behind `collectError` @ `0xf1f190` / `getFormattedErrors` @ `0xf14450`. `setParentTensorizerId(boost::optional<unsigned long>)` @ `0xf14300` threads a nested-tensorizer id; `isBasicBlockUseful` @ `0xf14a10` / `locateSharedConstants` @ `0xf14240` support block pruning.
 
-**What the driver reads.** `TranslateNKIASTToBIR::lowerKLIRToNKI` (@ `0xf09c40`) takes `KlirToBirCodegen const&` purely to read the alloc budgets — `getSbufMaxBytes()`, `getPsumMaxBankId()`, `getIsAllocated()`. The codegen object is the carrier that brings the resolved arch-model SBUF/PSUM limits into the NKI-function lowering. [STRONG — `const&` parameter + the three getters are the only `const` reads exposed]
+**What the driver reads.** `TranslateNKIASTToBIR::lowerKLIRToNKI` (@ `0xf09c40`) takes `KlirToBirCodegen const&` purely to read the alloc budgets — `getSbufMaxBytes()`, `getPsumMaxBankId()`, `getIsAllocated()`. The codegen object is the carrier that brings the resolved arch-model SBUF/PSUM limits into the NKI-function lowering. Those three getters are the only `const` reads the class exposes.
 
-**KLR-value → BIR-argument binding is name-keyed, not a map.** There is no single `std::map<klr-id, bir-arg>` field. `codegenTensorName` / `codegenHbm` resolve a `klr::TensorName` to a BIR MemoryLocation via `bir::Function::getMemoryLocationByName` — a name-keyed lookup into the already-built `bir::Function`'s named-element container, keyed by the KLR node's name string (the same container `setNameForElement` writes into at LEVEL 2). Operand identity therefore flows through the BIR Function's named-element table, not a KLR-id translation table. This is the structural consequence of beta2 being a *patch-into-existing-Module* driver. [STRONG — `getMemoryLocationByName` is an undefined import resolved against `libBIR`; the binding is by-name]
+**KLR-value → BIR-argument binding is name-keyed, not a map.** There is no single `std::map<klr-id, bir-arg>` field. `codegenTensorName` / `codegenHbm` resolve a `klr::TensorName` to a BIR MemoryLocation via `bir::Function::getMemoryLocationByName` — a name-keyed lookup into the already-built `bir::Function`'s named-element container, keyed by the KLR node's name string (the same container `setNameForElement` writes into at LEVEL 2). Operand identity therefore flows through the BIR Function's named-element table, not a KLR-id translation table. This is the structural consequence of beta2 being a *patch-into-existing-Module* driver. `getMemoryLocationByName` is an undefined import resolved against `libBIR`.
 
 ---
 
-## 6. Adversarial self-verification
+## 6. Evidence anchors and limits
 
-The five strongest claims, re-checked against the binary:
+| Claim | Anchor |
+|---|---|
+| 77-case switch | `cmpl $0x4c` (76) + `ja` to the default; jump-table base `0x1de95f8` materialized by `lea 0xeb8504(%rip)`; 4-byte signed self-relative entries; indirect `jmp *%rdx` @ `0xf310fb`. Decoding the 77 `.rodata` int32s gives **17** entries → default `0x6de4be` and **60** → wrappers, i.e. 61 distinct targets |
+| 4-level dispatch | `codegenStmt@0xf33520` → `codegenStmtOperWrapper@0xf325a0` → `codegenOperator@0xf30db0` → `codegenOperator<Op>Wrapper` → leaf; all four are `nm -DC` bodies, and the NcMatMul wrapper @ `0xf19cf0` tail-calls `codegenNcMatMul` @ `0xf19590` |
+| 60 wrappers | `nm -DC \| rg 'codegenOperator\w+Wrapper' \| wc -l` = 60 |
+| Parallel, not a pipeline stage | `TranslateNKIASTToBIR::run(bir::Module&)` @ `0xf0dbc0` → `lowerKLIRToNKI(bir::InstNKIKLIRKernel&, bir::Function&, …)` @ `0xf09c40` takes a `bir::Module&` plus an `InstNKIKLIRKernel&` placeholder and *mutates* the module; beta3 builds one from scratch. The beta3 page ([6.5.10](../nki/bircodegenloop.md)) states the same from its side |
+| Context struct | every cited getter address (`getMod@0xf142f0`, `getSbufMaxBytes@0xf14420`, `getPsumMaxBankId@0xf14430`, `getIsAllocated@0xf14310`, `returnAndIncrementId@0xf13b50`, `setDeviceDump@0xf109a0`, ctor `@0xf0faa0`), with the object offsets read from the getter bodies |
 
-1. **77-case switch.** CONFIRMED. `cmpl $0x4c` (76) + `ja` to default at `codegenOperator+0x..`; jump-table base `0x1de95f8` materialized by `lea 0xeb8504(%rip)`; 4-byte signed self-relative entries; indirect `jmp *%rdx` @ `0xf310fb`. A Python decode of the 77 `.rodata` int32s gave **17** entries → default `0x6de4be` (exact reserved-kind set) and **60** → wrappers, i.e. 61 distinct targets.
+> **GOTCHA — the leaf count is a definitional choice, not a discrepancy.** "How many leaves" depends on whether you count the seven thin collective leaves (each a one-line shim over `codegenCollectiveOp`), the enum-map sub-encoders, and `codegenDependencyEdges` (a post-walk pass). The unambiguous binary counts are: **176** total `KlirToBirCodegen` dynsym methods; **60** wrappers; **3** dispatch-core entries (`codegenStmt` / `codegenStmtOperWrapper` / `codegenOperator`); **82** other `codegen*` methods. Cite those rather than a derived leaf total — the §3 routing table is unaffected either way, at 60 valid kinds → 57 distinct substantive leaves.
 
-2. **4-level dispatch.** CONFIRMED. `codegenStmt@0xf33520` → `codegenStmtOperWrapper@0xf325a0` → `codegenOperator@0xf30db0` → `codegenOperator<Op>Wrapper` → leaf — all four are `nm -DC` bodies and the chain is read off disasm (NcMatMul wrapper @ `0xf19cf0` tail-calls `codegenNcMatMul` @ `0xf19590`).
+Limits:
 
-3. **60 wrappers + leaf split.** Wrappers: CONFIRMED **60** (`nm -DC | rg 'codegenOperator\w+Wrapper' | wc -l` = 60). Leaves: the precise binary count of non-wrapper, non-dispatch, non-walk `codegen*` members is **82**, not the 81 cited in earlier I-strand notes. The 1-row delta is the variant leaves `codegenGenericIndirectSave` / `codegenImmediateIntWrapper` / `codegenImmediateFloatWrapper` being grouped differently than `codegenDependencyEdges` (a post-walk pass, not a leaf). **82 is the binary truth**; "81" is a grouping artifact. The §3 routing table is unaffected: 60 valid kinds → 57 distinct *substantive* leaves.
-
-   > **GOTCHA — the leaf count is a definitional choice, not a discrepancy.** "How many leaves" depends on whether you count the seven thin collective leaves (each a 1-line shim over `codegenCollectiveOp`), the enum-map sub-encoders, and `codegenDependencyEdges`. The unambiguous binary facts are: **176** total `KlirToBirCodegen` dynsym methods; **60** wrappers; **3** dispatch-core (`codegenStmt`/`codegenStmtOperWrapper`/`codegenOperator`); **82** other `codegen*` methods. Cite those, not a derived "81 leaves."
-
-4. **Parallel, not pipeline (vs. BirCodeGenLoop).** CONFIRMED structurally. `TranslateNKIASTToBIR::run(bir::Module&)` @ `0xf0dbc0` → `lowerKLIRToNKI(bir::InstNKIKLIRKernel&, bir::Function&, …, KlirToBirCodegen const&)` @ `0xf09c40` *mutates* an existing `bir::Module` (it takes a `bir::Module&` and an `InstNKIKLIRKernel&` placeholder). `BirCodeGenLoop` (beta3) constructs a `bir::Module` from scratch from Penguin IR. Neither consumes the other's output; both emit identical `bir::Inst` nodes. The beta3 page ([6.5.10](../nki/bircodegenloop.md)) states the same from its side.
-
-5. **Context struct.** CONFIRMED for every cited getter address (`getMod@0xf142f0`, `getSbufMaxBytes@0xf14420`, `getPsumMaxBankId@0xf14430`, `getIsAllocated@0xf14310`, `returnAndIncrementId@0xf13b50`, `setDeviceDump@0xf109a0`, ctor `@0xf0faa0`). The exact byte-offsets within the object (`+0x38`, `+0xF0`, `+0x118`, `+0x1B0`, etc.) are read from the getter bodies; the `+0x154`/`+0x158` PSUM split is INFERRED from the `getPsumMaxBankId` division and is the one offset that would most reward a second disasm pass.
-
-**Honest re-verify ceiling.** The dispatch core, the 77-case switch, the 60-wrapper roster, the collective/NcActivate sharing, the diagnostic strings, and the driver relationship are all CONFIRMED off this binary. The per-row klr-node *names* in §3 are STRONG (derived from the wrapper/leaf demangled symbol names, which embed the op name) rather than independently re-derived from each switch case's literal log string. The exact PSUM-offset split (`+0x154`/`+0x158`) and the "beta2 dormant in this build" claim are the two STRONG-not-CONFIRMED items: dormancy is an architectural inference (beta3 is the documented default), not a runtime trace.
+- The per-row klr-node *names* in §3 are derived from the wrapper/leaf demangled symbol names, which embed the op name, rather than independently re-derived from each switch case's literal log string.
+- **[INFERRED]** the `+0x154`/`+0x158` PSUM split, deduced from the division inside `getPsumMaxBankId`. This is the one offset that would most reward a second disasm pass.
+- **[INFERRED]** the "beta2 is dormant in this build" claim, which rests on beta3 being the documented default driver rather than on a runtime trace.
 
 ---
 

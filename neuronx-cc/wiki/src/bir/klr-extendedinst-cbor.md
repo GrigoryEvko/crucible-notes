@@ -1,12 +1,12 @@
 # klr::ExtendedInst & the CBOR Wire Format
 
-> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 carry the identical class — same `.dynsym` `klr::ExtendedInst` / `klr::OperatorExtendedInstWrapper` symbols). Subject binary: `neuronxcc/.../data/bin/nki_klr_sim` — the **klr simulator/driver**, a 5,788,224-byte C++ ELF with fully-demangled symbols in `.dynsym`. `PT_LOAD` is mapped 1:1, so virtual address equals file offset for `.text`/`.rodata` and every `sub_*@0xADDR` below is read straight off that binary's IDA decompile. The identical record is also compiled into `libwalrus.so` / `libBIR.so` (the backend cross-module match, [7.21](klir-codegen-dispatch.md)). Evidence is tagged CONFIRMED (literal store/read in a decompiled body, cross-checked ser↔des↔to_string) / STRONG (one body + symbol/RTTI corroboration) / INFERRED (symbol + cross-module) / SPECULATIVE.*
+> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 carry the identical class — same `.dynsym` `klr::ExtendedInst` / `klr::OperatorExtendedInstWrapper` symbols). Subject binary: `neuronxcc/.../data/bin/nki_klr_sim` — the **klr simulator/driver**, a 5,788,224-byte C++ ELF with fully-demangled symbols in `.dynsym`. `PT_LOAD` is mapped 1:1, so virtual address equals file offset for `.text`/`.rodata` and every `sub_*@0xADDR` below is read straight off that binary's IDA decompile. The identical record is also compiled into `libwalrus.so` / `libBIR.so` (the backend cross-module match, [7.21](klir-codegen-dispatch.md)). Facts here are read as literal stores/reads in a decompiled body and cross-checked across serializer, deserializer, and `to_string`; anything weaker is marked [INFERRED] or [SPECULATIVE] inline.*
 
 ## Abstract
 
 `klr::ExtendedInst` is the **beta2** intermediate-representation record that carries a custom operator through the serialized-KLR path — the `KlirToBirCodegen` lane ([7.21](klir-codegen-dispatch.md)), the dormant sibling of the beta3 `BirCodeGenLoop` driver. It is not the BIR-level custom-op object; it sits one IR level **upstream** of `bir::InstCustomOp` and the `0x85`/`0x86` ISA words. On the wire it is a **CBOR** (RFC 8949) record carried under semantic **tag 210**, and in the klr `Operator` variant it appears as **kind 70** (`klr::OperatorExtendedInstWrapper`). This page pins the 80-byte record layout field-by-field, reproduces the CBOR (de)serialization as annotated pseudocode against real symbols, decodes both nested tags byte-for-byte, and documents the one structural surprise the simulator hands us: **`nki_klr_sim` deserializes and prints `ExtendedInst` but flatly refuses to lower it** — its per-`Operator` codegen has no case for kind 70.
 
-The bar is that a reimplementer can encode or decode an `ExtendedInst` record on the klr wire, recognize its two nested CBOR tags, and place it correctly in the IR descent. Three independent function bodies — serializer, deserializer, and `to_string` printer — agree on the same six fields and the same 80-byte footprint, so the layout is CONFIRMED at the strongest available level: byte-exact across a full round-trip.
+The bar is that a reimplementer can encode or decode an `ExtendedInst` record on the klr wire, recognize its two nested CBOR tags, and place it correctly in the IR descent. Three independent function bodies — serializer, deserializer, and `to_string` printer — agree on the same six fields and the same 80-byte footprint, so the layout is pinned byte-exactly across a full round-trip.
 
 For reimplementation, the contract is:
 
@@ -25,11 +25,11 @@ Block (tag 104,0,3)                        Block_des  sub_5548C0
               (inner tag 0xD9 0xD2 0x00 …)
 ```
 
-`Block_des` (`sub_5548C0`) carries the literal `"Expecting Block:(104,0,3)"`; `Operator_des` (`sub_5523D0`) switches on the outer variant byte and, for the `ExtendedInst` variant, calls `ExtendedInst_des`. This places `ExtendedInst` as a leaf klr `Operator` inside a klr `Block`. [CONFIRMED — the `Block`→`Operator`→`ExtendedInst` des chain, decompiled bodies.]
+`Block_des` (`sub_5548C0`) carries the literal `"Expecting Block:(104,0,3)"`; `Operator_des` (`sub_5523D0`) switches on the outer variant byte and, for the `ExtendedInst` variant, calls `ExtendedInst_des`. This places `ExtendedInst` as a leaf klr `Operator` inside a klr `Block`.
 
-`ExtendedInst` is the klr-level container; its downstream realization — `bir::InstCustomOp` plus the `CUSTOM_OP_HEADER 0x85` + `PAYLOAD 0x86` ISA pair — is produced on the libwalrus/Penguin side, not here (see the CustomOp wire layer, `custom-ops/` planned, and [7.21](klir-codegen-dispatch.md)). The bridge that fills `InstCustomOp` from an `ExtendedInst` is not present in `nki_klr_sim`. [INFERRED — cross-module; `nki_klr_sim` carries no `bir::InstCustomOp` / `CustomOpLib` strings at all.]
+`ExtendedInst` is the klr-level container; its downstream realization — `bir::InstCustomOp` plus the `CUSTOM_OP_HEADER 0x85` + `PAYLOAD 0x86` ISA pair — is produced on the libwalrus/Penguin side, not here (see the CustomOp wire layer, `custom-ops/` planned, and [7.21](klir-codegen-dispatch.md)). The bridge that fills `InstCustomOp` from an `ExtendedInst` is not present in `nki_klr_sim`, which carries no `bir::InstCustomOp` / `CustomOpLib` strings at all; [INFERRED] its placement on the libwalrus side is a cross-module deduction.
 
-## 1. The 80-byte field layout (CONFIRMED, byte-exact)
+## 1. The 80-byte field layout
 
 Three function bodies agree on the same offsets. The deserializer allocates the record and writes each field; the serializer reads the same offsets back; the printer reads them a third time.
 
@@ -42,9 +42,9 @@ Three function bodies agree on the same offsets. The deserializer allocates the 
 | +16 | `data0` | `std::list<u32>` | `List_Nat_ser` | `List_des` | head +16 / size +32 |
 | +40 | `data1` | `std::list<u32>` | `List_Nat_ser` | `List_des` | head +40 / size +56 |
 
-`sizeof == 80` (`+64..+79` = the second list's trailing slack / tail padding; only `+0..+56` are touched by any of the three bodies). `data0`/`data1` are doubly-linked `std::list<u32>` — each node is a 24-byte `_List_node_base{prev,next}` + the `u32` value at node+16, freed via `operator delete(…, 0x18u)`. The `+32`/`+56` size words and the `i = *(i64*)i` link-walk in the printer prove `std::list`, **not** `std::vector` and **not** a `vector<TensorRef>`. [CONFIRMED — ser `sub_531450`, des `sub_5397E0`, to_string `sub_56C800` all agree.]
+`sizeof == 80` (`+64..+79` = the second list's trailing slack / tail padding; only `+0..+56` are touched by any of the three bodies). `data0`/`data1` are doubly-linked `std::list<u32>` — each node is a 24-byte `_List_node_base{prev,next}` + the `u32` value at node+16, freed via `operator delete(…, 0x18u)`. The `+32`/`+56` size words and the `i = *(i64*)i` link-walk in the printer prove `std::list`, **not** `std::vector` and **not** a `vector<TensorRef>`. *Anchors: ser `sub_531450`, des `sub_5397E0`, to_string `sub_56C800` — all three agree.*
 
-> **GOTCHA — there is no op-name, no num_arguments, no num_payloads, no args vector at this level.** Those fields live one IR level down, on `bir::InstCustomOp` and in the `0x85` CUSTOM_OP_HEADER word. The only op identity an `ExtendedInst` carries is the raw `opcode:u32`. A grep of `nki_klr_sim`'s strings finds no `"CustomOpLib"`, `"libbuiltincustomop"`, `"SundaCustomOpLibrary"`, or builtin-leaf names — op-name → `.so` resolution is a BIR/runtime concern, not a klr one. [CONFIRMED for the negative.]
+> **GOTCHA — there is no op-name, no num_arguments, no num_payloads, no args vector at this level.** Those fields live one IR level down, on `bir::InstCustomOp` and in the `0x85` CUSTOM_OP_HEADER word. The only op identity an `ExtendedInst` carries is the raw `opcode:u32`. A grep of `nki_klr_sim`'s strings finds no `"CustomOpLib"`, `"libbuiltincustomop"`, `"SundaCustomOpLibrary"`, or builtin-leaf names — op-name → `.so` resolution is a BIR/runtime concern, not a klr one.
 
 ### (A) Serializer — `klr::ExtendedInst_ser` (`sub_531450` @ `0x531450`, size 161)
 
@@ -62,7 +62,7 @@ sub_52F590(s, (QWORD *)*a2 + 2);       // List_Nat_ser(data0)  payload +16  (qwo
 return sub_52F590(s, (QWORD *)*a2 + 5);// List_Nat_ser(data1)  payload +40  (qword index 5)
 ```
 
-Helper chain: `sub_5672D0 → sub_567310` = `Nat_ser`; `sub_5672C0 → sub_5674C0` = `Bool_ser`; `sub_52F590` = `List_Nat_ser` (writes a list-header then one `Nat` per node, value at node+16); `sub_5670C0 → sub_567760` = the tag writer. [CONFIRMED — `sub_531450` body.]
+Helper chain: `sub_5672D0 → sub_567310` = `Nat_ser`; `sub_5672C0 → sub_5674C0` = `Bool_ser`; `sub_52F590` = `List_Nat_ser` (writes a list-header then one `Nat` per node, value at node+16); `sub_5670C0 → sub_567760` = the tag writer.
 
 ### (B) Deserializer — `klr::ExtendedInst_des` (`sub_5397E0` @ `0x5397e0`, size 1410)
 
@@ -84,15 +84,15 @@ sub_52FEB0(&tmp, a2);  /* splice into pay+16; size -> pay+32 */   // List_des ->
 sub_52FEB0(&tmp, a2);  /* splice into pay+40; size -> pay+56 */   // List_des -> data1
 ```
 
-Helpers: `sub_567130` = `Nat_des` (`"expecting Nat"`); `sub_567100` = `Bool_des` (`"expecting Bool"`); `sub_52FEB0` = `List_des` (`"expecting List"`). List nodes are freed via `operator delete(…, 0x18u)` — 24-byte `std::list` nodes. [CONFIRMED — `sub_5397E0` body; `operator new(0x50u)` literal at the alloc site.]
+Helpers: `sub_567130` = `Nat_des` (`"expecting Nat"`); `sub_567100` = `Bool_des` (`"expecting Bool"`); `sub_52FEB0` = `List_des` (`"expecting List"`). List nodes are freed via `operator delete(…, 0x18u)` — 24-byte `std::list` nodes. The 80-byte footprint is the `operator new(0x50u)` literal at the alloc site.
 
-> **GOTCHA — the vtable at block+0 is `make_shared` machinery, not a class vtable.** RTTI names it `std::_Sp_counted_ptr_inplace<klr::ExtendedInst, …>` (typeinfo `0x971a48`, vtable `0x9739d0`/`off_9739E0`). `klr::ExtendedInst` itself is a **non-polymorphic POD** — it has no standalone `_ZTIN3klr12ExtendedInstE` typeinfo and the payload (block+16) has no vptr; its first byte is `opcode`. The record is always reached through a `shared_ptr` to that inplace block. [CONFIRMED — `rtti.json`: the only `ExtendedInst` typeinfo is the `Sp_counted_ptr_inplace` wrapper.]
+> **GOTCHA — the vtable at block+0 is `make_shared` machinery, not a class vtable.** RTTI names it `std::_Sp_counted_ptr_inplace<klr::ExtendedInst, …>` (typeinfo `0x971a48`, vtable `0x9739d0`/`off_9739E0`). `klr::ExtendedInst` itself is a **non-polymorphic POD** — it has no standalone `_ZTIN3klr12ExtendedInstE` typeinfo and the payload (block+16) has no vptr; its first byte is `opcode`. The record is always reached through a `shared_ptr` to that inplace block — in `rtti.json` the only `ExtendedInst` typeinfo is the `Sp_counted_ptr_inplace` wrapper.
 
 ### (C) Printer — `klr::to_string(ExtendedInst&)` (`sub_56C800` @ `0x56c800`, size 1624)
 
-Emits `"ExtendedInst(opcode=…, hasRead=…, hasWrite=…, ports=…, data0=[…], data1=[…])"`, reading `opcode` at `+0`, `hasRead` at `+4`, `hasWrite` at `+5`, `ports` at `+8`, then iterating each list (head `+16`/`+40`, cached size `+32`/`+56`, link-walk `i = *(i64*)i` with the `u32` value at node+16, i.e. `*((u32*)node+4)`). The `"ExtendedInst("` literal is at `0x874b08`, `"data0="` follows it. [CONFIRMED — `sub_56C800` body + string table.]
+Emits `"ExtendedInst(opcode=…, hasRead=…, hasWrite=…, ports=…, data0=[…], data1=[…])"`, reading `opcode` at `+0`, `hasRead` at `+4`, `hasWrite` at `+5`, `ports` at `+8`, then iterating each list (head `+16`/`+40`, cached size `+32`/`+56`, link-walk `i = *(i64*)i` with the `u32` value at node+16, i.e. `*((u32*)node+4)`). The `"ExtendedInst("` literal is at `0x874b08`, `"data0="` follows it.
 
-## 2. The CBOR encoding — tag 210 (CONFIRMED)
+## 2. The CBOR encoding — tag 210
 
 The klr codec is canonical CBOR. The primitive reader `sub_567DD0` (the `Nat`/header reader) is textbook RFC 8949:
 
@@ -113,7 +113,7 @@ else switch (addl) {
 return (major == 4);          // caller requires major-type-4 ARRAY
 ```
 
-The big-endian byteswaps and the 23/24/25/26/27 (`0x17`/`0x18`..`0x1B`) length ladder are exactly CBOR's; the `major == 4` return constrains the array-header path. [CONFIRMED — `sub_567DD0` body.]
+The big-endian byteswaps and the 23/24/25/26/27 (`0x17`/`0x18`..`0x1B`) length ladder are exactly CBOR's; the `major == 4` return constrains the array-header path.
 
 The semantic-tag layer sits on top:
 
@@ -127,15 +127,15 @@ So the `ExtendedInst` tag — from `sub_531450 → sub_5670C0(s, 210, 0, 6)` —
    ^tag-6   ^hi=210  ^lo=0    ^array, len 6   (0x80 | 6 = 0x86 = CBOR major-4 array(6))
 ```
 
-The CBOR tag number is `0xD200 = (210 << 8) | 0 = 53760`; its content is a 6-element array. [CONFIRMED — tag writer/reader bodies + the `sub_5670C0(s,210,0,6)` literal.]
+The CBOR tag number is `0xD200 = (210 << 8) | 0 = 53760`; its content is a 6-element array.
 
-> **GOTCHA — the colloquial "(210,0,6)" tuple drops the marker byte and mis-reads the `6`.** The full inner wire form is `0xD9 0xD2 0x00 0x86`; the leading `0xD9` major-6 tag marker is mandatory. And the `6` is the CBOR **array element count = the number of serialized fields (6, fixed)** — it is *not* `num_arguments` and *not* `num_payloads`. Those counts do not exist at the klr level; they are bir-level (`InstCustomOp` / the `0x85` header). The deserializer enforces `count == 6` exactly. [CONFIRMED — des `sub_5397E0` checks `v23 == 6`.]
+> **GOTCHA — the colloquial "(210,0,6)" tuple drops the marker byte and mis-reads the `6`.** The full inner wire form is `0xD9 0xD2 0x00 0x86`; the leading `0xD9` major-6 tag marker is mandatory. And the `6` is the CBOR **array element count = the number of serialized fields (6, fixed)** — it is *not* `num_arguments` and *not* `num_payloads`. Those counts do not exist at the klr level; they are bir-level (`InstCustomOp` / the `0x85` header). The deserializer enforces `count == 6` exactly (`sub_5397E0` checks `v23 == 6`).
 
 Decomposed: `210` is the klr instruction-KIND tag hi-byte for the `ExtendedInst` record class, `0` the lo/sub-byte, `6` the array arity. The outer `Operator` wrapper (next section) uses a **different** hi-byte (218) and a per-variant lo-byte — two nested CBOR tags, an inner `0xD2` inside an outer `0xDA`.
 
-## 3. The Operator wrapper — kind 70 (CONFIRMED)
+## 3. The Operator wrapper — kind 70
 
-`klr::Operator` is a polymorphic variant base; `klr::OperatorExtendedInstWrapper` is the variant that carries an `ExtendedInst`, parallel to `OperatorTensorTensorWrapper`, `OperatorScalarTensorTensorWrapper`, and the other ~75 variants. RTTI/vtable for the wrapper: typeinfo `0x972168`, vtable `0x974a70`/`off_974A80`, demangled `std::_Sp_counted_ptr_inplace<klr::OperatorExtendedInstWrapper, …>` (string `0x8b39c0`). [CONFIRMED — `rtti.json`.]
+`klr::Operator` is a polymorphic variant base; `klr::OperatorExtendedInstWrapper` is the variant that carries an `ExtendedInst`, parallel to `OperatorTensorTensorWrapper`, `OperatorScalarTensorTensorWrapper`, and the other ~75 variants. RTTI/vtable for the wrapper: typeinfo `0x972168`, vtable `0x974a70`/`off_974A80`, demangled `std::_Sp_counted_ptr_inplace<klr::OperatorExtendedInstWrapper, …>` (string `0x8b39c0`).
 
 The wrapper object is a 24-byte payload inside a `0x28` shared-count inplace block:
 
@@ -146,7 +146,7 @@ The wrapper object is a 24-byte payload inside a `0x28` shared-count inplace blo
 | block+16 → payload +0 | `u32 discriminant = 70` (`0x46`, 1-based klr `Operator`-kind enum) |
 | payload +8 | `std::shared_ptr<klr::ExtendedInst>` (the wrapped record) |
 
-`to_string(OperatorExtendedInstWrapper&)` (`sub_56D480` @ `0x56d480`) emits `"OperatorExtendedInstWrapper("` (string `0x874bc0`), dereferences the inner `shared_ptr` at `wrapper+8`, calls `to_string(ExtendedInst&)` on it, and closes the paren. [CONFIRMED — `sub_56D480` reads `*(a2+8)` and tail-calls `sub_56C800`.]
+`to_string(OperatorExtendedInstWrapper&)` (`sub_56D480` @ `0x56d480`) emits `"OperatorExtendedInstWrapper("` (string `0x874bc0`), dereferences the inner `shared_ptr` at `wrapper+8`, calls `to_string(ExtendedInst&)` on it, and closes the paren — `sub_56D480` reads `*(a2+8)` and tail-calls `sub_56C800`.
 
 ### The outer Operator CBOR tag
 
@@ -176,13 +176,13 @@ case 69:                               // wire byte 69 = kind 70 minus 1
     sub_5397E0(out, a2);               // -> ExtendedInst_des
 ```
 
-⇒ the wrapper wire frame for an `ExtendedInst` is `0xD9 0xDA 0x45` + array(1). [CONFIRMED — ser writes `kind-1`, des restores `+1`, both pinned in the bodies.]
+⇒ the wrapper wire frame for an `ExtendedInst` is `0xD9 0xDA 0x45` + array(1): the serializer writes `kind−1`, the deserializer restores `+1`.
 
-> **GOTCHA — the deliberate ±1 between the on-wire variant byte and the in-memory enum.** On the wire the variant is `69` (`0x45`, 0-based). In memory the discriminant is `70` (`0x46`, 1-based). The serializer emits `kind − 1`; the deserializer writes `70` for wire-case `69`. Reading the wire byte `0x45` as the kind, or the in-memory `0x46` as the wire byte, is off by one in opposite directions. [CONFIRMED — `sub_534460` / `sub_5523D0`.]
+> **GOTCHA — the deliberate ±1 between the on-wire variant byte and the in-memory enum.** On the wire the variant is `69` (`0x45`, 0-based). In memory the discriminant is `70` (`0x46`, 1-based). The serializer emits `kind − 1`; the deserializer writes `70` for wire-case `69`. Reading the wire byte `0x45` as the kind, or the in-memory `0x46` as the wire byte, is off by one in opposite directions. *Anchors: `sub_534460` (ser) and `sub_5523D0` (des).*
 
-## 4. The simulator consumes but refuses to codegen ExtendedInst (CONFIRMED)
+## 4. The simulator consumes but refuses to codegen ExtendedInst
 
-`nki_klr_sim` is a klr-stream **consumer**: within it, `klr::ExtendedInst` is *only ever* constructed by the deserializer `sub_5397E0` (the sole xref to the inplace control-block typeinfo/vtable is from there), and the wrapper is *only ever* constructed by the `Operator` deserializer `sub_5523D0`. There is no in-binary builder that mints an `ExtendedInst` from operands — the record arrives already-encoded from an upstream producer (the NKI frontend / libwalrus that emits the klr CBOR stream). [CONFIRMED — `xrefs.json`.]
+`nki_klr_sim` is a klr-stream **consumer**: within it, `klr::ExtendedInst` is *only ever* constructed by the deserializer `sub_5397E0` (the sole xref to the inplace control-block typeinfo/vtable is from there), and the wrapper is *only ever* constructed by the `Operator` deserializer `sub_5523D0`. There is no in-binary builder that mints an `ExtendedInst` from operands — the record arrives already-encoded from an upstream producer (the NKI frontend / libwalrus that emits the klr CBOR stream).
 
 The decisive finding is on the lowering side. The klr `Operator` → BIR codegen dispatcher in this simulator is `sub_50EDA0` (carrying `"encounter operator "` and `"Unsupported operator "`), a 77-way switch on the `Operator` discriminant at payload +0. Its case labels run `… case 0x44, case 0x45, case 0x47, case 0x48 …` — **there is no `case 0x46`**. Kind 70 therefore falls through to:
 
@@ -191,29 +191,27 @@ default:                               // sub_50EDA0, no case 0x46
     throw runtime_error("Unsupported operator " + std::to_string(70));
 ```
 
-So this simulator deserializes, round-trips, and pretty-prints an `ExtendedInst`, but its `KlirToBirCodegen`-style dispatcher deliberately leaves kind 70 out of scope and raises at lowering time. The `ExtendedInst → bir::InstCustomOp` lowering (and the `0x85`/`0x86` ISA emission) happens in libwalrus, not here. [CONFIRMED — `sub_50EDA0`: `case 0x45` and `case 0x47` present, `0x46` absent, default raises `"Unsupported operator "`.]
+So this simulator deserializes, round-trips, and pretty-prints an `ExtendedInst`, but its `KlirToBirCodegen`-style dispatcher deliberately leaves kind 70 out of scope and raises at lowering time. The `ExtendedInst → bir::InstCustomOp` lowering (and the `0x85`/`0x86` ISA emission) happens in libwalrus, not here. *Anchor: in `sub_50EDA0`, `case 0x45` and `case 0x47` are present, `0x46` is absent, and the default raises `"Unsupported operator "`.*
 
-This reconciles the two IR levels cleanly: the klr `(210,0,6)` record is the upstream container; the `bir::InstCustomOp` + `CUSTOM_OP_HEADER 0x85` / `PAYLOAD 0x86` pair is the downstream realization, produced by the libwalrus/Penguin custom-op path. `nki_klr_sim` does codegen the *typed* klr ops it does have cases for (matmul, activation, tensor-scalar, …) — `ExtendedInst` is the one variant it round-trips but will not lower. [STRONG — the negative is CONFIRMED in `nki_klr_sim`; the positive downstream chain is cross-referenced to the backend, not re-derived here.]
+This reconciles the two IR levels cleanly: the klr `(210,0,6)` record is the upstream container; the `bir::InstCustomOp` + `CUSTOM_OP_HEADER 0x85` / `PAYLOAD 0x86` pair is the downstream realization, produced by the libwalrus/Penguin custom-op path. `nki_klr_sim` does codegen the *typed* klr ops it does have cases for (matmul, activation, tensor-scalar, …) — `ExtendedInst` is the one variant it round-trips but will not lower. The refusal is read directly from this binary; [INFERRED] the downstream `→ InstCustomOp` chain is cross-referenced to the backend rather than re-derived here.
 
-## 5. Adversarial self-verification
+## 5. Evidence anchors and limits
 
-The five strongest claims, re-checked against the binary:
+| Claim | Anchor |
+|-------|--------|
+| 80-byte record | `operator new(0x50u)` literal in des `sub_5397E0`; payload = block+16, fields end at +56, slack +64..+79 |
+| CBOR tag-210 (`0xD9 0xD2 0x00 …`) | writer `sub_567760` (`ptr[0]=-39`=0xD9); ser `sub_5670C0(s,210,0,6)`; des rejects unless `hi==0xD2 && lo==0 && count==6` |
+| Operator kind 70 / wire 69 | ser `sub_5670C0(s,218,kind-1,1)` case `0x46`; des case `69 → disc=70`, vtable `off_974A80` |
+| Lowering refusal | `sub_50EDA0` has no case `0x46` → `"Unsupported operator"` |
+| Field layout +0/+4/+5/+8/+16/+40 | ser `sub_531450`, des `sub_5397E0`, to_string `sub_56C800` agree on all six offsets |
 
-| Claim | Verdict | Anchor |
-|-------|---------|--------|
-| 80-byte record | **CONFIRMED** | `operator new(0x50u)` literal in des `sub_5397E0`; payload = block+16, fields end at +56, slack +64..+79 |
-| CBOR tag-210 (`0xD9 0xD2 0x00 …`) | **CONFIRMED** | writer `sub_567760` (`ptr[0]=-39`=0xD9); ser `sub_5670C0(s,210,0,6)`; des rejects unless `hi==0xD2 && lo==0 && count==6` |
-| Operator kind 70 / wire 69 | **CONFIRMED** | ser `sub_5670C0(s,218,kind-1,1)` case `0x46`; des case `69 → disc=70`, vtable `off_974A80` |
-| CustomOp-carrier role / lowering refusal | **CONFIRMED (negative) / INFERRED (positive)** | `sub_50EDA0` has no case `0x46` → `"Unsupported operator"`; the `→ InstCustomOp` bridge is libwalrus-side, not in this binary |
-| Field layout +0/+4/+5/+8/+16/+40 | **CONFIRMED** | ser `sub_531450`, des `sub_5397E0`, to_string `sub_56C800` agree on all six offsets |
+What `nki_klr_sim` alone cannot settle:
 
-Re-verify ceiling — what is **not** pinnable from `nki_klr_sim` alone:
-
-- **`data0` vs `data1` semantics.** Both are `std::list<u32>` the simulator only round-trips. Whether they are (input-descriptor ints, output-descriptor ints) or (sub-op+immediates, operand ints) is set by the upstream **producer**, which is not in this binary. [OPEN.]
-- **The `ports` u32 bit assignment** (engine/port mask) is read as an opaque `Nat`. [OPEN.]
-- **The `opcode` → libwalrus-opcode / GpSimd-ucode-key mapping.** `opcode` is a raw int with no name table in `nki_klr_sim`. [OPEN.]
-- **Whether any shipped op actually emits an `ExtendedInst`.** Because the simulator refuses to codegen it, `ExtendedInst` may be a legacy/raw-escape carrier consumed only by the libwalrus/Penguin path; a captured klr CBOR sample with a `0xD9 0xD2 0x00` frame would settle it. [OPEN.]
-- **`+64..+79`** of the 80-byte record is assumed tail padding / list slack; only `+0..+56` are touched by any body. No 7th field was observed. [SPECULATIVE.]
+- **`data0` vs `data1` semantics.** Both are `std::list<u32>` the simulator only round-trips. Whether they are (input-descriptor ints, output-descriptor ints) or (sub-op + immediates, operand ints) is set by the upstream **producer**, which is not in this binary.
+- **The `ports` u32 bit assignment** (engine/port mask), read here as an opaque `Nat`.
+- **The `opcode` → libwalrus-opcode / GpSimd-ucode-key mapping.** `opcode` is a raw int with no name table in this binary.
+- **Whether any shipped op actually emits an `ExtendedInst`.** Because the simulator refuses to codegen it, `ExtendedInst` may be a legacy/raw-escape carrier consumed only by the libwalrus/Penguin path; a captured klr CBOR sample with a `0xD9 0xD2 0x00` frame would settle it.
+- **[SPECULATIVE] `+64..+79`** is taken as tail padding / list slack. Only `+0..+56` are touched by any body, and no 7th field was observed.
 
 ## Cross-references
 
