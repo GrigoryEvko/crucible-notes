@@ -66,7 +66,7 @@ Equally important is what is **not** present. Every token a shape-bucketing syst
 | `compile.*bucket` (regex) | 0 | no "compile N buckets" path |
 | `max_batch` | 1 (**not** bucketing) | the one hit is `max_batch_partitions == conv_output_batch_partitions` — a convolution SPMD-partitioning assert |
 
-> **NOTE —** the single `max_batch` hit is a deliberate false-positive to flag: it is a CHECK string inside the stock convolution partitioner about *batch partition counts* under SPMD sharding, not a maximum batch *bucket*. Re-grepping it in context resolves it immediately; it is recorded here so the next auditor does not re-discover it as a "lead". **(CONFIRMED — string `"max_batch_partitions == conv_output_batch_partitions"`.)**
+> **GOTCHA —** the single `max_batch` hit is a false lead. It is the CHECK string `"max_batch_partitions == conv_output_batch_partitions"` inside the stock convolution partitioner, about *batch partition counts* under SPMD sharding — not a maximum batch *bucket*.
 
 The conclusion is structural, not merely lexical: there is also **no runtime dispatch loop** over shape variants anywhere in these binaries (they are AOT compile-time tools), and **no class** that holds a set of shapes to be compiled. The compiler produces **one executable per invocation**; if that executable has dynamic dims, they are bounded and padded (next sections). The bucketing the user sees is produced elsewhere.
 
@@ -85,7 +85,7 @@ The conclusion is structural, not merely lexical: there is also **no runtime dis
    pick smallest bucket whose shape ≥ actual input, pad input up to it
 ```
 
-The framework integration traces the graph at each batch size / sequence length in the user's bucket list, producing one static HLO module per bucket. neuronx-cc compiles each to its own NEFF, seeing only static shapes — the bucketing is invisible to it. The runtime holds the NEFF set and selects the smallest fitting bucket at inference time. **(INFERRED-STRONG from architecture: confirmed by the *absence* of any shape-variant set, bucket-selection symbol, or inference-time dispatch string in the compiler binaries; the positive mechanism of the framework/runtime layers is owned outside this wheel's compiler binaries.)**
+The framework integration traces the graph at each batch size / sequence length in the user's bucket list, producing one static HLO module per bucket. neuronx-cc compiles each to its own NEFF, seeing only static shapes — the bucketing is invisible to it. The runtime holds the NEFF set and selects the smallest fitting bucket at inference time. This picture is [INFERRED] from architecture: what the compiler binaries prove directly is the *absence* of any shape-variant set, bucket-selection symbol, or inference-time dispatch string. The positive mechanism belongs to the framework and runtime layers, outside this wheel.
 
 ### ccop "bucketing" is byte-size, not shape `[NEURON, collective]`
 
@@ -101,7 +101,7 @@ The only *Neuron-authored* thing called "bucketing" is **collective-communicatio
 --internal-ccop-bucketing-reducescatter-size-in-bytes
 ```
 
-These set **byte-size thresholds** for *combining* many small collective ops (all-gather / all-reduce / reduce-scatter) into fewer larger ones — a "bucket" here is "group collectives until their cumulative byte size fills a threshold". This is the same mechanism as the [collective combiners](collective-combiners.md) (`all-reduce-combiner`), a performance fusion for distributed SPMD, and it is **orthogonal to dynamic shapes**. **(CONFIRMED — all seven flags present verbatim in `Frontend.so`; and crucially these are the *only* `bucketing` strings anywhere in the inspected binaries. The word `bucketing` does not appear in `hlo2penguin` or `hlo-opt` at all — the compiler binaries carry no bucketing string of any kind. Not to be conflated with shape bucketing.)**
+These set **byte-size thresholds** for *combining* many small collective ops (all-gather / all-reduce / reduce-scatter) into fewer larger ones — a "bucket" here is "group collectives until their cumulative byte size fills a threshold". This is the same mechanism as the [collective combiners](collective-combiners.md) (`all-reduce-combiner`), a performance fusion for distributed SPMD, and it is **orthogonal to dynamic shapes**. All seven flags are present verbatim in `Frontend.so`, and these are the *only* `bucketing` strings anywhere in the inspected binaries: the word `bucketing` does not appear in `hlo2penguin` or `hlo-opt` at all.
 
 > **QUIRK —** the byte-size suffix is the tell. A *shape* bucket would be sized in elements or named by a dimension; these are sized `-size-in-bytes` and scoped per *collective opcode* (`allgather`/`allreduce`/`reducescatter`). The word "bucket" is overloaded across two completely separate Neuron concerns and only one of them — the collective combiner — exists in this compiler at all.
 
@@ -149,11 +149,15 @@ Grounding — these CHECK strings are present verbatim in `hlo2penguin` `.rodata
 //   yields the current runtime size of dim d.
 ```
 
-For **entry parameters**, the size of a dynamic dim is itself passed as another scalar parameter, mapped by `xla::DynamicParameterBinding::Bind(DynamicSizeParameter, DynamicDimension)` — "param `p2` supplies the size for (param `p0`, index{}, dim d)". `DynamicDimensionInference` seeds its side table from this binding at module entry. **(CONFIRMED — `DynamicParameterBinding` (12 hits), `GetDimensionSizeOp`/`SetDimensionSizeOp` symbols, `set_dynamic_dimension_inference` evaluator-dependency string all present.)**
+For **entry parameters**, the size of a dynamic dim is itself passed as another scalar parameter, mapped by `xla::DynamicParameterBinding::Bind(DynamicSizeParameter, DynamicDimension)` — "param `p2` supplies the size for (param `p0`, index{}, dim d)". `DynamicDimensionInference` seeds its side table from this binding at module entry.
+
+*Anchors: `DynamicParameterBinding` (12 hits), the `GetDimensionSizeOp`/`SetDimensionSizeOp` symbols, and the `set_dynamic_dimension_inference` evaluator-dependency string.*
 
 ### The inference walk
 
-`DynamicDimensionInferenceVisitor` is a `DfsHloVisitor` that, per opcode, computes which output dims are dynamic and composes the operands' size scalars into the output's. `HandleReshape` is the hard case (split/combine dimension groups, many lambdas); other handlers are `HandleConditional`, `HandleWhile`, `HandleParameter`, `HandleTuple`, `HandleInfeed`, `HandleAsyncStart`/`Done`, plus `DefaultAction`. After this pass, **every** HLO carrying a dynamic dim has a known S32 size scalar in the side table for `DynamicPadder` to consume. **(CONFIRMED — `DynamicDimensionInference` symbols; assert strings cite `xla/service/dynamic_dimension_inference.cc`.)** All `[STOCK]`.
+`DynamicDimensionInferenceVisitor` is a `DfsHloVisitor` that, per opcode, computes which output dims are dynamic and composes the operands' size scalars into the output's. `HandleReshape` is the hard case (split/combine dimension groups, many lambdas); other handlers are `HandleConditional`, `HandleWhile`, `HandleParameter`, `HandleTuple`, `HandleInfeed`, `HandleAsyncStart`/`Done`, plus `DefaultAction`. After this pass, **every** HLO carrying a dynamic dim has a known S32 size scalar in the side table for `DynamicPadder` to consume. All `[STOCK]`.
+
+*Anchors: the `DynamicDimensionInference` symbols; assert strings citing `xla/service/dynamic_dimension_inference.cc`.*
 
 ---
 
@@ -178,7 +182,7 @@ DynamicBroadcastToOwnShape_{1,2,3,4}
 materializeReshapeAsExpandAndCollapse(ShapeComponentAnalysis, ...)  // stablehlo_ext
 ```
 
-**(CONFIRMED — `DynamicReshapeOpNotActuallyDynamic` (21 hits), `DynamicBroadcastInDimOp` (561), `ChainedDynamicBroadcastInDim` (23), `RealDynamicSliceOp` (468).)** None of these are Neuron-authored.
+*Anchors: `DynamicReshapeOpNotActuallyDynamic` (21 hits), `DynamicBroadcastInDimOp` (561), `ChainedDynamicBroadcastInDim` (23), `RealDynamicSliceOp` (468).* None of these are Neuron-authored.
 
 > **QUIRK —** the `*NotActuallyDynamic` naming is upstream XLA's, and it captures the whole philosophy: a great deal of apparent dynamism is, after symbolic-shape reasoning, statically resolvable, and the cheapest dynamic op is the one folded away before `DynamicPadder` ever runs. A reimplementer should run this layer *first*; what survives it is genuinely dynamic.
 
@@ -206,7 +210,9 @@ function PadWithScalar(inst, dim, dynamic_size, padding_scalar):  // (anon) @0x2
     // via an iota>=dynamic_size mask + select; the live prefix is untouched.
 ```
 
-`PadToStatic` (kCustomCall) splits a dynamic tensor into `(static-padded-data, size-scalar-0, size-scalar-1, …)`; `SliceToDynamic` is the inverse, reconstructing a dynamic-shaped tensor from static data + runtime sizes at outputs/boundaries. The on-device handshake is the **dynamic-shape metadata prefix**: a dynamic buffer is laid out `[metadata prefix: per-dim runtime sizes][padded data]`, with `PadToStatic` reading the prefix and `SliceToDynamic` writing it. **(CONFIRMED — `PadToStatic` (39), `SliceToDynamic` (11), `PadWithScalar` (4), `RewriteDynamicSort` (19); `RewriteDynamicConcat` is anon-namespace and inlines into `DynamicPadder` so it does not surface as an independent string — tagged STRONG, address from the appendix.)**
+`PadToStatic` (kCustomCall) splits a dynamic tensor into `(static-padded-data, size-scalar-0, size-scalar-1, …)`; `SliceToDynamic` is the inverse, reconstructing a dynamic-shaped tensor from static data + runtime sizes at outputs/boundaries. The on-device handshake is the **dynamic-shape metadata prefix**: a dynamic buffer is laid out `[metadata prefix: per-dim runtime sizes][padded data]`, with `PadToStatic` reading the prefix and `SliceToDynamic` writing it.
+
+*Anchors: `PadToStatic` (39 hits), `SliceToDynamic` (11), `PadWithScalar` (4), `RewriteDynamicSort` (19). `RewriteDynamicConcat` is anon-namespace and inlines into `DynamicPadder`, so it does not surface as an independent string; its address is in the appendix.*
 
 After `DynamicPadder`, `DynamicDimensionSimplifier::Run`, `DynamicIndexSplitter::Run` (scalarize dynamic indices), and `DynamicShapeRemovingVisitor` (drop dynamism where the consumer is a static-only backend op) run, all `[STOCK]`.
 
@@ -235,7 +241,7 @@ function replaceGetDimensionSize(func):              // CanonicalizeForTensorize
         // else: a still-dynamic dim — KEEP the op (real runtime size scalar)
 ```
 
-This **constant-folds** `GetDimensionSize` for statically-known dims before the Tensorizer, so the backend only ever sees a true runtime size scalar for dims that are genuinely dynamic. **(INFERRED-STRONG — the 26-callee set is exactly the MLIR API for "walk op, read dim, if static replace with constant, erase"; `replaceGetDimensionSize` (12 hits) and both pass factories confirmed.)**
+This **constant-folds** `GetDimensionSize` for statically-known dims before the Tensorizer, so the backend only ever sees a true runtime size scalar for dims that are genuinely dynamic. The static-only gate is [INFERRED]: the 26-callee set is exactly the MLIR API for "walk op, read dim, if static replace with constant, erase", and `replaceGetDimensionSize` (12 hits) plus both pass factories are present, but the gate itself is not byte-traced.
 
 > **GOTCHA —** the `else` branch is the trap. A reimplementer who folds *all* `GetDimensionSize` to a constant — including dims marked dynamic — will erase the runtime size scalar the backend's dynamic path depends on, silently producing a compiler that drops dynamic behavior. The fold is gated **strictly** on `shape[d]` being static; the dynamic case must fall through unmodified. The callee set includes a `report_fatal_error` path for `GetDimensionSize` on a non-tensor, so malformed input fails loudly rather than folding.
 
@@ -247,7 +253,7 @@ By the time the program reaches the Neuron `xla::hilo` HLO→Penguin bridge, **n
 "Input tensor ${0} has dynamic shape"
 ```
 
-**(CONFIRMED — verbatim string present in `hlo2penguin`; STRONG-Neuron, a Tensorizer-side rejection.)** The `dynamic-index-splitter` pass guarantees indices are scalar first — its diagnostic is present verbatim: `"…Make sure that 'dynamic-index-splitter' pass was exectuted to canonicalize the indices:"` (the upstream typo "exectuted" is reproduced, a fingerprint).
+The string is present verbatim in `hlo2penguin` and is a Tensorizer-side rejection. The `dynamic-index-splitter` pass guarantees indices are scalar first — its diagnostic is present verbatim: `"…Make sure that 'dynamic-index-splitter' pass was exectuted to canonicalize the indices:"` (the upstream typo "exectuted" is reproduced, a fingerprint).
 
 ### What survives into Penguin, and the DMA handoff `[NEURON]`
 
@@ -258,7 +264,7 @@ Penguin only ever receives:
       runtime scalar  — NOT shape-dynamic; slice size is a compile-time constant.
 ```
 
-The surviving runtime-offset `DynamicSlice`/`DynamicUpdateSlice` (e.g. a KV-cache write at a runtime index) is the real "dynamic" thing Neuron materializes on device: a copy whose base address depends on a runtime register — the indirect-DMA / DGE path. Its SBUF scratch is sized by `xla::hilo::SetDynamicDMASbufBytes` @`0x1f930d0` (demangled symbol `_ZN3xla4hilo22SetDynamicDMASbufBytesERKj`) and the driver flags `dynamic-dma-sbuf-bytes` / `dynamic-dma-scratch-size-per-partition` (both confirmed verbatim). **(CONFIRMED — the function at `0x1f930d0` resolves to the demangled `xla::hilo::SetDynamicDMASbufBytes(unsigned int const&)`; the exact DGE level selection is the backend's subject.)** The runtime *size* scalar (for a bounded dynamic dim) and the runtime *offset* scalar (for a slice) are both handed to the backend as plain S32-valued HLO/Penguin values; the front end allocates no registers.
+The surviving runtime-offset `DynamicSlice`/`DynamicUpdateSlice` (e.g. a KV-cache write at a runtime index) is the real "dynamic" thing Neuron materializes on device: a copy whose base address depends on a runtime register — the indirect-DMA / DGE path. Its SBUF scratch is sized by `xla::hilo::SetDynamicDMASbufBytes` @`0x1f930d0` (demangled symbol `_ZN3xla4hilo22SetDynamicDMASbufBytesERKj`) and the driver flags `dynamic-dma-sbuf-bytes` / `dynamic-dma-scratch-size-per-partition` (both present verbatim). The exact DGE level selection is the backend's subject. The runtime *size* scalar (for a bounded dynamic dim) and the runtime *offset* scalar (for a slice) are both handed to the backend as plain S32-valued HLO/Penguin values; the front end allocates no registers.
 
 ---
 
@@ -333,21 +339,21 @@ function DynamicShapeIsCompatible(actual, bound) -> bool:   // @0x94d4f90 (196 B
     // i.e. "the concrete shape FITS within the bounded/compact shape".
 ```
 
-**(INFERRED-STRONG from the standard XLA impl; `ForEachSubshape` structure + per-dim predicate confirmed; symbol at `0x94d4f90`.)** Callers are runtime/transfer-boundary code (`TransferManager::ReadDynamicShapes`, `MutableLiteralBase::CopyFrom`, `cpu::CpuExecutable::ExecuteAsyncOnStream`), **not** the Neuron device-lowering path. The validation surface is a family of stock CHECK strings (e.g. `"Check failed: ShapeUtil::DynamicShapeIsCompatible(compact_shape, bound_shape)"`, `"AllToAll does not support bounded dynamic shapes"`, `"bitcast-convert is not valid for dynamic shape %s->%s"`, `"dynamic_reshape->operand(i)->shape().element_type() == S32"`). All are stock XLA except the Neuron `Input tensor ${0} has dynamic shape` guard documented above.
+The body shape is [INFERRED] from the standard XLA implementation; what is read directly is the `ForEachSubshape` structure, the per-dim predicate, and the symbol at `0x94d4f90`. Callers are runtime/transfer-boundary code (`TransferManager::ReadDynamicShapes`, `MutableLiteralBase::CopyFrom`, `cpu::CpuExecutable::ExecuteAsyncOnStream`), **not** the Neuron device-lowering path. The validation surface is a family of stock CHECK strings (e.g. `"Check failed: ShapeUtil::DynamicShapeIsCompatible(compact_shape, bound_shape)"`, `"AllToAll does not support bounded dynamic shapes"`, `"bitcast-convert is not valid for dynamic shape %s->%s"`, `"dynamic_reshape->operand(i)->shape().element_type() == S32"`). All are stock XLA except the Neuron `Input tensor ${0} has dynamic shape` guard documented above.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary (the bucketing negative first):
+The five structural claims, with the bucketing negative first:
 
-1. **No compile-N-buckets mechanism exists (the headline negative).** Re-challenge: could a bucketing pass exist under a non-`bucket` name? Checked the *absences* directly — `candidate_shapes`, `num_bucket`, `bucketize`, `dynamic_batch`, `shape-bucket`, `auto-bucket`, and the regex `compile.*bucket` all return **0** in `hlo2penguin` (and `hlo-opt`). The one `max_batch` hit resolves to a convolution-partitioning assert, **not** bucketing. The positive path (`DynamicPadder` bounded-dynamic, single executable) is present and complete, leaving no room for a parallel bucket path. **Verdict: CONFIRMED.** A reimplementer writes zero shape-bucketing code.
-2. **Every `bucket*` token is unrelated.** Re-challenge: enumerate, do not sample. The deduplicated grep returns exactly the [table set](#the-complete-bucket-enumeration); `bucket`/`bucket_limit` co-locate with `HistogramProto`/`summary_go_proto`; the mangled `ErrorBuckets`, `StringMapImpl::LookupBucketFor`, `FoldingSetBase::GrowBucketCount` are diff-tooling and LLVM hashtables; the ccop flags are byte-size collective thresholds. **Verdict: CONFIRMED.** No `bucket*` token is shape compilation.
-3. **The dynamic→static lowering is `DynamicPadder`, stock.** `DynamicPadder` (44 hits), `PadToStatic` (39), `SliceToDynamic` (11), `PadWithScalar` (4) confirmed; the per-opcode rewrite addresses are in the appendix; `RewriteDynamicConcat` is anon-namespace/inlined (softened to STRONG). **Verdict: CONFIRMED (STOCK).**
-4. **`replaceGetDimensionSize` is the Neuron delta and folds only static dims.** Symbol (12 hits) + both pass factories confirmed; the static-only gate is INFERRED-STRONG from the callee API set, and the `else`-keep behavior is flagged as the critical GOTCHA. **Verdict: STRONG (the static-only gate is inferred, not byte-traced).**
-5. **The Tensorizer rejects still-dynamic input.** `"Input tensor ${0} has dynamic shape"` confirmed verbatim; `dynamic-dma-sbuf-bytes` / `dynamic-dma-scratch-size-per-partition` confirmed; the function at `0x1f930d0` resolves to the demangled `xla::hilo::SetDynamicDMASbufBytes(unsigned int const&)` in the function-address table (it is a hidden symbol absent from the strings sidecar, which is why a string grep alone misses it). **Verdict: CONFIRMED.**
+1. **No compile-N-buckets mechanism exists (the headline negative).** The absences were checked directly: `candidate_shapes`, `num_bucket`, `bucketize`, `dynamic_batch`, `shape-bucket`, `auto-bucket`, and the regex `compile.*bucket` all return **0** in `hlo2penguin` (and `hlo-opt`). The one `max_batch` hit is a convolution-partitioning assert, not bucketing. The positive path (`DynamicPadder` bounded-dynamic, single executable) is present and complete, leaving no room for a parallel bucket path. A reimplementer writes zero shape-bucketing code.
+2. **Every `bucket*` token is unrelated.** The deduplicated grep returns exactly the [table set](#the-complete-bucket-enumeration): `bucket`/`bucket_limit` co-locate with `HistogramProto`/`summary_go_proto`; the mangled `ErrorBuckets`, `StringMapImpl::LookupBucketFor`, `FoldingSetBase::GrowBucketCount` are diff-tooling and LLVM hashtables; the ccop flags are byte-size collective thresholds. No `bucket*` token is shape compilation.
+3. **The dynamic→static lowering is `DynamicPadder`, stock.** `DynamicPadder` (44 hits), `PadToStatic` (39), `SliceToDynamic` (11), `PadWithScalar` (4); the per-opcode rewrite addresses are in the appendix. `RewriteDynamicConcat` is anon-namespace and inlined, so it has no independent string.
+4. **`replaceGetDimensionSize` is the Neuron delta and folds only static dims.** The symbol (12 hits) and both pass factories are present; the static-only gate is [INFERRED] from the callee API set rather than byte-traced, and the `else`-keep behavior is the critical GOTCHA above.
+5. **The Tensorizer rejects still-dynamic input.** `"Input tensor ${0} has dynamic shape"` is present verbatim, as are `dynamic-dma-sbuf-bytes` and `dynamic-dma-scratch-size-per-partition`. The function at `0x1f930d0` resolves to the demangled `xla::hilo::SetDynamicDMASbufBytes(unsigned int const&)` in the function-address table — it is a hidden symbol absent from the strings sidecar, which is why a string grep alone misses it.
 
-No claim was fabricated; inferred items (`DynamicShapeIsCompatible` body, the `replaceGetDimensionSize` static-only gate) carry INFERRED-STRONG and are anchored to addresses and callee sets.
+The two [INFERRED] items — the `DynamicShapeIsCompatible` body and the `replaceGetDimensionSize` static-only gate — are anchored to addresses and callee sets.
 
 ---
 
