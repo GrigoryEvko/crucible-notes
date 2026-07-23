@@ -30,7 +30,7 @@ The recovery target is reimplementation grade: a reader should be able to rebuil
 | **Failed-compile sentinel** | `+inf` (rodata `0x2dfb4`); percent divisor `100.0` (rodata `0x2dfbc`) |
 | **Final design file** | `autotune_result_design.json` (`RESULT_DESIGN_FILE`) |
 
-> **CORRECTION (vs the task brief, "the autotune_id (uuid generation)"):** `Autotuner.so` does **not** generate UUIDs. It imports no `uuid` module and contains no `uuid4`/`getnode` symbol. `autotune_id` is a **client-provided** stable field that the autotuner only *reads* (or substitutes the plan's list index when absent). The word "uuid" in the `add_plan` docstring is about *cross-process plan identity* — so a child subprocess can name the same plan the parent named — not in-process uniqueness. This is corrected throughout. [CONFIRMED — no `uuid` import in the DWARF module-const table; verified `nm` symbol set.]
+> **GOTCHA — `autotune_id` is not a generated UUID.** `Autotuner.so` imports no `uuid` module and contains no `uuid4`/`getnode` symbol. `autotune_id` is a **client-provided** stable field the autotuner only *reads*, substituting the plan's list index when it is absent. The word "uuid" in the `add_plan` docstring is about *cross-process plan identity* — so a child subprocess can name the same plan the parent named — not in-process uniqueness.
 
 ---
 
@@ -47,7 +47,7 @@ To rebuild this loop you must reproduce, in order:
 
 ---
 
-## 2. The plan and design model `[CONFIRMED]`
+## 2. The plan and design model
 
 A **plan** is an opaque client object — for the one real consumer (Tritium fusion, §7) it is a `FusionPlan`, a fusion/tiling decision for one matmult. `Autotuner.so` treats it duck-typed: it reads at most an optional `.autotune_id` (the stable cross-process key) and an optional `.json()` (for human-readable design dumps). `None` is a valid plan meaning "no change."
 
@@ -69,14 +69,14 @@ The three plan-entry methods are mutually exclusive with the one-shot `tune()`:
 The guard string `"Mixing automatic and manual plan ids is not supported."` (rodata `0x52ee0`) is raised if some plans carry `autotune_id` and others do not. This is the model's one hard invariant: a design's IDs mean the same thing in every process only if the whole plan set uses one ID scheme.
 
 ```c
-// Autotuner.so — _generate_plan_dict @ 0x473a0  (reconstructed; STRONG)
+// Autotuner.so — _generate_plan_dict @ 0x473a0  (reconstructed)
 //   plan_dict maps a process-stable id -> the live plan object.
 static PyObject *generate_plan_dict(self, PyObject *plans) {
     PyObject *plan_dict = PyDict_New();
     int use_automatic_ids = -1;                 // tri-state: undecided
     for (Py_ssize_t i = 0; i < len(plans); i++) {
         PyObject *p   = plans[i];
-        int has_manual = PyObject_HasAttrStr(p, "autotune_id");   // CONFIRMED attr read
+        int has_manual = PyObject_HasAttrStr(p, "autotune_id");   // attr read
         if (use_automatic_ids == -1)
             use_automatic_ids = !has_manual;
         else if (use_automatic_ids == has_manual)                 // mixed -> fatal
@@ -93,7 +93,7 @@ static PyObject *generate_plan_dict(self, PyObject *plans) {
 
 ---
 
-## 3. The class taxonomy — three modules, one loop `[CONFIRMED]`
+## 3. The class taxonomy — three modules, one loop
 
 The loop is split across three `.so` by responsibility. `nm` recovers every class and method as a `__pyx_pw_*` wrapper symbol; the offsets are firsthand.
 
@@ -112,7 +112,9 @@ The loop is split across three `.so` by responsibility. `nm` recovers every clas
 | `_BaselineAutotuner` | baseline-only run | `_tuning` @ `0x1d300` |
 | `_BypassedAutotuner` | no-op stand-in when disabled | `tuning` @ `0x2aa70`, `release` @ `0x371b0` |
 
-The imports `Autotuner.so` actually pulls (DWARF module consts) are `os` (`fork`/`cpu_count`/`_exit`/`getcwd`), `fcntl` (`flock`/`LOCK_EX`/`LOCK_UN`), `gc`, `json`, `contextlib.contextmanager`. Crucially: **no `subprocess`/`Popen` in `Autotuner.so` itself** — the parent's fan-out here is raw `os.fork`; the `neuronx-cc` re-invocation lives one module over in `_Compiler.so`. [CONFIRMED — `fork`@rodata `0x553b3`, `flock`@`0x552ee`, `LOCK_EX`@`0x551f8`, `LOCK_UN`@`0x551f0`, `cpu_count`@`0x54fd0`, `_exit`@`0x55291`; `os.fork`/`os.cpu_count`/`os._exit` all called firsthand in `_tuning` @ `0x22f70`, decompiled body lines for `cpu_count`/`fork`/`_exit`.]
+The imports `Autotuner.so` actually pulls (DWARF module consts) are `os` (`fork`/`cpu_count`/`_exit`/`getcwd`), `fcntl` (`flock`/`LOCK_EX`/`LOCK_UN`), `gc`, `json`, `contextlib.contextmanager`. Crucially: **no `subprocess`/`Popen` in `Autotuner.so` itself** — the parent's fan-out here is raw `os.fork`; the `neuronx-cc` re-invocation lives one module over in `_Compiler.so`.
+
+*Anchors: `fork` @ rodata `0x553b3`, `flock` @ `0x552ee`, `LOCK_EX` @ `0x551f8`, `LOCK_UN` @ `0x551f0`, `cpu_count` @ `0x54fd0`, `_exit` @ `0x55291`; `os.fork` / `os.cpu_count` / `os._exit` are all called in the body of `_tuning` @ `0x22f70`.*
 
 ### `_Compiler.so` — the child compile
 
@@ -129,7 +131,7 @@ The imports `Autotuner.so` actually pulls (DWARF module consts) are `os` (`fork`
 | `_copy_partial_compilation_files` | module fn | `0x2c540` |
 | `_copy_kernels_and_weights` | module fn | `0x2b3c0` |
 
-`SubprocessCompiler` is explicitly dormant — its docstring (rodata `0x33503`) reads *"This class is unused, but it could be useful someday to be able to recursively call subprocesses (?)"*. The live per-candidate compile is always `MainCompiler.compile_subprocess` @ `0x187a0`. [CONFIRMED]
+`SubprocessCompiler` is explicitly dormant — its docstring (rodata `0x33503`) reads *"This class is unused, but it could be useful someday to be able to recursively call subprocesses (?)"*. The live per-candidate compile is always `MainCompiler.compile_subprocess` @ `0x187a0`.
 
 ### `_PerformanceMetric.so` — the reward
 
@@ -153,32 +155,32 @@ The compile-and-measure core and the two parallel-eval entry points are on the b
 | `build` | `0x1b9c0` | select the backend class by `metric_name` |
 | `_new_compilation_dir` | `0x166e0` | mint a fresh per-candidate `comp_dir` |
 
-`PerformanceMetric.build` @ `0x1b9c0` walks `cls.__subclasses__()` (a genexpr) and matches the class name against the config `metric_name` (`"PostSchedMetric"` / `"NeuronBenchMetric"`). The base `_evaluate` @ `0x14be0` loads `NotImplementedError` and raises — it is a pure abstract hook the leaves replace. [CONFIRMED]
+`PerformanceMetric.build` @ `0x1b9c0` walks `cls.__subclasses__()` (a genexpr) and matches the class name against the config `metric_name` (`"PostSchedMetric"` / `"NeuronBenchMetric"`). The base `_evaluate` @ `0x14be0` loads `NotImplementedError` and raises — it is a pure abstract hook the leaves replace.
 
 ---
 
-## 4. The two process fan-outs — keep them separate `[CONFIRMED]`
+## 4. The two process fan-outs — keep them separate
 
 This is the most-confused part of the system, so it is the first concrete mechanism. There are **two** independent process/thread fan-outs, in two different modules, at two different boundaries.
 
 ### Fan-out A — `os.fork()` design-space generation (`Autotuner.so`)
 
-When the chosen search strategy needs a pre-enumerated design space (Exhaustive does; MCTS does not — it explores lazily), `_MainAutotuner._generate_design_space` @ `0x2da50` builds the design tree by forking one child per design branch. The fork loop is in `_DesignSpaceGenerationAutotuner._tuning` @ `0x22f70`, and it is raw POSIX: `os.cpu_count` bounds the width, `os.fork` spawns, `os._exit` terminates the child, a `Semaphore` throttles concurrency, and `fcntl.flock(LOCK_EX … LOCK_UN)` guards the shared result files. [CONFIRMED — `os.cpu_count`, `os.fork`, `os._exit` all called firsthand in the decompiled `_tuning`; `Semaphore.release` and `flock` interned; log `"Forking off child processes to explore the design space"` @ rodata `0x52f20`.]
+When the chosen search strategy needs a pre-enumerated design space (Exhaustive does; MCTS does not — it explores lazily), `_MainAutotuner._generate_design_space` @ `0x2da50` builds the design tree by forking one child per design branch. The fork loop is in `_DesignSpaceGenerationAutotuner._tuning` @ `0x22f70`, and it is raw POSIX: `os.cpu_count` bounds the width, `os.fork` spawns, `os._exit` terminates the child, a `Semaphore` throttles concurrency, and `fcntl.flock(LOCK_EX … LOCK_UN)` guards the shared result files. The log line `"Forking off child processes to explore the design space"` sits at rodata `0x52f20`.
 
 ```c
-// Autotuner.so — _DesignSpaceGenerationAutotuner._tuning @ 0x22f70  (reconstructed; STRONG)
+// Autotuner.so — _DesignSpaceGenerationAutotuner._tuning @ 0x22f70  (reconstructed)
 //   PARENT-SIDE fan-out: one forked child per design branch, throttled by a semaphore.
 void design_space_tuning(self, PyObject *plans_list) {
-    long max_processes = min(self->max_processes, os.cpu_count());   // CONFIRMED cpu_count call
+    long max_processes = min(self->max_processes, os.cpu_count());   // cpu_count call
     Sem  *sem = Semaphore(max_processes);
     log("Forking off child processes to explore the design space");
     for (each (plan_id, plan) in plans_list) {
         sem.acquire();
-        pid_t pid = os.fork();                       // CONFIRMED os.fork call @ body
+        pid_t pid = os.fork();                       // os.fork call @ body
         if (pid == 0) {                              // CHILD
             evaluate_branch(plan_id, plan);          // walks into _Compiler (fan-out B)
             write_result_file_locked(plan_id);       // see _return @ 0x48960
-            os._exit(0);                             // CONFIRMED os._exit call @ body
+            os._exit(0);                             // os._exit call @ body
         }
         // PARENT loops; sem.release() runs on child reap
     }
@@ -191,10 +193,12 @@ The child writes its branch result under an `fcntl.flock` exclusive lock so conc
 
 ### Fan-out B — `ThreadPoolExecutor` per-candidate compile (`_PerformanceMetric.so`)
 
-The metric layer fans the candidate *compiles* across a `concurrent.futures.ThreadPoolExecutor`. `evaluate_batch` @ `0x25220` submits one `future_task` per compilation, collects via `as_completed`, and re-indexes results back to input order through a `future_to_idx` dict. Each thread is I/O-bound because the real work — the child `neuronx-cc` — runs in a separate `Popen`ed process (§5). [CONFIRMED — `ThreadPoolExecutor`@rodata `0x2d810`, `as_completed`@`0x2dad8`, `future_to_idx`@`0x2da48`, `concurrent`@`0x2db90`; `future_task` closure wrapper @ `0x17290`.]
+The metric layer fans the candidate *compiles* across a `concurrent.futures.ThreadPoolExecutor`. `evaluate_batch` @ `0x25220` submits one `future_task` per compilation, collects via `as_completed`, and re-indexes results back to input order through a `future_to_idx` dict. Each thread is I/O-bound because the real work — the child `neuronx-cc` — runs in a separate `Popen`ed process (§5).
+
+*Anchors: `ThreadPoolExecutor` @ rodata `0x2d810`, `as_completed` @ `0x2dad8`, `future_to_idx` @ `0x2da48`, `concurrent` @ `0x2db90`; the `future_task` closure wrapper @ `0x17290`.*
 
 ```c
-// _PerformanceMetric.so — evaluate_batch @ 0x25220  (reconstructed; CONFIRMED primitives)
+// _PerformanceMetric.so — evaluate_batch @ 0x25220  (reconstructed; primitives are interned)
 //   compilations: list of (_SubprocessAutotuner, args). Threads are I/O-bound on the child.
 PyObject *evaluate_batch(self, PyObject *compilations, int return_sp_result) {
     ThreadPoolExecutor *ex = ThreadPoolExecutor();
@@ -217,12 +221,12 @@ So: **fan-out A is `os.fork` in `Autotuner.so` for design-space *enumeration*; f
 
 ---
 
-## 5. The child compile — `subprocess.Popen` of `neuronx-cc compile` `[CONFIRMED]`
+## 5. The child compile — `subprocess.Popen` of `neuronx-cc compile`
 
 `evaluate_with_subprocess_result` @ `0x20a60` is the compile-and-measure core (docstring rodata `0x2cc45`: *"Evaluate a compilation and return both its metric result and subprocess result."*). It builds a `_Compiler.Compiler`, runs the child, evaluates the result, and returns the tuple the search consumes:
 
 ```c
-// _PerformanceMetric.so — evaluate_with_subprocess_result @ 0x20a60  (STRONG)
+// _PerformanceMetric.so — evaluate_with_subprocess_result @ 0x20a60  (reconstructed)
 PyObject *evaluate_with_subprocess_result(self, PyObject *design_or_compilation) {
     Compiler *compiler = MainCompiler(*compilation_args);    // a _Compiler.Compiler
     SubprocessResult *sp = compiler.compile_subprocess();    // §5.2 — Popen the child
@@ -257,10 +261,12 @@ The two flags that make the loop *terminate* are `--no-internal-autotune` and `-
 
 ### 5.2 Running the child and the result struct
 
-`Compiler.compile_subprocess` @ `0x25820` (`MainCompiler` override @ `0x187a0`) runs the child with `subprocess.Popen`, routes `stdout`/`stderr` to `DEVNULL`, then `.wait()`s and reads `.returncode`. It logs `"Launching " <cmd>` on entry and `"Subprocess returned non-0 return code: "` on a non-zero child, and returns a `SubprocessResult` carrying `returncode + log_content + comp_dir`. [CONFIRMED — `Popen` + module-global `subprocess`; `DEVNULL`@rodata `0x342b8`, `wait`/`returncode` interned; `"Launching "`@`0x34160`, `"Subprocess returned non-0 return code: "`@`0x33240`.]
+`Compiler.compile_subprocess` @ `0x25820` (`MainCompiler` override @ `0x187a0`) runs the child with `subprocess.Popen`, routes `stdout`/`stderr` to `DEVNULL`, then `.wait()`s and reads `.returncode`. It logs `"Launching " <cmd>` on entry and `"Subprocess returned non-0 return code: "` on a non-zero child, and returns a `SubprocessResult` carrying `returncode + log_content + comp_dir`.
+
+*Anchors: `DEVNULL` @ rodata `0x342b8`; `"Launching "` @ `0x34160`; `"Subprocess returned non-0 return code: "` @ `0x33240`.*
 
 ```c
-// _Compiler.so — compile_subprocess @ 0x25820 / MainCompiler override @ 0x187a0  (CONFIRMED)
+// _Compiler.so — compile_subprocess @ 0x25820 / MainCompiler override @ 0x187a0
 SubprocessResult *compile_subprocess(self) {
     PyObject *argv = self._generate_popen_command();     // §5.1
     log("Launching ", argv);
@@ -275,20 +281,20 @@ SubprocessResult *compile_subprocess(self) {
 
 ---
 
-## 6. Partial-passlist replay — the speed optimization `[CONFIRMED]`
+## 6. Partial-passlist replay — the speed optimization
 
-Recompiling each candidate from scratch would re-run the entire front-end for a change that only affects one late pass. The replay machinery avoids that. `_extract_partial_passlist` @ `0x2d5e0` (docstring rodata `0x32e83`: *"Extracts a dump-pass-list into a run-pass-list which can be used to compile penguin from the start"*) reads the full penguin pass list the parent dumped (`dump_passes.json`, rodata `0x33d00`), slices from `start_index` (the autotuned pass) to the end, and writes `remaining_passes.json` (rodata `0x331ec`). The child is then launched with `--run-pass-list=<remaining_passes.json>` and resumes from the tuned pass instead of the front-end. On failure: *"Partial compilation extraction failed."* [CONFIRMED]
+Recompiling each candidate from scratch would re-run the entire front-end for a change that only affects one late pass. The replay machinery avoids that. `_extract_partial_passlist` @ `0x2d5e0` (docstring rodata `0x32e83`: *"Extracts a dump-pass-list into a run-pass-list which can be used to compile penguin from the start"*) reads the full penguin pass list the parent dumped (`dump_passes.json`, rodata `0x33d00`), slices from `start_index` (the autotuned pass) to the end, and writes `remaining_passes.json` (rodata `0x331ec`). The child is then launched with `--run-pass-list=<remaining_passes.json>` and resumes from the tuned pass instead of the front-end. On failure: *"Partial compilation extraction failed."*
 
 `MainCompiler._do_penguin_extraction` @ `0x1e820` produces the hermetic replay bundle (copied into `../tmp`): `command.json` (the serialized child command, rodata `0x331b5`), `command_output.json` (the child's emitted result, rodata `0x33ac1`), `compilation_info.json`, `remaining_passes.json` + `dump_passes.json`, `penguin.py` (the replay driver), and `replay.sh` (a standalone reproducer, rodata `0x3320c`). `_copy_partial_compilation_files` @ `0x2c540` and `_copy_kernels_and_weights` @ `0x2b3c0` copy the `*.npy` kernels/weights and `.neff`/penguin artifacts so the replay is self-contained. The cross-process file round-trip is therefore: parent dumps `dump_passes.json` → extracts `remaining_passes.json` → child runs `--run-pass-list` → child writes `command_output.json` + `global_metric_store.json` → parent reads them back.
 
 ---
 
-## 7. Strategy dispatch and what actually drives the loop `[CONFIRMED / STRONG]`
+## 7. Strategy dispatch and what actually drives the loop
 
 `_MainAutotuner._do_tuning` @ `0x46f30` is the orchestrator. Its control flow is fixed by the verbatim ordering of its log messages:
 
 ```c
-// Autotuner.so — _MainAutotuner._do_tuning @ 0x46f30  (STRONG; log order is verbatim)
+// Autotuner.so — _MainAutotuner._do_tuning @ 0x46f30  (reconstructed; log order is verbatim)
 PyObject *do_tuning(self) {
     log("Starting MainAutotuner for ", ...);
     metric = PerformanceMetric.build(metric_name, ...);          // §3, §8 — PostSched|NeuronBench
@@ -309,46 +315,50 @@ The per-process role (§3) is gated by the discriminator consts `is_original` / 
 
 ### The one real consumer
 
-The entire `os.fork` + `Popen` + `nc_latency` machinery exists to autotune **one** thing: Tritium fusion plans. The autotune package is imported by exactly one non-autotune module — `TritiumFusion.so` — whose `AutotuneFusionPlanGenerator.best_fusion_plan` adds the fusion plans and opens `with self.autotuner.tuning():`. A plan ID is a `FusionPlan` ID of the form `"subgraph:id"` (e.g. `sg0001:7041`, from the `internal-autotune-tritium-only-with-id` help string); inside both the parent and each child the same ID decodes through `FusionPlanGenerator.apply_plan` (`vectorize_matmult → iterative_fuse_consumers → tile → fuse`). That decode lives in `TritiumFusionBase`, **not** in `transforms.Region` (a CFG dominator-tree utility with zero plan-ID strings). [CONFIRMED — sourced from D-L10's firsthand `TritiumFusion`/`apply_plan` trace; named here for context, not re-derived on this page.]
+The entire `os.fork` + `Popen` + `nc_latency` machinery exists to autotune **one** thing: Tritium fusion plans. The autotune package is imported by exactly one non-autotune module — `TritiumFusion.so` — whose `AutotuneFusionPlanGenerator.best_fusion_plan` adds the fusion plans and opens `with self.autotuner.tuning():`. A plan ID is a `FusionPlan` ID of the form `"subgraph:id"` (e.g. `sg0001:7041`, from the `internal-autotune-tritium-only-with-id` help string); inside both the parent and each child the same ID decodes through `FusionPlanGenerator.apply_plan` (`vectorize_matmult → iterative_fuse_consumers → tile → fuse`). That decode lives in `TritiumFusionBase`, **not** in `transforms.Region` (a CFG dominator-tree utility with zero plan-ID strings). It is summarised here for context; the Tritium fusion strand owns the derivation.
 
 ---
 
-## 8. The two reward backends `[CONFIRMED]`
+## 8. The two reward backends
 
 `PerformanceMetric.build` @ `0x1b9c0` selects the leaf by `metric_name`. The two leaves are the two reward backends — one in-process estimate, one out-of-process measurement.
 
 ### 8.1 `PostSchedMetric` — the in-process perf-sim estimate (default)
 
-`PostSchedMetric._evaluate` @ `0x236c0` (docstring rodata `0x2cf40`: *"Should extract Post Schedule Estimated Latency from metrics store. "*) reads the reward from a **file the child compile wrote**. It builds the path by `PyNumber_Add` of `comp_dir` + `"/[sgLnk/]global_metric_store.json"`, `json.load`s it, and reads `["metrics"]["nc_latency"]` (via chained `.get`). The scalar is `PostSchedEstLatency` in perf-sim cycles — `BackendMetricType` #42, the same value `libwalrus` `PerfSimPass` writes via `addMetric(42…)` @ `0x1742020` ([`perf-sim-wiring.md`](./perf-sim-wiring.md)). The `global_metric_store.json` file and the `MetricStore` singleton that serializes it — including the `BackendMetricType` enum (#42 = `PostSchedEstLatency`) and the nested JSON schema this `_evaluate` reads back — are documented in [`metricstore.md`](./metricstore.md) (8.47). There is no IPC: the reward surface is a per-candidate JSON file. [CONFIRMED — both path strings referenced firsthand in `_evaluate`'s disasm (`/sgLnk/global_metric_store.json` and `global_metric_store.json`); `json.load` then a `.get` chain firsthand in the decompiled body; `nc_latency`@rodata `0x2db70`, `PostSchedEstLatency`@`0x2d710`, `metric_store_file_path`@`0x2d690`.]
+`PostSchedMetric._evaluate` @ `0x236c0` (docstring rodata `0x2cf40`: *"Should extract Post Schedule Estimated Latency from metrics store. "*) reads the reward from a **file the child compile wrote**. It builds the path by `PyNumber_Add` of `comp_dir` + `"/[sgLnk/]global_metric_store.json"`, `json.load`s it, and reads `["metrics"]["nc_latency"]` (via chained `.get`). The scalar is `PostSchedEstLatency` in perf-sim cycles — `BackendMetricType` #42, the same value `libwalrus` `PerfSimPass` writes via `addMetric(42…)` @ `0x1742020` ([`perf-sim-wiring.md`](./perf-sim-wiring.md)). The `global_metric_store.json` file and the `MetricStore` singleton that serializes it — including the `BackendMetricType` enum (#42 = `PostSchedEstLatency`) and the nested JSON schema this `_evaluate` reads back — are documented in [`metricstore.md`](./metricstore.md) (8.47). There is no IPC: the reward surface is a per-candidate JSON file.
+
+*Anchors: both path strings (`global_metric_store.json`, `/sgLnk/global_metric_store.json`) appear in `_evaluate`'s disasm, followed by `json.load` and a `.get` chain in the body; `nc_latency` @ rodata `0x2db70`, `PostSchedEstLatency` @ `0x2d710`, `metric_store_file_path` @ `0x2d690`.*
 
 ```c
-// _PerformanceMetric.so — PostSchedMetric._evaluate @ 0x236c0  (CONFIRMED path/key; STRONG arithmetic)
+// _PerformanceMetric.so — PostSchedMetric._evaluate @ 0x236c0  (path/key exact; arithmetic reconstructed)
 double postsched_evaluate(self, PyObject *comp_dir) {
     PyObject *path = PyNumber_Add(comp_dir, "/global_metric_store.json");  // or "/sgLnk/..."
-    PyObject *data = json.load(open(path));                                // CONFIRMED json.load
-    PyObject *m    = data.get("metrics");                                  // CONFIRMED .get chain
+    PyObject *data = json.load(open(path));                                // json.load
+    PyObject *m    = data.get("metrics");                                  // .get chain
     PyObject *val  = m.get("nc_latency");                                  // == PostSchedEstLatency #42
     return PyFloat_AsDouble(val);                                          // perf-sim cycles
 }
 ```
 
-> **QUIRK — the autotuner reads back the same `MetricStore` the backend wrote.** `global_metric_store.json` is the full nested serialization of the process-global `MetricStore` singleton; `_PerformanceMetric.so` reads this autotuner-facing copy. ([`metricstore.md`](./metricstore.md) (8.47) documents the four JSON sinks — `global_metric_store.json`, `tensorizer_metric_store.json`, and the separate frontend `hlo_metrics.json`/`hlo_stats.json` relay — so the `global_metric_store.json` this loop reads is the same store the backend `addMetric` writers populate, narrowed to the variant's `float` alternative on round-trip.) The `/sgLnk/` variant is the symlinked per-compile working dir. [INFERRED — `/sgLnk/` meaning from path shape.]
+> **QUIRK — the autotuner reads back the same `MetricStore` the backend wrote.** `global_metric_store.json` is the full nested serialization of the process-global `MetricStore` singleton; `_PerformanceMetric.so` reads this autotuner-facing copy. ([`metricstore.md`](./metricstore.md) (8.47) documents the four JSON sinks — `global_metric_store.json`, `tensorizer_metric_store.json`, and the separate frontend `hlo_metrics.json`/`hlo_stats.json` relay — so the `global_metric_store.json` this loop reads is the same store the backend `addMetric` writers populate, narrowed to the variant's `float` alternative on round-trip.) [INFERRED] the `/sgLnk/` variant is the symlinked per-compile working dir — read from the path shape, not from a body.
 
 ### 8.2 `NeuronBenchMetric` — the out-of-process device benchmark
 
-`NeuronBenchMetric` ⊂ `RemotePerformanceMetric` is the real-hardware path. Instead of reading a perf-sim estimate, `_evaluate_on_remote` @ `0x1cb00` runs `neuron-bench` on a benchmark machine via `neuronxcc.kra.profile_lib` — the *same* `NeuronBench` / `profile_lib` path the public `nki.benchmark` entrypoint uses to populate `.benchmark_result.nc_latency` ([`../nki/entrypoints.md`](../nki/entrypoints.md)). The measured latency reads back the same way the estimate does — into the autotuner's scalar reward, keyed `nc_latency`. There is no raw `ssh`/`scp` (no `paramiko`/`ssh`/`scp` strings); device access is mediated by `profile_lib`. [CONFIRMED — `neuron-bench`@rodata `0x2d32f`, `profile_lib`@`0x2d55e`, `remote_benchmark_machines`@`0x2d2ec`, `verify_machine_baselines`@`0x2c33c`, `run-as-cc-neff`@`0x2d9f0`/`/file.neff`@`0x2dc28` interned.]
+`NeuronBenchMetric` ⊂ `RemotePerformanceMetric` is the real-hardware path. Instead of reading a perf-sim estimate, `_evaluate_on_remote` @ `0x1cb00` runs `neuron-bench` on a benchmark machine via `neuronxcc.kra.profile_lib` — the *same* `NeuronBench` / `profile_lib` path the public `nki.benchmark` entrypoint uses to populate `.benchmark_result.nc_latency` ([`../nki/entrypoints.md`](../nki/entrypoints.md)). The measured latency reads back the same way the estimate does — into the autotuner's scalar reward, keyed `nc_latency`. There is no raw `ssh`/`scp` (no `paramiko`/`ssh`/`scp` strings); device access is mediated by `profile_lib`.
+
+*Anchors: `neuron-bench` @ rodata `0x2d32f`, `profile_lib` @ `0x2d55e`, `remote_benchmark_machines` @ `0x2d2ec`, `verify_machine_baselines` @ `0x2c33c`, `run-as-cc-neff` @ `0x2d9f0`, `/file.neff` @ `0x2dc28`.*
 
 The device path adds three things the perf-sim path does not need:
 
 - **A retry loop** keyed on config `max_retries` / `cooldown_between_retries`: *" failed to run neuron-bench. Retrying in "* then *" failed to run neuron-bench after " … " attempts. Giving up."*.
 - **Per-machine locking** (`machine_lock` / `_machine_locks`) to serialize device access across the thread pool.
-- **Baseline verification** (`verify_machine_baselines` @ `0x22160`): benches a known baseline on each machine and warns if machines disagree — *"WARNING: Baseline metrics are inconsistent between machines (differ by >= " … "%). Autotuning results cannot be trusted. Metrics: "* — at a ≥50% divergence threshold. [STRONG — `50` const + `%`-format present; comparator from the WARNING string.]
+- **Baseline verification** (`verify_machine_baselines` @ `0x22160`): benches a known baseline on each machine and warns if machines disagree — *"WARNING: Baseline metrics are inconsistent between machines (differ by >= " … "%). Autotuning results cannot be trusted. Metrics: "* — at a ≥50% divergence threshold. The `50` constant and the `%` format are present; the comparator direction comes from the warning text, so the threshold semantics are HIGH.
 
-If `metric_name == "NeuronBenchMetric"` but `remote_benchmark_machines` is empty, it errors: *"A PerformanceMetric which uses remote benchmarking machines was used, but the 'remote_benchmark_machines' setting was empty."* [CONFIRMED]
+If `metric_name == "NeuronBenchMetric"` but `remote_benchmark_machines` is empty, it errors: *"A PerformanceMetric which uses remote benchmarking machines was used, but the 'remote_benchmark_machines' setting was empty."*
 
 ### 8.3 The failed-compile sentinel and the reward formula
 
-A failed (non-zero) child compile is **not dropped** — it is scored `+inf`, so it is the worst possible latency, gets the minimum reward, and competes-and-loses. The relevant float constants sit contiguously in `_PerformanceMetric.so` rodata: `+inf` at `0x2dfb4` (bytes `00 00 f0 7f` little-endian = `0x7ff0000000000000`) immediately followed by `100.0` at `0x2dfbc` (bytes `00 00 59 40` = `0x4059000000000000`). The `+inf` is loaded in the subprocess-result region (load sites `0x1fb1e`/`0x1fb6e`/`0x200b5`), accompanied by the log `"Subcompilation failed in "` (rodata `0x2d610`). [CONFIRMED — float bytes read firsthand from rodata `0x2dfb0` row: `00000000 0000f07f 00000000 00005940`.]
+A failed (non-zero) child compile is **not dropped** — it is scored `+inf`, so it is the worst possible latency, gets the minimum reward, and competes-and-loses. The relevant float constants sit contiguously in `_PerformanceMetric.so` rodata: `+inf` at `0x2dfb4` (bytes `00 00 f0 7f` little-endian = `0x7ff0000000000000`) immediately followed by `100.0` at `0x2dfbc` (bytes `00 00 59 40` = `0x4059000000000000`). The `+inf` is loaded in the subprocess-result region (load sites `0x1fb1e`/`0x1fb6e`/`0x200b5`), accompanied by the log `"Subcompilation failed in "` (rodata `0x2d610`). The rodata `0x2dfb0` row reads `00000000 0000f07f 00000000 00005940`.
 
 The reward turns a latency into a percent improvement against the baseline:
 
@@ -356,13 +366,13 @@ The reward turns a latency into a percent improvement against the baseline:
 reward_f(val) = ((baseline_metric − val) / baseline_metric) · 100      // percent; lower latency wins
 ```
 
-where `baseline_metric` is `PerformanceMetric.evaluate_baseline` @ `0x15c10` (the no-tuning reference compile; log *"Completed compilation had performance metric "* @ rodata `0x2d200`). [STRONG — the only reward/baseline float consts in the module are `{1.0, −1.0, ±inf, 100.0}`; `100.0` is the percent divisor used in `divsd`.]
+where `baseline_metric` is `PerformanceMetric.evaluate_baseline` @ `0x15c10` (the no-tuning reference compile; log *"Completed compilation had performance metric "* @ rodata `0x2d200`). The only float constants in the module's reward/baseline math are `{1.0, −1.0, ±inf, 100.0}`, and `100.0` is the divisor fed to `divsd` — so the reward is a *percent* improvement, and the arithmetic above is HIGH rather than read line-for-line.
 
-> **CORRECTION (vs the prior framing in D-L02 that the reward scale `K` was "1 or 100"):** the divisor is **100** — the reward is a *percent* improvement. The only float constants in the reward/baseline math are `{1.0, −1.0, ±inf, 100.0}`, and `100.0` is the divisor. MCTS *maximises* `reward_f` (lower latency → higher reward); the flat strategies *argmin* the raw `nc_latency`. Same orientation, inverse arithmetic. [STRONG]
+> **NOTE — the two search families read the reward with opposite arithmetic.** MCTS *maximises* `reward_f`, so lower latency means higher reward; the flat strategies *argmin* the raw `nc_latency` directly. Same orientation on the underlying quantity, inverse arithmetic on the score.
 
 ---
 
-## 9. Aggregate, apply, and the three reward regimes `[CONFIRMED]`
+## 9. Aggregate, apply, and the three reward regimes
 
 ### 9.1 Pick best, apply to the real compile
 
@@ -374,7 +384,7 @@ After `search.run` returns `(best_design, best_metric)`, `_do_tuning` computes `
 
 An incomplete winning design is guarded (*"WARNING. The resultant design is incomplete (need plan at depth `<X>`, but design only goes to depth `<Y>`)"*), then the chosen design is persisted (*"Saving autotuned design to "* `autotune_result_design.json`, the `RESULT_DESIGN_FILE`).
 
-The winning design is then **replayed on the in-process compile** through the `Autotuning` context manager (`Autotuner.tuning` @ `0x20d20`; the `Autotuning` generator @ `0x21240`). Each `tuning()` call inside the `with autotuner.tuning():` body returns the plan dictated by `final_design` at the current depth (`_fetch_plan_from_design` @ `0x290b0` / `_record_plan_to_design` @ `0x2c5d0`); past the design's depth it uses `baseline_behavior`. `release` @ `0x36c70` (`_MainAutotuner`) tears down workers/loggers and flushes at pass end — *"Must be called at the end of the autotuner's pass…"*. `_DesignedAutotuner` @ `0x21960` is the role that applies the frozen winning design. [CONFIRMED log strings; STRONG body order.]
+The winning design is then **replayed on the in-process compile** through the `Autotuning` context manager (`Autotuner.tuning` @ `0x20d20`; the `Autotuning` generator @ `0x21240`). Each `tuning()` call inside the `with autotuner.tuning():` body returns the plan dictated by `final_design` at the current depth (`_fetch_plan_from_design` @ `0x290b0` / `_record_plan_to_design` @ `0x2c5d0`); past the design's depth it uses `baseline_behavior`. `release` @ `0x36c70` (`_MainAutotuner`) tears down workers/loggers and flushes at pass end — *"Must be called at the end of the autotuner's pass…"*. `_DesignedAutotuner` @ `0x21960` is the role that applies the frozen winning design. The log strings are verbatim; the ordering of the body around them is HIGH.
 
 ### 9.2 The three reward regimes — only one is this loop
 
@@ -390,21 +400,16 @@ The deliverable: the system has **three** distinct reward regimes, and only the 
 - **Regime B** is the default with autotuning off: a coefficient-free roofline beam over `FusionPlan` cost attributes, no compile and no `nc_latency`. It reuses Regime A's `FusionPlan` cost code.
 - **Regime C** is a *separate* MCTS over tensor layouts (`LayoutState`, `tonga/LayoutDecisionTree.so`, driven by `penguin/MCTS.so`) scored by a static analytic layout-cycle cost. It does **not** import the autotune package and does **not** read `global_metric_store.json`.
 
-> **CORRECTION (vs the "MCTS layout autotuner" framing in prior reports):** the autotune-package MCTS (`_TreeSearch`) tunes **Tritium fusion** plans by measured `nc_latency`; the **layout** MCTS (`--layout-transform-heuristic=mcts`) is a *different* MCTS instance over a different state type, scored by a *static* `CycleBasedLayoutCostModel`, structurally unrelated to the subprocess-compile loop. They are two unrelated "mcts" knobs and must not be conflated. [CONFIRMED — sourced from D-L10's grep-exhaustive import trace; named here for completeness.]
+> **GOTCHA — there are two unrelated "MCTS" knobs.** The autotune-package MCTS (`_TreeSearch`) tunes **Tritium fusion** plans by measured `nc_latency`. The **layout** MCTS (`--layout-transform-heuristic=mcts`) is a different MCTS instance over a different state type, scored by a *static* `CycleBasedLayoutCostModel`, and structurally unrelated to the subprocess-compile loop. Reading one as the other misattributes the entire reward path.
 
 ---
 
 ## 10. Confidence, evidence, and what was not traced
 
-**CONFIRMED (firsthand this page):** every `@addr` (recovered by `nm` over the three `.so`); every rodata string offset (`grep -abo`); the `os.fork` / `os.cpu_count` / `os._exit` calls in `_DesignSpaceGenerationAutotuner._tuning` @ `0x22f70` (decompiled body); the `json.load` + `.get` chain in `PostSchedMetric._evaluate` @ `0x236c0` (decompiled body); both reward-file path strings referenced in that body's disasm; the `+inf` (`0x2dfb4`) and `100.0` (`0x2dfbc`) float bytes (rodata dump); the full forced-flag fragment set and the `neuronx-cc compile(.*?)(?=\n|$)` regex in `_Compiler.so`; the `flock`/`LOCK_EX`/`LOCK_UN`/`Semaphore.release` interns; the `ThreadPoolExecutor`/`as_completed`/`future_to_idx` interns.
+**CERTAIN.** Every `@addr` (recovered by `nm` over the three `.so`) and every rodata string offset (`grep -abo`). The `os.fork` / `os.cpu_count` / `os._exit` calls in `_DesignSpaceGenerationAutotuner._tuning` @ `0x22f70`, and the absence of any `subprocess` import in `Autotuner.so` — the parent fan-out really is raw `fork`. The `json.load` plus `.get` chain in `PostSchedMetric._evaluate` @ `0x236c0`, with both reward-file path strings in that body's disasm — the reward really is a file, not IPC. The `+inf` (`0x2dfb4`) and `100.0` (`0x2dfbc`) float bytes. The full forced-flag fragment set and the `neuronx-cc compile(.*?)(?=\n|$)` regex in `_Compiler.so`. The `flock`/`LOCK_EX`/`LOCK_UN`/`Semaphore.release` and `ThreadPoolExecutor`/`as_completed`/`future_to_idx` interns. Both backend classes' `_evaluate` / `_evaluate_on_remote` symbols.
 
-**STRONG (multi-anchor reconstruction):** statement-level bodies of `_generate_plan_dict`, `_tuning`, `evaluate_batch`, `compile_subprocess`, `_do_tuning` (anchored on log-message ordering + DWARF local-var sets + call-target profiles); the `reward_f` arithmetic and `K = 100` (the only reward float consts are `{1.0, −1.0, ±inf, 100.0}`); the `NeuronBench ⊂ Remote` hierarchy (override set; classes are runtime `Py3ClassCreate`, so `tp_base` is not statically readable); the `verify_machine_baselines` 50% threshold.
+**HIGH.** Statement-level bodies of `_generate_plan_dict`, `_tuning`, `evaluate_batch`, `compile_subprocess`, and `_do_tuning`, anchored on log-message ordering plus DWARF local-var sets and call-target profiles. The `reward_f` arithmetic and its `K = 100` divisor. The `NeuronBench ⊂ Remote` hierarchy — the classes are runtime `Py3ClassCreate`, so `tp_base` is not statically readable and the override set carries it. The `verify_machine_baselines` 50% threshold. The `+inf` *sentinel semantics* (the bytes are certain; the meaning is read from surrounding context).
 
-**INFERRED / not traced:** the `/sgLnk/` prefix as "symlinked per-compile working dir" (path-shape only); the exact argv *order* `ensure_flags` produces (the slot map is stack-built, not a static string table); the `get_modular_flow_runs(module+420)` trip-count multiplier inside `PerfSimPass` (that is `libwalrus`, [`perf-sim-wiring.md`](./perf-sim-wiring.md) territory, not re-derived here). The MCTS engine internals (UCT, backprop, `compute_exploration_const`) belong to [Part 8.50 (`penguin-autotuner.md`)](./penguin-autotuner.md) and are named, not derived, on this page. The `FusionPlan` → graph-edit decode (`apply_plan`) belongs to the Tritium fusion strand and is summarized in §7 for context only.
+**MEDIUM / not traced.** The `/sgLnk/` prefix as "symlinked per-compile working dir" (path shape only). The exact argv *order* `ensure_flags` produces — the slot map is stack-built, not a static string table. The `get_modular_flow_runs(module+420)` trip-count multiplier inside `PerfSimPass` belongs to `libwalrus` and to [`perf-sim-wiring.md`](./perf-sim-wiring.md). The MCTS engine internals (UCT, backprop, `compute_exploration_const`) belong to [Part 8.50](./penguin-autotuner.md). The `FusionPlan` → graph-edit decode (`apply_plan`) belongs to the Tritium fusion strand and appears in §7 for context only.
 
-**Adversarial self-check of the five strongest claims:**
-1. *"Reward is read from a file, not IPC."* — both path strings (`global_metric_store.json`, `/sgLnk/global_metric_store.json`) are referenced firsthand in `_evaluate`'s disasm, and the body calls `json.load(open(path))`. CONFIRMED.
-2. *"The parent fan-out is `os.fork`, not `Popen`."* — `os.fork`/`os.cpu_count`/`os._exit` are called firsthand in `_tuning` @ `0x22f70`, and `Autotuner.so` imports no `subprocess` module. CONFIRMED.
-3. *"Failed compile → `+inf`."* — the `+inf` float bytes sit at rodata `0x2dfb4` adjacent to the `100.0` divisor, in the subprocess-result region, with `"Subcompilation failed in "` nearby. CONFIRMED (bytes) + STRONG (sentinel semantics).
-4. *"Two reward backends, `PostSchedMetric` vs `NeuronBenchMetric`."* — both classes' `_evaluate`/`_evaluate_on_remote` symbols recovered by `nm`; `neuron-bench`/`profile_lib`/`remote_benchmark_machines` interned in the device leaf. CONFIRMED.
-5. *"Three regimes, one closed loop."* — Regime A is firsthand here; Regimes B and C are sourced from D-L10's grep-exhaustive import trace (only `TritiumFusion.so` imports the autotune package; the layout MCTS is a separate module) and named here, not independently re-derived this pass. **Ceiling: STRONG, not CONFIRMED, for the B/C delineation** — a reimplementer building only Regime A from this page is fully covered; the existence and separateness of B and C rest on the backing trace, which I did not re-run module-by-module on this page.
+Regime A (§9.2) is derived here end to end. Regimes B and C are named for contrast — their separateness rests on the import graph (only `TritiumFusion.so` imports the autotune package; the layout MCTS is a separate module) rather than a module-by-module derivation on this page. A reimplementer building Regime A is fully covered.
