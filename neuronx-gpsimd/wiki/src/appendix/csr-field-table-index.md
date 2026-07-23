@@ -12,7 +12,7 @@ can `rg` for a register name and land on its offset, width, and reset in one hop
 Everything here is byte-grounded in the shipped, RTL-generated **`cayman-arch-regs`
 CSR JSON schemas** (`csrs/<sub>/<unit>.json`) and their cross-gen `arch-headers`
 copies — binary-derived register descriptors, citeable as static-analysis artifacts.
-Every offset, width, and reset below was re-read from the JSON with `jq` by absolute
+Every offset, width, and reset below is read from the JSON with `jq` by absolute
 path. No vendor source tree was consulted; the schemas *are* the binary. Confidence
 tags are `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`; callouts are
 `QUIRK / GOTCHA / NOTE / CORRECTION`.
@@ -73,7 +73,7 @@ from the bitfield.**
 > every queue past `M2S_Q[0]` is mislaid. The truth is decimal `256` = `0x100`, which lands
 > `AXI_M2S` exactly at the bundle boundary. The same trap closes the `intc_4grp_msix` aperture:
 > `MSIX_Vector_Table_Space.BundleSizeInBytes = "16"` (decimal) gives `0x800 + 128×16 = 0x1000`
-> == `SizeInBytes`; read as hex (`0x16`=22) it overflows to `0x1300`. **Radix census (re-derived):**
+> == `SizeInBytes`; read as hex (`0x16`=22) it overflows to `0x1300`. **Radix census:**
 
 | radix of `BundleSizeInBytes` / `SizeInBytes` | blocks | example |
 |---|---|---|
@@ -128,8 +128,8 @@ and the reverse index are in [`block-schema-xref.md`](../control/address/block-s
 ## 2. The "20 CSR blocks" reconciliation `[HIGH · OBSERVED]`
 
 > **CORRECTION / SCOPE — "20 CSR blocks" = the 20 narrative CSR pages, NOT 20 schemas.**
-> `fd` over [`../control/csr/`](../control/csr/tpb.md) returns **exactly 20** `.md` pages
-> (re-counted this session). They do **not** map 1:1 to 20 schema JSONs — they document the
+> `fd` over [`../control/csr/`](../control/csr/tpb.md) returns **exactly 20** `.md` pages.
+> They do **not** map 1:1 to 20 schema JSONs — they document the
 > register surfaces *grouped by subsystem*, and several pages cover many schemas at once. The
 > 20 pages collectively byte-document **65 of the 85** on-disk schemas (the other 20 are
 > peripheral residual — clock/PLL, PVT, I2C/SPI/GPIO, OTP, DFT, ring, URB, APB bridge — see
@@ -160,7 +160,7 @@ and the reverse index are in [`block-schema-xref.md`](../control/address/block-s
 | 19 | [xtensa-q7.md](../control/csr/xtensa-q7.md) | `xtensa_q7/xtensa_q7.json` |
 | 20 | [xtensa-nx.md](../control/csr/xtensa-nx.md) | `xtensa_nx/xtensa_nx.json` |
 
-All 20 link paths were confirmed to resolve on disk this session. The schema *count* is the 85/76/65
+The schema *count* is the 85/76/65
 ledger of [`notific-sdma-residual.md §4`](../control/csr/notific-sdma-residual.md); the *page* count
 is 20.
 
@@ -610,9 +610,9 @@ per-block cross-gen sections of the narrative pages give the applicability for e
 
 ---
 
-## 5. Verification ledger (this session)
+## 5. Verification ledger
 
-The five strongest claims re-challenged directly against the JSON before authoring — all pass:
+The five strongest claims checked directly against the JSON — all pass:
 
 | # | claim | check (jq, absolute path) | result |
 |---|---|---|---|
@@ -638,7 +638,7 @@ register schema ships for most blocks; the byte-grounded behavioral reference is
 
 > **NOTE.** Nothing here is fabricated and no vendor source snapshot was consulted. Every offset,
 > width, reset, and binding traces to the shipped `cayman-arch-regs` CSR JSON / `arch-headers` copies,
-> parsed this session (lawful interoperability reverse engineering, DMCA 17 U.S.C. §1201(f)).
+> parsed with `jq` (lawful interoperability reverse engineering, DMCA 17 U.S.C. §1201(f)).
 
 ---
 

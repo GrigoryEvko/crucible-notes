@@ -8,7 +8,7 @@ ring (Part 2). It is the appendix half of the device-firmware survey: where the
 [firmware](../firmware/pool/kernel-info-table.md) and [SEQ](../firmware/seq/dispatch-hub.md)
 pages narrate *how* the firmware uses each structure, this page pins the **byte
 layout** — offset, size, type, field, meaning — for every structure named in the
-census, re-verified against the carved image this session and CORRECTION-flagged where
+census, verified against the carved image and CORRECTION-flagged where
 a naive reading diverges from the bytes.
 
 Every structure below is recovered from one of four binary sources, all
@@ -46,7 +46,7 @@ static-analysis-derived and citeable:
 > -SW` before any `xxd`/`objdump` on a `.data`-resident struct.
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
-`OBSERVED` = a byte/string/header field read from a shipped artifact this session;
+`OBSERVED` = a byte/string/header field read from a shipped artifact;
 `INFERRED` = reasoned over OBSERVED facts (often across a FLIX/literal-pool desync);
 `CARRIED` = consolidated from a cited cross-page anchor at its original confidence.
 Crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real),
@@ -105,9 +105,8 @@ typedef struct {
 > the dispatcher (`@0x01005610`) builds from the decoded microcode word, then
 > linear-scans for. Do not byte-swap one side only. `[HIGH/OBSERVED]`
 
-**Re-verified this session** (carve `910d41c3…`, `kernel_info_table` file off `0x7400`,
-0x88 bytes; 17 rows parsed): the entire CAYMAN table, every row `spec@+2 opcode@+3
-funcVA@+4` —
+The entire CAYMAN table (carve `910d41c3…`, `kernel_info_table` file off `0x7400`,
+0x88 bytes, 17 rows), every row `spec@+2 opcode@+3 funcVA@+4` —
 
 | idx | opcode | spec | funcVA | routes to |
 |--:|:--:|:--:|:--|:--|
@@ -587,8 +586,8 @@ DWARF + libncfw printer offsets.]`
 > > **CORRECTION — coretype 37 (`ct37`) is OBSERVED; only the NCFW *image* is absent.
 > > Do NOT conflate the two.** A prior draft of this callout flipped `ct37` to INFERRED
 > > by folding the (true) NCFW-image absence into a (false) coretype-value absence. The
-> > binary refutes the flip: **`ct37` is OBSERVED three independent ways** — re-grounded
-> > against `libnrtucode_internal.so` this pass — and the do-not-repeat distinction is
+> > binary refutes the flip: **`ct37` is OBSERVED three independent ways** (against
+> > `libnrtucode_internal.so`), and the key distinction is
 > > **"v5 NCFW *image* file-absent (TRUE, OBSERVED-negative) ≠ coretype *value* 37
 > > unobserved (FALSE — it IS observed, OBSERVED-positive)."** The three reads:
 > > **(1)** the `maverick_libs` jump-table target (`get_ext_isa` case `idx 31` ⇒
@@ -622,7 +621,7 @@ runtime store). It sits **immediately after** the `kernel_info_table` — the ta
 VMA (`0x02000408`) is exactly `.globstruct`'s base, which is why the table scan uses
 that boundary as its terminator.
 
-The full 72-byte word map, **re-read this session from the carved ELF** (file off
+The full 72-byte word map, from the carved ELF (file off
 `0x7488`):
 
 | offset | word | offset | word | offset | word |
@@ -695,7 +694,7 @@ int on_ucode_booted(nrtucode_core_t *core) {
 }
 ```
 
-**Re-verified this session:** READY `0x6099CB34` appears **99×** and CLAIM
+READY `0x6099CB34` appears **99×** and CLAIM
 `0x502B2DA1` appears **2×** in `libnrtucode_internal.so` (the 99 = host compare/stage
 sites + the embedded device images carrying the `.globstruct` initializer). The
 compares are byte-exact (`41 81 f9 34 cb 99 60` / `41 81 f9 a1 2d 2b 50`). This is a
@@ -754,7 +753,7 @@ the FSM loop and the `state[0x855e0]` lifecycle: [SEQ Main FSM Loop](../firmware
 ### 2.4 Profiler `PROF_CAM` (64×16 B) / `PROF_TABLE` (64×128 B) `[HIGH/OBSERVED]`
 
 The per-engine HW instruction-decode profiler is two parallel arrays staged from
-`libnrtucode_internal.so` getters. **Re-verified this session:** the CAM getter
+`libnrtucode_internal.so` getters. The CAM getter
 (`CAYMAN_NX_ACT_PROF_CAM_get @0x9b3ba0`) writes `movq $0x400,(%rsi)` = **1 KiB = 64
 slots × 16 B**; the TABLE getter (`@0x9b3bc0`) writes `movq $0x2000,(%rsi)` = **8 KiB =
 64 records × 128 B**.
@@ -858,9 +857,8 @@ drains 256-B slots.
 
 ## Adversarial self-verification
 
-The five strongest claims, each re-challenged against the carved binaries **this
-session** (carve sha256 `910d41c3…b4b55527` matches; host loader
-`libnrtucode_internal.so`):
+The five strongest claims, each checked against the carved binaries (carve sha256
+`910d41c3…b4b55527`; host loader `libnrtucode_internal.so`):
 
 | # | claim | challenge | verdict |
 |--:|:--|:--|:--|

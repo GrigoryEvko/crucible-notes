@@ -13,8 +13,8 @@ owning synthesis page.
 The verdict page is the navigable map; this is the accounting. Where the verdict states
 "~95% execution-validated," this page shows the per-lane denominators that roll up to it; where
 the verdict says "v5 header-OBSERVED + bounded-INFERRED," this page carries the exact
-OBSERVED/INFERRED seam per lane. Every headline number below was re-grounded against its owning
-synthesis page and, where cheap, re-read from the binary this pass (`nm` on the one file by
+OBSERVED/INFERRED seam per lane. Every headline number below is grounded against its owning
+synthesis page and, where cheap, re-read from the binary (`nm` on the one file by
 absolute path — never a folder-wide scan).
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
@@ -41,7 +41,7 @@ naive reading), **NOTE** (orienting context).
 ## 1. The headline fractions — each tied to its owning page
 
 These four fractions are the completeness anchor. The verdict page quotes them; this page
-re-grounds each against the owning synthesis page **and** the binary where it is the keystone.
+grounds each against the owning synthesis page **and** the binary where it is the keystone.
 
 ### 1.1 Value semantics — **100% (864/864)** `[HIGH/OBSERVED]`
 
@@ -53,7 +53,7 @@ enumerated and their semantics read from the bytes, and for all but the one `rec
 - **Owning pages:** [VAL capstone §6.3](../validation/capstone-matrix.md) ("Value semantics: 100%
   known"); [the ISA value-cover §5](../isa/core/coverage-tally.md) (`864/864` leaves);
   [verdict A.2](../orientation/verdict-and-open-questions.md) ("864 / 864 = 100%").
-- **Binary re-verify this pass:**
+- **Binary re-verify:**
 
   ```
   nm -D libfiss-base.so | rg -c 'module__xdref_'   = 864
@@ -93,7 +93,7 @@ of bundles with zero disagreements.
 - **Owning page:** [the ISA coverage tally](../isa/core/coverage-tally.md);
   [the semantics coverage ledger](../isa/semantics/coverage-ledger.md);
   [the formal ISA model](../isa/semantics/formal-isa-model.md).
-- **Binary re-verify this pass (`libisa-core.so`):**
+- **Binary re-verify (`libisa-core.so`):**
 
   ```
   nm libisa-core.so | rg -c 'Opcode_.*_Slot_.*_encode'                       = 12569  (placements)
@@ -145,7 +145,7 @@ capstone that holds the full accounting. Confidence is HIGH/MED/LOW × OBSERVED/
 | **VAL** | **value semantics 100% known** (864/864); **~95% execution-validated** (~2.09M comparisons, **0 firmware bugs**) | 18 op families driven LIVE bit-exact; 0 firmware-value mismatches every family; fp16 classify swept exhaustively (65,536 patterns) | the ~95% fraction `[MED]`; the ~1.49M fp/MAC/4-leg remainder of the 2.09M aggregate `[CARRIED]` | **`recipqli` soft-float dispatch** (3/864 leaves, SIGSEGV on bare drive — heavy-leg only); FW-42 seed lineage + 2 half-ULP closed-form boundaries (ROM=truth) | the per-family pass/fail matrix; the D1–D13 divergence catalog (all in model/harness/inferred-form, none in firmware); the residual-closure ledger | [validation/capstone-matrix](../validation/capstone-matrix.md) `[HIGH/OBSERVED·exec]` |
 | **HW** (uarch) | **complete cycle-approximate model** except the flagged cycle-count tier | config census; 14-format/46-slot decode; 2-pipe stage stamps; reservation bodies (2149 issue/1746 stall/~160k stage); FCR/FSR + single-round FMA; 2-LSU split, no-PSUM, no-D-cache | all block-to-block datapath WIRING / topology (RTL not in corpus); 2×FMAC dual-issue micro-binding; peak-compute bundle composition | host-supplied ACT PWP coefficient **content** (out-of-corpus `[LOW]`); RTL topology absent; per-port reservation below the `1+1` ceiling (`MODULE_SCHEDULE` empty); FW-42 QLI polynomial | one unified cycle-approximate model; the 6-divergence reconciliation ledger; the block diagram + connectivity map; `R(Q7)` gen-invariance | [uarch/microarch-synthesis](../uarch/microarch-synthesis.md) `[HIGH/OBSERVED; topology MED/INFERRED]` |
 | **FW** | **55.7% body-decoded** (78/140 real HW opcodes), +7.9% planned, 36.4% NONE | `172 − 31 PSEUDO − 1 INVALID = 140` real opcodes from 4 shipped `common.h` enums; per-gen 145/150/159/165; 3 MAVERICK ops byte-pinned (`0xB6`/`0xB9`/`0xBA`) | MAVERICK late ops `0x26`/`0xF3`/`0xF4` — names read HIGH, byte/engine/operand MED | **FLIX-desync device interiors** (`0x45` Pool reduce, `0xBD`/`0xF1` DMA-transpose, MAVERICK late ops — opcode byte-exact, interior MED, the "corpus-wide MED ceiling"); SUNDA POOL in out-of-corpus EXTISA; **SortMerge phantom** (never shipped) | the `172→140` real-opcode derivation; the master opcode→kernel table (140 rows); the three-source crossing (140≠17≠55); per-gen presence + coverage tally | [firmware/kernels/opcode-catalog-ledger](../firmware/kernels/opcode-catalog-ledger.md) `[HIGH/OBSERVED roster; MED interiors]` |
-| **IMG** | **100% of the container/getter index** (kernels out of scope) — 3 partitions close to 386, 0 unmapped getters | 386-getter `(gen×engine×flavor×region)` index; per-gen 24/100/100/100/62; 225 real / 161 zero-cursor; 3 resolvers disassembled; 6 carve SHAs | `engine_idx` POOL=1/ACT=2 (PE=0, DVE=3 OBSERVED); why NX_SP takes two image slots/gen; `build_version` tracks ulib not gen | **MAVERICK image INTERIORS** (per-v5 device-code decode); which silicon part each `(gen,engine)` binds to; which image the live host driver selects (upstream of these binaries); SUNDA EXTISA standalone-only | the 386-getter index; the 3 resolvers as annotated C; the container model (SUNDA standalone / MAVERICK twin-only); the closed completeness check | [images/firmware-image-catalog](../images/firmware-image-catalog.md) `[HIGH/OBSERVED, re-verified]` |
+| **IMG** | **100% of the container/getter index** (kernels out of scope) — 3 partitions close to 386, 0 unmapped getters | 386-getter `(gen×engine×flavor×region)` index; per-gen 24/100/100/100/62; 225 real / 161 zero-cursor; 3 resolvers disassembled; 6 carve SHAs | `engine_idx` POOL=1/ACT=2 (PE=0, DVE=3 OBSERVED); why NX_SP takes two image slots/gen; `build_version` tracks ulib not gen | **MAVERICK image INTERIORS** (per-v5 device-code decode); which silicon part each `(gen,engine)` binds to; which image the live host driver selects (upstream of these binaries); SUNDA EXTISA standalone-only | the 386-getter index; the 3 resolvers as annotated C; the container model (SUNDA standalone / MAVERICK twin-only); the closed completeness check | [images/firmware-image-catalog](../images/firmware-image-catalog.md) `[HIGH/OBSERVED]` |
 | **GEN** | **complete capability matrix** (15 subsystems × 5 gens + TONGA floor); 13/13 spot-checks PASS; v5 interiors INFERRED | v2–v4+ cells byte-grounded (every count/sha/enum/selector); `coretype {6,13,21,29,37}`; 13 spot-checks re-carved | all MAVERICK runtime-INTERIOR cells (geometry/transport/NCFW Cayman-class+, no v5 runtime programmer in checkout); arch_id 36 (doubly) | **arch_id 36 doubly inferred** (the "headline wall", §4); MAVERICK image interiors getter-OBSERVED only; NCFW dark at v5; empty `MODULE_SCHEDULE`; SortMerge phantom; v5 `Q7_CC_TOP` FILE-ABSENT | the 15×5 master grid; the INVARIANT/SCALING/ABSENT partition (12/9/11) + strict-superset chain; the `R(Q7)` formal gen-invariance; the spot-verification ledger | [generations/master-capability-matrix](../generations/master-capability-matrix.md) `[v2–v4 HIGH/OBSERVED; v5 INFERRED]` |
 | **ABI** | **complete end-to-end host↔device custom-op ABI**; top-5 spot-checks CONFIRMED; G1–G5 flagged | `libneuroncustomop.a` (10 ELF32-Xtensa REL); `customop_*` byte-exact; `ARG_TENSOR byte_size=48`; `get_cpu_id` = raw `rsr.prid`; 8 marshallable dtype immediates; 1479 FLIX bundles | G3 host window-manager vtable write `[MED]` (producer side INFERRED byte-identical; device consumer fully OBSERVED) | **G2 per-kernel SPMD channel-slicing formula** lives in customer/firmware kernel images, not in `libneuroncustomop.a`; the customer `_cpuN.so` are not in the shipped package (built on customer machine) | the 5-phase BUILD/LOAD/INVOKE/EXECUTE/RETURN pipeline; the master end-to-end C-pseudocode trace; the 8-dtype Rosetta; the unified Q7 32-bit NX memory model | [abi/abi-synthesis](../abi/abi-synthesis.md) `[HIGH/OBSERVED]` |
 | **RT** | **complete host half** of the runtime spine (`NRT_2.0.0`); device-side disasm deferred | host `libnrt.so.2.31.24.0` (17,372 funcs, VMA==file-offset); spine edges/addresses (`nrt_set_pool_eng_ucode`/`nrt_load`/`nrt_execute`); 145 real exports (121 `nrt_*` + 16 `nec_*` + 8 `nrta_*`) | cross-process LNC/k8s 70/30 arbitration `[INFERRED]`; device-side Q7 ISA / kernel_info_table dispatch / customop consumption (CARRIED from device carves) | the **device-side Q7 facts are not host-resident** (CARRIED from `ncore2gp` carves); the on-core kernel run is outside the host binary; a device-halt timeout is unobservable from the host | the 4-layer stack (C ABI / runtime core / nrtucode+aws_hal / ndl portal); the LOAD path + silent ucode-override seam; EXECUTE = one semaphore doorbell on a pre-staged `0x107A` POOL stream; the FAIL-STOP lifecycle | [runtime/runtime-synthesis](../runtime/runtime-synthesis.md) `[HIGH/OBSERVED host]` |
@@ -214,7 +214,7 @@ NCFW management-core image is FILE-ABSENT** — there is no MAVERICK NCFW image 
 corpus, and MAVERICK does not reuse the v4+ image.
 
 The binary evidence (from the [NCFW synthesis §3.2](../collectives/ncfw/lx-isa-naming-archid-synthesis.md)
-and the [IMG catalog](../images/firmware-image-catalog.md), re-grounded this pass):
+and the [IMG catalog](../images/firmware-image-catalog.md)):
 
 - the `libncfw_get_image` ladder compares only `{0x05, 0x0c, 0x14, 0x1c}` (SUNDA / CAYMAN /
   MARIANA / MARIANA_PLUS); a `cmp $0x1c; ja …` sends any `arch_id > 0x1c` — including `0x24` (= 36)
@@ -230,7 +230,7 @@ and the [IMG catalog](../images/firmware-image-catalog.md), re-grounded this pas
 >
 > - **`coretype 37` (`ct37`) — OBSERVED.** It is byte-read in the live `get_ext_isa` jump-table arm
 >   (`case 37: base = maverick_libs`) and in the internal-twin dispatch gate (`cmp $0x25` = 37, 6
->   hits this pass). The [IMG catalog](../images/firmware-image-catalog.md) and the
+>   hits). The [IMG catalog](../images/firmware-image-catalog.md) and the
 >   [GEN matrix](../generations/master-capability-matrix.md) both tag it `[ct37 HIGH/OBSERVED]`.
 > - **`arch_id 36` (`0x24`) — INFERRED.** It is **not** byte-read anywhere. It rests on the
 >   `arch_id = coretype − 1` relation extrapolated from the four observed generations; there is no
@@ -291,12 +291,10 @@ Every lane that touches v5 carries the interior as INFERRED, never OBSERVED:
 
 ---
 
-## 5. Adversarial self-verification — the five strongest claims, re-challenged this pass
-
-Each claim re-challenged against its owning page **and** the binary before this page was written.
+## 5. Adversarial self-verification — the five strongest claims
 
 1. **"Value semantics 100% (864/864)."** *Challenge:* is 864 a decompile grep or a binary symbol
-   count? *Resolved:* `nm -D libfiss-base.so | rg -c 'module__xdref_'` = **864** this pass (and the
+   count? *Resolved:* `nm -D libfiss-base.so | rg -c 'module__xdref_'` = **864** (and the
    `.symtab` count is also 864); the [VAL capstone §6.3](../validation/capstone-matrix.md) reads
    "Value semantics: 100% known" and the [verdict A.2](../orientation/verdict-and-open-questions.md)
    "864 / 864 = 100%". **Survives.** `[HIGH/OBSERVED]`
@@ -310,7 +308,7 @@ Each claim re-challenged against its owning page **and** the binary before this 
 
 3. **"Certified-perfect cover 1534/1607/12642."** *Challenge:* do the counts reproduce and pair
    correctly? *Resolved:* `nm libisa-core.so` gives **12569** placements and **1534** distinct
-   mnemonics this pass; `1534 + 73 = 1607` and `12569 + 73 = 12642` (exact); the valid pairs are
+   mnemonics; `1534 + 73 = 1607` and `12569 + 73 = 12642` (exact); the valid pairs are
    `1534 ↔ 12569` (shipped) and `1607 ↔ 12642` (pre-fold), never the cross-pair. **Survives.**
    `[HIGH/OBSERVED]`
 
@@ -328,8 +326,6 @@ Each claim re-challenged against its owning page **and** the binary before this 
    fundamental) — none is a missing decode or value; and the v5 seam is stated as *both* facts with
    the open cross-page divergence flagged for Part-16 (§4.1 CORRECTION), not silently picked.
    **Survives.** `[HIGH/OBSERVED on the walls; CORRECTION-flagged on the ct37 divergence]`
-
-All five survive re-challenge against the owning pages and the binary.
 
 **Single strongest CORRECTION:** the `coretype 37` / `arch_id 36` v5 seam is **not** one fact but
 two on opposite sides of the OBSERVED/INFERRED line, and the pages diverge on how to label the v5
@@ -354,9 +350,9 @@ registers, and every lane's owning synthesis page.
   fractions.
 - [The Confidence & Walls Model](../reference/confidence-model.md) — the `[CONF/PROV]` tag system
   every cell uses and the named-wall closability taxonomy (§3).
-- **The Open-Questions Register** (`appendix/open-questions-register.md`) — the per-residual
+- [The Open-Questions Register](open-questions-register.md) — the per-residual
   *why-unreachable / what-would-close-it*, partitioned by closability; the companion register to this
-  coverage accounting (referenced by title; lands in the sidebar when committed).
+  coverage accounting.
 
 **Per-lane owning synthesis pages** (one per row of §2):
 

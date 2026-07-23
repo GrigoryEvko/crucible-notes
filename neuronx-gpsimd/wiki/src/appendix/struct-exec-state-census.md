@@ -15,7 +15,7 @@
 > sub-structs, and a census-close ledger that tallies what is documented
 > field-exact across the three layout pages versus what stays opaque/INFERRED.
 >
-> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read this session
+> Tags per claim: `[CONF × PROV]` — `HIGH/MED/LOW` × `OBSERVED` (read
 > from the shipped ELF: DWARF struct/enum, `objdump`/`nm`/`c++filt` disassembly,
 > `.rodata` bytes, or an IDA `*_structures.json` sidecar — all binary-derived and
 > citeable), `INFERRED` (an ABI/control-flow rule applied to an observed fact),
@@ -68,7 +68,7 @@ companion layout pages are
 [Struct Census Overview](struct-census-overview.md),
 [Host-Runtime Struct Layouts](struct-host-runtime-layouts.md), and
 [Device-Firmware Global Structs](struct-device-firmware-globals.md) (the
-`.globstruct` page); links resolve even where those targets are still thin stubs.
+`.globstruct` page); all links resolve to those committed pages.
 
 ---
 
@@ -182,7 +182,7 @@ members this page pins (offsets in dec, hex in the «note» column): `[HIGH × O
 | `+39304` | 8 | `size_t` | `num_pooling_q7_ll` | count of staged ll's |
 | **`+39312`** | 8 | `nrtucode_context_t*` | **`nrtucode_context`** | host handle to the device ulib ctx — anchor `0x9990` |
 
-**The five SCOPE anchors, byte-converted and re-verified against the DWARF +
+**The five SCOPE anchors, byte-converted against the DWARF +
 disassembly** (`0x4288 = 17032`, `0x9918 = 39192`, `0x9940 = 39232`,
 `0x9980 = 39296`, `0x9990 = 39312`): `[HIGH × OBSERVED]`
 
@@ -442,7 +442,7 @@ the field stores, **not** from a recovered DWARF type.
 > `DW_AT_declaration`). libnrt sees **no member layout**. (b) In
 > **`libnrtucode_internal.so`** the `*_structures.json` contains **only the five
 > ELF loader types** (`Elf64_Sym`, `Elf64_Rela`, `Elf64_Dyn`, `Elf64_Verneed`,
-> `Elf64_Vernaux`) — verified this session (`jq '.[].name'` → those five, nothing
+> `Elf64_Vernaux`; `jq '.[].name'` → those five, nothing
 > else) — and that binary ships **no DWARF**, so IDA never reconstructed the
 > device-struct fields either. Therefore every quartet size below is a
 > `mov $size,%edi ; call malloc@plt` ctor-immediate read (HIGH × OBSERVED from the
@@ -626,9 +626,9 @@ structure across **three layout pages** plus this census close:
 
 | lane page | scope | status |
 |---|---|---|
-| [Struct Census Overview](struct-census-overview.md) (#984) | the lane index + the host/device split + the confidence taxonomy | stub (links resolve) |
-| [Host-Runtime Struct Layouts](struct-host-runtime-layouts.md) (#985) | the generic host allocator/context/tensor structs (`dmem_*`, `model_db` `ht_*`, `nrt_tensor*`, `virtual_core_t`, the 23-category ledger) | stub (links resolve) |
-| [Device-Firmware Global Structs](struct-device-firmware-globals.md) (#986) | the on-device `.globstruct` + firmware globals (the ready/claim sentinel word, device control blocks) | stub (links resolve) |
+| [Struct Census Overview](struct-census-overview.md) (#984) | the lane index + the host/device split + the confidence taxonomy | committed |
+| [Host-Runtime Struct Layouts](struct-host-runtime-layouts.md) (#985) | the generic host allocator/context/tensor structs (`dmem_*`, `model_db` `ht_*`, `nrt_tensor*`, `virtual_core_t`, the 23-category ledger) | committed |
+| [Device-Firmware Global Structs](struct-device-firmware-globals.md) (#986) | the on-device `.globstruct` + firmware globals (the ready/claim sentinel word, device control blocks) | committed |
 | **Host Execution-State Structs + Census Close** (#987, this page) | the exec-state tree + the quartet + the census tally | **this page** |
 
 ### What this page documents field-exact

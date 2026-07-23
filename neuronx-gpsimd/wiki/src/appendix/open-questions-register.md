@@ -39,7 +39,7 @@ long-form *why-unreachable* + *what-would-close-it* for every row that ledger su
 > core, a license-gated observable, or the *lineage* behind a table that is itself validated truth.
 
 This thesis is not a flourish; it is the **falsifiable** governing claim of the whole effort, and
-it is re-verified on three independent pages: the
+it is verified on three independent pages: the
 [orientation map §B.3](../orientation/verdict-and-open-questions.md#b3-what-the-map-is-not), the
 [Confidence & Walls Model §3](../reference/confidence-model.md#3-what-a-wall-is), and the
 [capstone meta-finding §3](../validation/capstone-matrix.md). Across ~2.09M comparisons, **every**
@@ -82,7 +82,7 @@ map carries on every Maverick claim — eighteen rows in total. None is a behavi
 | **W2 · v5 Q7 geometry / CSR / run-stall / DKL** | INFERRED Cayman-class+. OBSERVED: 8× `Q7_POOL` + 4 EXTISA (62 getters, KIT carves); the v5 device-CSR headers (`xt_defines` / `xt_general_local_reg_defines` / `notification`) are **byte-identical to v4** (a *negative* OBSERVED). INFERRED: `{base_offset, IRAM/DRAM size, reserved tail, num-Q7 POOL/CC, POOL local-reg base}`. | [maverick-profile §7 (W2)](../generations/maverick-profile.md) · [codename-generation-map](../generations/codename-generation-map.md) | There is **no v5-specific device-CSR header to read** (it equals v4 byte-for-byte) and **no v5 KaenaHal slot** in libnrt 2.31.x. The geometry exists only in a v5 host HAL / firmware this checkout does not carry. | **The v5 KaenaHal / a v5 device-CSR delta** in a fuller host-runtime checkout. | `[INFERRED]` · **closable-with-corpus** |
 | **W3 · v5 D2D transport (UCIe re-IP)** | INFERRED at the IP level. OBSERVED: the remote-capable descriptor model (`REMOTE_SEM_INC` / `REMOTE_COLLSYNC_INC`, `remote_core_id` in `DmaMemcpy2`); the firmware names the **DGE** dispatcher. CARRIED: the "UCIe 2nm chiplet / 7-entry D2D IP / `H_DIE_SCRATCHPAD`" PHY reading. | [maverick-profile §7 (W3)](../generations/maverick-profile.md) | Neither the v5 ISA headers nor the v5 customop firmware **name the PHY/IP**. The native UCIe transport lives in firmware images this checkout does not carry. | **A v5 firmware image / PHY-naming artifact** that binds the transport IP. | `[INFERRED · IP-level; CARRIED · PHY]` · **closable-with-corpus** |
 | **W4 / Q8 · v5 `Q7_CC_TOP` collective firmware — FILE-ABSENT** | The Maverick collective top-sync image is **not in this corpus** — re-confirmed: `MAVERICK_Q7_CC_TOP*_get` = **0**, a genuine provisioning gap (parallel to SUNDA's missing `Q7_CC_TOP`). `libncfw_get_image` tops at MARIANA_PLUS. The v5-specific dispatch bodies + native-UCIe D2D live here; the **v4/v5-shared kernels ARE decoded via the Mariana images**. | [maverick-profile §1a/§7 (W4)](../generations/maverick-profile.md) · [collectives architecture-synthesis](../collectives/ops/architecture-synthesis.md) · [codename-generation-map](../generations/codename-generation-map.md) | The image is **absent from the artifact**, not unread. No amount of reading `libncfw` produces an image it does not contain (the ladder compares only `{0x05,0x0c,0x14,0x1c}`). The *absence* is itself a definitive OBSERVED fact. | **A fuller/later `libncfw` checkout shipping the coretype-37 collective image.** | absence `[HIGH/OBSERVED]`; interiors not observable · **closable-with-corpus** |
-| **Q12a · FW-42 transcendental seed coefficient bytes — NARROWED** | The seed *tables* (`RECIP_Data8` / `RSQRT_Data8` and the recipqli QLI LUTs) are **PROVEN-BY-EXECUTION**: read from `.rodata` AND reproduced bit-exact by the live leaf over all 128 buckets × {fp16, fp32}, 0 mismatches — **the ROM is validated truth**. CARRIED is now exactly: (i) the literal **generator lineage**, and (ii) **two half-ULP boundary entries** where the recovered closed-form rounds one ULP off the ROM — **RECIP `i=127` (`0x81`)** and **RSQRT hi-range `idx=13` (`0xa5`)**, both re-confirmed against the binary this pass. | [transcendental-seed §7](../validation/transcendental-seed.md) · [capstone §4.2](../validation/capstone-matrix.md) | The validated *table* is everything a reimplementer needs (copy the bytes, correct by construction). What is unrecoverable is the **generator program / fixed-point rounding** that *produced* the bytes — it lives in the **out-of-carve FW-42 firmware driver**, not in `libfiss-base.so`. | **The FW-42 firmware / a wider `.rodata` carve** exposing the seed-table generator source. | table `[HIGH/OBSERVED·exec]`; lineage + 2 boundaries `[MED/CARRIED]` · **closable-with-corpus** |
+| **Q12a · FW-42 transcendental seed coefficient bytes — NARROWED** | The seed *tables* (`RECIP_Data8` / `RSQRT_Data8` and the recipqli QLI LUTs) are **PROVEN-BY-EXECUTION**: read from `.rodata` AND reproduced bit-exact by the live leaf over all 128 buckets × {fp16, fp32}, 0 mismatches — **the ROM is validated truth**. CARRIED is now exactly: (i) the literal **generator lineage**, and (ii) **two half-ULP boundary entries** where the recovered closed-form rounds one ULP off the ROM — **RECIP `i=127` (`0x81`)** and **RSQRT hi-range `idx=13` (`0xa5`)**, both confirmed against the binary. | [transcendental-seed §7](../validation/transcendental-seed.md) · [capstone §4.2](../validation/capstone-matrix.md) | The validated *table* is everything a reimplementer needs (copy the bytes, correct by construction). What is unrecoverable is the **generator program / fixed-point rounding** that *produced* the bytes — it lives in the **out-of-carve FW-42 firmware driver**, not in `libfiss-base.so`. | **The FW-42 firmware / a wider `.rodata` carve** exposing the seed-table generator source. | table `[HIGH/OBSERVED·exec]`; lineage + 2 boundaries `[MED/CARRIED]` · **closable-with-corpus** |
 | **Q2 · 7 uncited `nrtucode` prelink/loader functions** | Present and partly decoded; a **citation** residual only (IDA name-coverage 98.5% → 100%). Not a behavioral gap. | [runtime-synthesis](../runtime/runtime-synthesis.md) | The functions are *in-corpus and decodable* — this is a follow-on naming micro-pass, the softest possible wall. | **An in-corpus citation pass** over `libnrtucode_internal.so`. | `[HIGH/OBSERVED · structure; citation pending]` · **closable-with-corpus** |
 | **Q7 · NCFW dense `op0=e/f` case-body interiors** | The scalar Xtensa-**LX** management core's ring (`0x3c..`) / hierarchical-barrier (`0x3e..`) step-schedule bodies are **read but MED** — the shipped `ncore2gp` disassembler is configured for the Vision-Q7 **FLIX** core and greedily mis-frames the LX `e/f`-dense bytes as Vision bundles. The 3-byte resync recovers the spine to HIGH; the dense interiors stay MED/OBSERVED. | [microarch-synthesis (NCFW LX)](../uarch/microarch-synthesis.md) | The NCFW's **own (unshipped) Tensilica LX disassembler config** never ships in this corpus. The bytes are observed; only the *naming* of the `e/f` leader ops is tooling-bounded — not a missing body. | **NCFW's own LX disassembler config** (a corpus item absent here). | spine `[HIGH/OBSERVED]`; dense interiors `[MED/OBSERVED]` · **closable-with-corpus** |
 | **Q9 · raw core-kind vs ext-isa-id indirection** | Mechanism OBSERVED, labeling open. Two gates in `libnrtucode_internal.so` appear to share one generation axis with *different* id values — a raw core-kind `_bittest64` `{2,9,21,29,37}` vs a 32-case ext-ISA-id switch `{6,13,21,29,37}`. The bodies are decoded; that they are two encodings of one axis is a one-step inference with no third witness. | [codename-generation-map](../generations/codename-generation-map.md) | The two id schemes are both OBSERVED, but **no third in-corpus witness** confirms the labeling — a struct-lane cross-reference would, and it is in-corpus but unfound. | **An in-corpus struct-lane cross-reference** binding the two id schemes. | `[MED/INFERRED]` · **closable-with-corpus** |
@@ -159,8 +159,8 @@ across them. The orientation map develops these; here is the precise state of ea
 - **`arch_id 36` is INFERRED, `ct37` is OBSERVED — do not conflate.** The OBSERVED anchor is
   `coretype 37` (the `cmp $0x25,%edi` range-guard + the `movabs $0x2020202000` bitmask setting bit
   37 + the `case 37 → maverick_libs` switch arm @0x9b9050 + the 62 `MAVERICK_*_get` accessors —
-  all re-confirmed this pass). `arch_id 36 (0x24)` is the `coretype − 1` extrapolation; **there is
-  no `cmp $0x24` anywhere** (re-confirmed: 0 matches), and `libncfw`'s `get_image` ladder routes
+  all binary-confirmed). `arch_id 36 (0x24)` is the `coretype − 1` extrapolation; **there is
+  no `cmp $0x24` anywhere** (0 matches), and `libncfw`'s `get_image` ladder routes
   `0x24` to the unsupported path. `[ct37 HIGH/OBSERVED; arch_id 36 MED/INFERRED]`
 
   > **CORRECTION — the `coretype` stride is irregular; only the `arch_id` relation is uniform.** Do
@@ -189,7 +189,7 @@ across them. The orientation map develops these; here is the precise state of ea
 
 - **v5-body decode (the FLIX-desync overlap).** Where a flat v5 NX region *is* present, the
   per-instruction bodies inside a FLIX-desynced span are read but tooling-bounded — table bases and
-  string-anchored structures stay HIGH, the interior bindings sit at MED (the SX-FW-00 ceiling).
+  string-anchored structures stay HIGH, the interior bindings sit at MED (the FLIX-desync MED ceiling).
   `[wall HIGH/OBSERVED; bodies MED]`
 
 > **QUIRK — the largest v5 structural delta is real and OBSERVED, not a wall.** The **ACT→DVE fold**
@@ -213,7 +213,7 @@ across them. The orientation map develops these; here is the precise state of ea
 > bytes, in the out-of-carve FW-42 driver), and (ii) **two** entries where the analyst's recovered
 > closed-form rounds one ULP off the ROM at a half-ULP boundary:
 >
-> | table | entry | shipped byte (re-confirmed) | closed-form | exact float | verdict |
+> | table | entry | shipped byte | closed-form | exact float | verdict |
 > |---|---|---|---|---|---|
 > | `RECIP_Data8` | `i = 127` | `0x81` (129) | `round(256/1.99609) = 128` | `128.2505` | **table = truth**, form CARRIED |
 > | `RSQRT_Data8` | hi-range `idx = 13` | `0xa5` (165) | `164` | `164.4993` (near-tie) | **table = truth**, form CARRIED |
@@ -301,9 +301,9 @@ checkout, or one capture would unlock tomorrow.
 
 ---
 
-## 5. Adversarial self-verification — the five strongest claims, re-challenged
+## 5. Adversarial self-verification — the five strongest claims
 
-Each re-tested against the committed pages **and** the binary before publishing; a claim survives
+Each claim is checked against the committed pages **and** the binary; a claim survives
 only if a second independent witness agrees.
 
 1. **"None of the residuals is a missing decode / datapath / value-semantics."** *Challenge:* could
@@ -311,7 +311,7 @@ only if a second independent witness agrees.
    is stated verbatim on three independent pages
    ([orientation §B.3](../orientation/verdict-and-open-questions.md), [confidence-model
    §3](../reference/confidence-model.md), [capstone §3](../validation/capstone-matrix.md)); the
-   value oracle is closed at **864/864** (re-confirmed `nm \| rg -c module__xdref_` = 864) with
+   value oracle is closed at **864/864** (`nm \| rg -c module__xdref_` = 864) with
    ~95% execution-validated and **0 firmware value bugs** over ~2.09M comparisons; the encoding is a
    certified-perfect 1,534/1,534 cover; structs are ~169/171 field-exact. Every row in §1 names a
    *corpus / license / capture / static / scope* closer — not one names "a body we cannot decode."
@@ -329,7 +329,7 @@ only if a second independent witness agrees.
 3. **"recipqli is the lone value-leaf wall; its full-context leg is the SIGSEGV-on-zeroed-state
    soft-float FMA."** *Challenge:* could other leaves also fault, or could recipqli be drivable with
    a different shape? *Re-test:* `nm` confirms exactly **3** recipqli leaves
-   (@0x87df20/0x1b07e0/0x1b0870 — re-confirmed); `objdump` confirms `call *0x38(%rax)` at the two
+   (@0x87df20/0x1b07e0/0x1b0870); `objdump` confirms `call *0x38(%rax)` at the two
    cited sites (@0x87e518/0x87e5e9) and the 6-bit seg-extract (`shr $0x19` / `and $0x3f`); NULL and
    zeroed `xstate` both SIGSEGV (fork-proven). All fifteen other seed-family leaves drive clean. The
    structure/tables/`base == ref` are proven; only the FMA value is gated. **Survives.**
@@ -338,20 +338,18 @@ only if a second independent witness agrees.
 4. **"`arch_id 36` is INFERRED; `ct37` is OBSERVED — the split is real."** *Challenge:* is 36 maybe
    byte-read after all, or 37 maybe also extrapolated? *Re-test:* `ct37` has the `cmp $0x25,%edi`
    range-guard + the `movabs $0x2020202000` bitmask (bit 37) + the `maverick_libs @0x9b9050` switch
-   arm + **62** `MAVERICK_*_get$` accessors (re-confirmed this pass) — multiple independent
-   witnesses. `arch_id 36` has **no `cmp $0x24`** anywhere (re-confirmed: 0 matches) and no v5 NCFW
+   arm + **62** `MAVERICK_*_get$` accessors — multiple independent
+   witnesses. `arch_id 36` has **no `cmp $0x24`** anywhere (0 matches) and no v5 NCFW
    image (`MAVERICK_Q7_CC_TOP*_get` = 0). The split holds exactly. **Survives.** `[ct37
    HIGH/OBSERVED; arch_id 36 MED/INFERRED]`
 
 5. **"v5 `Q7_CC_TOP` is FILE-ABSENT and the empty `MODULE_SCHEDULE` matrices are fundamental."**
    *Challenge:* could either be an unread-but-present region rather than a true absence? *Re-test:*
-   `MAVERICK_Q7_CC_TOP*_get` = **0** (re-confirmed — a positive absence, parallel to SUNDA's missing
+   `MAVERICK_Q7_CC_TOP*_get` = **0** (a positive absence, parallel to SUNDA's missing
    `Q7_CC_TOP`); the `libncfw` ladder compares only `{0x05,0x0c,0x14,0x1c}`. The `MODULE_SCHEDULE`
    matrices are `1994/1994` empty *in the file* — no read produces bodies the file does not contain;
    the **1+1 ceiling from the 1564-record `INSTR_SCHEDULE` table** is the sound bound. Both are
    honest absences, not unfinished tasks. **Survives.** `[absence HIGH/OBSERVED; per-port LOW]`
-
-All five survive re-challenge against the committed pages and the binary.
 
 **Single strongest CORRECTION on this page:** carry **FW-42 as exactly two `.rodata` bytes**
 (`RECIP_Data8[127] = 0x81`, `RSQRT_Data8` hi-`idx=13` = `0xa5`) **plus the generator lineage — not
@@ -382,6 +380,6 @@ single easiest way to mis-rate a residual that is, in fact, 256/256 execution-va
   [microarch synthesis](../uarch/microarch-synthesis.md) (Q7, Q12c) · [DMA descriptor model](../dma/descriptor-model.md)
   (Q12e) · [DVE read-state](../firmware/kernels/dve-read-state.md) (Q3, Q6).
 
-Source: DX-SYN-09 (the consolidated residual synthesis); all constants re-confirmed against the
-shipped binaries this pass (lawful interoperability RE — recovered symbols/strings are
+Source: the consolidated residual synthesis; all constants confirmed against the
+shipped binaries (lawful interoperability RE — recovered symbols/strings are
 binary-derived and citeable).

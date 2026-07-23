@@ -29,12 +29,12 @@ re-derives them — it indexes them.
 > name → engine → presence**, the **`0xF0` page
 > ([#678](../firmware/pool/pool-ext-0xf0.md)) is authoritative for the spec sub-table**,
 > and the **dtype model ([#690](../firmware/kernels/dtype-model.md)) is authoritative for
-> dtype codes**. Every divergence found this pass is reconciled in-place with a
+> dtype codes**. Every divergence is reconciled in-place with a
 > **CORRECTION** callout and noted for the Part-16 reconcile. This page MUST NOT
 > contradict #688/#775; it does not.
 
 Confidence tags follow [the Confidence & Walls Model](../reference/confidence-model.md):
-`OBSERVED` = a byte/string read from a shipped image this session; `INFERRED` = reasoned
+`OBSERVED` = a byte/string read from a shipped image; `INFERRED` = reasoned
 over OBSERVED facts (usually across a FLIX/literal-pool desync); `CARRIED` = consolidated
 from a cited cross-page anchor at its original confidence. The recovered `common.h` enum
 lines, firmware log strings, `.xt.prop` mangled names, and ELF section bytes **are**
@@ -79,7 +79,7 @@ DMA). `POOL/DVE` = decoded on the Q7 POOL surface but executes on DVE lanes;
 
 ## 1. The `140` reconciliation (byte-grounded)
 
-Re-derived byte-exact this pass from the four shipped headers under
+Derived byte-exact from the four shipped headers under
 `extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/.../custom_op/c10/include/neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/aws_neuron_isa_tpb_common.h`
 (`rg -c 'NEURON_ISA_TPB_OPCODE_\w+\s*=\s*0x'` per header; Python union over the four
 parsed dicts):
@@ -93,8 +93,7 @@ parsed dicts):
    140   REAL HW opcodes — the rows of §2/§3 below
 ```
 
-`[HIGH/OBSERVED — every count re-grounded against the four headers this pass: 145/150/159/165
-line counts, 172-union, 31-PSEUDO band, 1-INVALID; matches the ledger §1.4 byte-for-byte.]`
+`[HIGH/OBSERVED — every count matches the ledger §1.4 byte-for-byte.]`
 
 > **NOTE — this matrix's row total IS 140.** §2 (PE 10 · ACT 6 · DVE-vector 8 · POOL band
 > 56 · batchnorm 10 · `0x81` 1) + §3 (NX/SEQ+DMA 49) sum to **140**, the same partition
@@ -106,7 +105,7 @@ line counts, 172-union, 31-PSEUDO band, 1-INVALID; matches the ledger §1.4 byte
 
 ### 2.1 PE — systolic array (`0x01–0x0A`)
 
-`[HIGH/OBSERVED — names + bytes re-read from the maverick header this pass.]`
+`[HIGH/OBSERVED]`
 
 | Op | Kernel name | Eng | Struct | Dtype(s) | `[SU·CA·MA·MV]` | Page |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -129,7 +128,7 @@ line counts, 172-union, 31-PSEUDO band, 1-INVALID; matches the ledger §1.4 byte
 > wrong label conflating the NKI "MultiplyMoving" *name* with the wrong opcode byte. The
 > ledger ([#688 §2.1](../firmware/kernels/opcode-catalog-ledger.md#21-pe--systolic-array-0x010x0a))
 > already carries this CORRECTION; recorded here authoritatively. **Noted for Part-16
-> reconcile: fix #775 §4h's `0x05`/`0x02` rows.** `[HIGH/OBSERVED — header bytes read this pass.]`
+> reconcile: fix #775 §4h's `0x05`/`0x02` rows.** `[HIGH/OBSERVED]`
 
 > **NOTE — `(†)` MX-fold on MAVERICK.** `LDWEIGHTS_MX`/`MATMUL_MX` (`0x09`/`0x0A`) persist
 > as opcodes on v5 but their named handlers **fold into Matmul** via the `MXTensorV2`
@@ -138,7 +137,7 @@ line counts, 172-union, 31-PSEUDO band, 1-INVALID; matches the ledger §1.4 byte
 
 ### 2.2 ACT — activation (`0x21–0x26`)
 
-`[HIGH/OBSERVED — all six bytes re-read this pass; `0x26` body MED on v5.]`
+`[HIGH/OBSERVED — `0x26` body MED on v5.]`
 
 | Op | Kernel name | Eng | Struct | Dtype(s) | `[SU·CA·MA·MV]` | Page |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -151,7 +150,7 @@ line counts, 172-union, 31-PSEUDO band, 1-INVALID; matches the ledger §1.4 byte
 
 ### 2.3 DVE — vector engine: Exponential / RNG / sparsity / MX (`0x30`, `0x76–0x78`, `0xE0–0xE3`)
 
-`[HIGH/OBSERVED — bytes read this pass; `0xE0–0xE3` are MARIANA additions.]`
+`[HIGH/OBSERVED — `0xE0–0xE3` are MARIANA additions.]`
 
 | Op | Kernel name | Eng | Struct | Dtype(s) | `[SU·CA·MA·MV]` | Page |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -270,15 +269,14 @@ MAVERICK): named + dispatch-placed HIGH, operand-layout body MED.
 > only the device *body* is MED).** The cross-gen matrix
 > ([#775 §9](../images/cross-gen-kernel-info-matrix.md#9-reconciliation-of-the-maverick-6-new-opcodes-premise))
 > wrote that `0x26`/`0xF3`/`0xF4` "are NOT the pinned bytes" and "not asserted", and the
-> ledger flagged `INT_WIDE` as "not byte-pinned". Re-reading the shipped maverick header
-> this pass refutes the *byte* uncertainty: it pins `ACTIVATE_MULTIPASS = 0x26 // Y`,
+> ledger flagged `INT_WIDE` as "not byte-pinned". Reading the shipped maverick header
+> refutes the *byte* uncertainty: it pins `ACTIVATE_MULTIPASS = 0x26 // Y`,
 > `TENSOR_TENSOR_INT_WIDE = 0xf3 // Y`, `TENSOR_SCALAR_INT_WIDE = 0xf4 // Y` directly — the
 > opcode **bytes are `[HIGH/OBSERVED]`**. What remains MED is only the **device dispatch
 > trampoline / operand body** (FLIX-desynced, no clean v5 POOL DEBUG image) — hence the
 > `†MED` flag stays on the body, but the byte assignment is *not* inferred. **Noted for
 > Part-16 reconcile: #775 §9 + ledger §5 should narrow the MED scope to the device body,
-> not the byte.** `[HIGH/OBSERVED — maverick header lines read this pass: `0x26`, `0xf3`,
-> `0xf4` all assigned + `// Y`.]`
+> not the byte.** `[HIGH/OBSERVED]`
 
 > **NOTE — `0x81 JPEG_DECODE` is real-but-dormant** (`-nnn`: absent on SUNDA, dormant
 > CAYMAN+). It is a *different* opcode from the pseudo `0xD7 PSEUDO_JPEG_DECODE`
@@ -287,7 +285,7 @@ MAVERICK): named + dispatch-placed HIGH, operand-layout body MED.
 
 ### 2.5 DVE — batchnorm family (`0x60–0x66`)
 
-`[HIGH/OBSERVED — names + flags read this pass.]`
+`[HIGH/OBSERVED]`
 
 | Op | Kernel name | Eng | Struct | Dtype(s) | `[SU·CA·MA·MV]` | Page |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -404,13 +402,12 @@ called out so a future author does not re-list them as real kernels.
 
 > **CORRECTION — SortMerge is a PHANTOM; there is no SortMerge HW opcode in any shipped
 > enum.** A task plan once named "SortMerge" as a hardware opcode to decode. It survives
-> **only** as a comment on the `0x98` line of the maverick header, read verbatim this pass:
+> **only** as a comment on the `0x98` line of the maverick header, read verbatim:
 > `NEURON_ISA_TPB_OPCODE_TENSOR_SCALAR_SELECT = 0x98, // SortMerge wip 0x97 // Y`. The byte
 > `0x97` is **never assigned to any opcode** in any gen (it appears only as the unrelated
 > `NEURON_ISA_TPB_UPDATE_MODE_SEM_SUB_REG_COMPLETE = 0x97` in a *different* enum), and
 > `0x98` is the real `TENSOR_SCALAR_SELECT` ([ts-select](../firmware/kernels/ts-select.md)).
-> **SortMerge is named-but-never-shipped — it is NOT one of the 140.** `[HIGH/OBSERVED — maverick header
-> `0x98` line + the absence of any `OPCODE_* = 0x97` re-verified this pass.]`
+> **SortMerge is named-but-never-shipped — it is NOT one of the 140.** `[HIGH/OBSERVED]`
 
 ### 5.2 The MAVERICK (v5) / Maverick-only adds — flagged on the byte, MED on the body
 
@@ -437,8 +434,8 @@ The six genuine MAVERICK `159→165` enum additions (all `// Y` in the maverick 
 
 ### 5.3 The SUNDA-only retired ops — do not carry forward to CAYMAN+
 
-SUNDA (v2) is the only key-set outlier: it ships ops **no later gen carries.** Re-read
-from the SUNDA header this pass:
+SUNDA (v2) is the only key-set outlier: it ships ops **no later gen carries**, from
+the SUNDA header:
 
 * **The BF16 cluster `0x8A/0x8B/0x8C/0x8D/0x8F`** (`TENSOR_TENSOR_{ADD,MULT,SUB}_BF16`,
   `TENSOR_REDUCE_{ADD,MAX}_BF16`) — all `// Y` on SUNDA, **absent** from CAYMAN/MARIANA/
@@ -469,8 +466,8 @@ deprecated"* — they are the TONGA-origin ops the modern gens retired (`nnnn`).
 
 ## 6. Coverage tally (over the 140 real HW opcodes)
 
-Carried from the [ledger §6](../firmware/kernels/opcode-catalog-ledger.md#6-coverage-tally-over-the-140-real-hw-opcodes),
-re-confirmed against §2/§3 above:
+Carried from the [ledger §6](../firmware/kernels/opcode-catalog-ledger.md#6-coverage-tally-over-the-140-real-hw-opcodes)
+and confirmed against §2/§3 above:
 
 | Bucket | Count | % |
 | --- | --- | --- |
