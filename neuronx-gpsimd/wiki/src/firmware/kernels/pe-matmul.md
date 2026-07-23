@@ -25,18 +25,18 @@ int-quantized / assist datapath (§6).
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every host-ISA fact is read out of the `aws_neuron_isa_tpb_*.h`
-headers shipped in the customop-lib package and was re-compile-verified this session; every
+headers shipped in the customop-lib package and compile-verified; every
 device fact is byte-pinned to a carve from `libnrtucode_internal.so`, decoded with the shipped
 `ncore2gp` `xtensa-elf-objdump`; every CSR fact is read from the shipped `arr_seq` register JSON.
 
-> **NOTE — the objects used this session.** The firmware container is
+> **NOTE — the objects used.** The firmware container is
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (ELF64 x86-64 DYN, `.rodata` identity-mapped:
 > VMA == file offset). The PE firmware images are getter-blob `.rodata` carves; IRAM file
 > offset == device IRAM VA (reset vector at byte 0), DRAM string-file offset == device DRAM
 > VA − `0x80000`. The arch-isa C structs (`s3_lw.h`, `s3d3_mm.h`, `s4d3_mm.h`,
 > `s2s1d2_pe_seed.h`, `smx1_lw.h`, `smx1d3_mm.h`, `s3_lt.h`, `common.h`) ship in the
 > customop-lib package and are themselves binary evidence; all six PE operand structs
-> compile-verify `sizeof == 64` (host `gcc -std=c11`, this session). The `arr_seq`
+> compile-verify `sizeof == 64` (host `gcc -std=c11`). The `arr_seq`
 > handshake CSRs are the RTL-generated `tpb_arr_seq_{top,cluster}_host_visible.json`. The
 > `S:`/handler-name strings are ASCII baked into the shipped DEBUG firmware, used purely as
 > name anchors.
@@ -50,7 +50,7 @@ device fact is byte-pinned to a carve from `libnrtucode_internal.so`, decoded wi
 > | `MARIANA_PLUS PE DEBUG DRAM` | (`0x70e000`-class) | same set + `S: BEGIN on mariana_plus` |
 >
 > `xtensa-elf-objdump --xtensa-core=ncore2gp` decodes the IRAM to real Q7/NX windowed-ABI +
-> FLIX-VLIW (exit 0; the MAC census and dispatch chain reproduced this session). `[HIGH/OBSERVED]`
+> FLIX-VLIW.
 
 ---
 
@@ -65,32 +65,32 @@ SEQ handlers in the PE flat IRAM/DRAM image. Eight facts pin the engine:
    `NEURON_ISA_TPB_OPCODE` enum (`common.h:158-167,310`) and independently byte-decoded from
    the firmware dispatch compare-chain (§2). `[HIGH/OBSERVED]`
 2. **`Ldweights` (0x01) loads the stationary weight tile** from SBUF into the systolic array
-   (the `x`/stationary operand of `nc_matmul`); operand `S3_LW_STRUCT`. `[HIGH/OBSERVED]`
+   (the `x`/stationary operand of `nc_matmul`); operand `S3_LW_STRUCT`.
 3. **`Matmul` (0x02) streams the moving activation tile**, multiply-accumulating
    `dst = stationary.T @ moving` down the columns into the **FP32 PSUM banks**; operand
-   `S3D3_MM_STRUCT`. `[HIGH/OBSERVED]`
+   `S3D3_MM_STRUCT`.
 4. **`MatmulSparse` (0x07) is the fine-grain-sparse matmul** with a distinct **4-D** source
    struct `S4D3_MM_STRUCT` (the 4th dim = the 2/3/4 fmaps per partition); fed by `LdTags`
    (0x06, `S3_LT`) and `Ldweights` `tag_weight_mode` — the consumer of the
-   [SparsityCompress producer](./sparsity-compress-tag.md). `[HIGH/OBSERVED]`
+   [SparsityCompress producer](./sparsity-compress-tag.md).
 5. **`PeManageSeed` (0x08) manages the PSUM fp32→bf16 stochastic-rounding RNG seeds** — *not*
-   a PE-array per-cell PRNG; its own struct `S2S1D2_PE_SEED_STRUCT`; v4+ only. `[HIGH/OBSERVED]`
+   a PE-array per-cell PRNG; its own struct `S2S1D2_PE_SEED_STRUCT`; v4+ only.
 6. **The MX (microscaled / FP4) matmul has two mechanisms**: v4 uses **separate ops**
    `LdweightsMX` (0x09, `SMX1_LW`) + `MatmulMX` (0x0A, `SMX1D3_MM`); v5 **folds MX into
-   `Ldweights`/`Matmul`** via the `MEM_PATTERN3D` `mx` union member. `[HIGH/OBSERVED]`
+   `Ldweights`/`Matmul`** via the `MEM_PATTERN3D` `mx` union member.
 7. **Internal accumulation is FP32 always**; `dst` dtype is FP32 (all gens) or BF16 (v4+).
    The inner MAC is the IVP widening family (`ivp_mul4t*`/`mulpa*`/`dmulq*`/`packvr*`,
-   XR-broadcast weight) — re-read from the PE PERF IRAM this session. `[HIGH/OBSERVED]`
+   XR-broadcast weight), read from the PE PERF IRAM.
 8. **The feature set grows per gen** — CAYMAN `{Ldweights, Matmul, MatmulSparse, LdTags,
    PeRegWrite}`; MARIANA/MARIANA_PLUS add `PeManageSeed + LdweightsMX + MatmulMX +
    ConvLutLoad`; MAVERICK re-packs the structs for the 256-column array and unifies MX
-   (§7). `[HIGH/OBSERVED]`
+   (§7).
 
 > **CORRECTION — `S4D3_MM`, not `S3D3_MM`, is the `MatmulSparse` struct.** Plain **`Matmul`
 > (0x02) uses `S3D3_MM_STRUCT`** (one 3-D source); **`MatmulSparse` (0x07) uses
 > `S4D3_MM_STRUCT`** (one **4-D** source — the extra dim carries the 2/3/4 sparse fmaps per
 > partition, one 3-D dst). The `struct2opcode` map binds `S3D3_MM_STRUCT → MATMUL` and
-> `S4D3_MM_STRUCT → MATMUL_SPARSE` (`jq`-verified). A reimplementer must use the 4-D source
+> `S4D3_MM_STRUCT → MATMUL_SPARSE`. A reimplementer must use the 4-D source
 > struct for the sparse path. `[HIGH/OBSERVED]`
 
 ---
@@ -98,8 +98,8 @@ SEQ handlers in the PE flat IRAM/DRAM image. Eight facts pin the engine:
 ## 2. The micro-op roster — byte-exact opcodes
 
 The PE compute opcodes come from the `NEURON_ISA_TPB_OPCODE` enum (`common.h`), triple-confirmed
-against (i) the enum, (ii) the `struct2opcode` map in `instruction_mapping.json` (`jq`, this
-session), and (iii) the firmware DEBUG handler self-names + byte-decoded dispatch chain. The
+against (i) the enum, (ii) the `struct2opcode` map in `instruction_mapping.json`,
+and (iii) the firmware DEBUG handler self-names + byte-decoded dispatch chain. The
 `// Y` tag is the header's own "tested/maintained" annotation. `[HIGH/OBSERVED]`
 
 | opcode | enum (`…_OPCODE_…`) | line | operand struct | NKI name | role |
@@ -116,19 +116,18 @@ session), and (iii) the firmware DEBUG handler self-names + byte-decoded dispatc
 | `0x0A` | `MATMUL_MX` | 167 | `SMX1D3_MM_STRUCT` | — | MX matmul (separate v4 op) |
 | `0xe4` | `CONV_LUT_LOAD` | 310 | `S2_CONVLUT` | — | 4-bit input-converter LUT load `[v4+]` |
 
-`struct2opcode` bindings (`jq`, this session): `S3_LW_STRUCT → LDWEIGHTS`,
+`struct2opcode` bindings: `S3_LW_STRUCT → LDWEIGHTS`,
 `S3D3_MM_STRUCT → MATMUL`, `S4D3_MM_STRUCT → MATMUL_SPARSE`,
 `S2S1D2_PE_SEED_STRUCT → PE_MANAGE_SEED`, `SMX1_LW_STRUCT → LDWEIGHTS_MX`,
 `SMX1D3_MM_STRUCT → MATMUL_MX`, `S3_LT_STRUCT → LDTAGS`. In the **CAYMAN** and **SUNDA** maps the
 v4+ structs (`S2S1D2_PE_SEED`, `SMX1_LW`, `SMX1D3_MM`) return `null` — they do not exist pre-v4.
-`[HIGH/OBSERVED]`
 
 ### 2.1 The dispatch — byte-decoded raw-opcode compare-chain
 
 The MARIANA PE DEBUG IRAM dispatch site (carved file `0x42c520`, IRAM `+0x2934`, decoded
 `ncore2gp`, exit 0) is a **raw-opcode segmented compare-chain** — the PE compares the raw opcode
 byte (no `addi`-normalisation), each opcode routing to a distinct stub in the `0x2b8x..0x2bc7`
-cluster. Reproduced byte-for-byte this session (the `66 0X 02` encoding is the `BNEI a2,X`):
+cluster (the `66 0X 02` encoding is `BNEI a2,X`):
 
 ```text
 2934:  l32i.n a2,[a1+16]            ; a2 = opcode word
@@ -151,11 +150,11 @@ handler **bodies** the stubs jump into FLIX-bundle and do not linearly decode (t
 The PE compute handlers are **SEQ-engine handlers**, *not* entries in the POOL Q7 EXTISA
 `kernel_info_table`. `[HIGH/OBSERVED chain; MED interiors]`
 
-The handler self-name strings are byte-exact in the MARIANA/MARIANA_PLUS PE DEBUG DRAM (this
-session): `S: Ldweights`, `S: Matmul`, `S: PeRegWrite`, `S: LdTags`, `S: MatmulSparse`,
+The handler self-name strings are byte-exact in the MARIANA/MARIANA_PLUS PE DEBUG
+DRAM: `S: Ldweights`, `S: Matmul`, `S: PeRegWrite`, `S: LdTags`, `S: MatmulSparse`,
 `S: PeManageSeed(SAVE)`/`(LOAD)`, `S: LdweightsMX`, `XS: MatmulMX` (note the `XS:` prefix),
 `S: ConvLutLoad`, with the gen anchors `S: BEGIN on {cayman,mariana,mariana_plus,maverick}`.
-The CAYMAN PE DEBUG DRAM carries **zero** `PeManageSeed`/`MatmulMX` hits. `[HIGH/OBSERVED]`
+The CAYMAN PE DEBUG DRAM carries **zero** `PeManageSeed`/`MatmulMX` hits.
 
 > **WALL — the FLIX handler-body tail stays MED.** The PE handlers are hand-scheduled FLIX/VLIW
 > with interleaved literal/selector spans; the stock `ncore2gp` linear sweep loses bundle sync
@@ -177,7 +176,7 @@ factor (the weight) is read from the dedicated reduce register the matmul broadc
 column ([B04 §3](../../isa/ref/b04-mac-integer.md)); the other factor (the activation) comes from
 the moving vector lane.
 
-The **MAVERICK** `S3_LW_STRUCT` (compile-verified `sizeof == 64`, this session):
+The **MAVERICK** `S3_LW_STRUCT` (compile-verified `sizeof == 64`):
 
 ```c
 typedef struct NEURON_ISA_TPB_S3_LW_STRUCT {       // ISA header for NC-v5
@@ -202,7 +201,7 @@ typedef struct NEURON_ISA_TPB_S3_LW_STRUCT {       // ISA header for NC-v5
 > `Matmul`'s: on MAVERICK, `S3_LW.flags`@**38** / `perf_mode`@**39** vs `S3D3_MM.flags`@**39** /
 > `perf_mode`@**40**. A reimplementer must **not** reuse one struct's offset table for the other
 > — both are 64 B but the `tile_size`/`tile_sel`/`flags`/`perf_mode` tail sits at different
-> offsets. `[HIGH/OBSERVED — both compile-verified this session]`
+> offsets. `[HIGH/OBSERVED — both compile-verified]`
 
 ### 3.1 `LD_WEIGHT_FLAGS` and `PE_LW_ORDER`
 
@@ -216,7 +215,7 @@ The `load_order` field is `NEURON_ISA_TPB_PE_LW_ORDER` (`common.h:1301-1302`):
 | `1` | `FIRST_COL_FIRST` | forward — the first data read goes to the **first** column |
 
 The reversed default load order is the same reversal `LdTags` and the sparse weight format use
-([sparsity-compress §6b](./sparsity-compress-tag.md)). `[HIGH/OBSERVED]`
+([sparsity-compress §6b](./sparsity-compress-tag.md)).
 
 ### 3.2 Per-gen `S3_LW` layout
 
@@ -227,7 +226,7 @@ byte** (so no `PeManageSeed`). The **MARIANA** (v4) `S3_LW` adds a `bg_xpose_mod
 (background-transpose mode) + a `MEM_PATTERN3D` source + the `LD_WEIGHT_FLAGS` `flags`@**47** (with
 `seed_mode`), keeping `row_grp`@44 / `col_grp`@45. **MAVERICK** (v5) re-packs the whole tail for
 `tile_size`/`tile_sel`/`flags`@38/`perf_mode` and drops `row_grp`/`col_grp` (§11). All gens
-`sizeof == 64`. `[HIGH/OBSERVED — three gens compile-verified this session]`
+`sizeof == 64`. `[HIGH/OBSERVED — three gens compile-verified]`
 
 ---
 
@@ -236,7 +235,7 @@ byte** (so no `PeManageSeed`). The **MARIANA** (v4) `S3_LW` adds a `bg_xpose_mod
 `Matmul` (NKI `MultiplyMoving`) streams the **moving** activation tile through the loaded array;
 each PE cell multiply-accumulates; partial sums accumulate down the columns into PSUM, computing
 `dst = stationary.T @ moving`. **Internal accumulation = FP32** (the PSUM banks); the `dst` dtype
-is FP32 (all gens) or BF16 (v4+). The MAVERICK `S3D3_MM_STRUCT` (compile-verified, this session):
+is FP32 (all gens) or BF16 (v4+). The MAVERICK `S3D3_MM_STRUCT` (compile-verified):
 
 ```c
 typedef struct NEURON_ISA_TPB_S3D3_MM_STRUCT {     // ISA header for NC-v5
@@ -306,7 +305,7 @@ many physical banks the matmul clears on the first write of a group:
 
 So **PSUM = 8 physical banks × 2048 fp32 accumulator cells** — and the `2048`-per-bank figure is
 the same count `PeManageSeed` manages (§5): one stochastic-rounding seed per accumulator cell of
-a bank. `[HIGH/OBSERVED]`
+a bank.
 
 ### 4.3 `fp32_mode` (TF32 / split-mantissa select)
 
@@ -405,14 +404,14 @@ The `mode` is `NEURON_ISA_TPB_PE_SEED_MODE` (`common.h:1288-1292`):
 > the actual `NEURON_ISA_TPB_PE_SEED_MODE` enum is `NONE = 0, LOAD_SEED = 1, SAVE_SEED = 2`. The
 > enum is the wire contract; the prose comment is **stale**. A reimplementer must encode
 > **LoadSeed = 1, SaveSeed = 2, None = 0** — and the firmware DEBUG strings
-> `S: PeManageSeed(LOAD)` / `(SAVE)` are the two non-`None` modes. `[HIGH/OBSERVED — enum vs
-> comment diff this session]`
+> `S: PeManageSeed(LOAD)` / `(SAVE)` are the two non-`None` modes.
+> `[HIGH/OBSERVED — enum vs comment diff]`
 
 ### 5.1 What it manages, and how (the micro-op realisation)
 
 The seed rides the weight/matmul ports, but the **thing pushed through the array is the
-identity matrix**, not the seed vectors. The handler's own DEBUG strings decompose it (byte-exact
-this session, `0x447520`/`0x447547`):
+identity matrix**, not the seed vectors. The handler's own DEBUG strings decompose it
+(byte-exact at `0x447520`/`0x447547`):
 
 ```
 S: PeManageSeed(SAVE)                            // read the seed state OUT (PSUM -> )
@@ -430,8 +429,8 @@ a single source element of value 1 (the identity), `in_dtype FP32`, `fp32_mode H
 Enabled`, `num_active_rows 1`, `num_active_cols 0`, `out_dtype FP32`; SaveSeed's dst is a `1×1×2`
 PSUM tensor. The same `seed_mode` field rides `S3D3_MM.flags` and `S3_LW.flags`. The
 `PeManageSeed` struct itself hard-codes `num_active_rows == 16`, `num_active_cols == 128`. The
-validity gate is `nc == NeuronCoreVersion::V4`. `[HIGH/OBSERVED struct + validity; the in-array
-routing INFERRED-HIGH from the identity-matrix mechanism]`
+validity gate is `nc == NeuronCoreVersion::V4`.
+`[HIGH struct + validity; INFERRED in-array routing]`
 
 > **CORRECTION — `PeManageSeed` is the PSUM SR-RNG, NOT a "PE-array per-cell PRNG".** An earlier
 > survey read the firmware's `LfsrSetSeeds`/`XorwowSetSeeds` strings as `PeManageSeed`'s target.
@@ -439,8 +438,7 @@ routing INFERRED-HIGH from the identity-matrix mechanism]`
 > **separate** `rand_set_state` (0x78) / `rand_get_state` (0x77) opcodes (present on all gens,
 > targeting GpSimd/Vector, NeuronCore-v3+). `PeManageSeed` (0x08, v4-only) manages the
 > **TensorE PSUM** stochastic-rounding seeds (the fp32→bf16 drain). The two are different RNG
-> state managers on different engines. `[HIGH/OBSERVED — the header is decisive; the
-> rand_*_state opcodes confirmed `jq` + enum this session]`
+> state managers on different engines. `[HIGH/OBSERVED]`
 
 ### 5.2 The PSUM-save layout (SaveSeed validity)
 
@@ -455,10 +453,10 @@ computation before running this PeSaveSeed instruction."* `[HIGH/OBSERVED validi
 ## 6. The inner MAC — the IVP widening family (PE PERF IRAM)
 
 On the GPSIMD/int-quantized path the PE engine carries the full **IVP widening-MAC** datapath.
-The census below was **re-read this session** directly from the MARIANA PE PERF IRAM (carved file
-`0x335ca0`, decoded `ncore2gp`, exit 0); the counts reproduce byte-for-byte. The `*XR8`/`*XR16`
+The census below is read directly from the MARIANA PE PERF IRAM (carved file
+`0x335ca0`, decoded `ncore2gp`). The `*XR8`/`*XR16`
 suffix is the XR reduce-register **weight** broadcast (loaded by `Ldweights`); the other factor
-is the **moving activation** lane. `[HIGH/OBSERVED census this session]`
+is the **moving activation** lane. `[HIGH/OBSERVED]`
 
 | mnemonic (count) | role ([B04](../../isa/ref/b04-mac-integer.md) / [B05](../../isa/ref/b05-mac-mixed.md)) |
 |---|---|
@@ -479,20 +477,20 @@ Reconciliation (each maps onto a [B04](../../isa/ref/b04-mac-integer.md)/[B05](.
 
 - **`mul4t*`/`mul4ta*`** (4-TERM) = the full-tile MAC folding 4 input pairs per op into the
   4-entry **1536-bit `wvec`** accumulator (48-bit-per-lane × 32 lanes); the matmul folds K input
-  pairs per issued op (2 for PAIR, 4 for 4T, 8 for the dual-QUAD `dmulq`). `[HIGH]`
+  pairs per issued op (2 for PAIR, 4 for 4T, 8 for the dual-QUAD `dmulq`).
 - **`mulpa*`** (PAIR-accumulate) = the 2×-FMAC `acc += a1·b1 + a2·b2` — the **FP8 `double_row`**
   perf mode (two element pairs, two multiplies per cycle, contraction free-dim == 2). `[HIGH/CARRIED NKI]`
 - **`mulus*`/`muluu*`/`mulsu*`** = the signed/unsigned/mixed widening MAC (the int8/int16
-  quantized matmul with mixed signedness — activation signed, weight unsigned, etc.). `[HIGH]`
+  quantized matmul with mixed signedness — activation signed, weight unsigned, etc.).
 - **`ivp_packvr*`** = the `wvec` pack/unpack — zero/seed the accumulator before the MAC chain,
-  drain it after. `[HIGH]`
+  drain it after.
 
 The **integer** accumulator is the 4-entry 1536-bit `wvec` regfile (widening i8→24 / i16→48 /
 i32→96 per lane, wrapping mod-`2^acc_w`, no saturate — see
 [SIMD datapath §3](../../uarch/simd-datapath.md) and [pipeline timing](../../uarch/pipeline-timing.md)
 for the int-MAC@LAT-12 / FMA@LAT-10 two-track datapath). The **TensorE float** accumulator is the
 FP32 PSUM banks (always FP32 internal). The MAC family is gen-stable v4→v5 (the MAVERICK PE PERF
-IRAM carries the same `ivp_mul4t*`/`mulpa*`/`dmulq*` set). `[HIGH/OBSERVED census]`
+IRAM carries the same `ivp_mul4t*`/`mulpa*`/`dmulq*` set).
 
 > **HW-vs-FW boundary.** The IVP MAC ops above are the GPSIMD NX-core's **own** vector-MAC
 > datapath the PE firmware also carries — the int-quantized / assist path. The dedicated
@@ -527,7 +525,7 @@ power-of-two `SFP8_E8 = 0x13` (`FP8_S0E8M0`). The `MX_PERF_MODE` (`common.h:1396
 rows: `NONE=0x0`, `QUAD_ROW=0x1` (+`_INTERLEAVE=0x2`/`_TILED=0x3`), `OCT_ROW=0x4`
 (+`_INTERLEAVE=0x5`/`_TILED=0x6`) — the 4×/8× MX-pumped matmul perf modes (the int4/fp4/fp8
 density advantage). The MX compute/dequant paths are the
-[MX dequant kernel page](./mx-dequant.md). `[HIGH/OBSERVED enum]`
+[MX dequant kernel page](./mx-dequant.md).
 
 > **NOTE — the MX block-scale TAP is `[MED/INFERRED]`.** That the per-block E8M0 scale is applied
 > **in the MAC datapath** (the IVP `mul*`/`dmulq*` family carries the packed-register scale
@@ -539,10 +537,10 @@ density advantage). The MX compute/dequant paths are the
 
 ## 8. The dtype matrix
 
-The NKI matmul contract (`validate_matmul_dtypes` / `validate_tensor_engine_output_dtype`,
-documented in the backing reports — no NKI `.py` in this checkout, so `[HIGH/CARRIED]`)
+The NKI matmul contract (`validate_matmul_dtypes` / `validate_tensor_engine_output_dtype` —
+no NKI `.py` in this checkout, so `[HIGH/CARRIED]`)
 reconciled with the compile-verified header validity (`has_valid_mm_in_dtype` /
-`has_valid_mm_out_dtype`, `[HIGH/OBSERVED]`):
+`has_valid_mm_out_dtype`):
 
 - **Valid input dtypes** (stationary AND moving): `{float8_e4m3, float8_e5m2, bfloat16, float16,
   tfloat32, float32}` (plus the e2m5/e3m4 fp8 variants in the header). RULE: if either input is
@@ -599,14 +597,14 @@ are packed **4 per `u16`** (LSB → larger logical PE column ID, col 127), with 
 `Ldweights` `tag_weight_mode = TAG_WEIGHT (1)` path instead reads an interleaved `{u16 weight,
 u16 tag}` `UINT32` element. These tag formats are the exact unit the
 [SparsityCompress(Tag) producer](./sparsity-compress-tag.md) emits — producer and consumer match
-end-to-end. `[HIGH/OBSERVED — struct compile-verified; tag format cross-pinned with the producer page]`
+end-to-end. `[HIGH/OBSERVED]`
 
 ---
 
 ## 10. The PE↔SEQ handshake — the `arr_seq` CSR block
 
 Two RTL-generated CSR surfaces sequence the array (field names byte-exact from
-`tpb_arr_seq_top_host_visible.json` and `tpb_arr_seq_cluster_host_visible.json`, this session).
+`tpb_arr_seq_top_host_visible.json` and `tpb_arr_seq_cluster_host_visible.json`).
 The host window is **96% telemetry** — the matmul *descriptor* format is carried by the micro-op
 stream (this firmware's structs), **not** as host CSRs. `[HIGH/OBSERVED]`
 
@@ -623,7 +621,7 @@ stream (this firmware's structs), **not** as host CSRs. `[HIGH/OBSERVED]`
   `{_instr_cnt_lsb, _instr_cnt_msb}`), one per **tile shape** (`tile_128x128` … `tile_32x32`,
   i.e. 128/64/32 × 128/64/32 = 9 shapes). So the sequencer counts `Ldweights`(0x01) /
   `Matmul`(0x02) / `PeRegWrite`(0x03) issue **per sub-tile** — the 3-micro-op-class telemetry
-  directly mirroring the PE micro-op set. `[HIGH/OBSERVED]`
+  directly mirroring the PE micro-op set.
 
 > **NOTE — no precision/dtype/accumulate/dimension register in the host window.** There is no
 > PSUM accumulate reg, no dtype reg, no array-dimension-select reg host-visible — those are
@@ -651,8 +649,7 @@ the array consumes weights/activations from SBUF and writes partials to PSUM; **
 signalled by the matmul-done on the SBUF response (`matmul_done_last` selects last-vs-first); the
 `en_inter_instr_dly`/`inter_instr_dly_cnt` pair throttles back-to-back micro-op responses;
 dependency checking between in-flight micro-ops is the queue's job (`disable_dependency_check`
-serialises). `[HIGH/OBSERVED CSR field names + positions; end-to-end flow INFERRED-HIGH from the
-CSR semantics + the structs]`
+serialises). `[HIGH/OBSERVED CSR fields; INFERRED flow]`
 
 ---
 
@@ -676,7 +673,7 @@ The CAYMAN PE DEBUG DRAM carries **0** `PeManageSeed`/`MatmulMX` hits; the `s2s1
 tensor_pattern, the upper dim of dst must have a size of 2, to hold MM output from both PE col
 0-127 and PE col 128-255"*); a MAVERICK `Ldweights`/`Matmul` with `num_active_cols == 0` runs the
 full 256-column array. `valid_pe_tile_select` constrains `tile_sel.{row_sel,col_sel} ≤ 1` (the
-2×2 quadrant selector). `[HIGH/OBSERVED struct + enum diffs, compile-verified per gen]`
+2×2 quadrant selector). `[HIGH/OBSERVED — compile-verified per gen]`
 
 > **WALL — v5/MAVERICK interiors are header-OBSERVED only.** The MAVERICK struct/enum/opcode
 > facts are header-compile-verified `[HIGH/OBSERVED]`. The MAVERICK PE image carries a
@@ -688,7 +685,7 @@ full 256-column array. `valid_pe_tile_select` constrains `tile_sel.{row_sel,col_
 
 ## 12. Honesty ledger
 
-**HIGH / OBSERVED (this session):**
+**HIGH / OBSERVED:**
 
 - The PE opcode roster byte-exact (`LDWEIGHTS=0x01 … MATMUL_MX=0x0A, CONV_LUT_LOAD=0xe4`) from
   the ISA enum AND independently byte-decoded from the MARIANA PE DEBUG IRAM dispatch chain
@@ -703,7 +700,7 @@ full 256-column array. `valid_pe_tile_select` constrains `tile_sel.{row_sel,col_
   SAVE_SEED=2`, the prose comment 0/1 is stale); the identity-matrix transport; the validity
   contract pinning the micro-op shape. Distinct from the GpSimd/Vector `rand_set_state`(0x78)/
   `rand_get_state`(0x77) PRNG.
-- The IVP widening-MAC census re-read from the MARIANA PE PERF IRAM (`ivp_mul4t2n8xr8`=64 …
+- The IVP widening-MAC census from the MARIANA PE PERF IRAM (`ivp_mul4t2n8xr8`=64 …
   `ivp_dmulusq2n8xr8`=5, `ivp_packvr2nx24`); XR weight broadcast; 1536-bit `wvec` int acc / FP32
   PSUM. PSUM = 8 banks × 2048 fp32 cells (the `MATMUL_ZERO_REGION` enum).
 - The PSUM accumulate group (`MULTI_START=1/MULTI_MID=0/MULTI_END=2/SINGLE=3`), the `MATMUL_FLAGS`
@@ -726,8 +723,8 @@ full 256-column array. `valid_pe_tile_select` constrains `tile_sel.{row_sel,col_
   dispatch chain + struct contract + MAC census + strings are HIGH).
 - The MX block-scale TAP in the MatmulMX datapath (multiplier-input vs PSUM-drain — array RTL out
   of corpus); the HW/FW labour split (dedicated array vs NX-core IVP MAC).
-- The NKI surface (LoadStationary/MultiplyMoving naming, the dtype set, `double_row`) is `[CARRIED]`
-  from the backing reports — no NKI `.py` in this checkout.
+- The NKI surface (LoadStationary/MultiplyMoving naming, the dtype set, `double_row`) is
+  `[CARRIED]` — no NKI `.py` in this checkout.
 
 **LOW / NOT CLAIMED:**
 

@@ -45,10 +45,10 @@ forward-planned [Master Per-Generation Capability Matrix](../../generations/mast
 > appear in this blob even if the kernel exists** — its absence here is a build-config artifact, **not**
 > evidence the kernel is unimplemented. The MAVERICK `INT_WIDE` device body is therefore **not
 > carved** on this page; the header-level contract is reproduced and the interior is marked
-> **INFERRED**. `[HIGH/OBSERVED that no MAVERICK_NX_POOL_DEBUG marker exists; the implication MED/INFERRED]`
+> **INFERRED**. `[HIGH/OBSERVED marker-absent; MED implication]`
 
 Confidence convention: `[HIGH/OBSERVED]` = read directly from a byte / header / `struct2opcode` /
-compile-verify / firmware marker this pass; `[MED/INFERRED]` = reasoned over an OBSERVED fact;
+compile-verify / firmware marker; `[MED/INFERRED]` = reasoned over an OBSERVED fact;
 `[…/CARRIED]` = re-used from a sibling firmware decode at its stated confidence without re-tracing the
 artifact here.
 
@@ -70,30 +70,28 @@ mnemonic — *not* inferred from the opcode number.
 | `0xf3` | `TENSOR_TENSOR_INT_WIDE`        | —        | —         | —          | **Y**       | MAVERICK  | `maverick:320`|
 | `0xf4` | `TENSOR_SCALAR_INT_WIDE`        | —        | —         | —          | **Y**       | MAVERICK  | `maverick:321`|
 
-Verification (`rg -n 'INT_WIDE\|BF16' …/aws_neuron_isa_tpb_common.h`, all four gens this pass):
+Verification (`aws_neuron_isa_tpb_common.h`, all four gens):
 
 - `TENSOR_TENSOR_INT_WIDE = 0xf3` and `TENSOR_SCALAR_INT_WIDE = 0xf4` appear **only** in the MAVERICK
   enum (`maverick:320`/`:321`); **zero** opcode hits in SUNDA / CAYMAN / MARIANA — *and* zero in the
   `arch-headers/mariana_plus/` (v4+) header set. The two are the last named opcodes before
   `NEURON_ISA_TPB_OPCODE_INVALID = 0xff` (`maverick:322`); `0xf0..0xf4` is
   `EXTENDED_INST 0xf0 · DMA_GATHER_TRANSPOSE 0xf1 · NONZERO_WITH_COUNT 0xf2 · TENSOR_TENSOR_INT_WIDE 0xf3 · TENSOR_SCALAR_INT_WIDE 0xf4`.
-  `[HIGH/OBSERVED]`
 - The five BF16 opcode names appear **only** in the SUNDA enum (`sunda:223`–`228`, all `// Y`); **zero**
   opcode hits in CAYMAN / MARIANA / MARIANA_PLUS / MAVERICK. (The only "BF16" strings in later headers
-  are SBUF-stride and output-alignment *comments*, never an opcode enumerator.) `[HIGH/OBSERVED]`
+  are SBUF-stride and output-alignment *comments*, never an opcode enumerator.)
 
 > **CORRECTION — the `0x8e` hole inside the BF16 byte span.** The task scopes the cluster as
 > "`0x8a`–`0x8f`", but that is the byte **span**, not the op set. The byte `0x8e` in that span is
 > **`BATCH_NORM_PARAM_LOAD2`**, *not* a BF16 op — and it is `// Y` **maintained in all four
 > generations** (`sunda:227`, `cayman:225`, `mariana:230`, `maverick:233`), decoded on its own
 > [Batch-Norm Param Load](./batchnorm-paramload.md) page. The actual SUNDA-only BF16 cluster is the
-> **five** ops `{0x8a, 0x8b, 0x8c, 0x8d, 0x8f}`, not six. `[HIGH/OBSERVED]`
+> **five** ops `{0x8a, 0x8b, 0x8c, 0x8d, 0x8f}`, not six.
 
 > **QUIRK — clean byte removal, no reuse.** After SUNDA, the bytes `0x8a/0x8b/0x8c/0x8d/0x8f` are
 > simply **unassigned** in every later enum (the `0x8x` band in CAYMAN/MARIANA/MAVERICK contains only
 > `0x8e BATCH_NORM_PARAM_LOAD2`). The bytes are **not** recycled for a different instruction, so the
-> per-gen byte→mnemonic map stays globally consistent. `[HIGH/OBSERVED — `rg '= 0x8[a-f],'` on the
-> three later enums returns only `0x8e`]`
+> per-gen byte→mnemonic map stays globally consistent.
 
 ---
 
@@ -110,27 +108,25 @@ earlier gens; the five BF16 ops live on **two shared base structs** alongside th
 | `0x8a/b/f`   | `S3S3D3_TT_STRUCT` (shared)        | SUNDA member; dropped CAYMAN+                   | 64       |
 | `0x8c/d`     | `S4D4_TR_STRUCT` (shared)          | SUNDA member; dropped CAYMAN+                   | 64       |
 
-**The shared-struct membership delta is the retirement, made measurable** (`jq` on all three mappings
-this pass):
+**The shared-struct membership delta is the retirement, made measurable** (all three mappings):
 
 - `S3S3D3_TT_STRUCT`: **SUNDA = 8 members** → **CAYMAN / MAVERICK = 5**. The SUNDA member list is
   `[TENSOR_TENSOR_ARITH_OP, TENSOR_TENSOR_BITVEC_OP, COPY_PREDICATED, CAST_PREDICATED,
   BATCH_NORM_BACK_PROP, TENSOR_TENSOR_ADD_BF16, TENSOR_TENSOR_MULT_BF16, TENSOR_TENSOR_SUB_BF16]`; the
   CAYMAN list is exactly the **first five** — the **three dropped members are precisely the TT BF16
-  trio** `{0x8a, 0x8b, 0x8f}`. `[HIGH/OBSERVED]`
+  trio** `{0x8a, 0x8b, 0x8f}`.
 - `S4D4_TR_STRUCT`: **SUNDA = 13 members** → **CAYMAN / MAVERICK = 11**. The two dropped members are
   exactly the reduce BF16 pair `TENSOR_REDUCE_ADD_BF16` (`0x8c`) and `TENSOR_REDUCE_MAX_BF16` (`0x8d`).
-  `[HIGH/OBSERVED]`
 - `S2S2D2D2_TT_STRUCT` and `S2D2D2_TS_WIDE_STRUCT` are **absent (`null`) from the SUNDA mapping** — the
-  struct *and* its opcode were added together at MAVERICK. `[HIGH/OBSERVED]`
+  struct *and* its opcode were added together at MAVERICK.
 
 > **NOTE — this is the "8-vs-5" `S3S3D3_TT` delta, itemised.** The
 > [Opcode Catalog Ledger](./opcode-catalog-ledger.md) and the prior `S3S3D3_TT` decode reported "SUNDA
 > lists 8 opcodes on `S3S3D3_TT`, CAYMAN+ list 5". This page names the three dropped members: the TT
 > BF16 trio. The companion reduce pair lives on a *different* base struct (`S4D4_TR`), so its 13→11
-> drop is a separate (consistent) fact. `[HIGH/OBSERVED]`
+> drop is a separate (consistent) fact.
 
-Compile-verify this pass (`gcc -std=c11`, `offsetof`/`sizeof`; all four structs are exactly 64 B). The
+Compile-verified (`gcc -std=c11`, `offsetof`/`sizeof`; all four structs are exactly 64 B). The
 sub-pattern types resolve to `MEM_PATTERN2D = 12 B`, `TENSOR3D = 16 B`, `TENSOR4D = 20 B`,
 `DTYPE_PAIR = 1 B`, `IMM_VAL_INST_FIELD = 4 B`:
 
@@ -159,8 +155,8 @@ NEURON_ISA_TPB_S4D4_TR_STRUCT         sizeof=64
 > same 64-byte instruction word: `4 × 12 B = 48 B` + a 16-byte header/dtype/op preamble = 64 B exactly.
 > The header states it verbatim: *"Uses 2D memory patterns (12 bytes each) to fit in 64-byte
 > instruction. Does NOT support indirect addressing."* The second destination is the entire point of
-> the op; the 2-D demotion is the budget cost of carrying it. `[HIGH/OBSERVED —
-> `s2s2d2d2_tt.h:23,35-38` + compile-verify]`
+> the op; the 2-D demotion is the budget cost of carrying it.
+> `[HIGH/OBSERVED — s2s2d2d2_tt.h:23,35-38]`
 
 ---
 
@@ -192,7 +188,7 @@ The defining new capability vs the plain `TensorTensorArithOp` (`0x41`, on `S3S3
 half / carry / borrow / high product is captured explicitly in a second destination**, rather than
 discarded by 32-bit wrap or folded internally by a native-`INT64` dtype (see §5). `[HIGH/OBSERVED]`
 
-**AluOp byte values** (MAVERICK `aws_neuron_isa_tpb_common.h`, read directly this pass) —
+**AluOp byte values** (MAVERICK `aws_neuron_isa_tpb_common.h`) —
 `is_valid_tt_int_wide_op` admits exactly these eight, no others:
 
 | AluOp            | enum (`…ALU_OP_…`)    | byte   | note                                              |
@@ -209,7 +205,7 @@ discarded by 32-bit wrap or folded internally by a native-`INT64` dtype (see §5
 > **NOTE — the `0xCx` opcodes are the integer-datapath marker.** The three int-ALU ops carry the
 > header comment *"bit 7:6 == 0x3 to indicate integer engine compute dtype"* (`0xC4 = 0b11000100`).
 > This is the integer-engine routing bit the ALU-op matrix uses across the corpus, not a quirk of this
-> op. `[HIGH/OBSERVED]`
+> op.
 
 **Per-op signedness constraints** (`tt_int_wide_op_dtype_constraints`, `s2s2d2d2_tt.h:92-117`):
 
@@ -219,14 +215,14 @@ discarded by 32-bit wrap or folded internally by a native-`INT64` dtype (see §5
 - **shift ops**: the shift-amount input (`dtype_hi`) must be **unsigned int**.
 - **non-shift ops**: the low destination (`out0_out1_dtype.dtype_lo`) must be a valid 32-bit int dtype
   (`is_valid_32b_int_dtype` = `{INT32, UINT32}`), and the high destination's signedness must **match
-  the source signedness** (`tt_int_wide_dst1_signedness_matches_src`). `[HIGH/OBSERVED]`
+  the source signedness** (`tt_int_wide_dst1_signedness_matches_src`).
 
 **Dtype matrix** (`is_valid_int_dtype_datapath`, `common.h:3309-3316`): both inputs and both outputs
 are gated to **exactly `{INT8 0x2, UINT8 0x3, INT16 0x4, UINT16 0x5, INT32 0x8, UINT32 0x9}`** —
 8/16/32-bit ints only. **Not `INT64`/`UINT64`.** The 64-bit-ness lives in the **output width** (the
-dual 32-bit destination), never in the input dtype. `[HIGH/OBSERVED]`
+dual 32-bit destination), never in the input dtype.
 
-**Dispatch surface = POOL** `[validator constant HIGH/OBSERVED; engine attribution MED/INFERRED]`. The
+**Dispatch surface = POOL** `[HIGH/OBSERVED constant; MED attribution]`. The
 validator `is_valid_tensor_tensor_int_wide` (`s2s2d2d2_tt.h:50-79`) gates the channel range against
 `POOLING_NUM_CHANNELS` (`has_valid_active_channel_range_with_tile(..., POOLING_NUM_CHANNELS, ...)`),
 versus `DVE_NUM_CHANNELS` for `0xf4`. All four patterns are `SBUF`-only / `PSUM`-forbidden
@@ -251,8 +247,8 @@ opcode 0xf3 (header)
 > total, so the namespace is well-populated and the absence is meaningful — not a parse failure). But
 > the blob ships **no `MAVERICK_NX_POOL_DEBUG` image**, so a POOL self-name for `0xf3` **could not
 > surface here even if it exists**. The MAVERICK POOL funcVA and Xtensa body are therefore **not
-> resolved**; the header-level contract above is the load-bearing record and the device interior is
-> flagged INFERRED. `[HIGH/OBSERVED — marker-absent, exhaustive `rg`; the interior MED/INFERRED]`
+> resolved**; the header-level contract above is the primary record and the device interior is
+> flagged INFERRED. `[HIGH/OBSERVED marker-absent; MED interior]`
 
 ### 3.2 `0xf4 TENSOR_SCALAR_INT_WIDE` — DVE; dual-dest 64-bit int TS
 
@@ -278,12 +274,12 @@ the immediate must have the **same signedness** (`input_imm_same_signedness`); `
 `MultUint` require **both unsigned** (`ts_int_wide_is_unsigned_only_op`); `MultInt` requires **both
 signed**; for shift ops the shift-amount (`dtype_hi`) is unsigned, and for an inline shift the
 immediate value must fit **0–31** — `ts_wide_shift_imm_value_check`:
-`(imm.imm_bitvec_uint32 & 0xFFFFFFE0) == 0` (the 5-bit shift-range mask). `[HIGH/OBSERVED]`
+`(imm.imm_bitvec_uint32 & 0xFFFFFFE0) == 0` (the 5-bit shift-range mask).
 
 **Dtype matrix**: input + immediate (`in_imm_dtype.dtype_lo`/`dtype_hi`) and both outputs are each
-`is_valid_int_dtype_datapath` (8/16/32 int), same `INT64`-exclusion as `0xf3`. `[HIGH/OBSERVED]`
+`is_valid_int_dtype_datapath` (8/16/32 int), same `INT64`-exclusion as `0xf3`.
 
-**Dispatch surface = DVE** `[validator constant HIGH/OBSERVED; engine attribution MED/INFERRED]`.
+**Dispatch surface = DVE** `[HIGH/OBSERVED constant; MED attribution]`.
 `is_valid_tensor_scalar_int_wide` (`s2d2d2_ts_wide.h:53-80`) gates the channel range against
 `DVE_NUM_CHANNELS` (versus `POOLING_NUM_CHANNELS` for `0xf3`); three `mem2d_valid` checks (1 src read +
 2 dst writes, `SBUF`-only / `PSUM`-forbidden); `same_element_count_m2d(src,dst0)` &
@@ -344,7 +340,7 @@ for (e = 0; e < element_count; ++e) {              /* two BF16 per 32b lane → 
 Each is the corresponding `TensorTensorArithOp` (`0x41`) **restricted to BF16 inputs**, run at 2×
 throughput. Unlike the generic `0x41` (where the `AluOp` field *selects* the op), here the **opcode
 encodes the op**, so the `AluOp` field is constrained to match (`AddBf16↔Add`, `MultBf16↔Mult`,
-`SubBf16↔Subtract`). `[HIGH/OBSERVED]`
+`SubBf16↔Subtract`).
 
 **Validators** (`s3s3d3_tt.h:116-134`, `:155-186`, `:214-247`):
 
@@ -356,7 +352,7 @@ encodes the op**, so the `AluOp` field is constrained to match (`AddBf16↔Add`,
   `step_elem[0] == 1` (the packed-pair constraint — *"We read a pair of BF16 values per src port at
   once → num elems should be even"*), with higher-dim steps even.
 - `tensor3d_valid(src{0,1}, Dtype::UINT32, …)` and `tensor3d_valid(dst, out_dtype, …)` — the src is
-  validated as `UINT32` because two BF16 are packed per 4-byte word. `[HIGH/OBSERVED]`
+  validated as `UINT32` because two BF16 are packed per 4-byte word.
 
 **Dispatch surface = POOL** `[MED/INFERRED]` — by analogy to the base `TensorTensor` op (`0x41` is POOL
 across the corpus) on the same `S3S3D3_TT` surface; no device self-name reachable (see §6).
@@ -365,7 +361,6 @@ across the corpus) on the same `S3S3D3_TT` surface; no device self-name reachabl
 > `AllowedInPSUM::True` (`tensor3d_valid(..., AllowedInPSUM::True, AllowedInSBUF::True)`), so the BF16
 > fast path can read/write PSUM. The MAVERICK `INT_WIDE` ops are the opposite — strictly `SBUF`-only
 > (`AllowedInPSUM::False`). A subtle but real surface difference between the two ends of the roster.
-> `[HIGH/OBSERVED]`
 
 ### 4.2 The reduce pair — `0x8c REDUCE_ADD_BF16` / `0x8d REDUCE_MAX_BF16` (`S4D4_TR`)
 
@@ -388,11 +383,10 @@ Each is the corresponding `TensorReduceArithOp` (`0x42`) restricted to BF16, at 
 - `tensor_reduce_bf16_access_pattern_check` (`:176-179`): 4-byte-aligned src, `num_elem[0] % 2 == 0`,
   `step_elem[0] == 1` (*"pairs of bf16 in 4 bytes"*).
 - Both ops are listed in `tensor_reduce_arith` (`:129-134`) — so the `negated` field applies.
-  `[HIGH/OBSERVED]`
 
 **Dtype matrix**: `in = BFLOAT16` (`0x6`) hard-pinned; `out` is any valid dtype incl `FP32R` (a BF16
 reduce commonly accumulates to FP32). **Dispatch surface = POOL** (the `S4D4_TR TensorReduce` surface,
-`POOLING_NUM_CHANNELS`) `[POOL constant HIGH/OBSERVED; engine attribution MED/INFERRED]`.
+`POOLING_NUM_CHANNELS`) `[HIGH/OBSERVED constant; MED attribution]`.
 
 ---
 
@@ -414,7 +408,7 @@ result coexist:
 The gates make the distinction byte-exact: `is_valid_int_dtype_datapath` (`common.h:3309-3316`) admits
 **only** `{INT8, UINT8, INT16, UINT16, INT32, UINT32}`, while `is_valid_64b_int_dtype`
 (`common.h:3345-3347`) is the disjoint `{INT64, UINT64}`. `INT_WIDE` inputs are 32-bit; the 64-bit-ness
-is **output width**, not input dtype. `[HIGH/OBSERVED]`
+is **output width**, not input dtype.
 
 > **NOTE — the inferred use-case.** Exposing the high half / carry / borrow / wide product as an
 > explicit output is exactly what a kernel needs for **32×32→64 widening multiply**, **explicit
@@ -423,7 +417,7 @@ is **output width**, not input dtype. `[HIGH/OBSERVED]`
 > `[HIGH/OBSERVED]` from the two structs' dtype gates and the `dst0`/`dst1` semantics; the specific
 > use-case attribution is `[MED/INFERRED]`. The `s3s3d3_tt.h` comment *"64-bit int allowed on Cayman+
 > POOL"* corroborates that 64-bit integer compute existed before MAVERICK — so `INT_WIDE` is an
-> **additional** way to surface width, not the first one. `[HIGH/OBSERVED for the comment]`
+> **additional** way to surface width, not the first one.
 
 ---
 
@@ -448,14 +442,13 @@ the relevant device images are not in the blob:
 > discriminating signal is the validator's **choice of constant name** — `0xf3`/`0x8c`/`0x8d` name
 > `POOLING_NUM_CHANNELS`, `0xf4` names `DVE_NUM_CHANNELS`. The split TT→POOL / TS→DVE also mirrors the
 > corpus-wide "TensorTensor is POOL, TensorScalar can be DVE" convention. This is why every engine
-> attribution here is `[MED/INFERRED]`, not `[HIGH]`. `[constants HIGH/OBSERVED; attribution MED/INFERRED]`
+> attribution here is `[MED/INFERRED]`, not `[HIGH]`.
 
 The three independent reasons the self-name surface is unavailable: (1) SUNDA ships only **RELEASE**
 images (`SUNDA_NX_POOL_RELEASE` / `SUNDA_NX_DVE_RELEASE`), which are string-stripped — zero `Bf16`
 self-names anywhere; (2) the **missing `MAVERICK_NX_POOL_DEBUG`** image blanks any `0xf3` POOL name;
-(3) the present `MAVERICK_NX_DVE_DEBUG` image has a genuine no-dedicated-name for `0xf4`. The marker set
-read this pass (`rg -a -o "(SUNDA|CAYMAN|MARIANA|MAVERICK)_NX_(POOL|DVE)_[A-Z]+" | sort -u`) confirms
-the asymmetry:
+(3) the present `MAVERICK_NX_DVE_DEBUG` image has a genuine no-dedicated-name for `0xf4`. The
+`<GEN>_NX_<ENGINE>_<VARIANT>` marker set confirms the asymmetry:
 
 ```
 SUNDA    : POOL_RELEASE  DVE_RELEASE                              (RELEASE only)
@@ -469,7 +462,7 @@ MAVERICK :           POOL_PERF POOL_PROF POOL_TEST  DVE_{DEBUG,PERF,PROF,TEST}  
 > each split into memory-region suffixes; SUNDA ships `RELEASE` only. The precise, defensible fact for
 > the `0xf3` wall is **not** "DEBUG vs RELEASE" but: **`MAVERICK_NX_POOL_DEBUG` is the single
 > (engine, generation) cell missing the DEBUG variant** while MAVERICK POOL keeps `PERF`/`PROF`/`TEST`
-> and MAVERICK DVE keeps `DEBUG`. `[HIGH/OBSERVED — exhaustive marker sweep; firmware blob 10,276,288 B]`
+> and MAVERICK DVE keeps `DEBUG`. `[HIGH/OBSERVED]`
 
 ---
 
@@ -478,39 +471,39 @@ MAVERICK :           POOL_PERF POOL_PROF POOL_TEST  DVE_{DEBUG,PERF,PROF,TEST}  
 ### 7.1 The retire — SUNDA BF16, dropped at CAYMAN (NC-v3)
 
 - **WHAT:** five dedicated BF16 opcodes (TT add/mult/sub on `S3S3D3_TT`; reduce add/max on `S4D4_TR`),
-  each a 2×-throughput packed-BF16 fast path for a generic arith/reduce op. `[HIGH/OBSERVED]`
+  each a 2×-throughput packed-BF16 fast path for a generic arith/reduce op.
 - **HOW:** the opcodes were **removed from the CAYMAN+ enums**, and the shared host structs shed exactly
   those members (`S3S3D3_TT` 8→5, `S4D4_TR` 13→11), leaving the **generic** `TensorTensor` /
   `TensorReduce` ops to handle BF16 via the ordinary dtype dispatch. The removal is **clean**: zero
   `BF16` opcode strings in any CAYMAN/MARIANA/MAVERICK enum *and* zero `BF16` keys in their
-  `struct2opcode` — enum and mapping both purged, with no byte reuse. `[HIGH/OBSERVED]`
+  `struct2opcode` — enum and mapping both purged, with no byte reuse.
 - **WHY (MED/INFERRED):** the generalised dtype enum + dtype-dispatch makes BF16 (`0x6`) just another
   value the generic op accepts (the [DTYPE Model](./dtype-model.md) lists BF16 as fully accepted across
   the generic TensorTensor/TensorReduce ops, and the generic ALU path already uses dtype-parameterised
   kernels including a 2×-packed half-precision kernel). A per-op BF16 opcode therefore became
-  **redundant**. `[retire FACTS HIGH/OBSERVED; the "folded into the generic dtype dispatch" WHY MED/INFERRED]`
+  **redundant**.
 
 > **CONTRAST — a *used* fast path the arch outgrew, not a never-finished stub.** This is the same
 > retirement *shape* as the SUNDA-only DUAL-ptr twins `0x87`/`0x88` (gone CAYMAN+), but with a sharper
 > edge: the DUAL twins were `// n` (dormant — ucode existed, not maintained) on SUNDA, whereas the five
 > BF16 ops were `// Y` (**maintained**) on SUNDA. They were a real, used 2× fast path the architecture
 > generalised past — and removed **cleanly** (the DUAL twins, by contrast, left a stale `S4D4_TSM`
-> JSON binding behind). `[HIGH/OBSERVED for the `// Y` flags + the clean-removal grep]`
+> JSON binding behind).
 
 ### 7.2 The add — MAVERICK `INT_WIDE`, new at NC-v5
 
 - **WHAT:** two dedicated wide-integer opcodes (`0xf3 TENSOR_TENSOR_INT_WIDE` → POOL;
   `0xf4 TENSOR_SCALAR_INT_WIDE` → DVE), each promoting a 32-bit int op to a 64-bit result captured as
-  **two 32-bit dest tensors** (low/high). `[HIGH/OBSERVED]`
+  **two 32-bit dest tensors** (low/high).
 - **HOW:** appended at the **top** of the MAVERICK opcode enum (`0xf3`/`0xf4`, the last two before
   `INVALID 0xff`), each on a **new dedicated struct** (`S2S2D2D2_TT` / `S2D2D2_TS_WIDE`) absent on
   earlier gens. The new structs use **2-D** (not 3-D) memory patterns specifically to fit the **second
-  destination** into the 64-byte frame. `[HIGH/OBSERVED]`
+  destination** into the 64-byte frame.
 - **WHY (MED/INFERRED):** exposes the high half / carry / borrow / wide product of integer ops as a
   first-class output — a capability the pre-existing native-`INT64`/`UINT64` dtype path (single dest,
   even-register-pair) did **not** surface. It lets a kernel do 32×32→64 widening multiply, explicit
   carry/borrow chains, and 64-bit-boundary shifts without promoting operands to the heavier native-`INT64`
-  model. `[capability HIGH/OBSERVED from the dtype gates; use-case MED/INFERRED]`
+  model.
 
 ### 7.3 The arc
 
@@ -524,7 +517,7 @@ The opcode roster's two ends capture **opposite design moves**:
   extension*, grafted on top.
 
 The old end pruned a dtype hack the general dispatch **absorbed**; the new end grafted a width capability
-the general dispatch **lacked**. `[structural facts HIGH/OBSERVED; the design-intent narrative MED/INFERRED]`
+the general dispatch **lacked**. `[HIGH facts; MED narrative]`
 
 ---
 
@@ -548,7 +541,7 @@ different, all-gen-maintained instruction.)
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED (read directly this pass):**
+**HIGH / OBSERVED:**
 
 - All seven opcode names + per-gen `// Y` flags, byte-exact from the four `aws_neuron_isa_tpb_common.h`
   enums (SUNDA `223`–`228`; MAVERICK `320`/`321`). `INT_WIDE` names appear in MAVERICK only and zero in
@@ -573,7 +566,7 @@ different, all-gen-maintained instruction.)
   tags total); `FindIndex8`/`DveReadAccumulator`/`DveReadIndices` = 4× each in MAVERICK DVE; blob
   size 10,276,288 B.
 
-**MED / INFERRED (attributed this pass):**
+**MED / INFERRED:**
 
 - Engine attributions (`0xf3` + the five BF16 → POOL; `0xf4` → DVE) — from the validator channel
   constant + shared-struct analogy, **not** a self-name multiplicity (unavailable here).

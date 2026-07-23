@@ -30,14 +30,14 @@ All four compose from the same compare→`vbool` + lane-permute/select ISA primi
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every host-ISA fact is read out of the public
-`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and was
-re-compile-verified this session; every device fact is byte-pinned to a carve from
+`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and
+compile-verified; every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so`.
 
-> **NOTE — what was carved this session, and the exact objects used.** The firmware
+> **NOTE — the exact objects used.** The firmware
 > container is `…/custom_op/c10/lib/libnrtucode_internal.so`
-> (`sha256 b7c67e898a116454…fc329b`, ELF64 x86-64 DYN — the FW-60/73 anchor, re-verified
-> in-task). The POOL images are 17 EM_XTENSA ELF blobs embedded in `.rodata`
+> (`sha256 b7c67e898a116454…fc329b`, ELF64 x86-64 DYN — the FW-60/73 anchor).
+> The POOL images are 17 EM_XTENSA ELF blobs embedded in `.rodata`
 > (VMA `0x01000000` == file offset `0x100`, i.e. `file_off = VMA − 0x01000000 + 0x100`)
 > and are disassembled with the native `xtensa-elf-objdump`
 > (`XTENSA_CORE=ncore2gp`, GNU Binutils 2.34 / Xtensa Tools 14.09) that ships inside the
@@ -54,8 +54,8 @@ re-compile-verified this session; every device fact is byte-pinned to a carve fr
 > | `GEN3_main` (MARIANA_PLUS EXTISA_0) | `0x855240` / `0xa280` | `39416fbf…` | byte-identical body |
 > | `MAVERICK_0/_3` (EXTISA, ET_DYN) | `0x994de0`/`0x99ece0` | (stripped) | header-grounded; body not byte-confirmed (§7) |
 >
-> The two `.xt.prop` template symbols and both compute-bundle byte signatures reproduce
-> against the binary in-task: `_Z23nonzero_with_count_implIfEvjiijj` /
+> The two `.xt.prop` template symbols and both compute-bundle byte signatures in the
+> binary: `_Z23nonzero_with_count_implIfEvjiijj` /
 > `_Z23nonzero_with_count_implIiEvjiijj` each occur **6×** (one per image:
 > CAYMAN_0/3 + MARIANA main/codec + MARIANA_PLUS main/codec); the `float` compute-bundle
 > signature `2f 35 f0 65` and the `int` signature `2f 35 d6 61` each occur **12×**, with the
@@ -87,18 +87,17 @@ batch-norm `S2_BN` op. Nine facts pin it:
    dst_mem_pattern to 1 more element than src_mem_pattern, which indicates the nonzero
    count."* (`s3d3_nonzero_with_count.h:93-95`). The output is `[indices…, padding…,
    count]`, all INT32 — the values are the *detection input*, never the dst payload.
-   `[HIGH/OBSERVED]`
 
 3. **The dtype gate is the narrowest possible: `in ∈ {FP32(0xA), INT32(0x8)}`, `out == INT32(0x8)`.**
    `has_valid_nonzero_with_count_dtype` (header, all three gens identical) admits exactly
    two input dtypes and exactly one output dtype; every other dtype is rejected at decode.
    The *input* dtype selects the C++-template leg; the *output* is always INT32 (integer
-   indices + an integer count). `[HIGH/OBSERVED]`
+   indices + an integer count).
 
 4. **The `+1` element-count rule is a structural invariant.**
    `s3d3_nonzero_with_count_element_count_check_t3d` requires
    `t3d_element_count(src) + 1 == t3d_element_count(dst)`: the dst is *exactly one element
-   larger* than the src, and that one element holds the count. `[HIGH/OBSERVED]`
+   larger* than the src, and that one element holds the count.
 
 5. **It is a `int<int>` / `float<float>` C++ TEMPLATE instantiated once per input dtype.**
    The two `.xt.prop` symbols `_Z23nonzero_with_count_implIfEvjiijj` /
@@ -107,7 +106,7 @@ batch-norm `S2_BN` op. Nine facts pin it:
    `nonzero_with_count_impl<int>(…)`. The `If E` / `Ii E` mangling fragment **is** the
    template parameter `T` — the dtype split is a *compile-time* instantiation, not a runtime
    `DTYPE` argument (contrast its neighbor [GetSequenceBounds](./get-sequence-bounds.md),
-   which carries the dtype as a by-value arg). `[HIGH/OBSERVED]`
+   which carries the dtype as a by-value arg).
 
 6. **The template split is byte-exact: the two 562-byte bodies differ in only 18 of 562 bytes.**
    All 18 differing bytes lie inside the compare/value-load/max-select compute bundle; the
@@ -115,23 +114,22 @@ batch-norm `S2_BN` op. Nine facts pin it:
    (`addn_2x32t`), and the store path are byte-IDENTICAL — because the output is always
    INT32. The differing bytes flip the IVP opcode selector
    (`float: ivp_neqn_2x32 + ivp_maxunx16t` vs `int: ivp_lt2nx8 + ivp_maxnx16t`).
-   `[HIGH/OBSERVED]`
 
 7. **Dispatch is `kernel_info_table` `0xf2 → trampoline → dtype-branch → callx8` body.** In
    the CAYMAN MAIN image it is `idx15 {0xf2 → 0x0100484c}`; in the CAYMAN codec image
    `idx5 {0xf2 → 0x010013f4}`. The trampoline reads the `in_dtype` byte (struct off 13) and
    branches into one of the two precompiled template bodies. **Present in BOTH the MAIN and
-   the codec image** — a first-class POOL instruction, not codec-only. `[HIGH/OBSERVED]`
+   the codec image** — a first-class POOL instruction, not codec-only.
 
 8. **NC-v3+ only.** `has_valid_nc_nonzero_with_count` requires `nc >= V3`. Present on
    CAYMAN (NC-v3), MARIANA (NC-v4), MAVERICK (NC-v5); **absent** on SUNDA (NC-v2) and TONGA
    (no opcode, no struct header, no firmware body). The struct/opcode/gate/`+1`-rule/body are
-   byte-identical CAYMAN→MARIANA→MARIANA_PLUS. `[HIGH/OBSERVED]`
+   byte-identical CAYMAN→MARIANA→MARIANA_PLUS.
 
 9. **There is no dedicated "nonzero"/"popcount" ISA op — NonzeroWithCount is COMPOSED.** The
    detect is a generic compare→`vbool`; the compaction is generic `sel`/`dsel`; the count is
    the terminal value of a predicated write-cursor (no `popcount`, no `radd` in the body).
-   `[detect/compact/accumulate ops HIGH/OBSERVED; count-as-cursor INFERRED-HIGH, §3.3]`
+   `[HIGH ops; INFERRED count-as-cursor]`
 
 > **CORRECTION — `0xf2` is NonzeroWithCount, NOT GetSequenceBounds and NOT TensorDequantize;
 > and NOT the `S2_BN` batch-norm struct.** Two prior misreadings are overturned here.
@@ -147,8 +145,7 @@ batch-norm `S2_BN` op. Nine facts pin it:
 > dtype-branch route to `nonzero_with_count_impl<float>`/`<int>`, with GetSequenceBounds
 > and TensorDequantize being the *adjacent* `idx14`/`idx16` rows, not this one. The
 > pool-dispatch row's funcVA/opcode/spec bytes are correct; only the resolved *name* on
-> that row needs the `0xf2 = NonzeroWithCount` fix. `[HIGH/OBSERVED — the three opcode
-> enumerators + the instruction_mapping binding read verbatim]`
+> that row needs the `0xf2 = NonzeroWithCount` fix. `[HIGH/OBSERVED]`
 
 ---
 
@@ -164,7 +161,7 @@ NEURON_ISA_TPB_OPCODE_GET_SEQUENCE_BOUNDS  = 0xbe,    // Y   (= pool-dispatch id
 NEURON_ISA_TPB_OPCODE_NONZERO_WITH_COUNT   = 0xf2,    // Y   (= pool-dispatch idx15)  <== THIS op
 ```
 
-The `// Y` annotation marks `0xf2` a **maintained, wired** op. `[HIGH/OBSERVED]`
+The `// Y` annotation marks `0xf2` a **maintained, wired** op.
 
 **Struct binding.** The shipped `instruction_mapping.json` `struct2opcode` table binds the
 operand struct to the opcode exactly once (`:256-258`):
@@ -182,8 +179,6 @@ case NEURON_ISA_TPB_OPCODE_NONZERO_WITH_COUNT:
     check = dbg_is_valid_nonzero_with_count(i, nc);
     break;
 ```
-
-`[HIGH/OBSERVED]`
 
 **Engine = POOL.** Three independent signals converge. (a) The kernel is reached through
 the **POOL `kernel_info_table`** linear-scan dispatcher (see
@@ -228,7 +223,7 @@ ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_S3D3_NONZERO_WITH_COUNT_STRUCT) == 64,
                   "Error: NEURON_ISA_TPB_S3D3_NONZERO_WITH_COUNT_STRUCT is NOT 64B.");
 ```
 
-**Compile-verify output (this session, gcc `-std=c11`, all three supporting gens identical):**
+**Compile-verify output (gcc `-std=c11`, all three supporting gens identical):**
 
 ```
 sizeof=64
@@ -238,8 +233,7 @@ sizeof TENSOR3D=16 DTYPE=1 IMM_SRC=1 IMM_VAL=4 HEADER=4 EVENTS=8
 OPCODE_NONZERO=0xf2 INT32=0x8 FP32=0xa FP32R=0xb UINT32=0x9
 ```
 
-`[HIGH/OBSERVED — ISA_STATIC_ASSERT(==64) passes; offsetof/sizeof reproduced for cayman,
-mariana, maverick — bit-identical]`
+`[HIGH/OBSERVED — all three gens bit-identical]`
 
 ### 3.1 Field census
 
@@ -263,7 +257,7 @@ mariana, maverick — bit-identical]`
 > [Sort](./sort.md), whose `in_out_dtype` (off 14) is a packed 4+4 `DTYPE_PAIR` bitfield.
 > NonzeroWithCount carries `in_dtype` and `out_dtype` as two **separate** `DTYPE` bytes at
 > offsets 13 and 14. A reimplementation that reuses the Sort `DTYPE_PAIR` decode here will
-> misread the gate. `[HIGH/OBSERVED]`
+> misread the gate.
 
 ### 3.2 The two INT32 immediates — `IMM_VAL_INST_FIELD` + `IMM_SRC`
 
@@ -294,8 +288,7 @@ NEURON_ISA_TPB_IMM_SRC_REG_PTR_IMMEDIATE     = 2,    // pointer to the INT32 fro
 The validity predicate validates **both** immediates against `Dtype::INT32` (§5) — they are
 INT32 values regardless of `in_dtype`. `index_offset` globalizes each emitted index (so a
 tiled scan carries correct global positions); `padding_val` fills the dst slots between the
-last emitted index and the count slot. `[HIGH/OBSERVED — compile-verified union + the two
-IMM_SRC bytes + the has_valid_immediates `Dtype::INT32` arg]`
+last emitted index and the count slot.
 
 > **NOTE — the descriptor SHAPE matches GetSequenceBounds, the immediates do not.**
 > NonzeroWithCount and [GetSequenceBounds](./get-sequence-bounds.md) are both `S3D3` (one
@@ -303,7 +296,7 @@ IMM_SRC bytes + the has_valid_immediates `Dtype::INT32` arg]`
 > `index_offset`/`padding_val` immediates and is **single-channel** with `dst == 2×src`
 > (the `{min, max}` pair); NonzeroWithCount is **multi-channel** (`1..128`) with
 > `dst == src + 1` (the count). The two INT32 immediates at off 32/40 are precisely what
-> distinguishes a *compaction-with-offset/padding* op from a *bounds* op. `[HIGH/OBSERVED]`
+> distinguishes a *compaction-with-offset/padding* op from a *bounds* op.
 
 ---
 
@@ -389,14 +382,12 @@ The detect bundle (`float` @ `0x01001605` / `int` @ `0x01001845` in the codec im
   NaN handling is **ordered**: an ordered fp compare returns FALSE on NaN, so a NaN input is
   **not** counted as nonzero. Signed zero: the `!= 0` test treats `+0.0` and `−0.0` alike
   (IEEE `0.0 == −0.0`), so a signed-zero element is **not** counted.
-  `[neqn/olen OBSERVED; the precise ±0/NaN arm INFERRED-HIGH from the
-  [vbool ISS semantics](../../iss/cas-predicate-boolean.md)]`
+  `[OBSERVED neqn/olen; INFERRED ±0/NaN arm]`
 - **`int` leg:** `ivp_lt2nx8` (SIGNED less-than → `vbool`, the sign-bias compare-ladder
   trick) realizing the `x != 0` integer test. No fp/NaN concerns. `[OBSERVED]`
 
-The compare writes the 16×64-bit `vbool` predicate (1 bit per lane). `[HIGH that a
-compare→vbool detect is present + the int/fp op differs; the exact per-lane logic through
-the FLIX desync is MED]`
+The compare writes the 16×64-bit `vbool` predicate (1 bit per lane).
+`[HIGH detect present; MED per-lane logic]`
 
 ### 4.3 The compaction — pack nonzero POSITIONS via select `[HIGH presence / MED per-arm]`
 
@@ -409,9 +400,8 @@ vector into the narrower INT32 output lane). The compaction writes each nonzero 
 flat position (the `+index_offset` add is the `ivp_addn_2x32t` of §4.4) to the dst,
 advancing the write cursor only on `vbool`-true lanes. These are the **same** lane-permute
 primitives [Sort](./sort.md) and [SparsityCompress](./sparsity-compress-tag.md) use — see
-the [SuperGather scatter/gather ISA batch](../../isa/ref/b19-scatter-gather.md). `[HIGH that
-select/dsel compaction is present in both bodies; the exact lane-routing schedule MED through
-the FLIX desync]`
+the [SuperGather scatter/gather ISA batch](../../isa/ref/b19-scatter-gather.md).
+`[HIGH compaction present; MED lane routing]`
 
 ### 4.4 The count — predicated 32-bit write-cursor `[HIGH presence / MED mechanism]`
 
@@ -423,16 +413,15 @@ math is `*_2x32` 32-bit, matching the INT32 output. The count is therefore **not
 test all/any, not count): it is the terminal value of the predicated write-cursor, written
 into the dst's `+1` element. This is consistent with the header (*"the dst's 1-more element
 indicates the nonzero count"*), the body DEBUG log `"S: NonzeroWithCount: num_elements=%d"`,
-and the `+1` element-count predicate (§5). `[the ivp_addn_2x32t predicated accumulate is
-OBSERVED in both bodies; that it is the cursor-that-equals-the-count is INFERRED-HIGH from the
-+1 dst rule + the num_elements DEBUG log + the absence of any popcount/radd op]`
+and the `+1` element-count predicate (§5).
+`[OBSERVED accumulate; INFERRED cursor==count]`
 
 > **GOTCHA — the count is the WRITE-CURSOR, not a separate popcount pass.** A reimplementation
 > tempted to add a cross-lane `radd` of the `0/1` `vbool` (which would also yield the count)
 > diverges from the firmware: **no `ivp_radd*` appears in the 562-byte body**. The count
 > falls out *for free* as the terminal value of the same predicated cursor that drives the
 > compaction write — one accumulate, two uses (the per-index ordinal *and* the final count).
-> `[radd absence OBSERVED; cursor-equals-count INFERRED-HIGH]`
+> `[OBSERVED radd absence; INFERRED cursor==count]`
 
 ### 4.5 The output layout
 
@@ -445,37 +434,36 @@ The dst `Tensor3d` (INT32, `src_count + 1` elements) holds:
 ```
 
 The indices are the flat positions of the nonzeros (`+index_offset`); the unused middle
-slots are `padding_val`; the `+1` element holds the count. `[layout INFERRED-HIGH from the
-header + struct; the exact count-slot position (leading vs trailing) MED through the FLIX
-desync — the header says only that the `+1` element "indicates the nonzero count",
-consistent with a trailing or leading count slot]`
+slots are `padding_val`; the `+1` element holds the count. The header says only that the
+`+1` element "indicates the nonzero count", consistent with a trailing or leading count
+slot. `[INFERRED layout; MED count-slot position]`
 
 ---
 
 ## 5. The validity / dtype contract
 
 `is_valid_nonzero_with_count` (header, verbatim, identical across cayman/mariana/maverick —
-only the NC-version banner differs):
+only the NC-version banner differs): `[HIGH/OBSERVED — all three gens]`
 
-| clause | rule | tag |
-|---|---|---|
-| `has_valid_neuron_header` / `has_valid_neuron_events` | standard header/events | HIGH/OBS |
-| `has_nonzero_with_count_opcode` | `header.opcode == 0xf2` | HIGH/OBS |
-| `has_valid_nc_nonzero_with_count` | `nc >= V3` (CAYMAN+; SUNDA NO) | HIGH/OBS |
-| `check_active_channels` | `num_active_channels != 0 && <= POOLING_NUM_CHANNELS(128)` → `1..128` | HIGH/OBS |
-| `s3d3_nonzero_with_count_reserved_zero` | `reserved0[0..2]==0 && reserved1[0..3]==0` | HIGH/OBS |
-| `has_valid_immediates(index_offset, index_offset_src, …, Dtype::INT32)` | `index_offset` is INT32; src inline/ptr/reg-ptr valid | HIGH/OBS |
-| `has_valid_immediates(padding_val, padding_val_src, …, Dtype::INT32)` | `padding_val` is INT32; src valid | HIGH/OBS |
-| `is_valid_dtype(in_dtype, AllowFP32R::False)` | `in` ∈ valid set minus FP32R/64-b | HIGH/OBS |
-| `is_valid_dtype(out_dtype, AllowFP32R::True)` | `out` ∈ valid set (FP32R allowed by the *generic* check) | HIGH/OBS |
-| `has_valid_nonzero_with_count_dtype` | `in ∈ {FP32(0xA), INT32(0x8)} AND out == INT32(0x8)` | **HIGH/OBS — THE GATE** |
-| `start_addr_active_channels(src/dst, num_active)` | partition-aligned start addrs | HIGH/OBS |
-| `tensor3d_valid(src, in_dtype, WriteTensor::False, PSUM::False, SBUF::True)` | src read-only, SBUF only | HIGH/OBS |
-| `tensor3d_valid(dst, out_dtype, WriteTensor::True, PSUM::False, SBUF::True)` | dst write, SBUF only | HIGH/OBS |
-| `s3d3_nonzero_with_count_element_count_check_t3d` | `t3d_element_count(src) + 1 == t3d_element_count(dst)` | **HIGH/OBS — the `+1` slot** |
+| clause | rule |
+|---|---|
+| `has_valid_neuron_header` / `has_valid_neuron_events` | standard header/events |
+| `has_nonzero_with_count_opcode` | `header.opcode == 0xf2` |
+| `has_valid_nc_nonzero_with_count` | `nc >= V3` (CAYMAN+; SUNDA NO) |
+| `check_active_channels` | `num_active_channels != 0 && <= POOLING_NUM_CHANNELS(128)` → `1..128` |
+| `s3d3_nonzero_with_count_reserved_zero` | `reserved0[0..2]==0 && reserved1[0..3]==0` |
+| `has_valid_immediates(index_offset, index_offset_src, …, Dtype::INT32)` | `index_offset` is INT32; src inline/ptr/reg-ptr valid |
+| `has_valid_immediates(padding_val, padding_val_src, …, Dtype::INT32)` | `padding_val` is INT32; src valid |
+| `is_valid_dtype(in_dtype, AllowFP32R::False)` | `in` ∈ valid set minus FP32R/64-b |
+| `is_valid_dtype(out_dtype, AllowFP32R::True)` | `out` ∈ valid set (FP32R allowed by the *generic* check) |
+| `has_valid_nonzero_with_count_dtype` | `in ∈ {FP32(0xA), INT32(0x8)} AND out == INT32(0x8)` — **THE GATE** |
+| `start_addr_active_channels(src/dst, num_active)` | partition-aligned start addrs |
+| `tensor3d_valid(src, in_dtype, WriteTensor::False, PSUM::False, SBUF::True)` | src read-only, SBUF only |
+| `tensor3d_valid(dst, out_dtype, WriteTensor::True, PSUM::False, SBUF::True)` | dst write, SBUF only |
+| `s3d3_nonzero_with_count_element_count_check_t3d` | `t3d_element_count(src) + 1 == t3d_element_count(dst)` — **the `+1` slot** |
 
 where `t3d_element_count(t) = num_elem[0]*num_elem[1]*num_elem[2]` (each `uint16`, cap
-65535). `[all clauses read verbatim from the header, all three gens]`
+65535).
 
 ### 5.1 The per-dtype matrix (input-keyed 2-row whitelist + fixed INT32 output)
 
@@ -494,8 +482,7 @@ always INT32 (the op emits integer indices + an integer count).
 | `INT64`/`UINT64` | **N** | — | rejected (64-b) | — |
 | `FP4`/`FP8_E2`/`INT4`/`SFP8` (MAVERICK MX) | **N** | — | rejected — **MX dtypes do NOT widen the gate** | — |
 
-`[HIGH/OBSERVED — has_valid_nonzero_with_count_dtype read verbatim all three gens; the
-rejection set is the complement of `{INT32, FP32}` input + the INT32-only output]`
+`[HIGH/OBSERVED — has_valid_nonzero_with_count_dtype]`
 
 ### 5.2 The error path
 
@@ -506,15 +493,14 @@ bad immediate) **fails the assert at decode, before dispatch**. On-device, the k
 `"P%i: NonzeroWithCount : num_chans = %0d"` at decode and
 `"S: NonzeroWithCount: num_elements=%d"` (the emitted count) in the body. No
 nonzero-specific in-kernel error string exists in the carved DEBUG DRAM; validity is
-enforced by the decode assert. `[HIGH for the debug_assert binding + the DEBUG strings; the
-on-device assert-arm continuation MED]`
+enforced by the decode assert. `[HIGH binding + strings; MED assert-arm]`
 
 ---
 
 ## 6. The `int<int>`-vs-`float<float>` split — byte-exact
 
 The two 562-byte template bodies (`float` @ `0x010014e0`, `int` @ `0x01001720` in the CAYMAN
-codec image) were byte-diffed this session: **only 18 of 562 bytes differ**, all clustered in
+codec image) differ in **only 18 of 562 bytes**, all clustered in
 the compute bundles, with **no** control-flow / compaction / store byte changed. Their
 `.xt.prop` function-descriptor span layouts are byte-for-byte identical
 (`46,18,138,70,96,48,16,32,8,19,DATA,12,DATA,8,32,18`; extent 562 B, 3 DATA spans each) —
@@ -552,9 +538,7 @@ bodies (`ivp_olen_2xf32`, `ivp_addn_2x32t`, `ivp_dselnx16t`, `ivp_sel2nx8i`,
 `ivp_sel2nx8i_s4`, `ivp_packvr2nx24`). This is the definitive proof: **one algorithm, the
 C++ template instantiated twice, differing only in the input-dtype compare/max op
 (fp/unsigned vs signed).** The compaction, the index/count accumulate, and the store are
-dtype-agnostic because the output is always INT32. `[HIGH/OBSERVED — Python byte-diff +
-per-bundle disasm; the precise per-op semantics of the differing arm is HIGH for the
-mnemonic, MED for the exact lane operands through the FLIX desync]`
+dtype-agnostic because the output is always INT32. `[HIGH mnemonic; MED lane operands]`
 
 ---
 
@@ -572,8 +556,7 @@ linear-scan dispatcher (the keyed `(opcode<<24)|(spec<<16)` scan + single `callx
 
 In the codec table the neighbors are `idx4 0xbe` GetSequenceBounds → `idx5 0xf2`
 NonzeroWithCount → `idx6 0x7b` dequant — exactly the POOL-codec family order. In the MAIN
-table `idx14 0xbe` / `idx15 0xf2` / `idx16 0x7b` are directly adjacent. `[HIGH/OBSERVED — all
-tables byte-decoded]`
+table `idx14 0xbe` / `idx15 0xf2` / `idx16 0x7b` are directly adjacent. `[HIGH/OBSERVED]`
 
 ### 7.1 The entry-trampoline → dtype-branch → body bridge
 
@@ -605,9 +588,7 @@ branch. This is exactly the [GetSequenceBounds](./get-sequence-bounds.md) /
 [decode_pool](../pool/pool-dispatch.md) trampoline pattern (a setup + `const16`-built
 `callx8` into the inlined body), here **extended** with a 2-way dtype branch — GetSequenceBounds
 branched on a *runtime* DTYPE arg; NonzeroWithCount branches into one of **two precompiled
-template bodies**. `[HIGH/OBSERVED — the entry, the `bnei` dtype branch, and BOTH `const16`
-body-call sites byte-decoded; the exact branch-condition register/immediate is MED through the
-FLIX desync]`
+template bodies**. `[HIGH entry + branch + call sites; MED branch immediate]`
 
 ### 7.2 `.xt.prop` section ordering (the POOL-codec family)
 
@@ -615,7 +596,6 @@ The CAYMAN_3 codec `.xt.prop` order is `get_sequence_bounds_impl` (#8) →
 `nonzero_with_count_impl<float>` (#9) → `nonzero_with_count_impl<int>` (#10) →
 `decode_tensor_dequantize` (#11) → `cptc_decode_impl<1..6>`. NonzeroWithCount sits between
 GetSequenceBounds and the dequant/cptc codec ops — the confirmed POOL-codec family.
-`[HIGH/OBSERVED — demangled section ordering]`
 
 ---
 
@@ -629,7 +609,7 @@ GetSequenceBounds and the dequant/cptc codec ops — the confirmed POOL-codec fa
 | **MARIANA (NC-v4)** | `0xf2` | present | `{FP32,INT32}→INT32` | byte-identical body (`0x01004890` MAIN) |
 | **MAVERICK (NC-v5)** | `0xf2` | present | `{FP32,INT32}→INT32` | header-grounded; firmware body NOT byte-confirmed in the stripped MAVERICK carve (§9) |
 
-**Presence evidence (OBSERVED this session):**
+**Presence evidence:**
 
 - **HEADER:** opcode `0xf2` + struct + the identical validity predicate present in
   cayman/mariana/maverick `arch_isa`; ABSENT in sunda (no opcode, no header). Struct
@@ -650,7 +630,7 @@ compute body are byte-identical CAYMAN→MARIANA→MARIANA_PLUS. The MAVERICK MX
 
 > **CORRECTION — MAVERICK does NOT rename the struct to "S3D3_l"; the typedef is unchanged.**
 > A prior report claimed the MAVERICK header "anonymizes the doc-name to `S3D3_l`". Read
-> verbatim this session, the MAVERICK `aws_neuron_isa_tpb_s3d3_nonzero_with_count.h` keeps
+> verbatim, the MAVERICK `aws_neuron_isa_tpb_s3d3_nonzero_with_count.h` keeps
 > the **identical** typedef `NEURON_ISA_TPB_S3D3_NONZERO_WITH_COUNT_STRUCT`, the identical
 > `// NonzeroWithCount Instruction` doc-comment, and the identical `has_valid_nonzero_with_count_dtype`
 > gate; the **only** difference from MARIANA is the banner line `ISA header for NC-v4` →
@@ -663,7 +643,7 @@ compute body are byte-identical CAYMAN→MARIANA→MARIANA_PLUS. The MAVERICK MX
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED** (direct disasm / byte / symtab / header / compile this session):
+**HIGH / OBSERVED** (direct disasm / byte / symtab / header / compile):
 
 - `OPCODE_NONZERO_WITH_COUNT = 0xf2`; struct `S3D3_NONZERO_WITH_COUNT` (64 B);
   `instruction_mapping.json:256-258` binding; `debug_assert.h:402-403` case — **compile-verified
@@ -747,21 +727,20 @@ compute body are byte-identical CAYMAN→MARIANA→MARIANA_PLUS. The MAVERICK MX
   `ivp_lt2nx8`/ordered-fp compare) and both carry an index payload. NonzeroWithCount
   *compacts* (a predicated cursor over positions, INT32-only output, with a count slot); Sort
   additionally *totally orders* (a compare-exchange network) and emits both the value and the
-  index in the input dtype. `[HIGH/OBSERVED]`
+  index in the input dtype.
 - **vs SparsityCompress (DVE engine).** They share the compare→`vbool` + select compaction
   core and the `{value, index/tag}` pairing, but SparsityCompress is a *fixed top-4
   reduction* on the **DVE** engine that emits `{value, tag}` for the
   [PE matrix-multiply path](./sparsity-compress-tag.md), whereas NonzeroWithCount is an
   *unbounded-count full compaction* on **POOL** that emits `{positions, count}` with no value
   payload. Both are "compaction" kernels composed from the same `vbool`+select primitives, on
-  different engines, for different consumers. `[HIGH/OBSERVED]`
+  different engines, for different consumers.
 - **vs the predicate / compaction ISS primitives.** The detect leg *is* the
   [vbool predicate](../../iss/cas-predicate-boolean.md) compare→`vbool` (float = ordered-fp
   `!=0`, NaN→not-counted; int = signed compare); the compaction *is* the two-source select
   (`sel`/`dsel`) with the per-lane `bitkillt` predicate guard from the
   [SuperGather scatter/gather batch](../../isa/ref/b19-scatter-gather.md); the count is the
-  predicated write-cursor (not the boolean-reduce, which only tests all/any). `[HIGH/OBSERVED
-  — the compare/select/accumulate mnemonics match the ISS model]`
+  predicated write-cursor (not the boolean-reduce, which only tests all/any).
 
 ---
 
