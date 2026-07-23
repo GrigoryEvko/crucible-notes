@@ -201,16 +201,18 @@ e.g. if name is 'disable-vectorize-dge-dma', then the trimmed name is
 ```c
 function CommandLineParser.addBoolOption(self, name, default, trim_prefix=False):  // 0x14a30
     if trim_prefix:
-        trimmed_name = name.split("-", 1)[1]   // 'disable-X' -> 'X'  [STRONG: local trimmed_name + split]
+        trimmed_name = name.split("-", 1)[1]   // 'disable-X' -> 'X'
         opt = self.cl_parser.add_argument("--" + trimmed_name,
                                           action="store_true", default=default)
     else:
         // register --name (store_true) AND --no-<name> (store_false) as a pair
         opt = self.cl_parser.add_argument("--" + name, action="store_true",  default=default)
         neg = self.cl_parser.add_argument("--no-" + name, action="store_false", dest=opt.dest)
-        // '--no-' literal present; add_mutually_exclusive_group in the pool pairs positive/negative  [STRONG]
+        // '--no-' literal present; add_mutually_exclusive_group in the pool pairs positive/negative
     return CLOption(opt, default=default)
 ```
+
+The body of this function is reconstructed rather than read directly: the `trim_prefix` branch is inferred from the local `trimmed_name` and its `split`, and the positive/negative pairing from the `--no-` literal plus `add_mutually_exclusive_group` in the string pool. The signature and the `CLOption` return are read from the binary.
 
 The `clOpt*` factories are thin module-level wrappers that build a `CLOption` with the right coercion type and register it through the singleton parser. Type coercion (`int`/`float`/`str`) is applied in `CLOption.value` (`0x13ef0`), which returns the parsed value or falls back to `default` when the flag was never seen — `store_true`/`store_false` both appear in `value`'s string window, so bool options resolve there too.
 
