@@ -52,7 +52,7 @@ driver/Job.so                      0             0         3        3      ← s
 
 `Arguments.so` — the argparse construction and validation layer where the entire `--flag` catalogue lands — contains **zero** `environ`/`getenv`/`NEURON_CC_FLAGS` strings. `CompileCommand.so`, which marshals the argparse `Namespace` into the pipeline and builds every sub-tool flag string, is likewise empty of all three. The variable's literal does not appear in any driver module at all.
 
-> **CONFIRMED —** The literal `NEURON_CC_FLAGS` exists in exactly five wheel paths: `nki/docs/examples/prof-kernel.py` (a doc example), `nki/compiler/backends/neuron/NumpyKernel.so` (the benchmark reader), and the three native ELFs `starfish/bin/{hlo-opt,hlo2penguin,xla_infergoldens}` (a diagnostic string, see §2.4). It is absent from the entire `driver/` tree.
+> **NOTE —** the literal `NEURON_CC_FLAGS` exists in exactly five wheel paths: `nki/docs/examples/prof-kernel.py` (a doc example), `nki/compiler/backends/neuron/NumpyKernel.so` (the benchmark reader), and the three native ELFs `starfish/bin/{hlo-opt,hlo2penguin,xla_infergoldens}` (a diagnostic string, see §2.4). It is absent from the entire `driver/` tree.
 
 ### 2.2 The `environ`/`shlex` in `CommandDriver.so` and `Job.so` is *not* a `CC_FLAGS` read
 
@@ -132,7 +132,7 @@ reader:  nki/compiler/backends/neuron/TraceKernel.so
 symbols: NEURON_PLATFORM_TARGET_OVERRIDE   _get_platform_target   TraceKernel.py
 ```
 
-`TraceKernel._get_platform_target` calls `os.environ.get("NEURON_PLATFORM_TARGET_OVERRIDE", …)`; the result feeds the platform/target used to specialize and compile the NKI kernel, overriding the auto-detected hardware arch. It is the NKI-path equivalent of the `--target`/`--arch` CLI flag (same vocabulary: `trn2`, `gen3`, etc.). **Tag: CONFIRMED** (`environ.get` reader located in `_get_platform_target`). Unset ⇒ target auto-detected / taken from compile opts.
+`TraceKernel._get_platform_target` calls `os.environ.get("NEURON_PLATFORM_TARGET_OVERRIDE", …)`; the result feeds the platform/target used to specialize and compile the NKI kernel, overriding the auto-detected hardware arch. It is the NKI-path equivalent of the `--target`/`--arch` CLI flag (same vocabulary: `trn2`, `gen3`, etc.). The `environ.get` reader sits in `_get_platform_target`. Unset ⇒ target auto-detected, or taken from compile opts.
 
 ### 3.2 `NEURON_FRAMEWORK_DEBUG` — NKI framework-kernel debug
 
@@ -141,7 +141,7 @@ reader: nki/compiler/backends/neuron/FrameworkKernel.so  (FrameworkKernel._debug
 also:   set to "1" in nki/docs/examples/prof-kernel.py:9
 ```
 
-`FrameworkKernel._debug_kernel_arg` contains a nested `has_env` closure — an env-presence test. Setting the variable enables debug handling/printing of framework-kernel argument shapes/types during NKI lowering. **Tag: STRONG** (literal + `has_env` closure + the `="1"` usage in the doc example). Unset ⇒ debug off.
+`FrameworkKernel._debug_kernel_arg` contains a nested `has_env` closure — an env-presence test. Setting the variable enables debug handling/printing of framework-kernel argument shapes/types during NKI lowering. *Evidence: the literal, the `has_env` closure, and the `="1"` usage in the doc example.* Unset ⇒ debug off.
 
 ### 3.3 `NEURON_INTERNAL_USE` — the internal-API unlock gate
 
@@ -161,7 +161,7 @@ KernelBuilder.so: "… being used internally, based on the environment variable
                    kwarg is being [used]"
 ```
 
-So `NEURON_INTERNAL_USE=1` is checked in `KernelBuilder` (the `NeuronCodegen` path) before accepting an internal kwarg such as `dma_qos`; unset ⇒ the kwarg is rejected with an "unknown kwarg" error, and the `dma_qos` value is otherwise converted to a `DMAQoSClass`. **Tag: CONFIRMED** (explicit inline documentation + literal in both modules). This *is* codegen-affecting: it changes what kernel features are reachable.
+So `NEURON_INTERNAL_USE=1` is checked in `KernelBuilder` (the `NeuronCodegen` path) before accepting an internal kwarg such as `dma_qos`; unset ⇒ the kwarg is rejected with an "unknown kwarg" error, and the `dma_qos` value is otherwise converted to a `DMAQoSClass`. *Evidence: explicit inline documentation plus the literal in both modules.* This *is* codegen-affecting: it changes what kernel features are reachable.
 
 ---
 
@@ -187,7 +187,7 @@ help="Specify size of tmpbuf page in MiB. The default is scratchpad size environ
       variable if it exists, otherwise 512 MiB."                  # :474
 ```
 
-**Tag: CONFIRMED** for the `analyze_neff` reader (explicit `os.environ.get` at :454–457); STRONG that `libwalrus`'s adjacent `getenv` is the same read. `NEURON_SCRATCHPAD_PAGE_SIZE` is the in-wheel/compiler-owned knob (compiler-exec-time, COMPILER scope).
+The `analyze_neff` reader is an explicit `os.environ.get` at `:454–457`; that `libwalrus`'s adjacent `getenv` is the *same* read is **[INFERRED]**. `NEURON_SCRATCHPAD_PAGE_SIZE` is the in-wheel/compiler-owned knob (compiler-exec-time, COMPILER scope).
 
 > **QUIRK —** `NEURON_RT_ONE_TMPBUF_PAGE_SIZE_MB` is a *runtime*-origin variable (the `NEURON_RT_*` namespace), yet the offline analyzer reads it as a **fallback** (the `elif`), so a runtime-configured page size is honoured when the compiler-owned knob is unset. It is the one place a `NEURON_RT_*` value reaches a non-hardware code path — and even then only as a default for a CLI option, never as codegen.
 
@@ -223,7 +223,7 @@ The `NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM` knob is the highest-confidence
 NOTICING NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM=1
 ```
 
-which proves a `getenv` read with explicit `=1` on/off semantics. **Tag: CONFIRMED** for that one; **STRONG** for the other six (literal + `getenv` import + adjacent pass-rewrite strings; exact numeric defaults not byte-decoded from the stripped logic). All are codegen-affecting and run during the HLO→tensorizer stage.
+which pins a `getenv` read with explicit `=1` on/off semantics. The other six rest on the literal, the `getenv` import, and adjacent pass-rewrite strings; their exact numeric defaults are **[UNRESOLVED]**, not byte-decoded from the stripped logic. All are codegen-affecting and run during the HLO→tensorizer stage.
 
 > **NOTE —** These do not appear anywhere in the Python driver — they are read by the native ELF. A reimplementer wiring them must `getenv` them *inside the corresponding HLO pass*, not at argv-parse time.
 
@@ -248,9 +248,9 @@ The `Autotuner` is the clearest case of *writing* a runtime var: it embeds the f
 NEURON_RT_ROOT_COMM_ID=localhost:63182
 ```
 
-setting a distinct port (`63182`) for its on-device autotuning trials so they do not clash with a user runtime; the KRA default seen elsewhere is `localhost:61234`. **Tags:** CONFIRMED for `VISIBLE_CORES` (environ get+set in `Proc.__init__`) and `ROOT_COMM_ID` (Autotuner sets the full literal); STRONG for `VIRTUAL_CORE_SIZE`, `DEBUG_OUTPUT_DIR`, `DBG_FALLBACK_TO_SINGLE` (literal + reader/neighbour located, exact branch not byte-decoded).
+setting a distinct port (`63182`) for its on-device autotuning trials so they do not clash with a user runtime; the KRA default seen elsewhere is `localhost:61234`. `VISIBLE_CORES` is an environ get-and-set in `Proc.__init__`, and `ROOT_COMM_ID` has the Autotuner setting the full literal. For `VIRTUAL_CORE_SIZE`, `DEBUG_OUTPUT_DIR`, and `DBG_FALLBACK_TO_SINGLE` the literal and its reader are located but the exact branch is **[UNRESOLVED]**.
 
-> **CORRECTION —** It is tempting to file `NEURON_RT_VISIBLE_CORES` as a compiler flag because it is "read by the compiler package". It is not codegen: the read lives in the KRA *runtime client*, fires only on the on-device benchmark/profile/autotune path, and is irrelevant to a hardware-less `neuronx-cc compile`. The same applies to the whole `NEURON_RT_*` set.
+> **GOTCHA — `NEURON_RT_VISIBLE_CORES` is not a compiler flag.** It is tempting to file it as one because the compiler package reads it. The read lives in the KRA *runtime client*, fires only on the on-device benchmark / profile / autotune path, and is irrelevant to a hardware-less `neuronx-cc compile`. The same applies to the whole `NEURON_RT_*` set.
 
 ---
 
@@ -265,7 +265,7 @@ TF_CPP_MIN_LOG_LEVEL   TF_CPP_MAX_VLOG_LEVEL   TF_CPP_VMODULE
 TF_CPP_VLOG_FILENAME   TF_CPP_LOG_THREAD_ID    XLA_FLAGS   XLA_HLO_DEBUG   XLA_IR_DEBUG
 ```
 
-`TF_CPP_MIN_LOG_LEVEL` and `TF_CPP_MAX_VLOG_LEVEL` are *set* by the native ELF's `main` (via `setenv`, not by the Python driver — the literals appear only in the native bins, never in a wheel `.py`/`.so`) to mute TF's startup chatter before the TF runtime initializes. `XLA_FLAGS` is the passthrough that tunes the embedded XLA compiler the HLO frontend is built on. **Tags:** CONFIRMED for the two log-level vars (literal in all native bins; `setenv` in `hlo2penguin` main); STRONG for the rest.
+`TF_CPP_MIN_LOG_LEVEL` and `TF_CPP_MAX_VLOG_LEVEL` are *set* by the native ELF's `main` (via `setenv`, not by the Python driver — the literals appear only in the native bins, never in a wheel `.py`/`.so`) to mute TF's startup chatter before the TF runtime initializes. `XLA_FLAGS` is the passthrough that tunes the embedded XLA compiler the HLO frontend is built on. The two log-level vars are pinned by the literal in all native bins plus the `setenv` in `hlo2penguin`'s main; the rest rest on the literal alone.
 
 > **NOTE —** The "driver sets `TF_CPP_*`" framing means the **native ELF main** (`hlo2penguin`/`hlo-opt`), not the Python `CommandDriver.main`. No wheel `.py` sets these. A reimplementer of the Python driver should not add a `TF_CPP_*` write; the native tool does it for itself.
 
@@ -299,28 +299,28 @@ The centrepiece. `Scope`: **COMPILER** = in-wheel consumer affecting an offline 
 
 | Variable | Reader binary (proof) | Effect | Scope | Confidence |
 |---|---|---|---|---|
-| `NEURON_CC_FLAGS` | `NumpyKernel.so` `BaremetalKernel._compile` only (driver: **none**) | framework prepends split tokens to compile argv; NKI benchmark re-forwards | FRAMEWORK | CONFIRMED |
-| `NEURON_PLATFORM_TARGET_OVERRIDE` | `TraceKernel.so` `_get_platform_target` | force NKI target platform (= `--target`) | COMPILER | CONFIRMED |
-| `NEURON_FRAMEWORK_DEBUG` | `FrameworkKernel.so` `_debug_kernel_arg.has_env` | dump NKI framework-kernel arg shapes/types | COMPILER | STRONG |
-| `NEURON_INTERNAL_USE` | `private_api.so`, `KernelBuilder.so` | unlock internal kwargs (`dma_qos`→`DMAQoSClass`) | COMPILER | CONFIRMED |
-| `NEURON_SCRATCHPAD_PAGE_SIZE` | `libwalrus.so` `getenv`; `WalrusDriver.so`; `analyze_neff_artifacts.py:454` | tmpbuf/scratchpad page size (MiB), default 512 | COMPILER (exec) | CONFIRMED |
-| `NEURON_RT_ONE_TMPBUF_PAGE_SIZE_MB` | `analyze_neff_artifacts.py:456` (fallback) | tmpbuf page-size fallback default | RT→compiler | CONFIRMED |
-| `NEURON_REMAT_LARGE_BROADCAST_MIN_SIZE_IN_MB` | `hlo-opt` `getenv` (HLO pass) | large-broadcast remat threshold | COMPILER | STRONG |
-| `NEURON_REMAT_LARGE_TP_ALLGATHER_CP_LAYER` | `hlo-opt` `getenv` (HLO pass) | TP all-gather remat selection | COMPILER | STRONG |
-| `NEURON_COLLECTIVE_MATMUL_NXD` | `hlo-opt` `getenv` (HLO pass) | enable NxD collective-matmul lowering | COMPILER | STRONG |
-| `NEURON_COLLECTIVE_MATMUL_SB_TO_SB_THRESHOLD_IN_MB` | `hlo-opt` `getenv` (HLO pass) | SBUF→SBUF strategy threshold | COMPILER | STRONG |
-| `NEURON_COLLECTIVE_PERMUTE_AGGRESSIVE` | `hlo-opt` `getenv` (HLO pass) | aggressive permute→all-gather rewrite | COMPILER | STRONG |
-| `NEURON_DISABLE_BOUNDARY_MARKER` | `hlo-opt` `getenv` (HLO pass) | disable boundary-marker insertion | COMPILER | STRONG |
-| `NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM` | `hlo-opt` `getenv` (`=1` log proof) | disable slice-from-param movement | COMPILER | CONFIRMED |
-| `NEURON_RT_VISIBLE_CORES` | `kra/kralib_cc.so` `Proc.__init__`; `kra/profiler.so` | target NeuronCore set (benchmark/profile) | RUNTIME | CONFIRMED |
-| `NEURON_RT_VIRTUAL_CORE_SIZE` | `kra/profiler.so` `_get_specific_ntff` | LNC grouping factor | RUNTIME (LNC) | STRONG |
-| `NEURON_RT_ROOT_COMM_ID` | `kra/kralib_cc.so`; `Autotuner.so` (**sets** `…=localhost:63182`) | collective rendezvous endpoint | RUNTIME (CC) | CONFIRMED |
-| `NEURON_RT_DEBUG_OUTPUT_DIR` | `kra/krtlib.so`; `kernel_tracer.so` | runtime debug dump dir | RUNTIME | STRONG |
-| `NEURON_RT_DBG_FALLBACK_TO_SINGLE`(`_NC`) | `kra/kralib_cc.so` | runtime single-core debug fallback | RUNTIME | STRONG |
-| `TF_CPP_MIN_LOG_LEVEL` / `TF_CPP_MAX_VLOG_LEVEL` | native bins (set by ELF `main` via `setenv`) | mute embedded TF logging | 3rd-PARTY (TF) | CONFIRMED |
-| `TF_CPP_VMODULE` / `…_VLOG_FILENAME` / `…_LOG_THREAD_ID` | native bins | per-module VLOG / vlog file / thread-id | 3rd-PARTY (TF) | STRONG |
-| `XLA_FLAGS` / `XLA_HLO_DEBUG` / `XLA_IR_DEBUG` | native bins / `libwalrus.so` | embedded-XLA debug/optimization passthrough | 3rd-PARTY (XLA) | STRONG |
-| `NEURON_ASSERT*` / `NEURON_ASSERTION*` / `NEURON_ISA_TPB_*` | — | macro / error-injector test names / CLI keyword / mangled types | **NOT ENV** | CONFIRMED |
+| `NEURON_CC_FLAGS` | `NumpyKernel.so` `BaremetalKernel._compile` only (driver: **none**) | framework prepends split tokens to compile argv; NKI benchmark re-forwards | FRAMEWORK | CERTAIN |
+| `NEURON_PLATFORM_TARGET_OVERRIDE` | `TraceKernel.so` `_get_platform_target` | force NKI target platform (= `--target`) | COMPILER | CERTAIN |
+| `NEURON_FRAMEWORK_DEBUG` | `FrameworkKernel.so` `_debug_kernel_arg.has_env` | dump NKI framework-kernel arg shapes/types | COMPILER | HIGH |
+| `NEURON_INTERNAL_USE` | `private_api.so`, `KernelBuilder.so` | unlock internal kwargs (`dma_qos`→`DMAQoSClass`) | COMPILER | CERTAIN |
+| `NEURON_SCRATCHPAD_PAGE_SIZE` | `libwalrus.so` `getenv`; `WalrusDriver.so`; `analyze_neff_artifacts.py:454` | tmpbuf/scratchpad page size (MiB), default 512 | COMPILER (exec) | CERTAIN |
+| `NEURON_RT_ONE_TMPBUF_PAGE_SIZE_MB` | `analyze_neff_artifacts.py:456` (fallback) | tmpbuf page-size fallback default | RT→compiler | CERTAIN |
+| `NEURON_REMAT_LARGE_BROADCAST_MIN_SIZE_IN_MB` | `hlo-opt` `getenv` (HLO pass) | large-broadcast remat threshold | COMPILER | HIGH |
+| `NEURON_REMAT_LARGE_TP_ALLGATHER_CP_LAYER` | `hlo-opt` `getenv` (HLO pass) | TP all-gather remat selection | COMPILER | HIGH |
+| `NEURON_COLLECTIVE_MATMUL_NXD` | `hlo-opt` `getenv` (HLO pass) | enable NxD collective-matmul lowering | COMPILER | HIGH |
+| `NEURON_COLLECTIVE_MATMUL_SB_TO_SB_THRESHOLD_IN_MB` | `hlo-opt` `getenv` (HLO pass) | SBUF→SBUF strategy threshold | COMPILER | HIGH |
+| `NEURON_COLLECTIVE_PERMUTE_AGGRESSIVE` | `hlo-opt` `getenv` (HLO pass) | aggressive permute→all-gather rewrite | COMPILER | HIGH |
+| `NEURON_DISABLE_BOUNDARY_MARKER` | `hlo-opt` `getenv` (HLO pass) | disable boundary-marker insertion | COMPILER | HIGH |
+| `NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM` | `hlo-opt` `getenv` (`=1` log proof) | disable slice-from-param movement | COMPILER | CERTAIN |
+| `NEURON_RT_VISIBLE_CORES` | `kra/kralib_cc.so` `Proc.__init__`; `kra/profiler.so` | target NeuronCore set (benchmark/profile) | RUNTIME | CERTAIN |
+| `NEURON_RT_VIRTUAL_CORE_SIZE` | `kra/profiler.so` `_get_specific_ntff` | LNC grouping factor | RUNTIME (LNC) | HIGH |
+| `NEURON_RT_ROOT_COMM_ID` | `kra/kralib_cc.so`; `Autotuner.so` (**sets** `…=localhost:63182`) | collective rendezvous endpoint | RUNTIME (CC) | CERTAIN |
+| `NEURON_RT_DEBUG_OUTPUT_DIR` | `kra/krtlib.so`; `kernel_tracer.so` | runtime debug dump dir | RUNTIME | HIGH |
+| `NEURON_RT_DBG_FALLBACK_TO_SINGLE`(`_NC`) | `kra/kralib_cc.so` | runtime single-core debug fallback | RUNTIME | HIGH |
+| `TF_CPP_MIN_LOG_LEVEL` / `TF_CPP_MAX_VLOG_LEVEL` | native bins (set by ELF `main` via `setenv`) | mute embedded TF logging | 3rd-PARTY (TF) | CERTAIN |
+| `TF_CPP_VMODULE` / `…_VLOG_FILENAME` / `…_LOG_THREAD_ID` | native bins | per-module VLOG / vlog file / thread-id | 3rd-PARTY (TF) | HIGH |
+| `XLA_FLAGS` / `XLA_HLO_DEBUG` / `XLA_IR_DEBUG` | native bins / `libwalrus.so` | embedded-XLA debug/optimization passthrough | 3rd-PARTY (XLA) | HIGH |
+| `NEURON_ASSERT*` / `NEURON_ASSERTION*` / `NEURON_ISA_TPB_*` | — | macro / error-injector test names / CLI keyword / mangled types | **NOT ENV** | CERTAIN |
 
 ### Boundary takeaways
 
@@ -332,17 +332,19 @@ The centrepiece. `Scope`: **COMPILER** = in-wheel consumer affecting an offline 
 
 ---
 
-## 9. Adversarial self-verification
+## 9. Evidence summary
 
 The five strongest claims, re-challenged against the binary:
 
-1. **"The driver does not read `NEURON_CC_FLAGS`."** Re-checked: `Arguments.so` has 0 `getenv`/0 `environ`/0 `NEURON_CC_FLAGS`; `CompileCommand.so` has 0 of all three; `CommandDriver.so` has `environ`/`shlex` but 0 `NEURON_CC_FLAGS`, and its `shlex` use is `quote`/`join` (command echo), not `split`. The literal lives only in `NumpyKernel.so` + 3 native diagnostics + 1 doc example. **Holds — CONFIRMED.**
-2. **"The only in-wheel reader is NKI `BaremetalKernel._compile`."** `NumpyKernel.so` is the unique wheel module carrying both `NEURON_CC_FLAGS` *and* `environ`+`split`+`subprocess`+`neuronxcc_flags`+`additional_compile_opt`+the `neuronx_cc … compile --framework XLA` literal. No other wheel `.so` pairs the literal with an env read. **Holds — CONFIRMED.**
-3. **"`NEURON_ASSERT*` is a test harness / macro / keyword, not an env var."** `libwalrus.so` carries `Simulate a NEURON_ASSERT() with bir::Instruction argument` and `error_injector`; `Job.so`/`Arguments.so` carry `neuron_assert` + `NEURON_ASSERT_GLOBAL_KEYWORDS` as attribute lookups. No module pairs `NEURON_ASSERT*` with `os.environ`/`getenv` as a key. **Holds — CONFIRMED.**
-4. **"`NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM` is read with `=1` semantics."** The `NOTICING NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM=1` log string sits beside the `getenv` import in `hlo-opt`. **Holds — CONFIRMED.** The other six `hlo-opt` knobs have the literal + `getenv` + adjacent pass strings but no decoded default → tagged **STRONG**, not CONFIRMED.
+- **The driver does not read `NEURON_CC_FLAGS`.** `Arguments.so` has zero `getenv`, zero `environ`, zero `NEURON_CC_FLAGS`; `CompileCommand.so` has zero of all three; `CommandDriver.so` has `environ` and `shlex` but no `NEURON_CC_FLAGS`, and its `shlex` use is `quote`/`join` for command echo, not `split`. The literal lives only in `NumpyKernel.so`, three native diagnostics, and one doc example.
+- **The only in-wheel reader is NKI `BaremetalKernel._compile`.** `NumpyKernel.so` is the unique wheel module carrying `NEURON_CC_FLAGS` together with `environ`, `split`, `subprocess`, `neuronxcc_flags`, `additional_compile_opt`, and the `neuronx_cc … compile --framework XLA` literal. No other wheel `.so` pairs the literal with an env read.
+- **`NEURON_ASSERT*` is a test harness, macro, or keyword — not an env var.** `libwalrus.so` carries `Simulate a NEURON_ASSERT() with bir::Instruction argument` and `error_injector`; `Job.so` and `Arguments.so` carry `neuron_assert` and `NEURON_ASSERT_GLOBAL_KEYWORDS` as attribute lookups. No module pairs `NEURON_ASSERT*` with `os.environ` or `getenv` as a key.
+- **`NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM` is read with `=1` semantics.** The `NOTICING NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM=1` log string sits beside the `getenv` import in `hlo-opt`. The other six `hlo-opt` knobs carry the literal, the `getenv`, and adjacent pass strings, but no decoded default.
 5. **"`TF_CPP_*` are set by the native ELF main, not the Python driver."** No wheel `.py`/`.so` contains `TF_CPP_MIN_LOG_LEVEL`; the literal is present in all five native bins, and the `setenv`/`getenv` callsites are inside the native `main` (corroborated by the `hlo2penguin` main env-read trace). **Holds**, with the precision that "driver main" = native ELF main, not `CommandDriver.main` — flagged in §7.1.
 
-**INFERRED / not byte-decoded** (do not overstate): the exact numeric *defaults* of the `hlo-opt` knobs; the precise on/off branch of `NEURON_RT_DBG_FALLBACK_TO_SINGLE`; the runtime-side semantics of `NEURON_RT_VIRTUAL_CORE_SIZE` beyond its LNC-grouping name. These are read-by but not fully decoded. No variable on this page is fabricated — every literal was located in a named binary.
+## Limits of this reading
+
+Three things are located but not fully decoded, and are **[UNRESOLVED]**: the exact numeric *defaults* of the `hlo-opt` knobs, the precise on/off branch of `NEURON_RT_DBG_FALLBACK_TO_SINGLE`, and the runtime-side semantics of `NEURON_RT_VIRTUAL_CORE_SIZE` beyond its LNC-grouping name. Every literal on this page was located in a named binary.
 
 ---
 
