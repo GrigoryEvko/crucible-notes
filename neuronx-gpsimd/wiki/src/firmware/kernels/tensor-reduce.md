@@ -23,7 +23,7 @@ CARRIED`.
 
 > **CORRECTION — the cross-partition Tensor-Reduce is *not* a distinct GPSIMD kernel, and the
 > `0x46`/`0x47`/`0x52` opcode attribution from [CrossLaneReduce §2/§8](cross-lane-reduce.md) is *wrong*.**
-> The opcode enum in `aws_neuron_isa_tpb_common.h` (read byte-exact this pass) maps `0x46 → COPY`,
+> The opcode enum in `aws_neuron_isa_tpb_common.h` (read byte-exact) maps `0x46 → COPY`,
 > `0x47 → CAST`, and `0x52 → TENSOR_REDUCE_BITVEC_OP`. The `0x52` *is* a real "Tensor-Reduce" opcode — the
 > **bitvec half of the `S4D4_TR` Tensor-Reduce** (arith half `0x42`) — but that instruction runs on the
 > **DVE (Vector) / Pool** engines, **not** the GPSIMD cross-lane datapath (its engine predicate forbids
@@ -49,7 +49,6 @@ fp32 `scale`; it walks the strided 4-D src `Tensor4d` over the active partitions
 per-`(op, dtype)` reduce through `clr_reduce_local(unsigned int, unsigned char,
 NEURON_ISA_TPB_REDUCE_OP, float)` @ `0x0100088c` — **the function whose mangled name literally carries the
 `REDUCE_OP` selector and the fp32 `scale`** (`_Z16clr_reduce_localjh24NEURON_ISA_TPB_REDUCE_OPf`).
-`[HIGH/OBSERVED]`
 
 The **reduce-op table** is the closed 6-entry `NEURON_ISA_TPB_REDUCE_OP` —
 **`ADD=0, AVERAGE=1, MAX=2, BITWISE_OR=3, BITWISE_AND=4, BITWISE_XOR=5`** — *byte-identical* to the
@@ -66,7 +65,6 @@ algorithm is the single-instruction `ivp_r*` lane fold (the [B08 reduce ISA batc
 > The `scale` F32 on the arith path (absent on bitvec) maps 1:1 to `clr_reduce_local`'s 4th float arg and
 > `S4D4_CR.scale@40` (the AVERAGE multiplier). So *"across partitions, GpSimd"* (NKI) and *"fold the 32
 > SIMD lanes"* (the device) are **one kernel, two altitudes** — the partition dim *is* the lane axis.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -74,8 +72,8 @@ algorithm is the single-instruction `ivp_r*` lane fold (the [B08 reduce ISA batc
 
 ### 2.1 The opcode arbitration (the `0x46`/`0x47`/`0x52` question, resolved)
 
-The full reduce-family slice of the opcode enum (`aws_neuron_isa_tpb_common.h`, CAYMAN, re-read byte-exact
-this pass; identical across all four gens, §9):
+The full reduce-family slice of the opcode enum (`aws_neuron_isa_tpb_common.h`, CAYMAN, read byte-exact;
+identical across all four gens, §9):
 
 | opcode | name | operand struct | engine | reduce? |
 |---|---|---|---|---|
@@ -115,13 +113,13 @@ The device disassembler carries **two distinct mnemonic-name strings**, byte-anc
 
 The `"unimplemented tensor-reduce **ALU op**"` error string (off `0x269bf6`) independently confirms that
 Tensor-Reduce switches on the **`ALU_OP`** space (the `S4D4_TR.op@36` field, §6) — *not* the 6-entry
-`REDUCE_OP` of this kernel. `[HIGH/OBSERVED]`
+`REDUCE_OP` of this kernel.
 
 ### 2.2 `.xt.prop` function starts (CAYMAN_0)
 
 The handler chain sits at the front of the `0xa260` `EXTISA_0` POOL image, shared CAYMAN/MARIANA/
 MARIANA_PLUS. Function-start VMAs are the first 12-byte record (`[VMA:LE32][size][flag:0x2804]`) of each
-`.xt.prop.<mangled>` section, demangled with `c++filt`. All `[HIGH/OBSERVED]`:
+`.xt.prop.<mangled>` section, demangled with `c++filt`:
 
 | funcVA | demangled signature | role |
 |---|---|---|
@@ -152,7 +150,7 @@ are source-file/assert labels in `.rodata`, *not* `.xt.prop` section names.) The
 contains **only** the CrossLaneReduce family; the `S4D4_TR` Tensor-Reduce (`0x42`/`0x52`) is *not* a GPSIMD
 kernel and never appears in the POOL `.xt.prop`. The mangled `clr_reduce_local` signature is the **only**
 place `NEURON_ISA_TPB_REDUCE_OP` appears as a parameter type — concrete evidence the firmware worker takes
-the `S4D4_CR.reduce_op` enum. `[HIGH/OBSERVED]`
+the `S4D4_CR.reduce_op` enum.
 
 The kernel_info_table (CAYMAN_0, VMA `0x02000380`, file `0x7400`; record = `{u8 0; u8 0; u8 spec; u8
 opcode; u32_le funcVA}`):
@@ -207,7 +205,7 @@ to **both** opcodes:
 ]
 ```
 
-> **The `sizeof==64` static-assert is *compile-verified* this pass — an upgrade over the backing report.**
+> **The `sizeof==64` static-assert is *compile-verified*.**
 > The arch-isa header *is* present in this checkout. Reproducing the header's `typedef struct
 > NEURON_ISA_TPB_S4D4_CR_STRUCT` (with `NEURON_ISA_PACKED = __attribute__((packed))` and the 1-byte packed
 > `REDUCE_OP`/`REDUCE_AXIS` enums), `gcc` confirms **`sizeof == 64`** and every offset:
@@ -254,7 +252,7 @@ typedef struct NEURON_ISA_TPB_TENSOR4D {
 > **NOTE — CrossLaneReduce uses a *4-D* access pattern (`TENSOR4D`).** The `start_addr` `ADDR4` union
 > carries the SBUF partition-offset encoding; the src spans `num_active_channels` partitions, the dst
 > spans exactly 1 partition for `All` (the reduce collapses partitions to one) and matches src for
-> `Partitions`. `[HIGH/OBSERVED]`
+> `Partitions`.
 
 ### 3.3 Validity predicates (the header's assertion comments, OBSERVED verbatim)
 
@@ -289,7 +287,7 @@ Source: `aws_neuron_isa_tpb_s4d4_cr.h`, `enum NEURON_ISA_TPB_REDUCE_OP`, `NEURON
 is the **complete, closed** enumeration of every value `s4d4_cr.reduce_op` can hold and the worker switches
 on. It is the dedicated *reduce* enum — **not** the 60-entry `NEURON_ISA_TPB_ALU_OP` of Tensor-Tensor, and
 crucially **not** the `op@36` of the `S4D4_TR` Tensor-Reduce (which *is* `ALU_OP`, §6). Read byte-exact
-this pass and matching the [CrossLaneReduce §4 enum](cross-lane-reduce.md) exactly:
+and matching the [CrossLaneReduce §4 enum](cross-lane-reduce.md) exactly:
 
 | code | name | handler | header semantics (verbatim) | value primitive (xdref / ivp) | conf |
 |---|---|---|---|---|---|
@@ -303,14 +301,14 @@ this pass and matching the [CrossLaneReduce §4 enum](cross-lane-reduce.md) exac
 The enum closes at `0x5`; total = 6. The **arith** handler (`0x7c`) takes `ADD`/`AVERAGE`/`MAX` (value
 reductions, fp32 math); the **bitvec** handler (`0x7d`) takes `BITWISE_OR`/`AND`/`XOR` (raw integer
 bit-fold, no fp conversion) — the exact arith-vs-bitvec partition that motivates the two opcodes. The enum
-is **byte-identical across the CAYMAN, MARIANA, SUNDA, and MAVERICK arch-isa headers** (verified this pass:
-same six values, same packing, §9). `[HIGH/OBSERVED]`
+is **byte-identical across the CAYMAN, MARIANA, SUNDA, and MAVERICK arch-isa headers** (verified:
+same six values, same packing, §9).
 
 > **The header's associativity license (verbatim, OBSERVED):** *"The operators are all
 > associative/commutative and the order in which the operations is done is not architecturally
 > guaranteed."* This is the architectural permission for the device to use a **balanced log-step tree**
 > (32 → 16 → 8 → 4 → 2 → 1) or any lane-pairing; the result is order-independent. It is also what makes the
-> three-tier composition (§7) order-free. `[HIGH/OBSERVED]`
+> three-tier composition (§7) order-free.
 
 > **CORRECTION — `BITWISE_XOR` has no dedicated `module__xdref_rxorb*` reduce leaf** (`nm -D libfiss-base.so
 > | rg -c 'xdref_rxorb'` = 0). `BITWISE_OR`/`AND` *do* (`rorbn_64_64` @ `0x81ce30`, `randbn_64_64` @
@@ -374,7 +372,7 @@ partitions (no reduction within a single partition) (set `reduce_axis` to `Reduc
 ```
 
 So the **output shape** is enum-determined: `All` → a single scalar element (dst `num_elem` all 1, or
-register-shaped); `Partitions` → a per-lane vector (dst same element count as src). `[HIGH/OBSERVED]`
+register-shaped); `Partitions` → a per-lane vector (dst same element count as src).
 
 ### 5.2 Why this is the same physical axis as the intra-vector lane fold
 
@@ -385,7 +383,6 @@ tensor lens) describe the *identical* physical reduction. They are **not two ker
 altitudes: the algorithm lens emphasises the `ivp_r*` lane-fold; the NKI public-API lens names the tensor
 semantic (`tensor_partition_reduce`). The `reduce_axis` field is the dial: `All` collapses every lane/
 partition to a scalar; `Partitions` segments the fold so each within-partition lane position survives.
-`[HIGH/OBSERVED]`
 
 On-device, the segment for `Partitions` is bounded by the predicated `rb*` / `_t` reduce forms
 ([B08 §5.5](../../isa/ref/b08-reduce.md)): an active-partition `vbool` mask bounds the fold;
@@ -423,7 +420,7 @@ header's own static assert) is structurally *different* from `S4D4_CR`:
 The two structs *agree on the first 35 bytes' field identities* but diverge entirely at offset 35: the
 GPSIMD reduce carries a **6-op `REDUCE_OP` + `reduce_axis` + `scale`**; the Vector/Pool Tensor-Reduce
 carries the **full 60-op `ALU_OP` + `negated` + `op_dim` + `mask_enable`**. They are different
-instructions. `[HIGH/OBSERVED]`
+instructions.
 
 The `S4D4_TR` header comment enumerates the *nine* instructions it serves — `TensorReduce[Arith/Bitvec]`
 (with a `CRC32` polynomial-reduce sub-form), `TransposeTensorReduce[Arith/Bitvec]` (a 32×32 transpose then
@@ -455,14 +452,14 @@ reduce), `TensorCumulative[Arith/Bitvec]` (the [scan twin](tensorcumulative.md))
 > the free-axis Tensor-Reduce is a Vector/Pool instruction, and the cross-partition reduce *on GpSimd* is
 > the CrossLaneReduce family this page documents. By contrast, `S4D4_CR` (this kernel) carries **no
 > per-engine `is_valid_*_engine` predicate** in `common.h` — its engine binding is implicit, and the device
-> worker symbols are `pool_cross_lane_reduce_*` (the POOL/GpSimd ucode). `[HIGH/OBSERVED]`
+> worker symbols are `pool_cross_lane_reduce_*` (the POOL/GpSimd ucode).
 
 ---
 
 ## 7. The three-layer reduce trilogy — placed instruction-exact
 
 The three reduce layers each fold a **different axis**, on a **different engine**, with a **different
-packed enum**. They share abstract operation *names* (ADD/MAX/…) but no encoding. `[HIGH/OBSERVED]`
+packed enum**. They share abstract operation *names* (ADD/MAX/…) but no encoding.
 
 | layer | axis folded | NKI API | engine / opcodes | operand struct | op enum |
 |---|---|---|---|---|---|
@@ -478,7 +475,7 @@ packed enum**. They share abstract operation *names* (ADD/MAX/…) but no encodi
 > middle tier is the **Vector/Pool** `tensor_reduce` (`S4D4_TR`, `0x42`/`0x52`), which the CrossLaneReduce
 > page did not separate out. The corrected trilogy is therefore **(A) Vector/Pool free-axis · (B) GpSimd
 > partition-axis [this kernel] · (C) SDMA cross-core**. The `0x46`/`0x47` = copy/cast attribution is
-> retracted entirely (§2.1). `[HIGH/OBSERVED]`
+> retracted entirely (§2.1).
 
 **Op-enum reconciliation** — three disjoint packed enums, agreeing only on operation *names*:
 
@@ -497,10 +494,9 @@ guaranteed". `[HIGH structure / INFERRED composition]`
 
 > **NOTE — the `S4D4_TR` family also carries the *scan* twin.** `TensorCumulative[Arith/Bitvec]`
 > (`0x4E`/`0x5E`) shares the `S4D4_TR` struct with Tensor-Reduce — a cumulative (prefix-scan) along the
-> same axis, the reduce's running-accumulate sibling. See [TensorCumulative](tensorcumulative.md) (planned)
+> same axis, the reduce's running-accumulate sibling. See [TensorCumulative](tensorcumulative.md)
 > for the scan; the cross-partition reduce here has no GPSIMD scan counterpart — the scan lives on the same
 > Vector/Pool `S4D4_TR` datapath as the free-axis reduce, not on the GpSimd cross-lane network.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -515,12 +511,12 @@ and issues the *same* `ivp_r*` ops, so the accumulator model is identical:
   overflowing sum). `[HIGH/OBSERVED by execution]`
 * **reduce-AVERAGE** = the `radd` path prefixed by a per-lane `(x × scale)` fp32 multiply; `scale` is
   `S4D4_CR.scale@40` / the `clr_reduce_local` 4th arg / `emit_cross_lane_reduce_arith.scale`. *Distinct from
-  POOL avg_pool's `pool_scale = 1/N`: here `scale` is applied per-lane before the fold.* `[HIGH/OBSERVED]`
+  POOL avg_pool's `pool_scale = 1/N`: here `scale` is applied per-lane before the fold.*
 * **reduce-MAX/MIN do NOT widen** (output width == input width); fp `rmaxnum`/`rminnum` are NaN-suppressing
-  (a NaN lane treated as the identity, IEEE-754-2019 `maximumNumber`). `[HIGH/OBSERVED]`
-* **BITWISE_OR/AND/XOR operate on RAW u8/u16/u32 — no fp32 conversion, no widening.** `[HIGH/OBSERVED]`
+  (a NaN lane treated as the identity, IEEE-754-2019 `maximumNumber`).
+* **BITWISE_OR/AND/XOR operate on RAW u8/u16/u32 — no fp32 conversion, no widening.**
 * **ADD/AVERAGE/MAX use fp32 math** for the value dtypes (header). `in_dtype`: any valid dtype **except
-  FP32R**. `out_dtype`: any valid dtype **including FP32R** (§3.3). `[HIGH/OBSERVED]`
+  FP32R**. `out_dtype`: any valid dtype **including FP32R** (§3.3).
 
 ---
 
@@ -530,21 +526,19 @@ and issues the *same* `ivp_r*` ops, so the accumulator model is identical:
   the **same** function-start VMAs (`clr_reduce_local @0x0100088c`, worker `@0x01000440`, arith `@0x010003f8`,
   bitvec `@0x01000410`) in **both** CAYMAN_0 (sha256 `910d41c3…`) and CAYMAN_3 (sha256 `052ac31c…`) —
   byte-identical `0x2804` function-start records. The `0xa260` `EXTISA_0` image is shared CAYMAN/MARIANA/
-  MARIANA_PLUS. `[HIGH/OBSERVED]`
+  MARIANA_PLUS.
 * **SUNDA** (newest gen, sha256 `444497066f5e1738…`): the reduce kernel persists as opcodes 124/125
   (`pool_cross_lane_reduce_arith`/`_bitvec`) in the SUNDA opcode JSON; **no** standalone `tensor_reduce`.
   `[HIGH/OBSERVED for op#]`
 * The four reduce/clr `.xt.prop` worker symbols each appear **9 times** per lib (9 embedded POOL EXTISA
   blobs across the cayman/mariana/maverick/plus accessor set), the symbol roster byte-identical per blob.
-  `[HIGH/OBSERVED]`
 * The `S4D4_CR` struct (64B, compile-verified), the `REDUCE_OP` enum `{ADD0,AVG1,MAX2,OR3,AND4,XOR5}`, the
   `REDUCE_AXIS` enum `{All0,Partitions1}`, and the `0x7c`/`0x7d` opcodes are **byte-identical across the
-  CAYMAN, MARIANA, SUNDA, and MAVERICK arch-isa headers** (verified this pass — same six enum values, same
+  CAYMAN, MARIANA, SUNDA, and MAVERICK arch-isa headers** (verified — same six enum values, same
   64B struct, same `0x42`/`0x52`/`0x7c`/`0x7d`/`0x83`/`0x84` opcode bytes). The `S4D4_TR` family is the
   *only* one that drifts across gens: SUNDA *adds* `TENSOR_REDUCE_ADD_BF16 = 0x8c` /
   `TENSOR_REDUCE_MAX_BF16 = 0x8d` to it — but those land on the Vector/Pool Tensor-Reduce, never on the
   GPSIMD `S4D4_CR` cross-lane reduce, which is opcode-stable `0x7c`/`0x7d` across all four gens.
-  `[HIGH/OBSERVED]`
 
 > **NOTE — v5 / MAVERICK.** The MAVERICK (NC-v5) arch-isa header exposes the identical `S4D4_CR` struct,
 > `REDUCE_OP`/`REDUCE_AXIS` enums, and `0x7c`/`0x7d` opcodes (header-OBSERVED), but the v5 kernel *interior*
@@ -562,16 +556,16 @@ and issues the *same* `ivp_r*` ops, so the accumulator model is identical:
   on the `entry` prologues, the SP-align, the `a0`/`a1` selector byte, the kernel_info_table bytes, and the
   function-start VMAs; `[MED]` on the mid-bundle dispatch arms and the per-op `REDUCE_OP` switch inside
   `clr_reduce_local`. The bodies are reported **structurally**, never byte-fabricated.
-* **Struct sizeof — now compile-verified.** The backing report carried the `S4D4_CR` offsets `[MED]` because
+* **Struct sizeof — now compile-verified.** An earlier pass carried the `S4D4_CR` offsets `[MED]` because
   it believed the arch-isa header was absent. The header *is* present in this checkout
   (`neuron_cayman_arch_isa/tpb/aws_neuron_isa_tpb_s4d4_cr.h`), so the `sizeof==64` and every offset are
   **`[HIGH/OBSERVED]` (compile-verified with `gcc`)** here (§3).
 * **The `0x46`/`0x47`/`0x52` arbitration.** Resolved byte-exact from `aws_neuron_isa_tpb_common.h`:
   `0x46=COPY`, `0x47=CAST`, `0x52=TENSOR_REDUCE_BITVEC_OP` (S4D4_TR, DVE/Pool). The
   [CrossLaneReduce](cross-lane-reduce.md) attribution of these to the cross-partition reduce is corrected
-  in-page (§1, §2.1) and flagged for the reconcile pass. `[HIGH/OBSERVED]`
+  in-page (§1, §2.1) and flagged for the reconcile pass.
 * **Per-op fold algorithm / value semantics** are carried `[HIGH/OBSERVED via the CrossLaneReduce §5 live
-  drive]` (the `libfiss-base.so` ISS oracle, driven via `ctypes`); not re-disassembled this pass. `rxorb`
+  drive]` (the `libfiss-base.so` ISS oracle, driven via `ctypes`); not disassembled here. `rxorb`
   (reduce-XOR) has no dedicated leaf — `[MED/INFERRED]`.
 * **`reduce_axis::Partitions` device segment count** is data-dependent on `num_active_channels`, not a
   fixed-8 constant (the [CrossLaneReduce §5.5 CORRECTION](cross-lane-reduce.md) withdrew the fixed-8
@@ -618,9 +612,9 @@ and issues the *same* `ivp_r*` ops, so the accumulator model is identical:
 * [ISA Batch 08 — Cross-Lane Reduce](../../isa/ref/b08-reduce.md) — the per-instruction reference for the
   `ivp_radd`/`rmax`/`rmin`/`rbmax`/`randb`/`rorb` reduce mnemonics this kernel issues, the `s3_alu` vs
   `s1_ld` selector bands, and the live-driven value semantics §4/§8 re-use.
-* [TensorCumulative kernel](tensorcumulative.md) *(planned)* — the **scan twin** sharing the `S4D4_TR`
+* [TensorCumulative kernel](tensorcumulative.md) — the **scan twin** sharing the `S4D4_TR`
   struct (`0x4E`/`0x5E`) with the free-axis Tensor-Reduce; the running-accumulate sibling of tier (A).
-* [CCE in-transfer reduce](../../dma/cce-in-transfer.md) *(planned)* — the **cross-CORE / cross-BUFFER**
+* [CCE in-transfer reduce](../../dma/cce-in-transfer.md) — the **cross-CORE / cross-BUFFER**
   SDMA-CCE collective reduce (`SDMA_CCETYPE {ADD,FMA,MAX,MIN}`), the outermost tier (C) of the §7
   composition.
 * [The Tensor-Tensor kernel](tensor-tensor.md) — the structurally-parallel arith/bitvec opcode split
@@ -633,7 +627,7 @@ and issues the *same* `ivp_r*` ops, so the accumulator model is identical:
 predicates are read byte-exact from the CAYMAN/MARIANA/SUNDA/MAVERICK arch-isa interface headers
 (`aws_neuron_isa_tpb_s4d4_cr.h`, `aws_neuron_isa_tpb_s4d4_tr.h`, `aws_neuron_isa_tpb_common.h`) shipped in
 the `aws-neuronx-gpsimd-customop-lib` package, cross-checked against `instruction_mapping.json`
-(struct→opcode). The `S4D4_CR` `sizeof==64` and field offsets are **compile-verified** with `gcc` this pass.
+(struct→opcode). The `S4D4_CR` `sizeof==64` and field offsets are **compile-verified** with `gcc`.
 The handler-chain VMAs / prologues / kernel_info_table bytes are read from the `.xt.prop` function-start
 records of the carved CAYMAN device image (`extisa_CAYMAN_POOL_PERF_EXTISA_0.so`) with
 `xtensa-elf-objdump`/`readelf`/`c++filt` (`XTENSA_CORE=ncore2gp`). The reduce algorithm and per-op value

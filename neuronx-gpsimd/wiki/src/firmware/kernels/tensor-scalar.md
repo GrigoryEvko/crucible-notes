@@ -48,9 +48,9 @@ source was consulted.
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — re-verified in-task |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) |
 | Disassembler | `gpsimd_tools/…/bin/xtensa-elf-objdump` (Binutils 2.34.20200201, Xtensa Tools 14.09), `XTENSA_CORE=ncore2gp` |
-| MARIANA `NX_DVE` DEBUG IRAM | `MARIANA_NX_DVE_DEBUG_IRAM_get.data` VA `0x408fc0` / size `0x1c560` (`.rodata` VA == file offset) — carve sha256 `4c75ba8e…`, re-verified |
+| MARIANA `NX_DVE` DEBUG IRAM | `MARIANA_NX_DVE_DEBUG_IRAM_get.data` VA `0x408fc0` / size `0x1c560` (`.rodata` VA == file offset) — carve sha256 `4c75ba8e…` |
 | MARIANA `NX_DVE` DEBUG DRAM | `MARIANA_NX_DVE_DEBUG_DRAM_get.data` VA `0x425520` / size `0x7000` |
 | MARIANA `NX_DVE` PERF IRAM | `MARIANA_NX_DVE_PERF_IRAM_get.data` VA `0x31f5c0` / size `0x13540` (cleaner FLIX; the splat-bundle source) |
 | CAYMAN `NX_DVE` DEBUG IRAM/DRAM | VA `0x16f660` / `0x18b320` |
@@ -66,7 +66,7 @@ The authoritative struct/enum source is the shipped public ISA headers (same pac
 - `…/neuron_<gen>_arch_isa/tpb/instruction_mapping.json` — the struct→opcode binding (`struct2opcode`).
 
 The `S3D3_TS` struct is **byte-identical** (`sizeof 64`, same field offsets) on cayman/mariana/maverick/sunda
-(diff'd). `[HIGH/OBSERVED]`
+(diff'd).
 
 ---
 
@@ -91,13 +91,13 @@ NEURON_ISA_TPB_OPCODE_TENSOR_SCALAR_CACHE_CUMULATIVE    = 0xe6,   // Y      (sib
 The arith/bitvec opcode-pair convention is **identical** to Tensor-Tensor (`0x41`/`0x51`). Tensor-Scalar
 *is* Tensor-Tensor with `src1` replaced by a broadcast scalar — the **same** family-byte structure
 (low nibble `3` = scalar, `1` = tensor; high nibble `4` = arith, `5` = bitvec). The opcode value is the
-single fact on the SEQ axis; everything else is the struct + the DVE worker. `[HIGH/OBSERVED]`
+single fact on the SEQ axis; everything else is the struct + the DVE worker.
 
 > **NOTE — `0x43`/`0x53` are firmware kernel-lane opcodes, not Xtensa ISA mnemonics.** Keep the two
 > axes distinct (the same caution [Exponential](exponential.md) §3 raises): the ~140-entry
 > `NEURON_ISA_TPB_OPCODE_*` enum is the *firmware kernel-lane* axis; the `ivp_*` roster (the `ivp_rep*`,
 > `ivp_bmaxnx16`, … of §5) is the *Xtensa ISA* axis. The Tensor-Scalar opcode dispatches a firmware
-> handler; that handler *emits* the IVP bundles. `[HIGH/OBSERVED]`
+> handler; that handler *emits* the IVP bundles.
 
 ### 3a. The struct→opcode binding (`instruction_mapping.json`)
 
@@ -119,7 +119,6 @@ The `struct2opcode` table binds **eight** opcodes to `NEURON_ISA_TPB_S3D3_TS_STR
 
 The same eight opcodes appear in the `s3d3_ts.h` struct-usage comment (header lines 13–22). The four
 **Tensor-Scalar opcodes** of this page (`0x43`/`0x53`/`0x44`/`0x54`) are the first four members.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -154,12 +153,12 @@ uint16 num_elem[3](6) }` — a 3-D strided access pattern. `NEURON_ISA_TPB_MEM_P
 (`common.h:837`) = `union { TENSOR3D t; INDIRECT16B i }` — the indirect arm is the gather/scatter form
 (the `indirect_pattern()` gate). Both `src` and `dst` are `AllowedInPSUM::True && AllowedInSBUF::True`, so
 a Tensor-Scalar op can read the matmul **PSUM** directly (e.g. a bias-add straight off the PE-array
-output). `[HIGH/OBSERVED]`
+output).
 
 > **NOTE — CAYMAN exposes the bare `TENSOR3D`, not the union.** On CAYMAN the `src_mem_pattern`/
 > `dst_mem_pattern` fields are typed as the bare `NEURON_ISA_TPB_TENSOR3D` (no `MEM_PATTERN3D` union arm);
 > the offsets and `sizeof 64` are byte-identical. This is the **only** struct-text divergence across gens
-> — it means CAYMAN's S3D3_TS predates the indirect/gather arm but is wire-compatible. `[HIGH/OBSERVED]`
+> — it means CAYMAN's S3D3_TS predates the indirect/gather arm but is wire-compatible.
 
 ### 4a. The two-AluOp composition + the reverse-operands formula
 
@@ -235,7 +234,7 @@ static inline elem_t ts_compute(elem_t x, scalar_t s0, scalar_t s1,
 In one sentence: **apply the two-AluOp scalar composition to every element of the `src` `TENSOR3D`
 (PSUM or SBUF) and write the `dst` `TENSOR3D`**, with the accumulator idle, the dtypes valid, the
 op-pair in the accept set, and the immediates correctly sourced. `tensor_scalar_tensor_chk` additionally
-enforces `same_element_count_m3d(src, dst)` and `indirect_dst_size_limit_m3d(dst)`. `[HIGH/OBSERVED]`
+enforces `same_element_count_m3d(src, dst)` and `indirect_dst_size_limit_m3d(dst)`.
 
 > **GOTCHA — `TransposeTensorScalarArithOp` (`0x93`) rides the same opcode predicate.**
 > `has_tensor_scalar_opcode` accepts `0x43`, `0x53`, **and** `0x93` — so the transpose-fused variant
@@ -254,13 +253,13 @@ enforces `same_element_count_m3d(src, dst)` and `indirect_dst_size_limit_m3d(dst
 **no** running accumulation. The DVE per-lane accumulator is engaged **only** for the siblings
 [`TensorScalarCacheReduce`/`CacheCumulative`](ts-cache-reduce.md)
 (`has_valid_tensor_scalar_cache_reduce_accum_cmd`) and for [Exponential](exponential.md)
-(`has_valid_exponential_accum_cmd`). `[HIGH/OBSERVED]`
+(`has_valid_exponential_accum_cmd`).
 
 ### 4d. `is_valid_aluop`, the enum-validity gate
 
 `tensor_scalar_valid_ops` opens with `is_valid_enum(EnumList::AluOp, op0)` and `…op1` — the raw byte must
 be a defined `ALU_OP` member (the base `0x00..0x23` band or the int band `0xC4..0xE1`; the gaps
-`0x1E/0x1F`, `0x24..0xC3` are rejected). `[HIGH/OBSERVED]`
+`0x1E/0x1F`, `0x24..0xC3` are rejected).
 
 ### 4e. The immediate union (`imm0` / `imm1`)
 
@@ -280,7 +279,7 @@ typedef union NEURON_ISA_TPB_IMM_VAL_INST_FIELD {
 
 One 4-byte slot, reinterpreted by `(imm_src, op-class)`: an **arith** instruction-immediate is **always**
 read as `fp32`; a **bitvec** instruction-immediate is a 32/16/8-bit value width-checked by
-`ts_imm_32/16/8_chk` (§7). `[HIGH/OBSERVED]`
+`ts_imm_32/16/8_chk` (§7).
 
 ---
 
@@ -316,7 +315,7 @@ mechanism. `[HIGH/OBSERVED — five byte-clean co-issue bundles; 28 `ivp_rep*` s
 > [Tensor-Tensor](tensor-tensor.md): it has *no* broadcast flag, so it broadcasts a `src` by setting its
 > `TENSOR3D.step_elem` to 0 (a degenerate re-read of one element). Tensor-Scalar's operand is **not a
 > tensor at all** — it is a single scalar (`imm0`/`imm1`) splatted by `ivp_rep*` in-datapath. The two
-> paths are complementary. `[HIGH/OBSERVED]`
+> paths are complementary.
 
 > **CORRECTION — the per-`op0`-code → single-`ivp` binding is not 1:1 byte-pinnable.** The bundles above
 > prove the splat **co-issues** with an AluOp and let you read the *structural* binding
@@ -444,7 +443,7 @@ So:
 
 Common rejects on **both** `op0` and `op1`: `Divide(0x07)`, `Pow(0x1A)`, `Mod(0x1B)`. `Rsqrt(0x1D)`,
 `Crc32(0x1C)`, and `Pow` are Pool-engine ops generally; on the DVE Tensor-Scalar path `Rsqrt` is allowed
-**only** through the `op0==Rsqrt, op1==Bypass` zero-immediate special case. `[HIGH/OBSERVED]`
+**only** through the `op0==Rsqrt, op1==Bypass` zero-immediate special case.
 
 > **GOTCHA — the shift-pair rule needs a 4-byte dtype.** `tensor_scalar_shift_chk` →
 > `alu_shift_check` (`common.h:1919`): a shift-**left** `op0` paired with a shift-**right** `op1`
@@ -484,7 +483,7 @@ The instruction-immediate width (`ts_imm_32/16/8_chk`, §7): **arith** always us
 **bitvec** uses the dtype width — 32-bit only for `{u32, i32, fp32}` inputs; a 16-bit immediate must fit
 `0xFFFF` (`& 0xFFFF0000 == 0`); an 8-bit must fit `0xFF` (`& 0xFFFFFF00 == 0`). Channels
 `num_active_channels ∈ 1..128` (`POOLING_NUM_CHANNELS == DVE_NUM_CHANNELS == 128U`); MAVERICK uses
-`has_valid_active_channel_range_with_tile(.., DVE_NUM_CHANNELS, header.inst_flags)`. `[HIGH/OBSERVED]`
+`has_valid_active_channel_range_with_tile(.., DVE_NUM_CHANNELS, header.inst_flags)`.
 
 ---
 
@@ -503,7 +502,7 @@ typedef enum NEURON_ISA_TPB_IMM_SRC {
 
 `tensor_scalar_immediates_check` (`s3d3_ts.h:297`) dispatches **per-immediate**: each of `imm0`/`imm1` is
 validated by `ts_imm_chk` (inline), `ts_ptr_imm_chk` (pointer), or `is_valid_imm_reg(imm.imm_reg)`
-(register pointer) according to its `*_src`. `[HIGH/OBSERVED]`
+(register pointer) according to its `*_src`.
 
 > **GOTCHA — there is a *second*, byte-swapped `IMM_SRC_N` enum. Do not cross them.** `common.h:1375`
 > defines `NEURON_ISA_TPB_IMM_SRC_N` with **`Pointer=0, Instruction=1, RegPtr=2`** — the Pointer and
@@ -602,7 +601,7 @@ stride; the registration template `const16 a2, funcVA ; s32i a2,[a1+12] ; l32r ;
 
 `s32i a2,[a1+12]` writes the funcVA into the `kernel_info` slot; `call8 0x9920` is the DVE
 kernel-register routine. All four `const16 a2, funcVA` literals are byte-confirmed
-(`0x2036→0xa040`, `0x2052→0xa1a8`, `0x206e→0xa298`, `0x20de→0xa310`). `[HIGH/OBSERVED]`
+(`0x2036→0xa040`, `0x2052→0xa1a8`, `0x206e→0xa298`, `0x20de→0xa310`).
 
 > **GOTCHA — the opcode→funcVA descriptor literal is out-of-carve.** Each stub's two `l32r` literals
 > (`0xfffc81a8`/`0xfffc3728` …, +`0x1c` per consecutive worker) are **negative** PC-relative — they
@@ -691,7 +690,7 @@ strings + the worker funcVAs + the registration stubs.
 
 > **KEY CONTRAST with [Exponential](exponential.md).** Tensor-Scalar is **WIRED on CAYMAN** (strings +
 > workers `0x9c28`/`0x9ef8`/`0x9f70` + stubs all present), whereas Exponential is CAYMAN/SUNDA-**unwired**
-> (define-but-unwired). Tensor-Scalar is a **core** op present on every DVE-equipped gen. `[HIGH/OBSERVED]`
+> (define-but-unwired). Tensor-Scalar is a **core** op present on every DVE-equipped gen.
 
 > **MAVERICK (NC-v5) — header-OBSERVED → INFERRED.** The MAVERICK `"S: Tensor-Scalar"`/`-PTR` strings
 > (DRAM `0x2003`/`0x2015`), the MAVERICK `s3d3_ts.h` validators, and the worker presence are observed;
@@ -763,7 +762,7 @@ A reimplementer building a Vision-Q7-compatible Tensor-Scalar:
   `"…OP(R[%d], R[%d])"` (tensor) @`0x2bb5`.
 - Per-gen: opcodes/struct all gens; strings + workers + stubs on cayman/mariana/maverick (TS WIRED on
   CAYMAN, unlike Exponential); the MAVERICK NC-v5 tile-aware channel-range + int-aluop-dve relaxation
-  (header diff); the NX_DVE DEBUG symbol VAs + the IRAM carve sha256 `4c75ba8e…` re-verified.
+  (header diff); the NX_DVE DEBUG symbol VAs + the IRAM carve sha256 `4c75ba8e…`.
 
 **MED / INFERRED:**
 
@@ -804,7 +803,7 @@ bytes, the shipped C headers, the symtab, and `instruction_mapping.json`) — la
   siblings (`0x9a`/`0xe6`) that *do* engage the DVE accumulator (`tensor_scalar_cache_reduce_valid_ops`,
   the `op1` ∈ `{Add,Subtract,Mult,Max,Min}` cache-reduce gate).
 - [TensorScalarSelect](ts-select.md) / [TensorScalarImmLoad](ts-immld.md) / [TensorScalarPtrMulti](ts-ptrmulti.md)
-  — the further TensorScalar-family ops (planned).
+  — the further TensorScalar-family ops.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the `HIGH/MED/LOW ×
   OBSERVED/INFERRED/CARRIED` vocabulary, the FLIX-desync wall, and the out-of-carve descriptor wall every
   claim here carries.

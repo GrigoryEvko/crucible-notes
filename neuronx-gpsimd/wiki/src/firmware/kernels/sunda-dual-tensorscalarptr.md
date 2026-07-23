@@ -35,7 +35,7 @@
 
 | # | Fact | Evidence | Tag |
 |---|------|----------|-----|
-| 1 | **DUAL pair** `TENSOR_SCALAR_PTR_MULTI_DUAL_ARITH = 0x87` (135), `…_DUAL_BITVEC = 0x88` (136), both `// n, ucode/kaenadve exists, not maintained/used`. **SUNDA-only**: defined at `common.h:221`/`:222` and **absent** from the cayman/mariana/maverick opcode enums. | sunda `common.h:221`/`:222`; re-grepped all four gens | HIGH/OBSERVED |
+| 1 | **DUAL pair** `TENSOR_SCALAR_PTR_MULTI_DUAL_ARITH = 0x87` (135), `…_DUAL_BITVEC = 0x88` (136), both `// n, ucode/kaenadve exists, not maintained/used`. **SUNDA-only**: defined at `common.h:221`/`:222` and **absent** from the cayman/mariana/maverick opcode enums. | sunda `common.h:221`/`:222`; grepped all four gens | HIGH/OBSERVED |
 | 2 | **Deprecated single-pointer pair** `TENSOR_SCALAR_PTR_ARITH_OP = 0x44` (68), `…_BITVEC_OP = 0x54` (84), both `// n, use TensorScalar{Arith,Bitvec}Op instead`. Present on **all four** gens (sunda `:169`/`:170`, cayman `:172`/`:173`, mariana `:177`/`:178`, maverick `:180`/`:181`). | `common.h`, all four gens | HIGH/OBSERVED |
 | 3 | The DUAL binds **`NEURON_ISA_TPB_S4D4_TSM_STRUCT`** (64 B) — the **same** struct as the singular [`PtrMulti`](ts-ptrmulti.md). The deprecated pair binds **`NEURON_ISA_TPB_S3D3_TS_STRUCT`** (64 B) — the **same** struct as the maintained [`TensorScalar`](tensor-scalar.md). Both `sizeof == 64`, byte-identical offsets on all four gens. | gcc `offsetof`/`sizeof`, all four gens (§4, §5) | HIGH/OBSERVED |
 | 4 | **DUAL semantics** (verbatim): "merges up to four regular `TensorScalarPtr` instructions (dual ALU op per instruction)"; `for i in range(W): dst[i,:,:,:] = (src[i,:,:,:] op0 pair[i][0]) op1 pair[i][1]`, with `1 <= W <= 4` **scalar PAIRS**. | sunda `s4d4_tsm.h:28–47` | HIGH/OBSERVED |
@@ -53,12 +53,12 @@
 All device-firmware facts derive from static analysis of the shipped device-firmware blob (carved from
 `libnrtucode_internal.so`, disassembled with the Cadence Xtensa toolchain that ships *inside* the
 gpsimd-tools package, `XTENSA_CORE=ncore2gp`, Vision-Q7 FLIX/VLIW) plus the shipped public ISA C headers,
-**compile-verified this session with gcc**. No source was consulted.
+**compile-verified with gcc**. No source was consulted.
 
 | Artifact | Value |
 |----------|-------|
 | Container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) — re-verified in-task (`sha256sum`) |
+| Container sha256 | `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (10,276,288 B) |
 | Disassembler | `gpsimd_tools/…/bin/xtensa-elf-objdump` (Binutils 2.34.20200201, Xtensa Tools 14.09), `XTENSA_CORE=ncore2gp` |
 | Headers root | `…/custom_op/c10/include/neuron_<gen>_arch_isa/tpb/` |
 | MARIANA `NX_DVE` DEBUG IRAM / DRAM | `.data` symbol VA `0x408fc0` / `0x425520` (image bytes in `.rodata`, VA == file offset) |
@@ -94,7 +94,7 @@ The authoritative struct/enum/validator source is the shipped public ISA headers
 
 Both carry the comment `// n, ucode/kaenadve exists, not maintained/used` (sunda `common.h:221`/`:222`).
 They are **defined only** in the SUNDA opcode enum; cayman/mariana/maverick `common.h` have **no** `0x87`/`0x88`
-opcode entry. `[HIGH/OBSERVED]`
+opcode entry.
 
 ### 3b. The deprecated single-pointer pair (`common.h`, all four gens)
 
@@ -103,14 +103,12 @@ opcode entry. `[HIGH/OBSERVED]`
 | `0x44` | `NEURON_ISA_TPB_OPCODE_TENSOR_SCALAR_PTR_ARITH_OP` | `// n` | **all 4 gens** | `S3D3_TS` |
 | `0x54` | `NEURON_ISA_TPB_OPCODE_TENSOR_SCALAR_PTR_BITVEC_OP` | `// n` | **all 4 gens** | `S3D3_TS` |
 
-Both carry `// n, use TensorScalar{Arith,Bitvec}Op instead`. Per-gen line numbers (re-grepped, byte-exact):
+Both carry `// n, use TensorScalar{Arith,Bitvec}Op instead`. Per-gen line numbers (byte-exact):
 
 | Opcode | sunda | cayman | mariana | maverick |
 |--------|-------|--------|---------|----------|
 | `0x44` / `0x54` | `169`/`170` | `172`/`173` | `177`/`178` | `180`/`181` |
 | `0x87` / `0x88` | `221`/`222` | **absent** | **absent** | **absent** |
-
-`[HIGH/OBSERVED]`
 
 ### 3c. `0x87` on NC-v3+ — the precise truth (a CORRECTION to the "reused-as-semaphore" framing)
 
@@ -139,7 +137,7 @@ update-mode selection are separate decode contexts, so the shared value `0x87` i
 ## 4. The DUAL operand struct — `NEURON_ISA_TPB_S4D4_TSM_STRUCT` (64 B)
 
 The DUAL shares its operand struct **byte-for-byte** with the singular [`PtrMulti`](ts-ptrmulti.md): there
-is **no** DUAL-specific struct. Compile-verified this session (`#include` the per-gen header, `printf` of
+is **no** DUAL-specific struct. Compile-verified (`#include` the per-gen header, `printf` of
 `sizeof`/`offsetof`); the output is **identical** on sunda/cayman/mariana/maverick:
 
 ```text
@@ -354,7 +352,7 @@ result = op1( op0(tensor, scalar0), scalar1 )       /* reverse_operands flips pe
 The scalar is broadcast across vector lanes by the IVP `REPLICATE` family
 (`ivp_rep2nx8t` / `ivp_repnx16t` / `ivp_repn_2x32t`), then the per-lane `AluOp` applies. The **only**
 difference from `0x43`/`0x53` is the scalar **source**: for `0x44`/`0x54` both `scalar0`/`scalar1` are
-**always** fetched from memory via a `PartitionOffset` pointer (never inline). `[HIGH/OBSERVED]`
+**always** fetched from memory via a `PartitionOffset` pointer (never inline).
 
 ### 5b. The deprecation contract — the SOLE difference from the maintained `0x43`/`0x53`
 
@@ -418,13 +416,13 @@ lets **each** immediate independently choose `ImmSrc ∈ {InstructionImmediate, 
 
 `is_bitvec_op` is the **full 10** (sunda `common.h:1748–1759`): `Bypass`, `BitwiseNot`, `ArithShiftLeft`,
 `ArithShiftRight`, `LogicalShiftLeft`, `LogicalShiftRight`, `BitwiseAnd`, `BitwiseOr`, `BitwiseXor`,
-`Crc32`. `[HIGH/OBSERVED]`
+`Crc32`.
 
 ---
 
 ## 6. The `struct2opcode` binding — the stale JSON superset
 
-`instruction_mapping.json` `struct2opcode` (verbatim per-gen, this task):
+`instruction_mapping.json` `struct2opcode` (verbatim per-gen):
 
 ```text
 NEURON_ISA_TPB_S3D3_TS_STRUCT  -> { TENSOR_SCALAR_ARITH_OP, TENSOR_SCALAR_BITVEC_OP,
@@ -463,11 +461,9 @@ Firmware blob: `libnrtucode_internal.so`, sha256 `b7c67e89…` (10,276,288 B).
 | `"S: Tensor-Scalar-PTR"` (`0x44`/`0x54`) | **7** (`0x18d225 0x1cfcc9 0x427506 0x46967e 0x6ef22b 0x733b03 0x8af5d5`) | The **most-present** family self-name — it has a real worker across DEBUG/PERF + other engine images. |
 | `"TensorScalarPtrMulti…"` (`0x4F`/`0x5F`) | **8** | The stub-wired singular pair (self-name present, body LOG-only — [`ts-ptrmulti.md`](ts-ptrmulti.md) §8). |
 
-`[HIGH/OBSERVED]`
-
 ### 7b. The SUNDA DVE image — a name-stripped RELEASE build (a CORRECTION)
 
-> **CORRECTION.** The GX-OP-07 backing note said "there is **NO** `SUNDA_NX_DVE` image in this container."
+> **CORRECTION.** An earlier note said "there is **NO** `SUNDA_NX_DVE` image in this container."
 > `nm -S` refutes the literal claim: a `SUNDA_NX_DVE_RELEASE` image **does** exist (IRAM `.data` VA
 > `0x10630`, size `0xbab0`; plus DRAM/SRAM/EXTRAM). What is **true** is the *qualified* version — SUNDA
 > ships **only** a RELEASE build, and the per-gen variant matrix is asymmetric: `[HIGH/OBSERVED]`
@@ -492,7 +488,7 @@ carve. `[HIGH/OBSERVED — nm -S + xtensa-elf-strings region scan]`
 ### 7c. The `0x44`/`0x54` worker is FULL (the WORKING end of the spectrum)
 
 The MARIANA DVE `"S: Tensor-Scalar-PTR"` worker is a **full compute body**, not a stub. The byte evidence
-(MARIANA DVE DEBUG DRAM/IRAM carve, this task) reproduces the SX-FW-50/58 anchors **exactly**:
+(MARIANA DVE DEBUG DRAM/IRAM carve) reproduces the FW-50/58 anchors **exactly**:
 
 - Image symbols (`nm -S`): `MARIANA_NX_DVE_DEBUG_DRAM_get.data` @ VA `0x425520` (size `0x7000`),
   `…_IRAM_get.data` @ VA `0x408fc0` (size `0x1c560`) — both in `.rodata`, VA == file offset.
@@ -511,7 +507,7 @@ The MARIANA DVE `"S: Tensor-Scalar-PTR"` worker is a **full compute body**, not 
   → `call8 0x188a4` (the shared logger; 229 call sites blob-wide) → `j`/`retw.n`. **No `call0`, no
   descriptor `const16 0x22xx`, no `call8 0x99c8`/`0x99bc` setup, no config-window `s16i`** — zero compute.
 
-`[HIGH/OBSERVED — byte-decoded MARIANA DVE IRAM, this task; corroborated by §8]`
+`[HIGH/OBSERVED — byte-decoded MARIANA DVE IRAM; corroborated by §8]`
 
 > **GOTCHA — FLIX literal-pool desync.** Stock `objdump` desyncs the MARIANA DVE IRAM on the recurring
 > `.byte 0x2f/0x8f/0x4f/0x5f` literal-pool lead bytes. The full-worker-vs-stub verdict rests **only** on the
@@ -583,7 +579,7 @@ Notes:
   `[HIGH/OBSERVED for v2–v4; v5 interior INFERRED — header-observed only per Part-5 ground rule]`
 - `0x87`/`0x88`: a pure NC-v2-floor artifact. The DUAL "fast path" (merge 4 dual-op `TensorScalarPtr`) did
   not survive; NC-v3+ kept only the singular `0x4F`/`0x5F` (itself stub-wired). The stale JSON binding is the
-  only NC-v3+ footprint. `[HIGH/OBSERVED]`
+  only NC-v3+ footprint.
 - The `S4D4_TSM` struct is byte-identical on all four gens (the DUAL and singular share it); only the
   validity functions differ, and the **cayman+** headers simply **omit** the DUAL validity fns — **231 lines
   vs SUNDA's 303** (`wc -l`), zero `has_tensor_scalar_ptr_multi_dual_opcode` / `has_valid_src_slices_tsm_dual`
@@ -601,7 +597,7 @@ the two **extremes** of the deprecated branch; [`tensor-scalar.md`](tensor-scala
 `out = op1(op0(src,s0),s1)`, per-imm `imm_src ∈ {Inst,Ptr,RegPtr}`) + Transpose `0x93` + Select `0x98` +
 CacheReduce `0x9a` + CacheCumulative `0xe6`.
 
-**Deprecated pointer branch (`// n`) — the GX-OP-07 spine:**
+**Deprecated pointer branch (`// n`):**
 
 | Opcode | Name | Struct | Role |
 |--------|------|--------|------|
@@ -628,7 +624,7 @@ CacheReduce `0x9a` + CacheCumulative `0xe6`.
       but is itself "// n" stub-wired.
 ```
 
-**The five family discriminator axes (with the GX-OP-07 ops placed):**
+**The five family discriminator axes:**
 
 | Axis | inline-imm | forced-single-ptr | multi-ptr vector | the loader |
 |------|-----------|-------------------|------------------|------------|
@@ -663,7 +659,7 @@ disabled** (no default 2nd bitvec op to hard-code). `[HIGH/OBSERVED — joined f
 - JSON: `S4D4_TSM` stale-lists DUAL on all four gens; `S3D3_TS` lists `0x44`/`0x54` (not stale).
 - Firmware: **zero** `"Dual"` strings; SUNDA ships only a name-stripped **RELEASE** DVE image (§7b);
   `0x44`/`0x54` `"S: Tensor-Scalar-PTR"` is a **full** worker (7 string hits; MARIANA `≈0xa298`) vs the
-  `0x4F`/`0x5F` LOG-only thunk. Container sha256 `b7c67e89…` re-verified.
+  `0x4F`/`0x5F` LOG-only thunk. Container sha256 `b7c67e89…`.
 
 **MED / INFERRED:**
 
@@ -680,9 +676,9 @@ disabled** (no default 2nd bitvec op to hard-code). `[HIGH/OBSERVED — joined f
 
 - The `0x87`/`0x88` → funcVA descriptor bytes: no SUNDA DEBUG firmware carries them; n/a in this container.
 - The `0x44`/`0x54` → funcVA descriptor literal: the stub `l32r` literals resolve outside the carved IRAM
-  (== the SX-FW-50 carve limitation).
+  (== the FW-50 carve limitation).
 
-> **CORRECTION (recorded above, §3c + §7b).** Two backing-note phrasings were over-strong and are corrected
+> **CORRECTION (recorded above, §3c + §7b).** Two earlier phrasings were over-strong and are corrected
 > here: (a) `0x87` was **not** "reused" on NC-v3+ — SUNDA carried it in two enums at once, and only the
 > OPCODE name was dropped; (b) SUNDA is **not** missing a DVE image — it ships a **RELEASE** one, but that
 > image is name-stripped, which is *why* the DUAL has no identifiable worker. The decode conclusions are

@@ -32,7 +32,7 @@ mnemonics + the divide-by-5 idiom + the authoritative validity contract), and is
 `INFERRED` wherever it is not a byte-exact linear decode. Confidence tags follow
 [the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
 read-from-byte / proven-by-decode, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` =
-re-used at a sibling report's confidence without re-reading the artifact this pass.
+re-used at a sibling report's confidence without re-reading the artifact.
 
 The dtype ordinals (`UINT32 = 0x9`, `FP8_EXP4 = 0xE`, `FP8_EXP5 = 0xF`, `FP4_EXP2 = 0x10`,
 `INT4 = 0x12`) are the ones established in [The Unified Datatype Model](dtype-model.md) — this
@@ -73,7 +73,7 @@ page keeps them consistent and resolves all dtype meaning there.
 
 ## 1. Dispatch chain — `kernel_info_table` → trampoline → kernel
 
-`TensorDequantize` is reached the same way as every POOL kernel (the `SX-FW-18` route): the
+`TensorDequantize` is reached the same way as every POOL kernel (the FW-18 route): the
 ucode loader dispatches each instruction by opcode through the `kernel_info_table`, which holds
 one 8-byte record per supported opcode; the record's trailing `u32` is the trampoline VA, and
 the trampoline tail-calls the named worker. `[HIGH structure / OBSERVED bytes for the route.]`
@@ -94,21 +94,21 @@ opcode 0x7b (123)  TensorDequantize
 The `kernel_info_table` lives at VMA `0x02000380` (file off `0x7400`), size `0x88` = **17
 records × 8 bytes**; record format `{ u8 0; u8 0; u8 spec; u8 opcode; u32_le funcVA }`. The
 dequant record is **idx16** at file off `0x7480` — `00 00 00 7b | c4 4d 00 01` — i.e. opcode
-`0x7b`, funcVA `0x01004dc4` (re-grounded byte-exact this pass by an independent re-carve of
-`libnrtucode_internal.so`). The trampoline at `0x01004dc4` builds the per-kernel state slot
+`0x7b`, funcVA `0x01004dc4` (byte-exact in `libnrtucode_internal.so`). The trampoline at
+`0x01004dc4` builds the per-kernel state slot
 `0x02000480` and then `callx8`-tail-calls the worker at `0x01004df0`. The two function names are
 **byte-confirmed** in the carve's surviving `.xt.prop` sections — the mangled symbols
 `_Z24decode_tensor_dequantizeb` (`decode_tensor_dequantize(bool)`) and
 `_ZN16TensorDequantize14proc_4bit_mx_8Ej` (`TensorDequantize::proc_4bit_mx_8(unsigned int)`) —
 and a full `.xt.prop` function-name sweep finds **no** `proc_6bit`, **no** `proc_*_mx_<other>`
-variants. `[HIGH/OBSERVED — bytes + section names re-grounded.]`
+variants. `[HIGH/OBSERVED — bytes + section names.]`
 
-> **CORRECTION — to `SX-FW-18`'s `idx14/idx15` "dequant-adjacent" guesses.** Pinned from the ISA
+> **CORRECTION — FW-18's `idx14`/`idx15` "dequant-adjacent" guesses.** Pinned from the ISA
 > opcode enum + trampoline decode: `idx14` is opcode `0xbe` = `GET_SEQUENCE_BOUNDS`
 > (`common.h:261`, routing to `get_sequence_bounds_impl`), and `idx15` is opcode `0xf2` =
 > `NONZERO_WITH_COUNT` (`common.h:303`, routing to `nonzero_with_count_impl<float|int>`).
 > **Neither is dequant.** The single dequant kernel is `idx16` / opcode `0x7b`. The
-> dequantize-adjacent `idx15` label in `SX-FW-18` is superseded. `[HIGH/OBSERVED — opcode enum +
+> dequantize-adjacent `idx15` label in FW-18 is superseded. `[HIGH/OBSERVED — opcode enum +
 > trampoline.]`
 
 > **NOTE — `decode_tensor_dequantize` takes a `bool`.** The demangled signature is
@@ -118,7 +118,7 @@ variants. `[HIGH/OBSERVED — bytes + section names re-grounded.]`
 > entirely by the struct fields. `[MED/INFERRED — signature OBSERVED, role inferred from the
 > sibling pattern.]`
 
-The worker prologues, re-grounded byte-exact this pass (the device image is one of 16 Xtensa
+The worker prologues, byte-exact (the device image is one of 16 Xtensa
 ELF32 `ET_EXEC` images embedded in the host `libnrtucode_internal.so`; the dequant-bearing
 primary image is at file off `0x2ef7e0`, entry `0x01005610`, `.text` VMA `0x01000000` == file
 off `0x100`):
@@ -131,7 +131,7 @@ off `0x100`):
 The 192-byte frame + 64-byte SP alignment on `decode_tensor_dequantize` is the standard
 vector-register-spill frame shared with the other POOL tensor workers (the
 `tensor_tensor_arith_impl` pattern). The `entry a1,32` leaf frame on `proc_4bit_mx_8` marks it as
-a small compute helper. `[HIGH/OBSERVED — prologues re-grounded.]`
+a small compute helper. `[HIGH/OBSERVED — prologues.]`
 
 > **GOTCHA — the carve disassembles only in raw-binary mode.** The native
 > `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) in **ELF mode** (`-d`) **refuses** to disassemble
@@ -139,8 +139,7 @@ a small compute helper. `[HIGH/OBSERVED — prologues re-grounded.]`
 > (`-D -b binary -m xtensa --adjust-vma=0x01000000`) decodes mnemonics. The trampoline, the
 > prologues, and the `const16`/`call` sequences at known boundaries decode reliably and
 > byte-exact in raw mode; the interior FLIX bundles desync (≈30 % of lines emit as `.byte`; only
-> ≈13 bundles in `decode` resync cleanly). `[OBSERVED — ELF-mode vs raw-mode discrepancy
-> re-grounded this pass.]`
+> ≈13 bundles in `decode` resync cleanly). `[OBSERVED — ELF-mode vs raw-mode discrepancy.]`
 
 > **NOTE — the per-generation codename of the @0x2ef7e0 image is inferred, not byte-proven.** The
 > host wrapper carries the codename strings (`SUNDA`/`CAYMAN`/`MARIANA`/`MARIANA_PLUS`/
@@ -168,7 +167,7 @@ a small compute helper. `[HIGH/OBSERVED — prologues re-grounded.]`
 Source: `aws_neuron_isa_tpb_s3d3_tens_dequant.h` (CAYMAN/NC-v3), bound to opcode
 `TensorDequantize` by the header comment, and static-asserted to **64 bytes**. This is the wire
 format the decode stage reads. There is **one** src tensor and **one** dst tensor — **no**
-`src1`/scale tensor, **no** zero-point field, **no** scale-address field. `[HIGH/OBSERVED.]`
+`src1`/scale tensor, **no** zero-point field, **no** scale-address field.
 
 ```c
 // aws_neuron_isa_tpb_s3d3_tens_dequant.h  (CAYMAN / NC-v3) — verbatim layout, offsets in (..)
@@ -224,7 +223,7 @@ ratio check is skipped. `[HIGH/OBSERVED — common.h:486–491 markers.]`
 > (`src_mem_pattern.t.start_addr`). The *dequant arithmetic and the ratios are unchanged* — only
 > the operand's **addressing capability** grew (indirect + the `MXTENSOR_V2` mem-pattern path).
 > A reimplementer targeting NC-v4+ must accept the union, not just a `TENSOR3D`.
-> `[HIGH/OBSERVED — cayman vs mariana/maverick header diff this pass.]`
+> `[HIGH/OBSERVED — cayman vs mariana/maverick header diff.]`
 
 ### 2.1 The validity contract (verbatim from the header's Rust-pseudocode comments)
 
@@ -261,9 +260,9 @@ Material consequences for a reimplementer:
   `POOLING_NUM_CHANNELS = 128U` (`common.h:35`). The work is split across the POOL cores by this
   channel count. `[HIGH/OBSERVED — common.h:2343.]`
 * **`in_dtype == out_dtype == UINT32`** is a *hard* constraint, not a default. The sub-byte codes
-  do **not** ride the dtype field (§3). `[HIGH/OBSERVED.]`
+  do **not** ride the dtype field (§3).
 * **Both tensors SBUF-only, never PSUM**; **src read-only, dst write**; all 15 reserved bytes
-  (`reserved0[4] + reserved1[7] + reserved2[4]`) must be 0. `[HIGH/OBSERVED.]`
+  (`reserved0[4] + reserved1[7] + reserved2[4]`) must be 0.
 
 ---
 
@@ -273,7 +272,7 @@ The struct's `in_dtype`/`out_dtype` are both pinned to **`UINT32` (`0x9`)** by
 `has_valid_tens_dequant_in_dtype` / `has_valid_tens_dequant_out_dtype`. They are **not** the
 logical element dtype — they are a 32-bit **transport container**. The sub-byte codes are packed
 into `UINT32` words in SBUF, and the *logical* input/output micro-format is carried entirely by
-the 1-byte `dequant_fmt` (off 35). `[HIGH/OBSERVED.]`
+the 1-byte `dequant_fmt` (off 35).
 
 Reconciling with [the dtype model](dtype-model.md):
 
@@ -281,7 +280,7 @@ Reconciling with [the dtype model](dtype-model.md):
   the extended dtype codes `FP4_EXP2 = 0x10`, `INT4 = 0x12` (and the codebook/sub-byte forms),
   but they are **never passed as `NEURON_ISA_TPB_DTYPE` in this instruction** — they are packed
   into `UINT32` and named by `dequant_fmt`. So the dequant kernel does **not** consume the
-  extended sub-byte dtype codes through the dtype field. `[HIGH/OBSERVED.]`
+  extended sub-byte dtype codes through the dtype field.
 * The dequant **output** FP8 forms map to `FP8_EXP5 (0xF) = E5M2` (for `fmt 1/2`) and
   `FP8_EXP4 (0xE) = E4M3` (for `fmt 3/4`), but again `out_dtype` is `UINT32` transport — the
   logical FP8 form is set by `dequant_fmt`. (Per the dtype model, `FP8_E4/E5` have no pre-FP8
@@ -441,21 +440,21 @@ static inline uint8_t nf4_to_fp8_e4m3(uint8_t code4 /* low nibble = table index 
 > normal quantiles. A reimplementer that bit-unpacks NF4 like a tiny float gets garbage. The
 > firmware builds the codebook/select constants as **inline `const16` fp16 immediates inside
 > `proc_4bit_mx_8`** — e.g. `const16 a13,0x43a8 @0x01005145` and `const16 a10,0x22d5 @0x01005158`,
-> each appearing **exactly once** in `.text` (re-grounded this pass, confirming they are real
+> each appearing **exactly once** in `.text` (confirming they are real
 > instructions, not desync artifacts) — and lane-selects through the resulting table. The
 > canonical NF4 table above is the published QLoRA NormalFloat4 codebook (`[HIGH that it is a
 > 16-entry lookup / MED that the device table equals the canonical QLoRA values]`). See
 > [The dtype model §7 walls](dtype-model.md).
 
-> **CORRECTION — the NF4 codebook is NOT a `.rodata` lookup table.** An independent re-carve of
-> `libnrtucode_internal.so` this pass found that the device-image `.rodata` (VMA `0x02000000`,
+> **CORRECTION — the NF4 codebook is NOT a `.rodata` lookup table.** The device-image `.rodata`
+> (VMA `0x02000000`,
 > file off `0x7080`, only `0x1ec` bytes) holds **exp/log polynomial seed constants** (e.g. the
 > `ln2 = 0.693147`, `log2 e = 1.4427` clusters at off `0x71c0`/`0x7240`), **not** an NF4
 > quantile table — the canonical NF4 spread (−1.0 … +1.0) is absent from `.rodata`. The NF4
 > lookup is realised from the **inline `const16` immediates inside the format arm** (above) plus
 > `ivp_dsel*`/`ivp_sel*` lane selects, not a `.rodata` LUT. A reimplementer should build the
 > NF4 codebook into the lookup datapath, not expect a `.rodata` array. `[HIGH/OBSERVED —
-> `.rodata` content re-grounded; the `0x43a8`/`0x22d5` are inline instruction immediates, not
+> `.rodata` content; the `0x43a8`/`0x22d5` are inline instruction immediates, not
 > table bytes.]`
 
 **FP6 E2M3 → FP8 E4M3** (`fmt 4`, group0 only) — an **exponent-rebias with mantissa
@@ -503,7 +502,7 @@ constrains to `{0, 8}`:
 
 * **`group_size == 0`** — no scale. Pure format widen: the sub-byte code becomes an FP8 element
   by bit-reinterpret (FP4/FP6), int→float (INT4), or lookup (NF4). "Dequant" here means format
-  **expansion** only. `[HIGH/OBSERVED.]`
+  **expansion** only.
 * **`group_size == 8`** — **MX micro-scaling.** One shared scale per **block of 8 source codes**.
   The scale is **not a separate operand**: it rides **in-band** within each group of 8 (the
   shared-exponent / per-block scale byte) and is consumed during the 8→5 expansion. This is
@@ -536,7 +535,7 @@ happens / MED exact register routing — FLIX desync.]`
 > `MatmulMX(0x0A)` MX wave (which carries an explicit `scale_addr` + `scale_dtype = SFP8_E8`
 > E8M0). They are chronologically and structurally separate. See
 > [the MX dequant page](mx-dequant.md) for the `proc_4bit_mx_8` deep-dive and the out-of-band
-> mechanism, and [the compiler MX path](../../compiler/mx-path.md) (planned) for how the graph
+> mechanism, and [the compiler MX path](../../compiler/mx-path.md) for how the graph
 > compiler routes MX tensors to one or the other. `[HIGH/OBSERVED.]`
 
 ---
@@ -630,9 +629,8 @@ convert/pack ISA slice — see [ISA Batch 20 — fp16 Convert (hp_cvt)](../../is
   section names and the same op-`0x7b` dispatch; cross-image VMAs shift only by a fixed build
   delta — `decode_tensor_dequantize` **+0x40** (`0x01004df0` → `0x01004e30`) and
   `proc_4bit_mx_8` **+0x48** (`0x0100511c` → `0x01005164`) on the +0x40 sibling — both
-  re-verified byte-exact this pass (same trampoline, same `entry a1,32` + `const16 0xcccd;
-  muluh; srli …,2` reciprocal at the shifted VMA). `[HIGH/OBSERVED — cross-image deltas
-  re-grounded.]`
+  byte-exact (same trampoline, same `entry a1,32` + `const16 0xcccd;
+  muluh; srli …,2` reciprocal at the shifted VMA). `[HIGH/OBSERVED — cross-image deltas.]`
 * **The dequant *contract* did not change across generations.** The `DEQUANT_FMT` enum (5
   values), the in/out `== UINT32` constraint, the `group_size ∈ {0,8}` rule, the 64-byte struct
   size, and the §4 ratios are **byte-identical** across the CAYMAN (NC-v3), MARIANA (NC-v4), and
@@ -641,12 +639,11 @@ convert/pack ISA slice — see [ISA Batch 20 — fp16 Convert (hp_cvt)](../../is
 * **The wider MX/SFP8 dtype space lives in *other* instructions.** The big MX dtype expansion
   ABI-06 documents (FP8_EXP2, INT4, SFP8_E8..E5, the `MXTensorV2` out-of-band scale) is consumed
   by `QuantizeMX`/`MatmulMX`/`LdweightsMX`, **not** by this opcode. `op 0x7b` consumes its
-  sub-byte input through `dequant_fmt` + `UINT32` transport. `[HIGH/OBSERVED.]`
+  sub-byte input through `dequant_fmt` + `UINT32` transport.
 * **Per-gen recoverability.** The named functions are byte-recoverable only on the prop-bearing
   CAYMAN/MARIANA-class images. The MAVERICK device image is `ET_DYN`, stripped (no `.symtab`, no
   `.xt.prop`), so no dequant symbol is recoverable there — but its **MAVERICK arch-isa header**
   fully specifies the (widened-addressing) contract. SUNDA (NC-v2) has no dequant at all.
-  `[HIGH/OBSERVED.]`
 
 ---
 
@@ -668,7 +665,7 @@ convert/pack ISA slice — see [ISA Batch 20 — fp16 Convert (hp_cvt)](../../is
 * The **NF4 device codebook bytes** are observed only as **inline `const16` fp16 immediates**
   inside `proc_4bit_mx_8` (byte-confirmed present, e.g. `0x43a8 @0x01005145`, `0x22d5
   @0x01005158`) plus lane-selects — **not** as a `.rodata` lookup table (the device `.rodata`
-  holds exp/log polynomial seeds, re-grounded this pass). The full 16-entry mapping is not
+  holds exp/log polynomial seeds). The full 16-entry mapping is not
   byte-pinned past the FLIX desync; the canonical QLoRA NF4 table (§4.2) is the inferred
   reference. `[HIGH that it is inline-immediate + lane-select, not `.rodata` / MED the exact
   16 values.]`
@@ -698,7 +695,7 @@ convert/pack ISA slice — see [ISA Batch 20 — fp16 Convert (hp_cvt)](../../is
 * the IVP datapath vocabulary per function, incl. the key compute bundle `@0x4fc8`.
 * the cross-gen `TENSOR3D` → `MEM_PATTERN3D` (union) addressing widening on NC-v4/v5; identical
   `DEQUANT_FMT`/struct-size/ratios across CAYMAN/MARIANA/MAVERICK.
-* the `SX-FW-18` correction: idx14 = op `0xbe` = `GET_SEQUENCE_BOUNDS`, idx15 = op `0xf2` =
+* the FW-18 correction: idx14 = op `0xbe` = `GET_SEQUENCE_BOUNDS`, idx15 = op `0xf2` =
   `NONZERO_WITH_COUNT` (neither is dequant).
 
 **`INFERRED` (forced by the ISA contract / IVP semantics):**
@@ -728,7 +725,7 @@ byte-pinned; MAVERICK device image stripped (contract recovered from its header,
   `trunc`/`utrunc` narrowing convention used on the convert-out step.
 * [ISA Batch 20 — fp16 Convert (hp_cvt)](../../isa/ref/b20-hp-cvt.md) — the FP8/FP4 convert
   routing hub (`unpack → ufloat → scale-MAC → bmin/bmax clamp`) the dequant output reuses.
-* [The compiler MX path](../../compiler/mx-path.md) — *planned*: how the graph compiler routes a
+* [The compiler MX path](../../compiler/mx-path.md) — how the graph compiler routes a
   quantized/MX tensor to the POOL in-band dequant vs the NC-v5 out-of-band MX wave.
 * [The Confidence & Walls model](../../reference/confidence-model.md) — the tag and wall
   taxonomy used throughout.
