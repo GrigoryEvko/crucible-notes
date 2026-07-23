@@ -452,7 +452,7 @@ window the sequencer's 16 MB memory-window TLB can map for this NeuronCore:
 > 64-bit `ADDR8` Neuron Address; the SBUF/PSUM windows are the *low* region of that space. The only
 > **encode-time** destination constraint TensorStore enforces is (a) `start_addr` alignment for the
 > immediate form and (b) the whole span inside one 16 MB window — there is no per-element SBUF/PSUM
-> range assertion (`mem_2d.h:81`). See the [memory model](../../topics/memory-model.md) /
+> range assertion (`mem_2d.h:81`). See the [memory model](../../dma/sbuf-psum-banks.md) /
 > [LSU memory](../../uarch/lsu-memory.md) and the planned
 > [SBUF/PSUM banks](../../dma/sbuf-psum-banks.md) for the full map. `[HIGH/OBSERVED]`
 
@@ -563,7 +563,7 @@ per-dtype `≤32/16/8/4` caps) and the truncating-width store; LOAD forbids the 
 - ISS store semantics: `../../iss/cas-load-store.md` *(planned)* — the host-emulated store port
   (the device-LSU truncate primitive that realizes "truncate on store").
 - SBUF / PSUM banks: `../../dma/sbuf-psum-banks.md` *(planned)* — the destination-window bank map.
-- Memory model: [`../../topics/memory-model.md`](../../topics/memory-model.md) and
+- Memory model: [On-Chip State-Buffer (SBUF) + PSUM Bank Model](../../dma/sbuf-psum-banks.md) and
   [`../../uarch/lsu-memory.md`](../../uarch/lsu-memory.md) — the Neuron Address Space + 16 MB windows.
 
 ---

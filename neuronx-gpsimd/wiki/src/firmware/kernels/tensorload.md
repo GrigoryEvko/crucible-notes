@@ -148,7 +148,7 @@ runs `R0..R63`, `common.h:1009+`); a single `TensorLoad` names up to 32 of them.
 > block appears as *"NX MEM REG BLOCK (Sequencer Registers)"* at `[0x100000, 0x100840)`. The `R0..R31`
 > ↔ `0x100000` byte binding is a name-level match, not byte-traced in this pass. `[MED/OBSERVED]`
 
-The reachable memory spaces are detailed on the [Memory Model](../../topics/memory-model.md) page; the
+The reachable memory spaces are detailed on the [Memory Model](../../dma/sbuf-psum-banks.md) page; the
 on-chip SBUF/PSUM bank geometry is on the [SBUF + PSUM bank model](../../dma/sbuf-psum-banks.md) page
 (planned). The partition-offset encoding of an SBUF vs PSUM address is documented in-header at
 `common.h:455-468`: bit `[25] == 0` ⇒ SBUF, bit `[25] == 1` ⇒ PSUM; quadrant select in `[24:23]` (SBUF) /
@@ -529,7 +529,7 @@ So `TensorStore` inherits §1–§9 verbatim with the direction flipped and the 
   (memory → vector regfile); contrast with `TensorLoad`'s scalar memory → sequencer-GPR path.
 - [SBUF + PSUM bank model](../../dma/sbuf-psum-banks.md) — the on-chip State-Buffer / PSUM bank geometry
   (planned); explains the partition-offset encoding `TensorLoad` addresses with.
-- [Memory Model (HBM, DataRAM, Translation Windows)](../../topics/memory-model.md) — the full 64-bit Neuron
+- [Memory Model (HBM, DataRAM, Translation Windows)](../../dma/sbuf-psum-banks.md) — the full 64-bit Neuron
   Address space and the 16 MB memory-window TLB constraint that bounds a `mem_2d` access.
 - [The Unified Datatype Model](./dtype-model.md) — the `Dtype` enum bytes and the GPSIMD type lattice.
 - [The Opcode Catalog / Ledger](./opcode-catalog-ledger.md) — the full sequencer/engine opcode map.

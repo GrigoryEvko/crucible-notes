@@ -44,17 +44,15 @@ for what the tags mean.
 | Sticky flags | `{Invalid,DivZero,Overflow,Underflow,Inexact}Flag`, each `XTENSA_STATE_IS_SHARED_OR` | state table lines 160–164 |
 | Enables | `{Invalid,DivZero,Overflow,Underflow,Inexact}Enable`, plain | state table lines 165–169 |
 | cp1 gate | `CPENABLE`, **7 bits** (the coprocessor-enable; precise exception) | state table line 155 |
-| FP datatypes | **fp16** (`NXF16`, 32 lanes) + **fp32** (`N_2XF32`, 16 lanes); **gen-invariant** | DX-HW-09; SX-GEN-10 |
-| bf16 / fp8 / fp4 | **no native VFPU op** — Cast/storage via the fp32 hub | GX-SEM-06 §5 (member-LIST negative control) |
+| FP datatypes | **fp16** (`NXF16`, 32 lanes) + **fp32** (`N_2XF32`, 16 lanes); **gen-invariant** | §6 (datatype set) |
+| bf16 / fp8 / fp4 | **no native VFPU op** — Cast/storage via the fp32 hub | §6 QUIRK (member-LIST negative control) |
 | Classify op | `IVP_CLSFY{NXF16,N_2XF32}{,T}`, `CLSFY.{H,S}` → 8-bit class mask | leaves `clsfy_16f`@`0x524b00` / `clsfy_32f`@`0x87dc60` |
 | Read ops | `rur.fcr` / `rur.fsr` (FLIX vision-pipe; result → AR @stage 12) | `rur.fcr a3 → 32514c007043452f` |
 | Write ops | `wur.fcr` / `wur.fsr` (3-byte narrow scalar) | `wur.fcr a3 → f3e830` |
 | Pack ops | `movscfv` / `movvscf` — full 11-field FCR+FSR ↔ one vector lane | Iclass stateArgs (§4) |
 | Value model | integer-only soft-float (`libfiss-base.so`), bit-identical to the hardware pipe | fp16 add @`0x51c640`: 0 hardware-FP insns |
 
-The state table, the iclass stateArg lists, and the round-trip bytes were all re-read /
-re-assembled in-checkout this pass; the value facts were computed by calling the shipped
-leaves live via `ctypes`.
+The value facts were computed by calling the shipped leaves live via `ctypes`.
 
 ---
 
@@ -81,7 +79,7 @@ Read verbatim from the device state table (`xtensa-modules.c`). Each entry is
                               //       NOT the FCR/FSR arith control; a SEPARATE 8×64-bit file
 ```
 
-`[HIGH/OBSERVED]` — re-read at lines 155–177 this pass. The five `*Flag` states carry the
+Read at lines 155–177. The five `*Flag` states carry the
 `XTENSA_STATE_IS_SHARED_OR` attribute and the five `*Enable` states do not; that one attribute
 difference is the whole IEEE sticky model (§5.2). The `IVP_FS0..FS7` predicate-accumulator file
 is a *separate* 8×64-bit state file (the `movvfs/movfsv` predicate datapath); it is **not**
@@ -98,13 +96,13 @@ part of the FCR/FSR arithmetic control and is documented with the predicate data
 > `libisa-core-hw.so` holds the **6** bare-hardware-core states (`LBEG`/`LEND`/`LCOUNT`/`BR`/…)
 > and `libisa-core.so` holds the **81** config-extended states (the FCR/FSR block, `VECBASE`,
 > `EPC`, the `IVP_FS*` file, …). The Cadence-generated `xtensa-modules.c` is emitted from the
-> **fully-merged** model, so its `NUM_STATES` is `81 + 6 = 87` — verified this pass:
+> **fully-merged** model, so its `NUM_STATES` is `81 + 6 = 87`:
 > `libisa-core-hw.so` `num_states` accessor `@ 0x3510 → mov $0x6`, and `81 + 6 = 87` matches the
 > `#define NUM_STATES 87` byte-for-byte. The FCR/FSR fields this page reads (`xtensa-modules.c`
 > lines 155–177) live in the 81-state config-extended partition; quoting them under the 87-state
 > merged module is correct, because the module *is* the merged table. Pin **87** for the
 > merged-module index this page reads against, **81** for the `libisa-core.so` accessor — never
-> "re-fold" one into the other. `[HIGH/OBSERVED]`
+> "re-fold" one into the other.
 
 ### 2.1 FCR — the control register (`rur.fcr` / `wur.fcr`)
 
@@ -125,7 +123,7 @@ The direction is read off the iclass arg-mode (`'i'` = input/read, `'o'` = outpu
 `rur.fcr` reads the six FCR fields (`'i'`) into a GPR `arr` (`'o'`); `wur.fcr` reads a GPR `art`
 (`'i'`) and writes the six FCR fields (`'o'`). `CPENABLE` is `'i'` (gating) in *both* — it is
 the capability gate, never written through `fcr`. The reset `RoundMode` is `2'h0` = RNE
-(confirmed by execution, §3.2). `[HIGH/OBSERVED]`
+(confirmed by execution, §3.2).
 
 ### 2.2 FSR — the status register (`rur.fsr` / `wur.fsr`)
 
@@ -143,12 +141,12 @@ stateArg list:
 
 Each arithmetic op OR-s its per-lane exception results into these five `SHARED_OR` bits; they
 persist until software clears them with `wur.fsr`. Reading the FSR (`rur.fsr`) crosses the
-vector→scalar boundary and lands a scalar word in a GPR. `[HIGH/OBSERVED]`
+vector→scalar boundary and lands a scalar word in a GPR.
 
 > **NOTE — DivZero is a first-class fifth flag.** Both the state table and the iclass lists
 > carry `DivZeroFlag`/`DivZeroEnable` as independent states, *not* folded into Invalid. A
 > reimplementer that models only four IEEE conditions (Invalid/Overflow/Underflow/Inexact)
-> mis-models the divide/reciprocal family, where `x = 0 → +∞ + DivZeroFlag`. `[HIGH/OBSERVED]`
+> mis-models the divide/reciprocal family, where `x = 0 → +∞ + DivZeroFlag`.
 
 ### 2.3 Per-op-class enable subset
 
@@ -183,11 +181,11 @@ them:
 
 * The **architectural FCR / FMA RoundMode is 2 bits** — the four base IEEE modes. This is the
   state-table field (`{ "RoundMode", 2, 0 }`) and the field the FMA pipe latches. `wur.fcr`
-  extracts it from the GPR's low two bits: `RoundMode = art_in[1:0]`. `[HIGH/OBSERVED]`
+  extracts it from the GPR's low two bits: `RoundMode = art_in[1:0]`.
 * The **internal convert-core RoundMode is 3 bits** (`sem_fp_sp_cnv_round`), adding a fifth code
   `100 = away` (round-half-away-from-zero) used only by the `FIROUND` integer-round op. The
   convert core decodes `RoundMode[2:0]` with literal named comparisons; the FMA core uses only
-  `RoundMode[1:0]`. `[HIGH/OBSERVED]`
+  `RoundMode[1:0]`.
 
 For the **control-view this page owns**, the architectural answer is the **2-bit** field. The
 third bit is an internal convert-datapath detail, surfaced here only so a reimplementer modeling
@@ -218,7 +216,7 @@ Each `rm_arg` matches *its own* model on the full sweep (the sub-3000 figures fo
 are a subnormal-boundary edge in the reference model, not the oracle). Two concrete tie cases
 pin it directly: `1.0 + 2^-11` (an exact half-ULP tie at 1.0) returns `0x3c00` under rm 0/1/3 and
 `0x3c01` under rm 2 (+∞); `1.0 + 1.5·ulp` returns `0x3c02` (round-to-even-up) under RNE, `0x3c01`
-(truncate-down) under RZ. `[HIGH/OBSERVED]` — proven-by-execution.
+(truncate-down) under RZ. `[HIGH/OBSERVED by execution]`
 
 > **CORRECTION — RNE is the architectural default, not RZ.** A reader who has seen the
 > "RZ-default, 2976/2976 proven-by-execution" claim elsewhere in this guide must keep two
@@ -235,7 +233,7 @@ pin it directly: `1.0 + 2^-11` (an exact half-ULP tie at 1.0) returns `0x3c00` u
 > "RZ-default, 2976/2976 proven-by-execution" property carried in
 > [the Confidence & Walls Model](../../reference/confidence-model.md)) — the former is the
 > register's power-on value, the latter is what a value leaf does when its mode argument is left
-> unthreaded. Both are true at their own level. `[HIGH/OBSERVED]`
+> unthreaded. Both are true at their own level.
 
 The directed-mode round-up logic the leaf implements is the textbook GRS (guard/round/sticky)
 tie-break: RNE increments past the half or at exactly-half-and-odd; RU/RD round up only the sign
@@ -301,7 +299,7 @@ ASCII map of the packed word (bit 15 … bit 0):
 
 The live single-hot probe confirmed exactly this: packed bits 2–6 (enables) map to dense out
 bits 0–4, packed bit 7 is dropped (the gap), packed bits 8–9 (RoundMode) → out 5–6, packed bits
-10–14 (flags) → out 7–11, and packed bits 0–1 are dropped. `[HIGH/OBSERVED]` — proven-by-execution.
+10–14 (flags) → out 7–11, and packed bits 0–1 are dropped. `[HIGH/OBSERVED by execution]`
 
 > **GOTCHA — `movscfv`/`movvscf` device direction is the inverse of the host-leaf naming.** In
 > the device TIE, `IVP_MOVSCFV` is **vector → state** (the 11 states are `'o'`; it *writes* the
@@ -309,7 +307,6 @@ bits 0–4, packed bit 7 is dropped (the gap), packed bits 8–9 (RoundMode) →
 > *reads* into a vector). The host-fiss value leaves name them the other way around. The 11-field
 > set, the order, and the bit positions are identical; only the labels disagree. Consult the
 > TIE arg direction (`'i'`/`'o'`), **not** the mnemonic spelling, for which way data flows.
-> `[HIGH/OBSERVED]`
 
 The reserved gaps (packed bits 0, 1, 7) read 0; whether the silicon assigns them other meaning
 is not determined from this corpus. `[LOW]` on the reserved-bit semantics.
@@ -339,7 +336,7 @@ core:
 * **The five sticky exception flags** (Invalid/DivZero/Overflow/Underflow/Inexact), each
   `SHARED_OR` (§5.2), gated by their FCR enables.
 
-`[HIGH/OBSERVED]` — the round modes, the single-rounding FMA, the special-value algebra, and the
+The round modes, the single-rounding FMA, the special-value algebra, and the
 sticky flags are all read from the convert/FMA round cores and proven by execution against the
 value leaves (>150,000 lane comparisons across the fp validation lane, 0 mismatch).
 
@@ -350,7 +347,7 @@ Each of the five `*Flag` states carries `XTENSA_STATE_IS_SHARED_OR`: the **N lan
 into one shared flag bit**, not one flag per lane. A 32-lane fp16 op whose lane 7 overflows sets
 the *single* `OverflowFlag` bit; software cannot tell *which* lane raised it from the FSR alone.
 This is exactly IEEE sticky semantics lifted to SIMD — the flag is a disjunction over the
-vector, persistent until cleared by `wur.fsr`. `[HIGH/OBSERVED]`
+vector, persistent until cleared by `wur.fsr`.
 
 ### 5.3 The precise/imprecise exception split (summary — see uarch page)
 
@@ -404,7 +401,7 @@ The bit assignment is therefore:
 
 This is exactly the `{sign, zero, denorm, normal, inf, nan, snan, finite}` mask the fp control
 model requires — and every bit position is pinned by execution, with **fp16 and fp32 producing
-the identical map**. `[HIGH/OBSERVED]` — proven-by-execution. Notes a reimplementer must encode:
+the identical map**. `[HIGH/OBSERVED by execution]` Notes a reimplementer must encode:
 bit 7 (finite) is **clear** for inf/nan/snan and **set** for zero/subnormal/normal; sNaN sets
 bits 5 **and** 6 while qNaN sets only bit 5; the sign bit (0) is orthogonal and accompanies every
 negative class. Internally the FMA pipe carries the same classification as un-named special-case
@@ -434,20 +431,20 @@ core across SUNDA…MAVERICK; the Xtensa core config does not scale per generati
 > opcode anywhere in the cvt or lookup blocks. bf16 (structurally the top 16 bits of fp32) is
 > converted by the firmware Cast kernel as a 16-bit shift + RNE narrow round *through fp32*; fp8/
 > fp4 route through fp32 via unpack → `ufloat` → scale-MAC → saturating-clamp → extract. Every
-> non-fp16/fp32 datatype pair is two legs through the **fp16↔fp32 hub**, never a dedicated op.
-> `[HIGH/OBSERVED]` (member-LIST negative control). A per-generation packed-bf16 *POOL-engine*
+> non-fp16/fp32 datatype pair is two legs through the **fp16↔fp32 hub**, never a dedicated op —
+> a member-LIST negative control. A per-generation packed-bf16 *POOL-engine*
 > fast path exists on the oldest generation (SUNDA) but that is the TPB engine ISA, a different
 > datapath from the Vision-Q7 VFPU, and out of scope here.
 
 The native VFPU integer dtypes (`INT8/16/32`, `UINT8/16/32`) participate in the int↔fp converts
 (`float`/`ufloat`/`trunc`/`utrunc`) but are not floating-point; the fp value set proper is
-fp16 + fp32. `[HIGH/OBSERVED]`
+fp16 + fp32.
 
 ---
 
 ## 7. Reading and writing the FCR/FSR — the ops
 
-| op | encoding (round-trip, this pass) | direction | notes |
+| op | encoding (round-trip) | direction | notes |
 |---|---|---|---|
 | `rur.fcr aN` | `32514c007043452f` | FCR fields → AR | FLIX vision-pipe op; result crosses vector→scalar |
 | `rur.fsr aN` | `32514c089043452f` | FSR flags → AR | FLIX vision-pipe op |
@@ -456,8 +453,8 @@ fp16 + fp32. `[HIGH/OBSERVED]`
 | `movscfv vN` | (S2_Mul / S3_ALU slot) | full 11-field ↔ vector | the packed FCR+FSR vector form (§4) |
 | `movvscf vN` | (S1_Ld / slot) | vector ↔ full 11-field | the inverse pack (§4) |
 
-`[HIGH/OBSERVED]` — all four scalar forms assembled+disassembled with the device-native
-`xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) this pass. The asymmetry is real
+All four scalar forms were assembled+disassembled with the device-native
+`xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). The asymmetry is real
 and worth encoding: **the FCR/FSR reads are FLIX vision-pipe ops** (the control state lives in
 the vector "gr" CSR file, so reading it crosses the vector→scalar boundary), while **the writes
 are narrow scalar ops** (written from the scalar core). A reimplementation models the FCR/FSR as
@@ -489,8 +486,8 @@ function, not two competing descriptions:
 
 * The **silicon VFPU** is a real 3-stage hardware FP pipe (significand-multiply → align-add →
   normalize/round), one tree multiplexed across fp16 and fp32 (uarch page).
-* The **value oracle** (`libfiss-base.so`) computes the same math **integer-only**. Confirmed
-  this pass: the fp16 add body (`0x51c640..0x51ce70`) contains **zero** hardware-FP x86
+* The **value oracle** (`libfiss-base.so`) computes the same math **integer-only**: the fp16
+  add body (`0x51c640..0x51ce70`) contains **zero** hardware-FP x86
   instructions (no `addss/mulss/cvtss/...`) and cracks the binary16 fields with the integer masks
   `0x7c00` (exp), `0x3ff` (mantissa), `0x1f` — it does the arithmetic in the integer ALU and
   takes the round mode as a *parameter*.
@@ -505,7 +502,7 @@ status-OR accumulation (§5.2), the `CPENABLE` gate is outside the value functio
 check, not arithmetic). This is **why** this page can prove its value claims by execution: the
 license-free value oracle *is* the binary's own arithmetic, and the four certificates on this page
 (round-mode encoding §3.2, fp16 + fp32 classify §5.4, `movscfv` pack §4.1) are the binary acting as
-its own arbiter. `[HIGH/OBSERVED]`
+its own arbiter.
 
 ---
 
@@ -524,7 +521,7 @@ its own arbiter. `[HIGH/OBSERVED]`
 * The four scalar access ops round-tripped through the device assembler; the UR-ids `0xe8`/`0xe9`.
 * The fp datatype set (fp16 `NXF16`/32 lanes, fp32 `N_2XF32`/16 lanes); the fp32-hub
   negative control (no native bf16/fp8/fp4 op).
-* The soft-float body carrying zero hardware-FP insns (disassembled this pass).
+* The soft-float body carrying zero hardware-FP insns.
 
 **HIGH / OBSERVED (by execution)**
 

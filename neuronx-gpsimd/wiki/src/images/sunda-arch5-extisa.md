@@ -203,7 +203,7 @@ Three device VA windows: **code @ `0x010xxxxx`, data @ `0x020xxxxx`, dyn @
 > model.** The committed base-image Q7 firmware getters (e.g. `cayman-act.md`,
 > `cayman-pe.md`, `maverick-pe.md`) frame the device firmware as **IRAM at device VA
 > `0x0`** and **DRAM at device VA `0x80000`** (so *DRAM string file-offset = device VA
-> − `0x80000`*; see [memory-model.md](../topics/memory-model.md)). That flat
+> − `0x80000`*; see [memory-model.md](../dma/sbuf-psum-banks.md)). That flat
 > two-region model is the **base** Q7 image's convention. The **EXTISA device ELF is a
 > different object**: a relocatable `ET_EXEC` with the **`0x01000000` / `0x02000000` /
 > `0x03000000` PIC three-window** layout above and a `.dynamic`+`.rela.got` tail. The
@@ -620,7 +620,7 @@ carried from the 17 KB-shell + loader-string finding.]*
 * [kernel_info_table byte layout](../firmware/pool/kernel-info-table.md) and
   [external-lib loader / `dispatch_wrapper`](../firmware/pool/external-lib-loader.md) —
   the packed-key record format and the on-device consumer.
-* [Memory model](../topics/memory-model.md) — the base-firmware IRAM@0x0 / DRAM@0x80000
+* [Memory model](../dma/sbuf-psum-banks.md) — the base-firmware IRAM@0x0 / DRAM@0x80000
   framing the EXTISA ELF's `0x01/0x02/0x03` windows are contrasted against.
 
 The host ext-isa getter symbol that resolves the SUNDA blob in the standalone container

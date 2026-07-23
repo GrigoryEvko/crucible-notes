@@ -5,10 +5,9 @@ Vision-Q7 instruction: the object hierarchy a reimplementer mirrors
 (`ISA → format → slot → opcode → field → operand`), the decode entry points and their call
 graph, and the full enumeration of the decode *algorithms* the library contains — each
 reproduced as annotated C pseudocode that names the real `libisa-core.so` symbols it ports.
-Everything here is read **directly from the shipped binary** (the non-stripped `.symtab`, the
-accessor machine code, and the raw `.data.rel.ro` / `.rodata` / `.data` table bytes); every
-count, address, struct offset, and predicate quoted below was re-disassembled or re-read
-in-checkout this pass.
+Everything here — every count, address, struct offset, and predicate — is read **directly from
+the shipped binary**: the non-stripped `.symtab`, the accessor machine code, and the raw
+`.data.rel.ro` / `.rodata` / `.data` table bytes.
 
 This page owns the **decode pipeline as a model**. The two sibling pages own the adjacent
 material and are cross-linked rather than duplicated:
@@ -25,9 +24,10 @@ material and are cross-linked rather than duplicated:
   uses those structs as the model's classes; it does not re-derive their byte offsets.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte/immediate/string read from the shipped binary (or executed this pass);
-`INFERRED` = reasoned over OBSERVED facts; `CARRIED` = re-used at a cited report's confidence;
-crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA**
+`OBSERVED` = a byte/immediate/string read from the shipped binary (or produced by executing it);
+`INFERRED` = reasoned over OBSERVED facts; `CARRIED` = re-used at a cited source's confidence;
+crossed with `HIGH`/`MED`/`LOW`. Claims that depart from the page default `HIGH/OBSERVED` carry
+an explicit tag. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA**
 (a reimplementation trap), **CORRECTION** (overturns a naive or earlier reading), **NOTE**
 (orienting context).
 
@@ -75,14 +75,14 @@ surface plus the tables it reads and the thunks it dispatches to.
 >
 > See §10 for the relation. This page is *only* the `libisa-core.so` ISA decoder: format
 > selection, length, per-slot bit-gather, per-slot opcode classification, and operand-field
-> extraction. `[HIGH/OBSERVED]`
+> extraction.
 
 There is also a tiny companion library, `libisa-core-hw.so` (35.7 KB), loaded **first** under
 `isa-base-dlls = [ libisa-core-hw.so, libisa-core.so ]`; it carries the bare Xtensa
 hardware-core register/state partition (6 states + 15 sysregs, canonical SR numbers) and an
 *empty* opcode/format/slot/field model (`num_formats = num_slots = num_opcodes = 0`). Its
 `format_decoder`/`length_decoder` are `mov $0xffffffff; ret` stubs. The full TIE-extended decode
-model is entirely in `libisa-core.so`; §9 covers the two-library composition. `[HIGH/OBSERVED]`
+model is entirely in `libisa-core.so`; §9 covers the two-library composition.
 
 ---
 
@@ -140,13 +140,13 @@ Two parallel "register/state" partitions — `states[81]`, `sysregs[34]`, `ctype
 `ctype_protos[651]`, `protos[3484]`, `coprocs[1]`, `funcUnits[1]` — hang off the same ISA root
 but are consumed by the assembler/scheduler, not the byte-decode path; they are documented on
 the schema page. The decode path proper is the chain `formats → slots → decodes → opcodes →
-iclasses → operands → fields`. `[HIGH/OBSERVED]`
+iclasses → operands → fields`.
 
 ### 2.1 The count manifest (the model's dimensions), binary-grounded
 
-Every dimension is a `mov $imm,%eax; ret` count accessor. Re-read from the immediates this pass
-(`objdump -d` on each accessor) and cross-checked against the `nm` symbol-family populations —
-**not** a decompile grep, which inflates 2–12×.
+Every dimension is a `mov $imm,%eax; ret` count accessor. Read from the immediates and
+cross-checked against the `nm` symbol-family populations — **not** a decompile grep, which
+inflates 2–12×.
 
 | Count accessor | Addr | Immediate | Value | Backing table (VMA · stride) | `nm` symbol family (= count) |
 |---|---|---|---|---|---|
@@ -171,14 +171,14 @@ Every dimension is a `mov $imm,%eax; ret` count accessor. Re-read from the immed
 | `num_funcUnits` | `0x3b5bd0` | `0x01` | **1** | `funcUnits` `0x74a9c0` · 16 | — |
 
 `num_interfaces = num_interface_classes = num_bypass_groups = 0` (their element accessors are
-dead-index stubs — safe only because the counts are 0; do not parse). `[HIGH/OBSERVED]`
+dead-index stubs — safe only because the counts are 0; do not parse).
 
 > **CORRECTION — `regfiles` stride is 56, not 64.** `regfile_name` (`0x3b5c30`) computes the
 > row address as `lea (,rdi,8),rax ; shl $6,rdi ; sub rax,rdi`, i.e. `rdi*64 − rdi*8 = rdi*56`.
 > An earlier schema draft listed the `regfiles` stride as 64; the binary says **56**
 > (`8 × 56 = 448 = 0x1C0` bytes, zero-padded after entry 7). The `regfile_views` stride *is* 32
 > (`shl $0x5`). This matters to anyone walking `regfiles[]` to resolve a register operand's
-> file: at stride 64 you read garbage from entry 1 onward. `[HIGH/OBSERVED]`
+> file: at stride 64 you read garbage from entry 1 onward.
 
 ### 2.2 The 1534/1607 ↔ 12569/12642 placement relationship
 
@@ -245,8 +245,7 @@ decode_bundle(mem, pc)
                   (the OperandSem_<x>_decode leaf does the value transform)
 ```
 
-The dispatch accessors are themselves one-line table indexers, re-disassembled byte-exact this
-pass:
+The dispatch accessors are themselves one-line table indexers:
 
 | Dispatch accessor | Addr | Indexes | Stride · field | Yields |
 |---|---|---|---|---|
@@ -259,8 +258,8 @@ pass:
 | `operand_decode_fn` | `0x3b5f50` | `operands[i]` @ `0x746d80` | 64 · `+0x28` | `OperandSem_<x>_decode` |
 | `operand_undo_reloc_fn` | `0x3b5f90` | `operands[i]` @ `0x746d80` | 64 · `+0x38` | `Operand_<x>_rtoa` |
 
-`[HIGH/OBSERVED]` — `decode_format_fn`/`decode_length_fn` bodies and every dispatch accessor's
-`lea`/`shl`/`mov OFF(...)` were re-disassembled this pass (`decode_fn`: `lea decodes ; shl $4 ;
+The `decode_format_fn`/`decode_length_fn` bodies and every dispatch accessor's
+`lea`/`shl`/`mov OFF(...)` are byte-exact (`decode_fn`: `lea decodes ; shl $4 ;
 mov 0x8(%rax,%rdi,1)`; `slot_get_fn`: `lea slots ; lea(rdi,rdi,2) ; shl $4 ; mov 0x20(...)`;
 `encode_fn`: `lea opcodedefs ; lea(rdi,rdi,2) ; mov 0x10(%rax,%rdx,8)`).
 
@@ -271,7 +270,7 @@ mov 0x8(%rax,%rdi,1)`; `slot_get_fn`: `lea slots ; lea(rdi,rdi,2) ; shl $4 ; mov
 > **one decoder per slot but 12569 encoders**, because a slot's decoder is a single
 > masked-compare ladder that recognises *every* opcode legal in that slot, whereas each encoder
 > lays down the fixed bits for *one* specific opcode in that slot. Decode is many-opcodes→one-fn;
-> encode is one-opcode→one-fn-per-slot. `[HIGH/OBSERVED]`
+> encode is one-opcode→one-fn-per-slot.
 
 ---
 
@@ -287,7 +286,7 @@ fixed mask-and-match ladder — the first hit wins and returns the format index 
 The `op0 = w & 0xF` nibble is the primary selector; for the FLIX cases (`op0 ∈ {0xE, 0xF}`) the
 `b3lo = (w>>24) & 0xF` nibble and a few byte-3 high bits (the `0x0B00000F` / `0x0800000F` /
 `0x3700000F` / `0x1900000F` / `0x0900000F` masks) further separate the eight wide and three
-narrow formats. Verified this pass: the body opens `test $0x8,%dl ; je → ret 0` (x24),
+narrow formats. The body opens `test $0x8,%dl ; je → ret 0` (x24),
 `and $0xc / cmp $0x8 → 1` (x16a), `and $0xe / cmp $0xc → 2` (x16b), `and $0xb00000f /
 cmp $0x100000f → 3` (F0), `and $0x800000f / cmp $0x800000e → 4` (F11), `and $0x3700000f /
 cmp $0x300000f → 5` (F1) … and closes with `and $0x900000f / cmp $0xf → 13` (N0) and a
@@ -295,7 +294,7 @@ cmp $0x300000f → 5` (F1) … and closes with `and $0x900000f / cmp $0xf → 13
 Part 0's table.
 
 **`length_decoder` (`0x3b5a50`)** takes **raw bytes** (not the word), forms an 8-bit index, and
-loads the 256-entry `int32` `length_table` at `0x3d4100`. The body, re-disassembled this pass:
+loads the 256-entry `int32` `length_table` at `0x3d4100`. The body:
 
 ```c
 int length_decoder(const uint8_t *inst) {           // 0x3b5a50
@@ -315,7 +314,7 @@ illegal `-1`.
 > `XCHAL_BYTE0_FORMAT_LENGTHS` keys length on byte 0 alone and flattens `op0==0xF` to 8. The
 > shipped runtime `length_decoder` reads `byte3` too, so an `op0==0xF` word decodes to 8, 16,
 > **or** illegal depending on `b3lo`. The binary `length_table` is authoritative; assuming a flat
-> 8 desyncs every `op0==0xF` *wide* bundle. (Full treatment: Part 0 §2/§4.) `[HIGH/OBSERVED]`
+> 8 desyncs every `op0==0xF` *wide* bundle. (Full treatment: Part 0 §2/§4.)
 
 The 14 formats and their slot rosters (the `formats[]` rows and `Format_<fmt>_slots[]` lists)
 are tabulated on [Part 0 §3](../../reference/flix-decoding.md#the-14-formats) and
@@ -324,8 +323,8 @@ indices `{0:x24, 1:x16a, 2:x16b, 3:F0, 4:F11, 5:F1, 6:F2, 7:F3, 8:F4, 9:F6, 10:F
 12:N2, 13:N0}`; lengths `{x24:3, x16*:2, wide:16, narrow:8}`; slot-count census
 `1+1+1+4+5+4+4+5+4+4+4+3+2+4 = 46 = num_slots`; the two 5-slot formats are `F3` and `F11`; and
 the `Format_<fmt>_slots[]` order is **issue** order, physically out-of-bit-order for
-`F3`/`F11`/`F6`/`F7`. `formats[0]` is `{name="x24", length=3, encode=0x3b57c0}` (read byte-exact
-this pass), confirming the table layout. `[HIGH/OBSERVED]`
+`F3`/`F11`/`F6`/`F7`. `formats[0]` is `{name="x24", length=3, encode=0x3b57c0}` (byte-exact),
+confirming the table layout.
 
 ---
 
@@ -358,7 +357,7 @@ slot_get_fn(sid)(insn, slotbuf);   // slots[sid].get : Slot_<…>_get @ slots[si
 
 The inverse `slot_set_fn(sid)` (`slots[sid].set`, +0x28; also 46 thunks,
 `nm | rg -c 'Slot_.*Format_.*_set'` = 46) scatters a normalized `slotbuf` *back* into the bundle
-for the assemble direction (schema page §3). `[HIGH/OBSERVED]`
+for the assemble direction (schema page §3).
 
 ---
 
@@ -371,14 +370,14 @@ opcode-selector bits of `slotbuf` and returns a pointer into the opcode-name str
 (`.rodata` @ `0x3b6e40`). It is the exact inverse of the `Opcode_<mnem>_Slot_<slot>_encode`
 templates (§7.1).
 
-The `decodes[]` table is stride 16, `{ slot_name(+0), decode_fn(+8) }`. Verified this pass:
+The `decodes[]` table is stride 16, `{ slot_name(+0), decode_fn(+8) }`:
 `decodes[0] = { 0x3c9b79 → "Inst", 0x3697a0 = Slot_inst_decode }`,
 `decodes[1] = { 0x3c9b86, 0x36b130 }`. The 46 `Slot_<slot>_decode` symbols span every slot,
 including the three `None` filler slots (`Slot_n0_s1_none_decode`, `…_n0_s2_none_decode`,
 `…_n1_s1_none_decode`, each recognising only `nop`) and the three base/density slots
 (`Slot_inst_decode`, `Slot_inst16a_decode`, `Slot_inst16b_decode`).
 
-A real classifier body, re-disassembled this pass — `Slot_inst_decode` (`0x3697a0`), the x24
+A real classifier body — `Slot_inst_decode` (`0x3697a0`), the x24
 base-ISA decoder:
 
 ```c
@@ -401,8 +400,7 @@ This is the literal inverse of the encode templates: e.g. `Opcode_excw_Slot_inst
 (`0x338610`) is `movl $0x2080,(%rdi); ret` and `Slot_inst_decode` recognises that selector
 pattern as `excw`; `Opcode_rsr_sar_Slot_inst_encode` lays `0x00030300` (`RSR | SAR<<8`) and the
 same ladder peels bits `[15:8]` for the SR number after matching `op1=3, op2=0`. The narrow/wide
-slots' classifiers have the same shape over their own selector windows. `[HIGH/OBSERVED]`
-(Slot_inst_decode head and the `excw` encode-template inverse spot-checked byte-exact this pass.)
+slots' classifiers have the same shape over their own selector windows.
 
 > **NOTE — the classifier returns a *name pointer*, not an index, at this layer.** The slot
 > classifier hands back a `const char*` into the string pool. To reach the opcode's *iclass*
@@ -411,7 +409,7 @@ slots' classifiers have the same shape over their own selector windows. `[HIGH/O
 > stores opcode names or builds a name→index map once. (The Cadence-generated `xtensa-modules.c`
 > form of the same classifier returns the `OPCODE_<X>` enum value, which *is* the `opcodes[]`
 > index; the binary thunk returns the equivalent name pointer. Same classification, different
-> return convention.) `[HIGH/OBSERVED]`
+> return convention.)
 
 ---
 
@@ -421,8 +419,8 @@ With the opcode known, operands are read per the opcode's **iclass**. The iclass
 *signature* shared by a family of opcodes: `opcodes[i].iclass` names an `iclasses[]` row whose
 `operands[]` sub-array lists `(operand_name, inout)` pairs. Each `operands[]` row names a **field**
 (the bitfield), a **regfile** (or empty string for immediates/offsets), and four codec function
-pointers `{encode, decode, do_reloc, undo_reloc}`. (Verified this pass:
-`opcodedefs[0] = {opcode="excw", slot="Inst", …}` → `opcodes[0]` → `iclasses[0].name =
+pointers `{encode, decode, do_reloc, undo_reloc}`.
+(`opcodedefs[0] = {opcode="excw", slot="Inst", …}` → `opcodes[0]` → `iclasses[0].name =
 "xt_iclass_excw"`, a fully consistent chain.)
 
 The crucial structural fact is that the **same logical field sits at a *different* bit position in
@@ -446,8 +444,7 @@ for (int a = 0; a < ic->num_operands; a++) {
 }
 ```
 
-A real `Field_*_get` body — `Field_t_Slot_inst_get` (`0x312c10`), the x24 AR `t`-register nibble,
-re-disassembled this pass:
+A real `Field_*_get` body — `Field_t_Slot_inst_get` (`0x312c10`), the x24 AR `t`-register nibble:
 
 ```c
 uint32_t Field_t_Slot_inst_get(const uint32_t *slotbuf) {   // 0x312c10
@@ -462,7 +459,7 @@ FLIX slot lands at a different bit position and gets its own thunk; immediates u
 
 The **`OperandSem_<x>_decode`** leaves (95 in the binary; `nm | rg -c 'OperandSem_.*_decode'` = 95)
 apply the value transform — sign-extension, scaling, bias, and PC-relative rebasing. The canonical
-example, `soffsetx4` (the `operands[0]` row, verified this pass to be
+example, `soffsetx4` (the `operands[0]` row,
 `{ name="soffsetx4", field="offset", regfile="", flags=2, encode=0x337230, decode=0x337220,
 do_reloc=0x3384d0, undo_reloc=0x3384e0 }`):
 
@@ -483,7 +480,7 @@ their `regfile` name (one of the 8 files in §8) instead of a value transform.
 > PC-relative branch offset with no register file, so its `regfile` pointer (`0x3c4ec4`) targets
 > the empty string `""`, not `0`. AR/BR-less operands point at `""`; only a genuinely absent
 > field is `NULL`. A consumer that tests `regfile != NULL` to mean "is a register" is wrong —
-> test the *string contents*. `[HIGH/OBSERVED]`
+> test the *string contents*.
 
 > **NOTE — operand-count reconciliation.** `libisa-core.so`'s `operands[]` table is **232** rows
 > (`num_operands = 0xe8`) — the *codec* operands (one row per distinct field/regfile/codec
@@ -515,7 +512,7 @@ from the table (stride 56, §2.1 CORRECTION), the files are:
 index (`v0..v31`, `a0..a63`, …); the index itself comes from the operand's `Field_*_get`. All
 eight files are caller-saved in this config (`num_callee_saved = 0`). The full register
 architecture — including the `gvr` "global state register" file that the binary exposes but the
-shipped TIE header omits — is on [the register-files page](register-files.md). `[HIGH/OBSERVED]`
+shipped TIE header omits — is on [the register-files page](register-files.md).
 
 ---
 
@@ -523,7 +520,7 @@ shipped TIE header omits — is on [the register-files page](register-files.md).
 
 The model has a single configuration root: `get_config_table()` (`0x3b5b30`, body
 `lea 0x4a8f09(%rip),%rax # 85ea40 ; ret`) returns `config_table` @ `0x85ea40`, a NULL-terminated
-array of `{const char* key, const char* value}` 16-byte pairs. Decoded byte-exact this pass:
+array of `{const char* key, const char* value}` 16-byte pairs, decoded byte-exact:
 
 | key | value | bearing on decode |
 |---|---|---|
@@ -537,7 +534,6 @@ array of `{const char* key, const char* value}` 16-byte pairs. Decoded byte-exac
 `IsaMemoryOrder = LittleEndian` and `IsaMaxInstructionSize = 32` are the only two keys the
 byte-decode path consumes (lane packing + fetch width); the rest parameterize scheduling and the
 register model. `interface_version() = 118` pins the libisa ABI revision a host must speak.
-`[HIGH/OBSERVED]`
 
 **The two-library composition.** A host loads two libisa libraries in order
 `isa-base-dlls = [ libisa-core-hw.so, libisa-core.so ]` and **merges** their tables (neither lib
@@ -569,13 +565,13 @@ these libs).
 > (= `81 + 6`). The [FP sub-ISA page](fp-sub-isa.md#the-87-vs-81-state-count) reads the FCR/FSR
 > block out of that merged 87-state module; it is the same 81-state config partition seen through
 > the merged index, not a different count. Pin `81` for *this* lib's accessor, `87` for the
-> merged module. `[HIGH/OBSERVED]`
+> merged module.
 
 > **NOTE — config is not gen-gated *inside* libisa-core.** There is no `arch_id`/`coretype`/
 > codename gate anywhere in `libisa-core.so`'s decode path — it models the single configured Cairo
 > Vision-Q7 core, gen-invariant. Per-generation selection (SUNDA/CAYMAN/MARIANA/MARIANA+/MAVERICK)
 > happens one layer up, in the `libnrtucode` resolvers (§10), which pick a different ext-ISA *blob*
-> per `coretype` — not a different `libisa-core` decode model. `[HIGH/OBSERVED]`
+> per `coretype` — not a different `libisa-core` decode model.
 
 ---
 
@@ -695,32 +691,30 @@ shipped object emits them). `[HIGH/OBSERVED]` on the pipeline and the 12-format 
 > property records) are Part 0 §10's subject; the residual literal/boot spans are recoverable only
 > with the per-image property records, not a smarter byte heuristic. And the **NCFW management
 > core is scalar Xtensa-LX, not FLIX** — never route NCFW IRAM through this model (Part 0 §11).
-> `[HIGH/OBSERVED]`
+> `[HIGH/OBSERVED wall]`
 
 ---
 
 ## 12. Adversarial self-verification (5 strongest claims, re-checked against the binary)
 
-Each of the model's primary claims was re-grounded against `libisa-core.so` this pass.
+Each of the model's primary claims is grounded against `libisa-core.so`.
 
 1. **The two decode entry points return hardcoded addresses (not table lookups).**
    `objdump -d 0x3b6650`: `lea -0xce7(%rip),%rax # 3b5970 <format_decoder> ; ret`; `0x3b6660`:
    `lea -0xc17(%rip),%rax # 3b5a50 <length_decoder> ; ret`. **Confirmed** — one format decoder
-   and one length decoder for the whole ISA. `[HIGH/OBSERVED]`
+   and one length decoder for the whole ISA.
 2. **`length_decoder` indexes `length_table` by `((byte3&0xf)<<4)|(byte0&0xf)`.** Body at
    `0x3b5a50`: `movzbl 0x3(%rdi); shl $0x4; movzbl %al; movzbl (%rdi); and $0xf; or; lea
    0x1e697(%rip) # 3d4100 <length_table>; mov (%rdx,%rax,4),%eax`. **Confirmed** byte-exact —
-   and the `movzbl %al` after the shift is what masks `byte3` to its low nibble. `[HIGH/OBSERVED]`
+   and the `movzbl %al` after the shift is what masks `byte3` to its low nibble.
 3. **`num_decode_fns = num_slots = 46`, one classifier per slot.** `num_slots()` @ `0x3b6510` =
    `mov $0x2e`; `num_decode_fns()` @ `0x3b64c0` = `mov $0x2e`; `nm | rg -c 'Slot_.*Format_.*_get'`
    = 46 (gathers) and the `Slot_<slot>_decode` family (excluding `Field`/`Opcode`/`Format`) = 46
    (classifiers). `decodes[0] = {"Inst", 0x3697a0=Slot_inst_decode}`. **Confirmed.**
-   `[HIGH/OBSERVED]`
 4. **The placement matrix is 1534 ↔ 12569 (shipped), not 12642.** `num_opcodes()` @ `0x3b61d0` =
    `mov $0x5fe` (1534); `num_encode_fns()` @ `0x3b6130` = `mov $0x3119` (12569);
    `nm | rg -c 'Opcode_.*_Slot_.*_encode'` = **12569** exactly. The 1607/12642 pair is the TIE-DB
    pre-fold superset, not the binary. **Confirmed** the runtime pair from the binary.
-   `[HIGH/OBSERVED]`
 5. **The decode/codec chain is internally consistent across tables** (`opcodedefs[0] → decodes[0]
    → iclasses[0] → operands[0]`). `opcodedefs[0] = {opcode="excw", slot="Inst",
    encode_fn=0x338610}`; `0x338610` = `movl $0x2080,(%rdi); ret` (template `0x00002080`);
@@ -728,9 +722,9 @@ Each of the model's primary claims was re-grounded against `libisa-core.so` this
    "xt_iclass_excw"`; `operands[0] = {name="soffsetx4", field="offset", regfile="",
    decode=0x337220, undo_reloc=0x3384e0}`. The encode template, the slot classifier, the iclass
    name, and the operand codec all reference one consistent `excw`/`Inst`/`soffsetx4` chain.
-   **Confirmed** byte-exact. `[HIGH/OBSERVED]`
+   **Confirmed** byte-exact.
 
-The two earlier-reading **CORRECTIONS** this pass overturns: the `regfiles` stride is **56**
+The two earlier-reading **CORRECTIONS** this page overturns: the `regfiles` stride is **56**
 (`rdi*64 − rdi*8`, from `regfile_name` @ `0x3b5c30`), not 64 (§2.1); and `operands[0].regfile`
 resolves to the **empty string** (`0x3c4ec4`), not a TIE vector regfile name (§7 QUIRK).
 

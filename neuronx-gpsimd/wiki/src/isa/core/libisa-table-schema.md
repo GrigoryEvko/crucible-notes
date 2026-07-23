@@ -73,7 +73,7 @@ The headline table counts, each read from the count accessor's literal immediate
 > (`+73` folded-out). This page documents the **runtime** table (1534/12569) — the bytes in this
 > `.so`. The `+73` fold and the `1607/12642` superset belong to
 > [the Decode Model](libisa-decode-model.md) and [the Coverage Tally](coverage-tally.md); cite
-> the matched pair, never "1534 shipped / 12642 placements." `[HIGH/OBSERVED]`
+> the matched pair, never "1534 shipped / 12642 placements."
 
 > **CORRECTION — `regfiles[]` stride is 56, not 64.** Some early count dumps listed the
 > `regfiles[]` stride as 64 (the `shl $6` half of the index math). The full arithmetic in
@@ -225,7 +225,7 @@ each placement at a different bit position with its own thunk pair — which is 
 > `nm | rg -c 'Field_.*_Slot_.*_get'` = 3230 (and `_set` = 3230); seven `fields[]` rows do not
 > have a uniquely-named per-`(field,slot)` thunk (their `get`/`set` pointers alias a shared or
 > compiler-merged body). Parse all 3237 rows for `(name,slot)`, but expect 3230 distinct named
-> codec addresses. `[HIGH/OBSERVED]`
+> codec addresses.
 
 ### 4.4 `operands[]` — stride 64 @ `0x746d80`
 
@@ -447,7 +447,7 @@ Byte-verified samples (literal `xxd`):
 > across all 12569 placements clears the second 32-bit lane and writes **zero** opcode-selector
 > bits there: the selector never spills past bit 32. `word1 == 0` with zero exceptions. A
 > reimplemented encoder that emits a wide slot must therefore zero lane 1 before depositing
-> operand bits — the template contributes nothing there. `[HIGH/OBSERVED]`
+> operand bits — the template contributes nothing there.
 
 > **NOTE — the same mnemonic has a different template in every slot it can occupy.** `addi`'s
 > template is `0x10b60000` in `F0_S0_LdSt`, `0x00398000` in `F0_S1_Ld`, `0x00c03000` in
@@ -508,7 +508,6 @@ slots — the structural reason there are ~3230 thunk pairs rather than one per 
 > `field_get(slotword_after_set(0, v)) == v` for every `v` in range — proven over the full 5-bit
 > vector register fields (`vr`/`vs`/`vt`) and 4-bit scalar AR fields (`r`/`s`/`t`) by the ISS
 > slotfill cross-validation. The codec pair is a bijection on the field's bit window.
-> `[HIGH/OBSERVED]`
 
 ### 5.4 Slot get/set — scatter into the bundle
 
@@ -616,8 +615,8 @@ table from raw bytes:
 
 ## 7. Adversarial self-verification
 
-The five strongest table-layout/codec claims, each re-checked byte-exact against the shipped
-`.so` in this pass (independent of the source slice reports):
+The five strongest table-layout/codec claims, each checked byte-exact against the shipped
+`.so`:
 
 1. **`opcodedefs[]` stride 24, `encode_fn` @ +0x10.** `encode_fn` accessor (`0x3b6180`):
    `lea (%rdi,%rdi,2),%rdx` (×3) then `mov 0x10(%rax,%rdx,8),%rax` (×8, +0x10) → stride

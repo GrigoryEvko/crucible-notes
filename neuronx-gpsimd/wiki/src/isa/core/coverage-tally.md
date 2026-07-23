@@ -3,7 +3,7 @@
 This is the authoritative **ISA-coverage ledger** for the Vision-Q7 *Cairo* (`ncore2gp`)
 instruction set: exactly how complete the recovery is, what each headline number *means*, how
 the numbers pair, and which residuals remain — with every figure re-derived from the binary
-this pass and tagged. It is the capstone of Part 2 (Q7 Core & ISA Foundations): the four
+and tagged. It is the capstone of Part 2 (Q7 Core & ISA Foundations): the four
 deep-encoding pages ahead of it ([the decode model](libisa-decode-model.md),
 [the FLIX encoding](flix-encoding.md), [the register files](register-files.md),
 [the config sheet](config-reference-sheet.md)) each *use* a count; this page is the single
@@ -16,7 +16,7 @@ that follow this one — Part 3's per-instruction reference (B01–B30) and the
 [Master ISA Encoding Appendix](../../appendix/isa-encoding-appendix.md) — inherit their
 completeness claims from exactly these numbers.
 
-Everything below is read **directly from the shipped binaries this pass**: the non-stripped
+Everything below is read **directly from the shipped binaries**: the non-stripped
 `.symtab` of `libisa-core.so` (the count-accessor immediates and the `Opcode_*`/`Slot_*`/
 `Field_*` symbol families), and the `.symtab` of `libfiss-base.so` (the `module__xdref_` value
 leaves). The standalone TIE database supplies the *pre-fold authoring* superset, which the
@@ -26,7 +26,8 @@ consulted; this is binary-derived prose only.
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
 `OBSERVED` = a byte/immediate/symbol-count read from the shipped binary (or computed by
 executing the shipped simulator); `INFERRED` = reasoned over OBSERVED facts; `CARRIED` =
-re-used at a cited report's confidence; crossed with `HIGH`/`MED`/`LOW`. Callouts: **QUIRK**
+re-used at a cited source's confidence; crossed with `HIGH`/`MED`/`LOW`. Claims that depart
+from the page default `HIGH/OBSERVED` carry an explicit tag. Callouts: **QUIRK**
 (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns a
 naive reading), **NOTE** (orienting context).
 
@@ -48,21 +49,22 @@ naive reading), **NOTE** (orienting context).
 
 ---
 
-## 1. The five headline numbers — re-derived from the binary this pass
+## 1. The five headline numbers — re-derived from the binary
 
-These five figures carry the entire coverage claim. Each was re-derived **independently** this
-pass, two ways where possible (a getter immediate **and** a symbol-family count), and the
-results agree to the digit.
+These five figures carry the entire coverage claim. Each is derived **independently**, two ways
+where possible (a getter immediate **and** a symbol-family count), and the results agree to the
+digit. All five rows are `[HIGH/OBSERVED]` except the two pre-fold rows, which are
+`[HIGH/CARRIED]` on the TIE-DB totals and `[HIGH/OBSERVED]` on the `+73` fold.
 
-| # | Number | What it counts | Binary witness (re-read this pass) | Tag |
-|---|---|---|---|---|
-| 1 | **1534** | shipped **mnemonics** (distinct opcodes) | `num_opcodes()` @ `0x3b61d0` = `mov $0x5fe` (= 1534); **and** `nm \| rg -o 'Opcode_(.+)_Slot_…_encode' \| sort -u \| wc -l` = 1534 distinct mnemonics | `[HIGH/OBSERVED]` |
-| 2 | **12569** | shipped **placements** (legal `mnemonic × slot`) | `num_encode_fns()` @ `0x3b6130` = `mov $0x3119` (= 12569); **and** `nm \| rg -c 'Opcode_.*_Slot_.*_encode'` = 12569 | `[HIGH/OBSERVED]` |
-| 3 | **1607** | **pre-fold** authoring mnemonics (TIE-DB) | TIE-DB `<OPCODEDEF>` distinct `<ID>` census = 1607; `1534 + 73` (the fold, §3) | `[HIGH/CARRIED]` on 1607; `[HIGH/OBSERVED]` on the `+73` |
-| 4 | **12642** | **pre-fold** authoring placements (TIE-DB) | TIE-DB `<OPCODEDEF>` element count = 12642; `12569 + 73` | `[HIGH/CARRIED]` on 12642; `[HIGH/OBSERVED]` on the `+73` |
-| 5 | **864** | execution-validated **value leaves** | `nm libfiss-base.so \| rg -c 'module__xdref_'` = 864 (all `T`/`t` text symbols; 864 distinct base names) | `[HIGH/OBSERVED]` |
+| # | Number | What it counts | Binary witness |
+|---|---|---|---|
+| 1 | **1534** | shipped **mnemonics** (distinct opcodes) | `num_opcodes()` @ `0x3b61d0` = `mov $0x5fe` (= 1534); **and** `nm \| rg -o 'Opcode_(.+)_Slot_…_encode' \| sort -u \| wc -l` = 1534 distinct mnemonics |
+| 2 | **12569** | shipped **placements** (legal `mnemonic × slot`) | `num_encode_fns()` @ `0x3b6130` = `mov $0x3119` (= 12569); **and** `nm \| rg -c 'Opcode_.*_Slot_.*_encode'` = 12569 |
+| 3 | **1607** | **pre-fold** authoring mnemonics (TIE-DB) | TIE-DB `<OPCODEDEF>` distinct `<ID>` census = 1607; `1534 + 73` (the fold, §3) |
+| 4 | **12642** | **pre-fold** authoring placements (TIE-DB) | TIE-DB `<OPCODEDEF>` element count = 12642; `12569 + 73` |
+| 5 | **864** | execution-validated **value leaves** | `nm libfiss-base.so \| rg -c 'module__xdref_'` = 864 (all `T`/`t` text symbols; 864 distinct base names) |
 
-Re-derivation transcript (this pass, on `libisa-core.so` sha256 `8fe68bf4…f143e451`,
+Derivation transcript (on `libisa-core.so` sha256 `8fe68bf4…f143e451`,
 9 690 712 B, and `libfiss-base.so` sha256 `260b110c…08d3cc94`, 12 330 016 B):
 
 ```
@@ -87,17 +89,16 @@ nm libisa-core.so | rg -c 'Format_.*_encode'                  = 14      (format 
 nm libfiss-base.so | rg -c 'module__xdref_'                   = 864     (value leaves)
 ```
 
-Every immediate matches the sibling pages byte-for-byte; nothing here is taken on a report's
-word. `[HIGH/OBSERVED]`
+Every immediate matches the sibling pages byte-for-byte.
 
-> **NOTE — the secondary Part-2 dimensions, re-confirmed in the same transcript.** `num_fields =
+> **NOTE — the secondary Part-2 dimensions, confirmed in the same transcript.** `num_fields =
 > 0xca5 = 3237`, `num_formats = 0xe = 14`, `num_slots = num_decode_fns = 0x2e = 46`,
 > `num_iclasses = 0x5a7 = 1447`, `num_operands = 0xe8 = 232`. The `OperandSem_*_decode` family is
 > **95** (operand value-transform decoders — sign-extend / scale / bias / PC-rebase). The
 > register architecture is **8 regfiles + 4 BR views**, the FLIX grid **14 formats / 46 slots**,
 > length classes **7 → 4 byte-sizes `{2,3,8,16}`**, and the TIE value-DB leaf census **864
 > `xdref` leaves**. These are the numbers the four sibling pages own; this page restates them as
-> the coverage denominators and does not re-derive their interiors. `[HIGH/OBSERVED]`
+> the coverage denominators and does not re-derive their interiors.
 
 ---
 
@@ -116,7 +117,7 @@ reimplementer who blurs any two of them mis-sizes a table.
 A **mnemonic** is the opcode (e.g. `ivp_addnx16`); a **placement** is that opcode realized in
 one specific FLIX slot (e.g. `ivp_addnx16` in `F0_S3_ALU`). One mnemonic legal in *k* slots
 contributes *one* mnemonic and *k* placements. In the shipped tables **1178** of the 1534
-mnemonics carry more than one placement (re-counted from `nm` this pass; `nop` alone carries
+mnemonics carry more than one placement (counted from `nm`; `nop` alone carries
 **44** placements — it is legal in every issue position); the average is `12569 / 1534 ≈ 8.2`
 placements per mnemonic.
 
@@ -132,11 +133,11 @@ its slot. So decode is many-opcodes→one-fn-per-slot (46), encode is one-opcode
 > A "merge two sorted subtensors" op, **SortMerge**, survives in the firmware *only* as a dead
 > comment (`// "SortMerge wip 0x97"`, slot `0x97` commented out, `0x98` reassigned to
 > `TENSOR_SCALAR_SELECT`). It has **no `opcodes[]` row, no encode thunk, no value leaf**.
-> Re-checked this pass: `rg -ci sortmerge` over the 1534-mnemonic roster = **0**. SortMerge is
+> `rg -ci sortmerge` over the 1534-mnemonic roster = **0**. SortMerge is
 > *not* in any denominator on this page; the 1534 count is sound precisely because it counts
 > shipped table rows, not authoring intent. (See the
 > [Confidence Model §4.5](../../reference/confidence-model.md) — this is a *fabrication wall*,
-> documented so no downstream page invents the opcode.) `[HIGH/OBSERVED]`
+> documented so no downstream page invents the opcode.)
 
 ---
 
@@ -151,25 +152,25 @@ and `+73` placements**, in lockstep:
    fold delta        :   −73 mnemonics  /   −73 placements
 ```
 
-The arithmetic is exact: `1534 + 73 = 1607`, `12569 + 73 = 12642` (re-checked this pass). The
+The arithmetic is exact: `1534 + 73 = 1607`, `12569 + 73 = 12642`. The
 deltas move **together** because each folded mnemonic carries **exactly one** placement in the
 authoring DB — they are author-time assembler/macro forms with a single canonical encoding that
 collapses (aliases or elides) onto an already-shipped opcode before the runtime `opcodedefs[]`
 table is generated.
 
-**The fold mechanism, by group** (from the TIE-DB authoring census; the *base* survivors
-re-confirmed present in the binary roster this pass, the folded forms confirmed *absent*):
+**The fold mechanism, by group** (from the TIE-DB authoring census; the *base* survivors are
+present in the binary roster, the folded forms *absent*):
 
-| Folded group | n | What they are | Binary-roster check (this pass) |
+| Folded group | n | What they are | Binary-roster check |
 |---|--:|---|---|
 | `xt_wide_branch` `.W18` macros | 24 | 18-bit wide-branch-offset macro expansions of `BALL/BANY/BBC/BBCI/BBS/BBSI/BEQ/BEQI/BEQZ/BGE/BGEI/BGEU/BGEUI/BGEZ/BLT/BLTI/BLTU/BLTUI/BLTZ/BNALL/BNE/BNEI/BNEZ/BNONE` | the **base** forms (`beq`, `bnez`, …) **and** their `_w15` 15-bit variants ship; **no** `*_w18` form is in the roster (`rg w18` = 0) — the `.W18` macros fold onto the base/`_w15` encodings |
-| `xt_virtualops` pseudo-ops | 6 | `ADDI.A.N, CLAMPSF, FFS, POPC, POPCE, SEXTF` — pure assembler virtual ops with no runtime encoding | `FFS/POPC/CLAMPSF/SEXTF` all **absent** from the 1534 roster (re-checked) — they expand to base-op sequences at assemble time |
+| `xt_virtualops` pseudo-ops | 6 | `ADDI.A.N, CLAMPSF, FFS, POPC, POPCE, SEXTF` — pure assembler virtual ops with no runtime encoding | `FFS/POPC/CLAMPSF/SEXTF` all **absent** from the 1534 roster — they expand to base-op sequences at assemble time |
 | residual authoring forms | 43 | the remainder of the `+73` (additional `.W18`/macro/alias forms across `xt_branchprediction`, `xt_halt`, `xt_trace`, `xt_interrupt`, and other packages) that collapse onto a shipped base encoding | the *base* forms (`rbtb0..2`, `wbtb0..2`, `halt`, `halt.n`, `waiti`, `wsr.mmid`) **are** in the binary roster — only their author-time alias/wide variants fold |
 
 The 24 + 6 named groups account for 30 of the 73; the remaining 43 are the spread of `.W18` /
 alias / macro variants across the branch-prediction, halt, trace and interrupt packages whose
 *base* forms ship and whose *authoring* variants fold. The reconciliation verdict from the
-authoring DB is decisive and re-confirmed by the roster checks: **no opcode in the binary is
+authoring DB is decisive and confirmed by the roster checks: **no opcode in the binary is
 missing from the DB** — the TIE-DB is a strict superset, and the `−73` fold removes only
 authoring conveniences, never datapath behaviour. `[HIGH/OBSERVED]` on the fold direction, the
 `+73` arithmetic, and the present/absent roster checks; `[HIGH/CARRIED]` on the 1607/12642
@@ -182,7 +183,7 @@ authoring totals (read from the decoded TIE-DB, not the runtime binary).
 > authoritative for *anything a reimplementer builds* (decoder, assembler, ISS): they are
 > **`1534 / 12569`**. The `1607 / 12642` pair is useful only as the *reference-semantics*
 > superset — the TIE DB carries bit-precise MODULE logic the binary tables only reference. State
-> both pairs; never split one across the line. `[HIGH/OBSERVED]`
+> both pairs; never split one across the line.
 
 > **NOTE — why fold at all?** The generator folds because `.W18` wide-branch macros and
 > virtual-ops are *assembler conveniences*: they exist so an author can write `BEQZ.W18 a2, far`
@@ -197,7 +198,7 @@ authoring totals (read from the decoded TIE-DB, not the runtime binary).
 ## 4. Coverage by ISA region
 
 The 1534 shipped mnemonics partition cleanly by **package** (`opcodes[].package`) — a 28-package
-census that sums to exactly 1534, re-derived against the binary roster this pass. The packages
+census that sums to exactly 1534, derived against the binary roster. The packages
 map onto the functional ISA regions a reimplementer thinks in (vector ALU / MAC / load-store /
 gather / predicate / convert / transcendental / base-Xtensa / pseudo). Coverage and confidence
 are stated per region.
@@ -218,34 +219,35 @@ are stated per region.
 | — | — | — | — | `xt_interrupt` | 1 |
 | — | — | — | — | `xt_trace` | 1 |
 
-**Total = 1534** (re-summed this pass). `[HIGH/OBSERVED]`
+**Total = 1534.**
 
 > **CORRECTION — "package == `xt_ivp32`" is *not* the same predicate as "name starts `ivp_`".**
 > The vector package `xt_ivp32` holds **1072** ops, but the `ivp_*` *name-prefix* count is
 > **1065**. The 7 ops that are in `xt_ivp32` but lack the `ivp_` prefix are the scalar-FP-control
-> ops `rur.fcr, wur.fcr, rur.fsr, wur.fsr, recipqli.s, mulsone.s, mulsone.h` — all re-confirmed
-> present in the binary roster this pass. So the canonical **scalar/vector split is `469 / 1065`
-> by name prefix** (independently re-derived from the binary: `rg '^ivp_'` = 1065,
+> ops `rur.fcr, wur.fcr, rur.fsr, wur.fsr, recipqli.s, mulsone.s, mulsone.h` — all present in
+> the binary roster. So the canonical **scalar/vector split is `469 / 1065`
+> by name prefix** (independently derived from the binary: `rg '^ivp_'` = 1065,
 > `rg -v '^ivp_'` = 469, summing to 1534), while the **package split puts 1072 in `xt_ivp32`**.
-> Both are correct for their axis; do not conflate them. `[HIGH/OBSERVED]`
+> Both are correct for their axis; do not conflate them.
 
 ### 4.2 Region roll-up — count · coverage · confidence
 
 Mapping the packages onto functional regions. "Coverage" is *encoding* coverage (every
 mnemonic in the region has its full placement set in `opcodedefs[]`); the **value-semantics**
 coverage of the datapath regions is the separate `864/864` execution-validated layer (§5).
+Every row is `[HIGH/OBSERVED]` except where its value-sem cell says otherwise.
 
-| ISA region | packages | mnemonics | encoding coverage | value-sem coverage | confidence |
-|---|---|--:|---|---|---|
-| **Vector ALU + MAC + reduce + shift + pack + select** | `xt_ivp32` (datapath subset) | ~960 of 1072 | **complete** — every op fully placed; 12 of 14 formats oracle-confirmed | execution-validated via `xdref` leaves (§5) | `[HIGH/OBSERVED]`; `F4`/`F6` interiors `[MED/INFERRED]` |
-| **Vector load / store / valign** | `xt_ivp32` (ld/st subset) | (within the 1072) | **complete** — LdSt/Ld slots fully populated across F0–F11/N0–N2 | store-capability per `opcodes[].flags` bit5 | `[HIGH/OBSERVED]` |
-| **SuperGather scatter / gather** | `xt_ivp32` (gather subset) | (within the 1072) | **complete** — `gvr`(8)/`b32_pr` operand model byte-pinned | gather value leaves validated | `[HIGH/OBSERVED]` |
-| **Predicate / vbool** | `xt_ivp32` (vbool subset) | (within the 1072) | **complete** — N0/N1/N2 narrow codecs **inverse-proven** | predicate compare leaves validated | `[HIGH/OBSERVED]` |
-| **Convert (fp16/fp32 ↔ int)** | `xt_ivp32` (cvt subset) | (within the 1072) | **complete** | RZ/RNE/saturation behaviours pinned by execution | `[HIGH/OBSERVED]` |
-| **Transcendental seeds (recip/rsqrt/exp)** | `xt_ivp32` (lookup subset) | (within the 1072) | **complete** — seed `.rodata` LUTs byte-read | `128/128` execution-validated (`FISS==SEM==TAB`); source coefficients CARRIED | `[HIGH/OBSERVED]` table; `[MED/CARRIED]` lineage |
-| **Scalar-FP (FCR/FSR view)** | `xt_ivpn_scalarfp` + 7 `xt_ivp32` outliers | 102 (+7) | **complete** — `rur/wur.fcr/.fsr` round-mode plumbing | scalar fp value leaves validated | `[HIGH/OBSERVED]` |
-| **Base-Xtensa scalar / system / ctrl** | `xt_core`(131), `xt_density`(11), `xt_mul`(5), `xt_integerdivide`(4), `xt_booleans`(16), `xt_regwin`(14), `xt_exception_dispatch`(37), `xt_debug`(33), `xt_timer`(12), `xt_mmu`(10), `xt_instcache`(7), `xt_sync`(5), `xt_misc`(8), + 8 small pkgs | **360** total | **complete** — `Inst`/`Inst16a`/`Inst16b` templates = the literal Xtensa words | base ISA (architecturally standard) | `[HIGH/OBSERVED]` |
-| **Pseudo / fold-source** | `xt_virtualops`(10), `xt_wide_branch`(24) | 34 *shipped-base* of these packages ship; the `+73` fold forms (§3) do **not** ship | base forms ship; `.W18`/virtual variants fold | n/a (lowered at assemble time) | `[HIGH/OBSERVED]` |
+| ISA region | packages | mnemonics | encoding coverage | value-sem coverage |
+|---|---|--:|---|---|
+| **Vector ALU + MAC + reduce + shift + pack + select** | `xt_ivp32` (datapath subset) | ~960 of 1072 | **complete** — every op fully placed; 12 of 14 formats oracle-confirmed | execution-validated via `xdref` leaves (§5); `F4`/`F6` interiors `[MED/INFERRED]` |
+| **Vector load / store / valign** | `xt_ivp32` (ld/st subset) | (within the 1072) | **complete** — LdSt/Ld slots fully populated across F0–F11/N0–N2 | store-capability per `opcodes[].flags` bit5 |
+| **SuperGather scatter / gather** | `xt_ivp32` (gather subset) | (within the 1072) | **complete** — `gvr`(8)/`b32_pr` operand model byte-pinned | gather value leaves validated |
+| **Predicate / vbool** | `xt_ivp32` (vbool subset) | (within the 1072) | **complete** — N0/N1/N2 narrow codecs **inverse-proven** | predicate compare leaves validated |
+| **Convert (fp16/fp32 ↔ int)** | `xt_ivp32` (cvt subset) | (within the 1072) | **complete** | RZ/RNE/saturation behaviours pinned by execution |
+| **Transcendental seeds (recip/rsqrt/exp)** | `xt_ivp32` (lookup subset) | (within the 1072) | **complete** — seed `.rodata` LUTs byte-read | `128/128` execution-validated (`FISS==SEM==TAB`); source-coefficient lineage `[MED/CARRIED]` |
+| **Scalar-FP (FCR/FSR view)** | `xt_ivpn_scalarfp` + 7 `xt_ivp32` outliers | 102 (+7) | **complete** — `rur/wur.fcr/.fsr` round-mode plumbing | scalar fp value leaves validated |
+| **Base-Xtensa scalar / system / ctrl** | `xt_core`(131), `xt_density`(11), `xt_mul`(5), `xt_integerdivide`(4), `xt_booleans`(16), `xt_regwin`(14), `xt_exception_dispatch`(37), `xt_debug`(33), `xt_timer`(12), `xt_mmu`(10), `xt_instcache`(7), `xt_sync`(5), `xt_misc`(8), + 8 small pkgs | **360** total | **complete** — `Inst`/`Inst16a`/`Inst16b` templates = the literal Xtensa words | base ISA (architecturally standard) |
+| **Pseudo / fold-source** | `xt_virtualops`(10), `xt_wide_branch`(24) | 34 *shipped-base* of these packages ship; the `+73` fold forms (§3) do **not** ship | base forms ship; `.W18`/virtual variants fold | n/a (lowered at assemble time) |
 
 > **NOTE — the functional sub-split of the 1072-op vector ISA is Part 3's subject.** This page
 > grounds coverage on the *binary package partition* (1534 by `opcodes[].package`, which is
@@ -257,10 +259,10 @@ coverage of the datapath regions is the separate `864/864` execution-validated l
 > 1534/12569 denominator**. See the forward-links in §8. `[HIGH/INFERRED]`
 
 The **per-slot placement census** (the 12569 broken down by the 46 slots) is byte-complete and
-sums exactly; it is reproduced on [the FLIX encoding page §6.3](flix-encoding.md). Re-summed
-this pass from `nm`: every one of the 46 slots hosts ≥ 1 opcode, and the per-slot counts total
+sums exactly; it is reproduced on [the FLIX encoding page §6.3](flix-encoding.md). Summed
+from `nm`: every one of the 46 slots hosts ≥ 1 opcode, and the per-slot counts total
 **12569** with zero slack. The three `None` slots (`N0_S1`, `N0_S2`, `N1_S1`) host exactly one
-op each — `nop` — and are NOP-only filler, not real issue units. `[HIGH/OBSERVED]`
+op each — `nop` — and are NOP-only filler, not real issue units.
 
 ---
 
@@ -279,18 +281,18 @@ OBSERVED-by-execution certificate. The companion cycle oracle (`libcas-core.so`)
 *retirement* behind `AUTH::check_iss_licenses`, so cycles/faults/trace are walled
 (`closable-with-license`); but the **value** lane runs free.
 
-| Quantity | Value | Witness | Tag |
-|---|---|---|---|
-| value leaves (denominator) | **864** | `nm libfiss-base.so \| rg -c 'module__xdref_'` = 864 (this pass) | `[HIGH/OBSERVED]` |
-| execution-validated | **~95% of value-bearing leaves** | ~2.09M differential comparisons across 18 op families, **zero firmware value bugs** | `[HIGH/OBSERVED by execution]` |
-| transcendental seed LUTs | `128/128` reproduced | `RECIP_Data8`/`RSQRT_Data8` byte-read + `FISS==SEM==TAB` agreement | `[HIGH/OBSERVED]` |
-| edge behaviours pinned | RZ-default *value-leaf* rounding (the un-parameterized-call default — distinct from the **RNE** architectural FCR reset; see [fp-sub-isa §3.2](fp-sub-isa.md#32-the-encoding--proven-by-execution)), NaN-asymmetric max/min, quiet/signaling compare split, 3-way pack saturation | differential-execution certificates | `[HIGH/OBSERVED]` |
+| Quantity | Value | Witness |
+|---|---|---|
+| value leaves (denominator) | **864** | `nm libfiss-base.so \| rg -c 'module__xdref_'` = 864 |
+| execution-validated | **~95% of value-bearing leaves** | ~2.09M differential comparisons across 18 op families, **zero firmware value bugs** — `[HIGH/OBSERVED by execution]` |
+| transcendental seed LUTs | `128/128` reproduced | `RECIP_Data8`/`RSQRT_Data8` byte-read + `FISS==SEM==TAB` agreement |
+| edge behaviours pinned | RZ-default *value-leaf* rounding (the un-parameterized-call default — distinct from the **RNE** architectural FCR reset; see [fp-sub-isa §3.2](fp-sub-isa.md#32-the-encoding--proven-by-execution)), NaN-asymmetric max/min, quiet/signaling compare split, 3-way pack saturation | differential-execution certificates |
 
 The headline restated: **value-semantics coverage is `864/864` leaves enumerated and ~95%
 execution-validated with zero value bugs across ~2.09M comparisons** — the binary itself is the
 arbiter of its own value semantics, which is what lets this number be HIGH rather than inferred.
 The residue (~5% of leaves not yet swept) is *task*, not *wall*: those leaves are present and
-callable; only the differential run is unfinished. `[HIGH/OBSERVED]`
+callable; only the differential run is unfinished.
 
 ---
 
@@ -300,12 +302,12 @@ Coverage is "certified" because four **independent** descriptions of the ISA agr
 different artifact with a different failure mode; their agreement is what upgrades "we decoded
 it" to "we decoded it *correctly*."
 
-| Source | What it is | What it grounds | Counts it pins | Tag |
-|---|---|---|---|---|
-| **libisa** (`libisa-core.so`) | the shipped TIE-generated runtime ISA DB the disassembler/ISS consume | the **shipped** encoding tables — the arbiter for everything a reimplementer builds | 1534 / 12569 / 3237 / 14 / 46 / 8 / 95 | `[HIGH/OBSERVED]` |
-| **TIE-DB** (standalone) | the cleartext authoring database (`Xtensa.xml` / `Xtensa.tl`), decoded once | the **pre-fold** superset + the **reference MODULE semantics** (bit-precise wire/assign logic) | 1607 / 12642 (pre-fold) | `[HIGH/CARRIED]` |
-| **objdump** oracle | the device-native `xtensa-elf-objdump`/`xtensa-elf-as` (`XTENSA_CORE=ncore2gp`) | an **independent** encode/decode round-trip — bytes ⇄ mnemonics | 81 442 bundles / 549 375 per-slot mnemonics, **0** disagreements | `[HIGH/OBSERVED]` |
-| **headers** (`core-isa.h` / `ncore2gp-params`) | the config-of-record text + generated HAL header | the **identity/config** the tables instantiate (vision type, formats, regfiles, coproc) | 14 formats / 8 regfiles / Q7 / 512-bit | `[HIGH/OBSERVED]` |
+| Source | What it is | What it grounds | Counts it pins |
+|---|---|---|---|
+| **libisa** (`libisa-core.so`) | the shipped TIE-generated runtime ISA DB the disassembler/ISS consume | the **shipped** encoding tables — the arbiter for everything a reimplementer builds | 1534 / 12569 / 3237 / 14 / 46 / 8 / 95 |
+| **TIE-DB** (standalone) | the cleartext authoring database (`Xtensa.xml` / `Xtensa.tl`), decoded once | the **pre-fold** superset + the **reference MODULE semantics** (bit-precise wire/assign logic) | 1607 / 12642 (pre-fold) — `[HIGH/CARRIED]` |
+| **objdump** oracle | the device-native `xtensa-elf-objdump`/`xtensa-elf-as` (`XTENSA_CORE=ncore2gp`) | an **independent** encode/decode round-trip — bytes ⇄ mnemonics | 81 442 bundles / 549 375 per-slot mnemonics, **0** disagreements |
+| **headers** (`core-isa.h` / `ncore2gp-params`) | the config-of-record text + generated HAL header | the **identity/config** the tables instantiate (vision type, formats, regfiles, coproc) | 14 formats / 8 regfiles / Q7 / 512-bit |
 
 The agreements that close the cover:
 
@@ -352,8 +354,7 @@ config* boundary, per [the Walls Model §4](../../reference/confidence-model.md)
 > slot, capped by the 2 LSU copies). This is an *ISA-coverage* fact: the **encoding** of every
 > co-issue combination is fully covered (all 46 slots placed); only the *fine timing* below the
 > structural ceiling is walled. A reimplementer's scheduler encodes the `1+1` ceiling and is
-> correct-by-construction for issue legality. `[HIGH/OBSERVED on the slot rosters + 2 LSU copies;
-> the absence of a tighter model is OBSERVED-negative.]`
+> correct-by-construction for issue legality. `[HIGH/OBSERVED rosters; OBSERVED-negative per-port model]`
 
 > **GOTCHA — the v2–v4 footing is hard spec; v5/v1 is header-OBSERVED only.** Generations **v2–v4
 > (Sunda / Cayman / Mariana / Mariana+)** are byte-grounded and execution-validated — a
@@ -376,7 +377,7 @@ The coverage verdict, stated as the claim Part 3 and the appendix inherit:
   perfect.** Every shipped opcode has its full placement set in `opcodedefs[]`; the matrix sums
   to 12569 with zero slack; every one of the 46 slots is populated; the device-native objdump/as
   round-trips byte-exact over hundreds of thousands of bundles with zero disagreements. The
-  `+73` authoring forms are folded (lossless at the encoding level). `[HIGH/OBSERVED]`
+  `+73` authoring forms are folded (lossless at the encoding level).
 * **Value semantics: `864 / 864` leaves enumerated, ~95% execution-validated, zero value bugs
   across ~2.09M comparisons** — the binary itself the arbiter via the free in-process value lane.
   `[HIGH/OBSERVED by execution]`
@@ -393,33 +394,32 @@ is *this* number, the certified-perfect denominator.
 
 ---
 
-## 9. Adversarial self-verification — the five headline counts, re-derived this pass
+## 9. Adversarial self-verification — the five headline counts
 
-Each headline number re-derived independently from the binary, two ways where possible; nothing
-taken from a report's word.
+Each headline number is derived independently from the binary, two ways where possible.
 
 1. **`1534` shipped mnemonics.** `num_opcodes()` @ `0x3b61d0` = `mov $0x5fe,%eax` → `0x5fe` =
    1534. Independently, `nm libisa-core.so | rg -o 'Opcode_(.+)_Slot_…_encode' | sort -u | wc -l`
-   = **1534** distinct mnemonics. Two witnesses agree. `[HIGH/OBSERVED]`
+   = **1534** distinct mnemonics. Two witnesses agree.
 2. **`12569` shipped placements.** `num_encode_fns()` @ `0x3b6130` = `mov $0x3119,%eax` → `0x3119`
    = 12569. Independently, `nm | rg -c 'Opcode_.*_Slot_.*_encode'` = **12569**, and the per-slot
-   census (46 slots) **sums to 12569** with zero slack. Three witnesses agree. `[HIGH/OBSERVED]`
-3. **`1607` pre-fold mnemonics ↔ `1534` shipped (the fold).** `1534 + 73 = 1607` (re-checked).
+   census (46 slots) **sums to 12569** with zero slack. Three witnesses agree.
+3. **`1607` pre-fold mnemonics ↔ `1534` shipped (the fold).** `1534 + 73 = 1607`.
    The fold forms are confirmed **absent** from the binary roster (`FFS/POPC/CLAMPSF/SEXTF` = 0;
    `*_w18` = 0) while their base forms ship; the TIE-DB carries the 1607 superset.
    `[HIGH/OBSERVED]` on the fold and arithmetic; `[HIGH/CARRIED]` on 1607.
-4. **`12642` pre-fold placements ↔ `12569` shipped.** `12569 + 73 = 12642` (re-checked); the
+4. **`12642` pre-fold placements ↔ `12569` shipped.** `12569 + 73 = 12642`; the
    `+73` mnemonics each carry exactly one placement, so the placement delta equals the mnemonic
    delta. The correct pairing is `1607 ↔ 12642`, never `1607 ↔ 12569`. `[HIGH/OBSERVED]` on the
    arithmetic; `[HIGH/CARRIED]` on 12642.
 5. **`864` value leaves.** `nm libfiss-base.so | rg -c 'module__xdref_'` = **864** (all 864 are
    `T`/`t` text symbols; the distinct base-name count is also 864). The denominator for the
-   `864/864` enumerated / ~95% execution-validated value cover. `[HIGH/OBSERVED]`
+   `864/864` enumerated / ~95% execution-validated value cover.
 
 **Pairing confirmation.** `1534 ↔ 12569` (shipped/runtime) and `1607 ↔ 12642` (pre-fold/
 authoring) are the only two valid pairs; `1534 ↔ 12642` and `1607 ↔ 12569` are the cross-pairing
 trap and are **wrong**. Both deltas are `+73`, in lockstep, because each folded mnemonic carries
-exactly one placement. All five counts and both pairings re-derived from the binary this pass.
+exactly one placement.
 
 ---
 
