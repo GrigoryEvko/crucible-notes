@@ -30,7 +30,7 @@ an explicit tag.
 > the `CAYMAN_Q7_POOL` DEBUG DRAM holds **0** `S:` and **156**
 > `P%i:`). When this page says "the SEQ engine releases the Q7 cores from run-stall", it is the
 > NX sequencer reaching across to the eight Q7 compute sequencers — the handoff the uarch page
-> describes from the Q7 side. `[HIGH/OBSERVED]`
+> describes from the Q7 side.
 
 ---
 
@@ -120,7 +120,6 @@ read `0` are real zero-immediates, not unresolved relocations). `[HIGH/OBSERVED]
 | `img_CAYMAN_NX_POOL_DEBUG_DRAM_contents.c.o` | DRAM string/data image | `0x6f20` (28448 B) |
 
 IRAM head bytes are `06 76 00 00 ... 86 77 00 00` — i.e. `j <reset>` then `j <fault-stub>`.
-`[HIGH/OBSERVED]`
 
 ### 1.1 Memory map (`ncore2gp-params`)
 
@@ -137,12 +136,12 @@ Read directly from `XtensaTools/config/ncore2gp-params`:
 
 So the IRAM image is raw code at VA `0x0` with the reset vector at byte 0; the DRAM image is raw
 data at VA `0x80000`. **A DRAM string's file offset in `dram.bin` is `VA − 0x80000`** — every log
-string this page cites is at `dram.bin` offset `X`, i.e. device VA `0x80000+X`. `[HIGH/OBSERVED]`
+string this page cites is at `dram.bin` offset `X`, i.e. device VA `0x80000+X`.
 
 > **GOTCHA — `.text`/`.rodata` VMA==fileoffset, but the SEQ image uses its own VA map.** Do not
 > apply the `ncore2gp` config-DLL `.data` delta (`0x200000`) here, nor libtpu's `0x400000`. These
 > are *device firmware images*: IRAM@`0x0`, DRAM@`0x80000`. The only arithmetic you need is
-> "DRAM file offset = VA − `0x80000`". `[HIGH/OBSERVED]`
+> "DRAM file offset = VA − `0x80000`".
 
 ### 1.2 Pointer formation — the `const16` pair (why a literal-pool scan finds nothing)
 
@@ -159,7 +158,7 @@ against the boot strings:
 
 `0x80EE1 − 0x80000 = 0xEE1` is the `dram.bin` offset of the string (confirmed byte-exact, §4.1).
 Because pointers are *immediate-built*, a naive 32-bit literal-pool scan of the image recovers
-nothing — you must follow the `const16` pairs. `[HIGH/OBSERVED]`
+nothing — you must follow the `const16` pairs.
 
 > **NOTE — CSR aperture absolute base is ambiguous; register identity is not.** Local CSR
 > accesses use the same pair, e.g. `movi a3,0x400 ; const16 a3,4 → nx.start_ctrl`. The low-16
@@ -205,12 +204,12 @@ the windowed-ABI `l32e`/`s32e` spill handlers and the EXCVADDR-save path. `[HIGH
 The primary boot stub is three instructions: `const16`-pair `a0 = 0x90`, `jx a0`. The alternate
 path at `0x1ec` builds `a4 = 0x84e90` (an `addx4` dispatch table in DRAM) and a default entry
 `0x1c2ac`. Confirmed: every entry of the DRAM table at file offset `0x4e90` reads `ac c2 01 00` =
-`0x0001c2ac`, i.e. the table's default target *is* `0x1c2ac`. `[HIGH/OBSERVED]`
+`0x0001c2ac`, i.e. the table's default target *is* `0x1c2ac`.
 
 C reconstruction:
 
 ```c
-/* Reset vector + boot stub. IRAM 0x0 / 0x1dc.  [HIGH/OBSERVED] */
+/* Reset vector + boot stub. IRAM 0x0 / 0x1dc. */
 __attribute__((naked, section(".ResetVector"))) void reset_vector(void) {
     asm volatile("j boot_stub");                  /* IRAM 0x0:  j 0x1dc                  */
 }
@@ -259,7 +258,6 @@ in-sync (no FLIX desync in the crt region). Annotated:
 
 The handler is the standard `ncore2gp` reset spine: `wsr.isb` → `wsr.vecbase` → I-cache
 invalidate → `wsr.memctl` → `wsr.wb` → MPU program → I-cache enable RMW → `call0` crt0.
-`[HIGH/OBSERVED]`
 
 > **CORRECTION — the NX SEQ `_ResetHandler` does *not* program `PREFCTL`.** A sketch of this path
 > attributed a `wsr.prefctl 0x3044` step to it. Disassembly of `_start` (IRAM `0x90`–`0x1c0`)
@@ -268,17 +266,17 @@ invalidate → `wsr.memctl` → `wsr.wb` → MPU program → I-cache enable RMW 
 > by a `.byte` desync, e.g. `0x5040`), not real reset-handler writes. The `PREFCTL 0x00003044`
 > default belongs to the *sibling Q7 "Cairo" core's* `_ResetHandler`, documented in
 > [boot-reset.md §3.4](../../uarch/boot-reset.md). The NX SEQ early-init programs
-> ISB/VECBASE/I$-invalidate/MEMCTL/WB/MPU **but not PREFCTL**. `[HIGH/OBSERVED]`
+> ISB/VECBASE/I$-invalidate/MEMCTL/WB/MPU **but not PREFCTL**.
 
 > **CORRECTION — the I-cache invalidate region is `0x1000`, not `0x2000`.** The loop bound is
 > `const16 a2,0x1000` (`0xb3`), and the body invalidates 4 cache lines (`iii a3,0/64/128/192`)
 > then `addmi a3,a3,0x100` per iteration, looping `bltu a3,a2`. That sweeps exactly **`0x1000`
-> bytes**, not `0x2000`. `[HIGH/OBSERVED]`
+> bytes**, not `0x2000`.
 
 C reconstruction of the early-init:
 
 ```c
-/* _ResetHandler @0x90 — Cadence Xtensa24 crt reset spine.  [HIGH/OBSERVED] */
+/* _ResetHandler @0x90 — Cadence Xtensa24 crt reset spine. */
 void _ResetHandler(void) {
     if (reset_hook) reset_hook();          /* 0x90: optional, NULL on this image -> skipped */
 
@@ -379,7 +377,6 @@ driven by the args-supplied flag stored to the central state struct at **DRAM `0
 * **flag clear → HW-Decode mode.** Logs `S: NX in HW Decode mode` (`0xf1e`); writes the prepared
   `hw_decode.control` word so the hardware instruction-decode FIFO drives the engine.
 
-`[HIGH/OBSERVED]`
 
 > **CORRECTION — "per-generation dispatch at boot" is *compile-time*, not a runtime switch.**
 > `S: BEGIN on cayman` is a single log line naming which gen-specific build is executing; the
@@ -387,7 +384,7 @@ driven by the args-supplied flag stored to the central state struct at **DRAM `0
 > (verified: each image carries its own gen token, never the other). The host
 > `libnrtucode_internal.so` `.rodata` carries the full set `{cayman, mariana, mariana_plus,
 > maverick}` only because it links every build for the host-side log decoder. The **runtime**
-> mode dispatch is Sunda vs HW-Decode, above — not a generation switch. `[HIGH/OBSERVED]`
+> mode dispatch is Sunda vs HW-Decode, above — not a generation switch.
 
 The four boot/mode strings, byte-verified at their `dram.bin` offsets (device VA `0x80000+off`):
 
@@ -401,7 +398,7 @@ The four boot/mode strings, byte-verified at their `dram.bin` offsets (device VA
 C reconstruction of `BEGIN`'s mode pick:
 
 ```c
-/* BEGIN @0x2378 — application entry: mode pick + hw_decode.control program.  [HIGH/OBSERVED]
+/* BEGIN @0x2378 — application entry: mode pick + hw_decode.control program.
  * args: a config/args struct mapped at DRAM 0x85040. */
 void BEGIN(struct boot_args *args) {
     iram_geometry_helper();                          /* 0x2385: call8 0x24ec */
@@ -479,7 +476,6 @@ The global at **DRAM `0x85654`** is the IRAM block_size; the central SEQ state s
 > followed in DRAM by `cache.hpp\0`, and `enter_run`'s assert (§6) by `enter_run\0fsm.hpp\0`. The
 > assert helper at `0xa304` formats `S: Assertion failure! %s(%s:%u)` (DRAM `0x2210`) — so the
 > SEQ front-end's source modules are named `cache.hpp` (IRAM cache) and `fsm.hpp` (the run FSM).
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -492,7 +488,7 @@ and dispatches.
 > **GOTCHA — `enter_run`'s real entry is `0x2c64`; the linear sweep mis-decodes `0x2c63`.** A
 > straight disassembly shows `retw.n` at `0x2c61` (end of the prior function), then 2 padding
 > bytes mis-decoded as `src a3,a6,a0` at `0x2c63`. Forcing `--start-address=0x2c64` yields a clean
-> `entry a1,64`. This is a sweep artifact, **not real code**. `[HIGH/OBSERVED]`
+> `entry a1,64`. This is a sweep artifact, **not real code**.
 
 ```asm
 2c64:  entry a1, 64
@@ -545,7 +541,7 @@ The `enter_run` strings, byte-verified at their `dram.bin` offsets:
 C reconstruction:
 
 ```c
-/* enter_run @0x2c64 — boot->run rendezvous (one dispatch iteration).  [HIGH/OBSERVED] */
+/* enter_run @0x2c64 — boot->run rendezvous (one dispatch iteration). */
 void enter_run(void) {
     uint8_t *running = &g_seq_state[100];            /* DRAM 0x855e0 + 100 */
     if (*running & 1)                                /* 0x2c77: re-entry into a running engine */
@@ -593,7 +589,7 @@ per-iteration config:
 5676/56d1: const16 a2,0x400c -> breakpoint_match (ic0/ic1 opcode+mask)
 ```
 
-Every offset matches the `hw_decode` bundle (`@0x4000`, §8) exactly. `[HIGH/OBSERVED]`
+Every offset matches the `hw_decode` bundle (`@0x4000`, §8) exactly.
 
 ---
 
@@ -616,7 +612,7 @@ the post-dispatch and notification work, and loops forever.
 the loop's `0x2499` site is the primary boot path. `[HIGH/OBSERVED]`
 
 ```c
-/* run_loop @0x2499..0x24e9 — the SEQ main loop, entered by falling through BEGIN.  [HIGH/OBSERVED] */
+/* run_loop @0x2499..0x24e9 — the SEQ main loop, entered by falling through BEGIN. */
 void run_loop(void) {
     for (;;) {                                       /* 0x24e9: j 0x2499 back-edge */
         enter_run();                                 /* 0x2499 */
@@ -669,7 +665,7 @@ NX-vs-Q7 address-remapping windows. `[HIGH/OBSERVED]`
 > *before* fetch began at the reset vector. The firmware therefore manages `start_ctrl` (CSR
 > `0x0004`) — the post-reset "exit Halt" handshake (§6) — not its own `0x0000`. This is the SEQ
 > side of the [boot-reset.md §8](../../uarch/boot-reset.md) handoff: the image is installed and
-> the core de-stalled before PC `0x0`. `[HIGH/OBSERVED]`
+> the core de-stalled before PC `0x0`.
 
 > **CORRECTION / DESYNC — the Q7 `release_run_stall` (CSR `0x3000`) sequence is *not*
 > instruction-exact from stock objdump.** Releasing the eight Q7/GPSIMD compute sequencers from
@@ -695,7 +691,7 @@ conversion callback at `0x88bcc`), then `0x19b3c` (emit to the TPB log ring). Th
 pointer arrives in `a10` (the `const16`-pair DRAM address) and is forwarded into the formatter.
 
 ```c
-/* LOG @0x18b84 — varargs 'S:' logger.  [HIGH/OBSERVED] */
+/* LOG @0x18b84 — varargs 'S:' logger. */
 int LOG(const char *fmt /* a10: DRAM const16-pair ptr */, ...) {
     va_list ap; va_start(ap, fmt);                   /* spill a4..a7 to stack frame */
     char buf[...];
@@ -728,7 +724,7 @@ the same `BEGIN on cayman` / `Pending StartCtrl` / `enter_run: start` strings:
 
 The `CAYMAN_Q7_POOL` DEBUG DRAM, by contrast, holds **0** `S:` strings and **156** `P%i:` strings
 (`P%i: Pending StartCtrl`, `P%i: Start Enter Run`, …) — confirming the `S:` SEQ engine and the
-`P%i:` Q7 compute engine are distinct cores. `[HIGH/OBSERVED]`
+`P%i:` Q7 compute engine are distinct cores.
 
 > **GOTCHA — PERF builds strip the strings and re-lay-out DRAM; offsets differ.** The `*_DEBUG_*`
 > image keeps the format strings in DRAM; the `*_PERF_*` image is the optimized/stripped build and
@@ -747,7 +743,7 @@ The `CAYMAN_Q7_POOL` DEBUG DRAM, by contrast, holds **0** `S:` strings and **156
 > code size differ. **Shared survivors are re-laid-out** — e.g. `Assertion failure! %s(%s:%u)`
 > sits at DRAM offset `0x2213` in DEBUG but `0xbd0` in PERF. *This page anchors to the DEBUG image
 > so every boot step has a named string xref; every cited DRAM offset above is a DEBUG offset and
-> will differ in PERF.* `[HIGH/OBSERVED]`
+> will differ in PERF.*
 
 ---
 

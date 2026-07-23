@@ -28,7 +28,6 @@ scalar-LX rule decodes the *different* NCFW management core and is wrong here.
 > trampoline/impl/thunk bodies disassembled from `iram.bin` with
 > `xtensa-elf-objdump -D -b binary -m xtensa --adjust-vma=0x0`. All IRAM offsets equal
 > device IRAM VA (reset vector at byte 0); DRAM string offset = device DRAM VA − `0x80000`.
-> `[HIGH/OBSERVED]`
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
 `OBSERVED` = a byte/string read from the shipped image; `INFERRED` =
@@ -44,7 +43,7 @@ an explicit tag.
 > `'A'`,`'S'`,`0xa0`,`0xa1` bytes the decode at `0x2e5f` operates on are the
 > *interpreted SEQ-microcode opcode* — a separate encoding the engine runs. The 178-way
 > table maps **microcode-opcode → Xtensa handler address**; it is not an Xtensa decode
-> table. `[HIGH/OBSERVED]`
+> table.
 
 ---
 
@@ -136,7 +135,7 @@ Decoded byte-exact from `iram.bin` (raw bytes
 ```
 
 ```c
-/* SEQ decode + 178-way dispatch, byte-exact. [HIGH/OBSERVED]
+/* SEQ decode + 178-way dispatch, byte-exact.
  * TABLE       = (uint32_t *)0x80814   (DRAM; 178 absolute IRAM targets)
  * DEFAULT     = 0x3198               (unknown-opcode → ErrorHandler)
  * index space = opcode_byte − 0x41   (opcode range 0x41..0xf2) */
@@ -157,7 +156,7 @@ static void seq_decode_dispatch(uint32_t opcode_word) {
 > the same single branch rejects **under-range** and **over-range** opcodes. Any high
 > bits set in the fetched word also push the index past 177. A reimplementation that
 > masks `& 0xff` before subtracting gets the *same dispatch result* but does not
-> byte-match the firmware, which relies purely on the bound to reject. `[HIGH/OBSERVED]`
+> byte-match the firmware, which relies purely on the bound to reject.
 
 > **GOTCHA — the operand DATA is not passed in a register at `jx`.** The dispatch passes
 > **control only**. Handlers read their operands from (a) the fetch **cursor `a4`**,
@@ -188,7 +187,7 @@ Base `0x80814`; **178 × 4-byte LE absolute IRAM targets**; span `0x814..0xadc`
 > runs, on every v3+ gen (SUNDA v2 has neither mode: a single monolithic front-end). Full
 > side-by-side treatment, the per-gen presence proof, and the resolution of which physical slot is
 > HW-Decode (HIGHER `0x80adc` = HW-Decode) are in
-> [HW-Decode vs Sunda Dual Fetch](dual-fetch.md). `[HIGH/OBSERVED]`
+> [HW-Decode vs Sunda Dual Fetch](dual-fetch.md).
 
 ### 3a. The 55 real handlers
 
@@ -258,7 +257,7 @@ name is resolved from the handler's own embedded `"S: <OpName>"` log string (§8
 
 **Family tally:** `0x96d4`-thunk = **32** opcodes; `0x85c4`-thunk = **15**; pure-inline =
 **2** (`0xa0`, `0xa1`); FLIX-desync inline = **6** (`0x77`, `0x78`, `0xb8`, `0xbb`,
-`0xbd`, `0xf1`). **Total = 55.** `[HIGH/OBSERVED]`
+`0xbd`, `0xf1`). **Total = 55.**
 
 > **QUIRK — N:1 opcode→impl and N:1 op-name→distinct-fn both occur; the table is not a
 > permutation.** `'F'` (`0x46`) and `'R'` (`0x52`) resolve to the **same impl**
@@ -294,7 +293,6 @@ runs (from the parsed default-index list):
 > slot holds the **identical** literal `0x3198`; dumping 123 identical rows adds no
 > information. The runs above plus "everything not in §3a" fully specify them. The
 > `0x3198` target is characterized once in §7 (the unknown-opcode error path).
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -382,7 +380,7 @@ double-indirection** — read from `iram.bin`, byte-identical to the sibling pag
 ```
 
 ```c
-/* The two notify-bracketing dispatch thunks. [HIGH/OBSERVED]
+/* The two notify-bracketing dispatch thunks.
  * Identical execute() core; 0x85c4 adds a POST completion-notify. */
 struct Handler { void (**vtable)(struct Handler *); /* [obj+0] -> slot 0 = execute() */ };
 
@@ -401,7 +399,7 @@ void seq_vthunk_control(struct Handler *h) {   /* 0x85c4 — 15 opcodes */
 > POLL_SEM/TensorLoad/Store…) must **publish completion** after running, hence the extra
 > `call8 0x3d1c` POST step. The compute family does not, so `0x96d4` omits it. The
 > `execute()`-invocation core (`l32i [obj]`; `l32i [obj+0]`; `callx8`) is identical in
-> both. `[HIGH/OBSERVED]`
+> both.
 
 ### 4d. The `Handler` object layout + registration — `[MED/INFERRED]`
 
@@ -442,7 +440,7 @@ The thunk treats the passed pointer `P` as a C++ object whose word `[P+0]` is th
 > `l32i [obj+0]` to fetch the vptr, then `callx8` **on the vptr itself** — slot 0 is at
 > `vptr[0]`. Do **not** add `0x10` to reach "slot 0"; the object's `[obj+0]` already
 > points at the executable-pointer array (any `offset-to-top`/`typeinfo` header sits
-> *before* the vptr the object stores). `[HIGH/OBSERVED]`
+> *before* the vptr the object stores).
 
 ---
 
@@ -468,7 +466,6 @@ little-endian and counting raw occurrences across both carved images:
 
 So the handler functions are real `execute()` bodies, and they are reached **only**
 through the boot-constructed object pointer — never through a static pointer table.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -508,7 +505,7 @@ straight from the fetch cursor `[a4+4]`.
 > sync handler, driven by bit2 of a remote engine's status read over `RER`. Full
 > treatment of the resulting run-state transitions is on
 > [SEQ Main FSM Loop §6](main-loop.md#6-pause--halt--the-loops-quiescing-transitions)
-> and [SEQ Run-State Machine](run-state.md). `[HIGH/OBSERVED]`
+> and [SEQ Run-State Machine](run-state.md).
 
 ---
 
@@ -545,7 +542,6 @@ sweep enters mid-bundle and prints garbage) gives:
 > ([pc-bounds.md](pc-bounds.md) /
 > [fetch-pc-redirect.md §6](fetch-pc-redirect.md#6-the-pc-range-guard-is_pc_in_bounds-0x68d0-the-address-level-guard)).
 > A reimplementer who maps both to the same policy diverges. **The binary wins.**
-> `[HIGH/OBSERVED]`
 
 Sibling ErrorHandler arms (same translation unit): `0x13f80`
 "Illegal Instruction(0x%x)" (DRAM `0x83b35`); FP/IntDivZero arms log "FP Error(%d)"
@@ -572,7 +568,7 @@ dispatch surface: the human-readable identity of each routed operation.
 > and PERF-contrast cite, and what `rg -c` reports); **187** if it means literal `S: `
 > occurrences. Both are reproducible; do not conflate the two metrics. The PERF
 > comparison (`rg -c … perf_dram.bin` → `0`) is on the same record metric, so the
-> "DEBUG 178 → PERF 0" delta is sound. `[HIGH/OBSERVED]`
+> "DEBUG 178 → PERF 0" delta is sound.
 
 > **GOTCHA — `'S:'` is the *logger prefix*, not a 1:1 per-table-slot label.** The record
 > count `178` matching the table's 178 entries is a **coincidence of magnitude**, **not**
@@ -585,7 +581,7 @@ dispatch surface: the human-readable identity of each routed operation.
 > `"S: Sunda seq Loop"`, `"S: Seq Loop, iter=…"`), the redirect/bounds/error messages,
 > and the ErrorHandler arms. So the `'S:'` surface **maps onto the table by op-name**, not
 > by index: a handler at `table[idx]` logs its `"S: <OpName>"` on entry, which is how the
-> §3a operation column was resolved. `[HIGH/OBSERVED]`
+> §3a operation column was resolved.
 
 How the surface maps to the table:
 

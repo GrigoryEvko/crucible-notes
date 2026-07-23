@@ -106,20 +106,22 @@ itself called every pass of the forever outer boot loop.
 
 ## 1. Key facts
 
-| Fact | Value | Anchor | Conf |
-|---|---|---|---|
-| Anchor image | `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o` (in `libnrtucode.a`) | `ar t` member list | `[HIGH/OBSERVED]` |
-| IRAM `.rodata` size (DEBUG) | `0x1c820` = **116,768 B** | `readelf -SW` | `[HIGH/OBSERVED]` |
-| DRAM `.rodata` size (DEBUG) | `0x6f20` = 28,448 B | `readelf -SW` | `[HIGH/OBSERVED]` |
-| IRAM `.rodata` size (PERF) | `0x17280` = **94,848 B** (smaller; strings stripped) | `readelf -SW` PERF member | `[HIGH/OBSERVED]` |
-| `'S:'` strings in DEBUG DRAM | **178** records / **187** instances | `rg -c -a 'S: '` = 178 NUL-delimited records (1/dispatch slot); `rg -o`/`bytes.count` = 187 literal `S: ` substrings (9 extra from 4 multi-`S:` records) | `[HIGH/OBSERVED]` |
-| `'S:'` strings in PERF DRAM | **0** | `rg -c -a 'S: ' perf_dram.bin` | `[HIGH/OBSERVED]` |
-| Sunda FSM body | `0x2d81` (fetch) … `0x31a3 → 0x2d81` back-edge | disasm | `[HIGH/OBSERVED]` |
-| HW-decode FSM body | function `@0x31ac` ("Seq Loop, iter") | disasm | `[HIGH/OBSERVED]` |
-| Opcode dispatch table | DRAM `0x80814`, **178 entries**, span `0x814..0xadc` (712 B) | xxd + struct unpack | `[HIGH/OBSERVED]` |
-| Real handlers / defaults | **55 real / 123 default (`0x3198`)** | struct-unpack count | `[HIGH/OBSERVED]` |
-| Decode | `idx = opcode_byte − 0x41` (`'A'`); range `[0,177]` | `0x2e5f`/`0x2e62` | `[HIGH/OBSERVED]` |
-| FSM source unit | `fsm.hpp` (assert at `enter_run` prologue) | string in DRAM | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Fact | Value | Anchor |
+|---|---|---|
+| Anchor image | `img_CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}_contents.c.o` (in `libnrtucode.a`) | `ar t` member list |
+| IRAM `.rodata` size (DEBUG) | `0x1c820` = **116,768 B** | `readelf -SW` |
+| DRAM `.rodata` size (DEBUG) | `0x6f20` = 28,448 B | `readelf -SW` |
+| IRAM `.rodata` size (PERF) | `0x17280` = **94,848 B** (smaller; strings stripped) | `readelf -SW` PERF member |
+| `'S:'` strings in DEBUG DRAM | **178** records / **187** instances | `rg -c -a 'S: '` = 178 NUL-delimited records (1/dispatch slot); `rg -o`/`bytes.count` = 187 literal `S: ` substrings (9 extra from 4 multi-`S:` records) |
+| `'S:'` strings in PERF DRAM | **0** | `rg -c -a 'S: ' perf_dram.bin` |
+| Sunda FSM body | `0x2d81` (fetch) … `0x31a3 → 0x2d81` back-edge | disasm |
+| HW-decode FSM body | function `@0x31ac` ("Seq Loop, iter") | disasm |
+| Opcode dispatch table | DRAM `0x80814`, **178 entries**, span `0x814..0xadc` (712 B) | xxd + struct unpack |
+| Real handlers / defaults | **55 real / 123 default (`0x3198`)** | struct-unpack count |
+| Decode | `idx = opcode_byte − 0x41` (`'A'`); range `[0,177]` | `0x2e5f`/`0x2e62` |
+| FSM source unit | `fsm.hpp` (assert at `enter_run` prologue) | string in DRAM |
 
 The implementation file is named in the firmware's own assert strings:
 `enter_run`'s prologue assert loads `"enter_run"` + `"fsm.hpp"`, confirming the
@@ -134,7 +136,7 @@ invokes `enter_run` (which itself runs the inner FSM to quiescence), then servic
 post-dispatch and notification/timestamp work, then jumps back.
 
 ```c
-// LEVEL 1 — outer boot loop. SEQ firmware (Xtensa), @0x2499. [HIGH/OBSERVED]
+// LEVEL 1 — outer boot loop. SEQ firmware (Xtensa), @0x2499.
 for (;;) {                                  // 0x24e9: j 0x2499 (back-edge)
     enter_run();                            // 0x2499: call8 0x2c64 (runs inner FSM)
     if (state[0x85f88 + 20] & 1)            // 0x249c: second per-engine descriptor
@@ -163,7 +165,7 @@ reaches the `retw.n` at `0x31a9` and returns to the outer boot loop.
 The handshake + publish are byte-verified at `0x2d0d`:
 
 ```c
-// enter_run StartCtrl-ack + run_state publish. @0x2d0d. [HIGH/OBSERVED]
+// enter_run StartCtrl-ack + run_state publish. @0x2d0d.
 // a3 = nx.start_ctrl base (CSR 0x0004); a2 = &state[0x855e0+100]
 *(u32*)(NX + 0x0004) = 0;                   // 0x2d15: s32i 0  -> ACK start_ctrl
 state[0x855e0 + 100]  = 1;                   // 0x2d19: s8i 1   -> SW running flag
@@ -181,7 +183,7 @@ log("S: Sunda seq Loop");                    // 0x2d70..0x2d76 (a5 != 0 path)
 > 0x0008 = nx.run_state`. The firmware reuses the `start_ctrl` base register and a `+4`
 > displacement rather than re-materialising the `run_state` address. A reimplementation
 > that hard-codes two separate base loads is *functionally* identical but will not
-> byte-match. `[HIGH/OBSERVED]`
+> byte-match.
 
 The `a5` register is the **Sunda-mode predicate** (`a5 != 0` ⇒ Sunda software-fetch
 mode). It gates the "Sunda seq Loop" log here, and — as §4 shows — it *also* gates the
@@ -191,7 +193,7 @@ explicit fetch-from-cursor inside the loop body.
 > `"enter_run"` + `"fsm.hpp"` into the assert helper (`0xa304`) for a busy-flag sanity
 > check on `state[0x855e0+100]`. This is the source-file anchor for the whole FSM.
 > The StartCtrl poll/ack details (`0x2cb7` spin until `start_ctrl != 0`) are on the
-> [boot page](boot.md). `[HIGH/OBSERVED]`
+> [boot page](boot.md).
 
 ---
 
@@ -203,7 +205,7 @@ every subsequent iteration re-enters at the FETCH/POLL point `0x2d81` via the
 back-edge `0x31a3 → 0x2d81`. The seven steps, all byte-verified:
 
 ```c
-// LEVEL 3a — Sunda seq loop. SEQ firmware (Xtensa). [HIGH/OBSERVED]
+// LEVEL 3a — Sunda seq loop. SEQ firmware (Xtensa).
 // Loop-local regs: a4 = microcode-stream cursor (&instr_word);
 //                  a1+40 = "instruction-ready / stop" flag byte;
 //                  a5 = Sunda-mode predicate (set in enter_run).
@@ -268,7 +270,7 @@ exit_retw:                                    // 0x31a6: j 0x31a9 ; 0x31a9: retw
 > handler consumes the remaining fields from the same `[a4]`-based descriptor (e.g.
 > the `0xa1` sync handler at §6 reads `*(u32*)(a4+4)`). So "fetch the 64-byte word" is
 > the *semantic* operation; the byte-exact instruction is a 32-bit `l32i` of the
-> opcode word. `[HIGH/OBSERVED]`
+> opcode word.
 
 > **CORRECTION — the `a5` predicate gates the explicit fetch, not just the log.** A
 > naive reading of the backing trace treats `0x2e50` (FETCH) as unconditional. The
@@ -278,7 +280,7 @@ exit_retw:                                    // 0x31a6: j 0x31a9 ; 0x31a9: retw
 > from the redirect/advance path. The store-then-load at `0x2e50/0x2e52` and the
 > `"Dispatch opcode"` log fire only when `a5 == 0`. Functionally the decode at `0x2e5f`
 > always reads the word from `[a4]` via `0x2e5d` regardless; the gated block is the
-> cursor-publish + debug log. **The binary wins.** `[HIGH/OBSERVED]`
+> cursor-publish + debug log. **The binary wins.**
 
 ### 4.1 The two helpers the fetch front-end calls
 
@@ -287,7 +289,7 @@ Both are byte-verified; full treatment is on the
 [surprises / IRQ poll](surprises-irq.md) pages.
 
 ```c
-// poll_surprises @0x6af4 — "is there work?" → bool in a2/a10. [HIGH/OBSERVED]
+// poll_surprises @0x6af4 — "is there work?" → bool in a2/a10.
 bool poll_surprises(void) {
     // 0x6af7..0x6afd: a2 = &state[0x855e0 + 100]   (the SW running-flag byte)
     u8 f = *(u8*)&state[0x855e0 + 100];   // 0x6b04: l8ui
@@ -309,7 +311,7 @@ bool poll_surprises(void) {
 // ("S: sunda_check_surprises: any=%d, surprises=0x%x"), tail-calls the bit-mask
 // handler 0x6ce0, and folds the "handled" bool back to bit0 to gate the redirect
 // body. (body partially FLIX-interleaved; the bool-return contract is exact.)
-// NOT pending_redirect — see CORRECTION below and surprises-irq.md §2/§3. [HIGH/OBSERVED]
+// NOT pending_redirect — see CORRECTION below and surprises-irq.md §2/§3.
 ```
 
 > **CORRECTION — `0x6b0c` is `sunda_check_surprises`, not `pending_redirect`/`sunda_fetch`.**
@@ -320,7 +322,7 @@ bool poll_surprises(void) {
 > work (the `"S: sunda_fetch: redirecting…"` strings @DRAM `0x8197b`/`0x819a8`) runs **after**
 > the check returns "handled", in the body at `0x2db3`/`0x2df5` onward. The two functions are
 > adjacent in the same packed region, which is the likely source of the mislabel. Full
-> treatment: [surprises-irq.md](surprises-irq.md) §2–§3. `[HIGH/OBSERVED]`
+> treatment: [surprises-irq.md](surprises-irq.md) §2–§3.
 
 ---
 
@@ -330,7 +332,7 @@ The decode is a single subtract and an unsigned range check; the dispatch is a
 computed jump through a flat table of 4-byte IRAM addresses.
 
 ```c
-// DECODE + DISPATCH, byte-exact. [HIGH/OBSERVED]
+// DECODE + DISPATCH, byte-exact.
 idx = opcode_byte - 0x41;                 // 0x2e5f: addi a2,a2,-65  ('A' == 0x41)
 if ((unsigned)idx > 177)                  // 0x2e62: movi a3,177 ; 0x2e65: bgeu a3,a2
     handler = 0x3198;                     //   out of range → default (unknown opcode)
@@ -352,7 +354,7 @@ DRAM `0x814 .. 0xadc` (712 bytes), default target `0x3198`. Counted directly:
 > bit0 / CSR `0x4000`[0] `disable_hw_decode`), **not** per-generation — both modes exist on every
 > v3+ gen; SUNDA v2 has a single monolithic front-end. See
 > [HW-Decode vs Sunda Dual Fetch](dual-fetch.md) for the full side-by-side and the
-> HIGHER-`0x80adc`-is-HW-Decode resolution. `[HIGH/OBSERVED]`
+> HIGHER-`0x80adc`-is-HW-Decode resolution.
 
 Each *real* table entry points at an 8-byte **trampoline** in the packed region
 `0x2e79..0x3198` of the form `call8 <impl> ; j 0x31a3` — i.e. call the opcode
@@ -380,7 +382,7 @@ Opcodes are **ASCII-coded mnemonics** (`'A'..'~'`, `0x41..0x7e`) plus a block of
 
 > **GOTCHA — `'F'` and `'R'` share one impl (`0x1fe8`).** Two distinct table indices
 > resolve to the same implementation address. A reimplementation must allow N:1
-> opcode→handler mappings; the table is not a permutation. `[HIGH/OBSERVED]`
+> opcode→handler mappings; the table is not a permutation.
 
 > **GOTCHA — six handler bodies live in a FLIX-desync span.** Opcodes `0x77`,`0x78`,
 > `0xb8`,`0xbb`,`0xbd`,`0xf1` have **exact table targets** but their impl *bodies* land
@@ -405,7 +407,7 @@ inline handler (`0x2e89`), a sync/wait instruction. The handler reads an **exter
 register over `RER` and branches on bit2 of the remote status:
 
 ```c
-// opcode 0xa1 inline sync handler @0x2e89. [HIGH/OBSERVED]
+// opcode 0xa1 inline sync handler @0x2e89.
 sync_primary();                            // 0x2e89: call8 0x1ca4
 u32 idx = *(u32*)(a4 + 4); *(u32*)(a4+4)=0;// 0x2e8f
 if (idx > 38) idx = 0;                     // 0x2e94: movi a3,38 ; 0x2e96: bltu a3,a2 → clamp
@@ -425,7 +427,7 @@ goto 0x31a3;                                // 0x2ee2: back-edge
 > **GOTCHA — the bit2 mask uses a scratch register, not an immediate `and`.** The mask
 > is `movi.n a3,4 ; and a2,a2,a3` (`0x2eae`/`0x2eb0`), not a single `andi`. Same effect
 > (test bit2 of the remote status), but the two-instruction form is what the binary
-> contains. `[HIGH/OBSERVED]`
+> contains.
 
 > **QUIRK — the external status lives at `0x122000 + idx*4`, idx clamped to ≤ 38.** The
 > address is built as `145 << 13` (= `0x0122_0000`) plus `idx*4`, with `idx` clamped to
@@ -436,7 +438,7 @@ goto 0x31a3;                                // 0x2ee2: back-edge
 ### 6a. Enter Pause `@0x1cc0` — publishes `run_state = 2`
 
 ```c
-// Enter Pause @0x1cc0 ("S: Enter Pause", DRAM 0xf37). [HIGH/OBSERVED]
+// Enter Pause @0x1cc0 ("S: Enter Pause", DRAM 0xf37).
 void enter_pause(void) {
     // 0x1cc3..0x1cc9: a2 = &state[0x855e0 + 100]
     log("S: Enter Pause");                  // 0x1cd3..0x1cd9
@@ -456,7 +458,7 @@ it, then acks `start_ctrl = 0` — identical to the boot StartCtrl handshake.
 ### 6b. Setup Halt `@0x1cf8` — saves the resume PC, clears running
 
 ```c
-// Setup Halt @0x1cf8 ("S: Setup Halt", DRAM 0xf47). [HIGH/OBSERVED]
+// Setup Halt @0x1cf8 ("S: Setup Halt", DRAM 0xf47).
 void setup_halt(u8 *running_flag, u32 halt_reason) {
     log("S: Setup Halt");                   // 0x1d04..0x1d0a
     teardown_flush();                       // 0x1d18: call8 0x13c70
@@ -493,7 +495,7 @@ This is the `"handle_interrupt_"` / `interrupt_handler.hpp` entry — the **only
 of the HW-decode FSM (`0x31ac`) and of the resume path. It branches on the nx CSRs:
 
 ```c
-// Dispatcher @0x4c5c. [HIGH/OBSERVED]
+// Dispatcher @0x4c5c.
 void handle_interrupt(void) {
     u32 info = *(u32*)(NX + 0x001C);        // 0x4c5f: const16 a2,28 ; l32i  = nx.intr_info
     if (info == 0) return;                   // 0x4c6b: beqz → 0x4c76 → 0x4cbe retw (idle)
@@ -512,7 +514,7 @@ void handle_interrupt(void) {
 The **resume-from-pause** handshake (also reached at `0x4bb5`) was byte-verified:
 
 ```c
-// Resume from PAUSE @0x4bb5. [HIGH/OBSERVED]
+// Resume from PAUSE @0x4bb5.
 enter_pause();                               // 0x4bb5: call8 0x1cc0
 handle_interrupt();                          // 0x4bb8: call8 0x4c5c (re-dispatch)
 while (*(u32*)(NX + 0x0004) == 0)            // 0x4bbe: const16 a2,4 ; l32i ; 0x4bc6 bnez

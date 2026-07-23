@@ -39,7 +39,7 @@ members of `libnrtucode.a`.
 > whose firmware is a different binary (`libncfw.so`, not in this tree) and which `ncore2gp`
 > *mis*-decodes. The cache **manager** functions on this page are *scalar* windowed-ABI code
 > and decode instruction-exact; the FLIX desync only bites in the fetch front-end body and the
-> high vector-kernel body (see [§14](#14-desync-spans--honest-gaps)). `[HIGH/OBSERVED]`
+> high vector-kernel body (see [§14](#14-desync-spans--honest-gaps)).
 
 ---
 
@@ -206,7 +206,7 @@ void iram_cache_init(uint8_t begin_arg /* a2 in */) {
 > equivalent to requiring `block_size` to be a power-of-two divisor of 32768. The firmware then
 > *also* derives the explicit `log2` exponent (`0x2b56..0x2ba1`) for the HW mask CSR, and
 > asserts that exponent is valid (`cache.hpp:143`). Two redundant checks for one invariant —
-> the second exists because the HW CSR needs the exponent, not the size. `[HIGH/OBSERVED]`
+> the second exists because the HW CSR needs the exponent, not the size.
 
 The geometry stores land at these struct offsets (full map in [§12](#12-cache-descriptor--global-state-map)):
 `num_blocks → +24`, `line_shift(block_size>>6) → +16`, `line_count → +20`, `mode_sw → +60`,
@@ -317,7 +317,7 @@ proves the state machine is `0 → 1 → 2`. `[HIGH/OBSERVED]`
 
 ---
 
-## 6. Replacement / eviction — round-robin  `replace @0x6068`  `[HIGH/OBSERVED]`
+## 6. Replacement / eviction — round-robin  `replace @0x6068`
 
 On a miss the firmware picks a victim line. The policy is a **single circular pointer that
 advances by one (mod num_blocks)** — round-robin / FIFO, decisively **not** LRU.
@@ -355,7 +355,7 @@ uint32_t victim_rotate(cache_t *cache) {
 > victim back. The disassembly shows `victim_rotate @0x62e0` only **computes and returns**
 > `v` in `a2` (`0x6300: retw.n`); the write-back to `descr[+36]` happens in the caller
 > (`replace`, and the fetch-time driver at `0x5d14`). The distinction matters for a reimplementer:
-> the primitive is pure-ish, the state lives one frame up. `[HIGH/OBSERVED]`
+> the primitive is pure-ish, the state lives one frame up.
 
 The collision guard layered on top — both inside `replace()` and in the fetch front-end's
 "rotate to next victim and retry" ([§9](#9-fetch-front-end-interaction)) — is what keeps the
@@ -439,7 +439,7 @@ completion semantics of both backends in full.
 
 ---
 
-## 8. Fetch-time line acquisition  `wait_for_cache_line @0x5cd0`  `[HIGH/OBSERVED]`
+## 8. Fetch-time line acquisition  `wait_for_cache_line @0x5cd0`
 
 This is the per-fetch driver that turns a PC into a resident line **and pre-stages the next
 sequential line** — a built-in `+1`-stride prefetch on top of the branch-hint prefetch
@@ -467,7 +467,7 @@ void wait_for_cache_line(cache_t *cache, addr_t pc) {
 
 > **CORRECTION — `descr[+40]` ("next line staged") is a *byte* flag, not a word pointer.** The
 > store is `s8i a3, a2, 40` (`0x5df6`) with `a3 = 1`, not a 32-bit pointer write. Treat
-> `descr[+40]` as a boolean "next line has been staged" flag. `[HIGH/OBSERVED]`
+> `descr[+40]` as a boolean "next line has been staged" flag.
 
 The index derivation `(pc & iram_block_size_mask) / block_size` is read from the log's own
 argument list (`mask`, `blk_sz`, `idx`, `nxt_idx`). The exact mask-arithmetic *word* sits in a
@@ -558,10 +558,9 @@ exact `0x15010` push descriptor build is deferred to the branch-prefetch page.]`
   line states → `0`. `[HIGH/OBSERVED]`
 - **Per-line invalidate-on-refill:** `replace()` sets the new victim's `entry[0] = 1`
   (fill-in-flight) *before* the DMA, which invalidates the prior occupant of that slot (its tag
-  is overwritten by the fill). `[HIGH/OBSERVED]`
+  is overwritten by the fill).
 - **Hint invalidation on divergence:** "Invalidating all hints" / "invalidating branch_hint to
   preserve legacy behavior" clear the prefetch hints when control flow leaves the hinted path.
-  `[HIGH/OBSERVED]`
 - **HW iram-ctrl flush:** `hw_decode.control.iram_ctrl_flush_en` (CSR `0x4000[20]`) is **set at
   boot in Sunda mode** (`BEGIN @0x241a`) — the HW-side IRAM-ctrl flush that pairs with the
   software cache when the HW decode path is bypassed. `[bit-set-in-Sunda HIGH/OBSERVED; precise
@@ -606,23 +605,27 @@ Per-line descriptor (16 bytes, `tag_base + idx*16`):
 
 DRAM globals:
 
-| addr | global | conf |
-|---|---|---|
-| `[0x85654]` | `block_size` (cached from CSR `0x1260` in BEGIN `@0x2814`) — **20** refs (`rg -c`) | `[HIGH/OBSERVED]` |
-| `[0x85658]` | DMA-backend select: `0`=HW iram-DMA, `1`=SW DramRing — **4** refs | `[HIGH/OBSERVED]` |
-| `[0x855e0]` | central SEQ state struct (`+24` = cache struct) — **61** refs | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| addr | global |
+|---|---|
+| `[0x85654]` | `block_size` (cached from CSR `0x1260` in BEGIN `@0x2814`) — **20** refs (`rg -c`) |
+| `[0x85658]` | DMA-backend select: `0`=HW iram-DMA, `1`=SW DramRing — **4** refs |
+| `[0x855e0]` | central SEQ state struct (`+24` = cache struct) — **61** refs |
 
 CSR cross-reference (general local-register block, base `0x1000`, stride `0x20`):
 
-| CSR | role | conf |
-|---|---|---|
-| `0x1120` glr[9] | HW iram-DMA KICK (write 1; read 0 = done) | `[HIGH/OBSERVED]` |
-| `0x1140` glr[10] | HW iram-DMA descriptor word 0 (src/desc) | `[HIGH/OBSERVED]` |
-| `0x1160` glr[11] | HW iram-DMA descriptor word 1 | `[HIGH/OBSERVED]` |
-| `0x1180` glr[12] | HW iram-DMA descriptor word 2 (dst/params) | `[HIGH/OBSERVED]` |
-| `0x1260` glr[19] | `block_size` source config CSR (read in BEGIN `@0x280c`) | `[HIGH/OBSERVED]` |
-| `0x4000[18:2]` | `hw_decode.control.iram_block_size_mask` (reset `0x1FFF`) | `[HIGH/OBSERVED]` |
-| `0x4000[20]` | `hw_decode.control.iram_ctrl_flush_en` (set in Sunda `@0x241a`) | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| CSR | role |
+|---|---|
+| `0x1120` glr[9] | HW iram-DMA KICK (write 1; read 0 = done) |
+| `0x1140` glr[10] | HW iram-DMA descriptor word 0 (src/desc) |
+| `0x1160` glr[11] | HW iram-DMA descriptor word 1 |
+| `0x1180` glr[12] | HW iram-DMA descriptor word 2 (dst/params) |
+| `0x1260` glr[19] | `block_size` source config CSR (read in BEGIN `@0x280c`) |
+| `0x4000[18:2]` | `hw_decode.control.iram_block_size_mask` (reset `0x1FFF`) |
+| `0x4000[20]` | `hw_decode.control.iram_ctrl_flush_en` (set in Sunda `@0x241a`) |
 
 > **NOTE — CSR aperture-base alias.** The `glr` identities by low offset are HIGH; the absolute
 > aperture base (`0x1000` vs a `0x401000` alias) carries the boot-page ambiguity flagged on the
@@ -696,7 +699,7 @@ build must account for two differences:
 > `_Assert(..., "cache.hpp", N)` line numbers (`97`, `143`, `0x1b8`, `0x1cc`, `0x1d4`, `189`)
 > come from the *source*, so they survive PERF stripping even though the strings around them do
 > not (the line constant is a plain `movi a12, N`). Use them to re-anchor functions in a PERF
-> build. `[HIGH/OBSERVED]`
+> build.
 
 ---
 
@@ -707,11 +710,11 @@ naive reading would have failed, the failure and its fix are recorded.
 
 | # | claim | challenge | binary arbiter / verdict |
 |---|---|---|---|
-| 1 | **IRAM image = 0x1c820 = 114 KiB > 64-KiB aperture** | Is the size the section size or a padded blob? Is the aperture really 64 KiB? | `objdump -h` on the carved IRAM object: `.rodata` size = `0x1c820`; `objcopy` to binary → `stat` = `116768` = `0x1c820`. `ncore2gp` `InstRAMInfo = [0x10000 0x0]` = 64 KiB. Head bytes `06 76 00 00` = `j 0x1dc` (reset vector). **VERDICT: STANDS — `[HIGH/OBSERVED]`. The 114-KiB-over-64-KiB mismatch is the cache's reason to exist.** |
-| 2 | **Software overlay with round-robin victim** | Could `victim_rotate` actually be LRU/PLRU, or write its own state back? | `0x62e7 l32i +36 ; 0x62e9 addi 1 ; 0x62ef l32i +24 ; 0x62f1 bne ; 0x62f7 movi 0` — `victim+1`, compare-to-`num_blocks`, wrap-to-0. No timestamp, no tree. **CORRECTION applied:** the primitive *returns* `v` in `a2` (`0x6300 retw.n`); the caller stores it. **VERDICT: STANDS (corrected) — round-robin, caller-stored — `[HIGH/OBSERVED]`.** |
-| 3 | **Cache-fill triggered on miss, one block_size line by DMA** | Is the fill really one line, and is state really `1→2`? | `start_fill_siram @0x6231`: `fetch_addr = idx * block_size` (`mull`). `wait_for_dma_fill @0x6201-0x620d`: on completion `movi 2 ; s32i e,0`. `replace` SW-finalize `@0x5df4`: `movi 1 ; s8i e,0`. **CORRECTION applied:** VALID store is at `0x620d` (movi at `0x620b`). **VERDICT: STANDS — one-line DMA fill, state `1→2`, addresses pinned — `[HIGH/OBSERVED]`.** |
-| 4 | **iDMA relationship: HW path pokes general-LR CSRs 0x1120/40/60/80** | Are these really the iram-DMA CSRs and not something else? Is `0x1120` the KICK? | `0x62b1 const16 0x1140 ; 0x62c5 const16 0x1180 ; 0x62cd const16 0x1120 ; movi 1 ; s32i` (KICK = write 1 to `glr[9]`). `fill_done` reads `0x1120` and tests for `0`. The `0x1140 + 0x20` step matches the `glr` stride `0x20`. **VERDICT: STANDS — the HW fill path is an iram-DMA descriptor poke + KICK; read-back-0 completion — `[HIGH/OBSERVED]`.** |
-| 5 | **Code-range bookkeeping: 16-byte descriptor, num_blocks, descr offsets** | Is the per-line stride really 16 B, and does init really store `num_blocks` at `+24` and `tag_base` at `+64`? | init: `0x2af0 quou (1<<15)/block_size ; 0x2af3 s32i +24` (num_blocks); `0x2c24 slli a10,a3,4` (×16) `; 0x2c27 call alloc ; 0x2c2a s32i +64` (tag_base). Query/wait/replace all address entries as `tag_base + (idx<<4)`. **VERDICT: STANDS — 16-byte stride, `num_blocks→+24`, `tag_base→+64`, all instruction-exact — `[HIGH/OBSERVED]`.** |
+| 1 | **IRAM image = 0x1c820 = 114 KiB > 64-KiB aperture** | Is the size the section size or a padded blob? Is the aperture really 64 KiB? | `objdump -h` on the carved IRAM object: `.rodata` size = `0x1c820`; `objcopy` to binary → `stat` = `116768` = `0x1c820`. `ncore2gp` `InstRAMInfo = [0x10000 0x0]` = 64 KiB. Head bytes `06 76 00 00` = `j 0x1dc` (reset vector). **VERDICT: STANDS. The 114-KiB-over-64-KiB mismatch is the cache's reason to exist.** |
+| 2 | **Software overlay with round-robin victim** | Could `victim_rotate` actually be LRU/PLRU, or write its own state back? | `0x62e7 l32i +36 ; 0x62e9 addi 1 ; 0x62ef l32i +24 ; 0x62f1 bne ; 0x62f7 movi 0` — `victim+1`, compare-to-`num_blocks`, wrap-to-0. No timestamp, no tree. **CORRECTION applied:** the primitive *returns* `v` in `a2` (`0x6300 retw.n`); the caller stores it. **VERDICT: STANDS (corrected) — round-robin, caller-stored.** |
+| 3 | **Cache-fill triggered on miss, one block_size line by DMA** | Is the fill really one line, and is state really `1→2`? | `start_fill_siram @0x6231`: `fetch_addr = idx * block_size` (`mull`). `wait_for_dma_fill @0x6201-0x620d`: on completion `movi 2 ; s32i e,0`. `replace` SW-finalize `@0x5df4`: `movi 1 ; s8i e,0`. **CORRECTION applied:** VALID store is at `0x620d` (movi at `0x620b`). **VERDICT: STANDS — one-line DMA fill, state `1→2`, addresses pinned.** |
+| 4 | **iDMA relationship: HW path pokes general-LR CSRs 0x1120/40/60/80** | Are these really the iram-DMA CSRs and not something else? Is `0x1120` the KICK? | `0x62b1 const16 0x1140 ; 0x62c5 const16 0x1180 ; 0x62cd const16 0x1120 ; movi 1 ; s32i` (KICK = write 1 to `glr[9]`). `fill_done` reads `0x1120` and tests for `0`. The `0x1140 + 0x20` step matches the `glr` stride `0x20`. **VERDICT: STANDS — the HW fill path is an iram-DMA descriptor poke + KICK; read-back-0 completion.** |
+| 5 | **Code-range bookkeeping: 16-byte descriptor, num_blocks, descr offsets** | Is the per-line stride really 16 B, and does init really store `num_blocks` at `+24` and `tag_base` at `+64`? | init: `0x2af0 quou (1<<15)/block_size ; 0x2af3 s32i +24` (num_blocks); `0x2c24 slli a10,a3,4` (×16) `; 0x2c27 call alloc ; 0x2c2a s32i +64` (tag_base). Query/wait/replace all address entries as `tag_base + (idx<<4)`. **VERDICT: STANDS — 16-byte stride, `num_blocks→+24`, `tag_base→+64`, all instruction-exact.** |
 
 All five stand. Two in-place corrections were folded into the body (victim-rotate return-vs-store
 in [§6](#6-replacement--eviction-round-robin); VALID-store address + the `s8i` byte stores for

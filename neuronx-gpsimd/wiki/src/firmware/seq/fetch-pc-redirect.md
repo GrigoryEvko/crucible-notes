@@ -47,7 +47,7 @@ explicit tag.
 > algorithm is **identical** in the `POOL_PERF` build, but PERF strips every `call8 0x18b84`
 > log call and re-lays-out the code, so **every interior address below shifts in PERF**. The
 > DEBUG image keeps the `'S:'` format strings as named xrefs, so every step here has a string
-> anchor. **Do not** look up a DEBUG address in a PERF image. `[HIGH/OBSERVED]`
+> anchor. **Do not** look up a DEBUG address in a PERF image.
 
 ---
 
@@ -97,7 +97,7 @@ address-range guard.
 > here) and a **HW-decode** front-end (head + exits only; its body `@0x31ac` is a flagged FLIX
 > desync). The `fetch.hpp` logic this page owns is the **Sunda software-fetch** path. The
 > HW-decode body is out of scope and is noted where the two paths fork (the
-> `state[0x85070]` HW-decode flag, §4). `[HIGH/OBSERVED]`
+> `state[0x85070]` HW-decode flag, §4).
 
 ---
 
@@ -137,10 +137,10 @@ The enter_run prologue (linear sweep, `--adjust-vma=0x0`):
 > them: `0x2d30 movi`, `0x2d33 const16`, `0x2d36 l32i.n`. The **register identity** (a4 = CSR
 > `0x1060`) and the read of `0x1060+0x20` for the high half are unchanged and HIGH. The
 > absolute aperture base (`0x00400000` from the `movi`-high vs a flat `0x0` alias) is the only
-> LOW part of the address — the register *identity by low offset* is HIGH. `[HIGH/OBSERVED]`
+> LOW part of the address — the register *identity by low offset* is HIGH.
 
 ```c
-/* enter_run: materialise the 64-bit architectural PC from the CSR pair. [HIGH/OBSERVED]
+/* enter_run: materialise the 64-bit architectural PC from the CSR pair.
  * CSR_PC_LO = 0x1060 (general-LR), CSR_PC_HI = 0x1080 (= 0x1060 + 0x20).
  * The stride-0x20 sibling is read as [csr_pc_lo + 32] in the same a4 base. */
 static inline uint64_t seq_read_arch_pc(void) {
@@ -154,7 +154,7 @@ static inline uint64_t seq_read_arch_pc(void) {
 > **GOTCHA — `[a4+32]` is a *byte* offset of 32 = 8 words, not slot 32.** `l32i.n a4,[a4+32]`
 > adds **32 bytes** to the `0x1060` base, landing on `0x1080`. In C with a `uint32_t*` that is
 > index `8`, not `32`. Re-deriving the CSR map from "a4 plus 32" as a word index gives the
-> wrong register. `[HIGH/OBSERVED]`
+> wrong register.
 
 ---
 
@@ -181,7 +181,7 @@ The poll helper `0x6af4`, OBSERVED:
 ```
 
 ```c
-/* STEP 1: poll-surprises @0x6af4 — read the per-engine running flag. [HIGH/OBSERVED]
+/* STEP 1: poll-surprises @0x6af4 — read the per-engine running flag.
  * STATE_BASE = 0x855e0 (DRAM); the running flag is byte [STATE_BASE + 100], bit 0. */
 static inline bool seq_is_running(void) {
     return (*(volatile uint8_t *)(STATE_BASE + 100)) & 0x1u;
@@ -208,7 +208,7 @@ if (!seq_is_running()) return;   /* beqz a10,0x31a6 -> 0x31a9 retw.n : LOOP EXIT
 > redirecting…"` strings @DRAM `0x8197b`/`0x81951`) is real and is this page's subject — it just
 > runs **gated by** the surprise check rather than by a standalone `pending_redirect` function.
 > The two functions are adjacent in the same packed region. Authoritative treatment of the check:
-> [surprises-irq.md](surprises-irq.md) §2–§3. `[HIGH/OBSERVED]`
+> [surprises-irq.md](surprises-irq.md) §2–§3.
 
 The redirect block (`0x2daa`) — the span FW-02 lost to FLIX desync, **re-synced**.
 The interior `0x2dba..0x2dd1` decodes as garbage under the linear sweep (the
@@ -243,7 +243,7 @@ arming/clearing instructions bracket it:
 > bytes]`
 
 ```c
-/* STEP 2: pending-redirect arming/clear (lightweight per-iteration). [HIGH/OBSERVED]
+/* STEP 2: pending-redirect arming/clear (lightweight per-iteration).
  * REDIR_STATE = 0x5068; the heavy PC-rewrite is seq_redirect_execute() @0x5750, §4. */
 struct redir_state { uint8_t armed; /* [+0] */ /* ... */ uint8_t flag56; /* [+56] */ };
 
@@ -289,7 +289,7 @@ in-stream word in `a2`.
 
 ```c
 /* STEP 4: in-stream advance. The "next word" is the notify-consume result, NOT a raw
- * PC+len read here — the cursor write in STEP 5 is what commits the advance. [HIGH/OBSERVED] */
+ * PC+len read here — the cursor write in STEP 5 is what commits the advance. */
 uint32_t next = seq_advance_consume();   /* 0x1c64 -> 0x3a78 : drain notify queue, a2 = next */
 ```
 
@@ -308,7 +308,7 @@ uint32_t next = seq_advance_consume();   /* 0x1c64 -> 0x3a78 : drain notify queu
 > `0x41..0xf2` (`'A'..0xf2`) select a real handler — any high bits make the index exceed 177
 > (or wrap huge) and fall to the default. Reimplementations that mask `& 0xff` before the
 > subtract get the **same** dispatch result, but the firmware does **not** mask: it relies on
-> the bound to reject. `[HIGH/OBSERVED]`
+> the bound to reject.
 
 ### 2.6 STEP 6 — decode + 178-way dispatch
 
@@ -327,10 +327,10 @@ uint32_t next = seq_advance_consume();   /* 0x1c64 -> 0x3a78 : drain notify queu
 > compare of `177` against `index`. For an opcode below `0x41`, `opcode - 0x41` underflows to a
 > huge unsigned (e.g. `0x40 - 0x41 = 0xffffffff`), which is **greater** than 177, so the same
 > single branch rejects under-range opcodes *and* over-range opcodes. No separate lower-bound
-> test exists. `[HIGH/OBSERVED]`
+> test exists.
 
 ```c
-/* STEP 6: decode + dispatch. [HIGH/OBSERVED]  TABLE = DRAM 0x80814, 178 x 4 bytes. */
+/* STEP 6: decode + dispatch.  TABLE = DRAM 0x80814, 178 x 4 bytes. */
 uint32_t word  = *(volatile uint32_t *)cursor;   /* l32i.n [a4] */
 uint32_t index = word - 0x41u;                   /* addi -65 ; unsigned underflow on op<0x41 */
 if (index > 177u) {                              /* bgeu 177,index : single unsigned bound */
@@ -388,10 +388,10 @@ The two ways the PC moves are structurally distinct and must not be conflated.
 > translate, commit-and-clear-flag. The actual **CSR PC rewrite + cache-fill push** is function
 > `0x5750` (§4), called from `enter_run` setup (`0x5537`) and the resume/redirect sites
 > (`0x8657`, `0xcaea`). The "redirect" thus has a fast control half (per-iteration) and a slow
-> data half (the CSR/cache machine). `[HIGH/OBSERVED]`
+> data half (the CSR/cache machine).
 
 ```c
-/* The two PC-update paths, unified view. [HIGH/OBSERVED] */
+/* The two PC-update paths, unified view. */
 for (;;) {
     if (!seq_is_running()) return;             /* STEP 1 poll  (0x6af4) */
     seq_check_pending_redirect(&redir);        /* STEP 2 redirect arm/clear (0x6b0c..0x2def) */
@@ -435,7 +435,7 @@ The PC write at `0x5790`/`0x579c` is **byte-exact** — it is the
 register-identity twin of the enter_run read (§1), just in the store direction:
 
 ```c
-/* seq_redirect_execute @0x5750 — commit the redirect target PC + push a cache fill. [HIGH/OBSERVED] */
+/* seq_redirect_execute @0x5750 — commit the redirect target PC + push a cache fill. */
 void seq_redirect_execute(const struct pc_desc *ctx) {
     LOG("Redirecting to pc=0x%llx", *(uint64_t *)ctx);
 
@@ -515,7 +515,7 @@ opcode `0x53`, `idx 18 → 0x30a5`):
 ```
 
 ```c
-/* Dispatch handoff: opcode-indexed table -> trampoline -> Handler object -> vtable[0]. [HIGH/OBSERVED]
+/* Dispatch handoff: opcode-indexed table -> trampoline -> Handler object -> vtable[0].
  * The handoff register at the jx is a2 = the Handler OBJECT pointer.
  * The opcode/operand DATA is NOT passed in a register: it lives in (a) the PC cursor / fetched
  * word still resident in the engine, and (b) the per-engine state struct @DRAM 0x855e0. */
@@ -535,13 +535,13 @@ void seq_vthunk(struct Handler *h) {             /* 0x96d4 */
 > `l32i a2,[obj+0]` to get the vptr, then `callx8 a2` **on the vptr itself** — i.e. slot 0 is at
 > `vptr[0]`, with no `offset-to-top`/`typeinfo` header skip at the call (the header, if any,
 > sits *before* the vptr the object stores). Do not add `0x10` to reach "slot 0"; the object's
-> `[obj+0]` already points at the executable-pointer array. `[HIGH/OBSERVED]`
+> `[obj+0]` already points at the executable-pointer array.
 
 > **QUIRK — some handlers inline and skip the thunk.** Real handlers like the
 > `Event_Semaphore` op `0xa0` `@0x1e18` (`"S: Event_Semaphore"`) do the work directly in the
 > trampoline body instead of routing through `0x96d4`. The table-driven, vtable-dispatched form
 > above is the *common* path; the inline form is an optimisation for hot/simple opcodes. Both
-> tails return via `j 0x31a3`. `[HIGH/OBSERVED]`
+> tails return via `j 0x31a3`.
 
 **Unknown-opcode default → ErrorHandler** (the fetch/decode fault path):
 
@@ -559,7 +559,7 @@ void seq_vthunk(struct Handler *h) {             /* 0x96d4 */
 > sweep.** Under `--adjust-vma=0x0` the sweep enters `0x3198` mid-bundle and prints garbage
 > (`const16 a0,0xe500`). An **aligned** decode starting at `0x3198` gives the true
 > `l8ui a10,a4,0 ; call8 0x13f58` — the raw bytes are `a2 04 00  e5 db 10`. The default path
-> reloads the bad opcode from the cursor and calls the software ErrorHandler. `[HIGH/OBSERVED]`
+> reloads the bad opcode from the cursor and calls the software ErrorHandler.
 
 Sibling ErrorHandler arms: `HandleIllegalInstruction` `@0x13f80` (`"Illegal Instruction(0x%x)"`
 `@0x83b35`), `"FP Error(%d)"` (`0x83acb` `@0x13f16`), `"Int Div Zero Error"` (`0x83aeb`
@@ -570,7 +570,7 @@ Sibling ErrorHandler arms: `HandleIllegalInstruction` `@0x13f80` (`"Illegal Inst
 > dispatch index fails `bgeu 177`) is a **hard fault** → ErrorHandler. An out-of-range **fetch
 > address** (the PC is outside `[lo,hi]`) is **skip-with-warning**, not a fault — that is the
 > address guard in §6. Keep them distinct: the opcode bound and the PC-range bound are separate
-> two-level guards. `[HIGH/OBSERVED]`
+> two-level guards.
 
 ---
 
@@ -597,7 +597,7 @@ bound=[0x%llx, 0x%llx]"` `@DRAM 0x81864`, `"...0x%llx smaller than lower bound 0
 ```
 
 ```c
-/* is_pc_in_bounds @0x68d0 — gate a fetch address against the [lo,hi] sequence bounds. [HIGH/OBSERVED]
+/* is_pc_in_bounds @0x68d0 — gate a fetch address against the [lo,hi] sequence bounds.
  * Returns false (OOB) on pc < lower OR pc > upper; true otherwise. The two 64-bit compare
  * helpers 0x57c18/0x47c64 are the lo/hi long-compare primitives (signed/unsigned form MED). */
 bool is_pc_in_bounds(uint64_t pc, uint64_t lower, uint64_t upper) {
@@ -621,7 +621,7 @@ bool is_pc_in_bounds(uint64_t pc, uint64_t lower, uint64_t upper) {
 > resolve the situation through the normal stop/redirect machinery. The hard fault is reserved
 > for an out-of-range *opcode value* (§5), a different guard entirely. This is the NX-030
 > PC-bounds enforcement; its host-API surface and the `[lo,hi]` provisioning are
-> [SEQ PC-Bounds Enforcement + Host API](pc-bounds.md). `[HIGH/OBSERVED]`
+> [SEQ PC-Bounds Enforcement + Host API](pc-bounds.md).
 
 ---
 
@@ -651,7 +651,6 @@ fields (all rows `[HIGH/OBSERVED]`):
 > footprint, not the generic FLIX3's. This is the same trap documented for the sibling core in
 > [The NCFW Scalar-LX Management Core](../../uarch/ncfw-lx-core.md): reading `FLIX3=0` as
 > "scalar" mis-models the SEQ. The SEQ **is** FLIX/VLIW; only the *generic* FLIX3 flag is 0.
-> `[HIGH/OBSERVED]`
 
 > **QUIRK — the *architectural* fetch is 32-byte FLIX, but the SEQ *opcode* is 1 byte.** Two
 > fetch granularities coexist: the **hardware** Xtensa fetch unit pulls 32-byte FLIX bundles of
@@ -659,7 +658,7 @@ fields (all rows `[HIGH/OBSERVED]`):
 > program** it runs is a higher-level `'S:'`-opcode stream where each "instruction" is the
 > low byte of a 32-bit word read through cursor `a4`. The `IsaMaxInstructionSize=32` governs the
 > former (how the SEQ's own code is fetched/decoded); the `opcode − 0x41` dispatch governs the
-> latter (how the SEQ interprets its instruction stream). Do not conflate the two. `[HIGH/OBSERVED]`
+> latter (how the SEQ interprets its instruction stream). Do not conflate the two.
 
 ---
 

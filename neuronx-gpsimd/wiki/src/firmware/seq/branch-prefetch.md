@@ -169,7 +169,7 @@ present in the disassembly. Every log call goes through the printf-style emitter
 > **NOTE — the `S:` prefix is the engine's log channel tag.** Most strings begin `S: …`; the
 > two without it (`resolve_hint_decision`, the `branch.cpp:75` path) are **assert arguments**
 > (symbol name + file:line), not log lines, which is exactly how the recovered C++ identities
-> are anchored. `[HIGH/OBSERVED]`
+> are anchored.
 
 ---
 

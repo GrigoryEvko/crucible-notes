@@ -114,7 +114,7 @@ through the device MMIO window. On the CAYMAN family the absolute address is bui
 
 So the CAYMAN-family device-side aperture is **`0x04000000 + nx-offset`**, observed directly
 from the address-build bytes: `start_ctrl = 0x04000004`, `run_state = 0x04000008`,
-`intr_info = 0x0400001C`. `[HIGH/OBSERVED]`
+`intr_info = 0x0400001C`.
 
 | nx offset | CAYMAN device abs addr | byte-exact const16 site (IRAM) |
 |---|---|---|
@@ -131,14 +131,14 @@ from the address-build bytes: `start_ctrl = 0x04000004`, `run_state = 0x04000008
 > `0x200030802027a000`. Those are the **host/SoC** addresses of the same 64 KiB aperture; the
 > `0x04000000`-based addresses above are the **device-local** view the SEQ firmware actually
 > dereferences. For the device-side read sites on this page, the const16-built `0x04000000`
-> base is authoritative — it is what the instruction stream loads/stores. `[HIGH/OBSERVED]`
+> base is authoritative — it is what the instruction stream loads/stores.
 
 ### 1.2 The resume-PC register pair (general bundle)
 
 The resume PC is saved/restored through two registers in the **`general` bundle** of the same
 regfile (`AddressOffset 0x1000`, `ArraySize 60`, `BundleSizeInBytes 0x20`, one `lr.value`
 `[31:0]` per slot). With stride `0x20`, `lr[3] = 0x1000 + 3·0x20 = 0x1060` and
-`lr[4] = 0x1080`. The firmware addresses them as `0x04001060` / `0x04001080`. `[HIGH/OBSERVED]`
+`lr[4] = 0x1080`. The firmware addresses them as `0x04001060` / `0x04001080`.
 
 | general reg | device abs addr | role |
 |---|---|---|
@@ -177,7 +177,6 @@ The store at `0x2d22` is a **displaced** `s32i.n a4,a3,4`: `a3` still holds
 `0x04000004` (`start_ctrl`) from the ack, and `+4` lands on `0x04000008` (`run_state`); the
 `movi a5,0x400 ; const16 a5,8` at `0x2d1c` independently materialises the same `run_state`
 address into `a5` but is not the store base — a small dead-code artifact of the codegen.
-`[HIGH/OBSERVED]`
 
 > **QUIRK — there is no numeric `HALTED` or `ERROR` code.** `RUNNING(1)` and `PAUSED(2)` are
 > the only stable status codes the host reads. The fatal halt writes the **running-flag struct
@@ -270,7 +269,7 @@ remote status word and a test of **bit 2**.
 > the only index whose slot holds `0x2e89` is **`0x60`**. The handler *body* (`0x2e89`,
 > `call8 0x1ca4`, the `rer`, the two call targets) is exactly as reported — only the table
 > index was wrong. The `0xa1` figure appears to be a transcription collision with the ISA-halt
-> finalize address `0xa390`. **Use index `0x60`.** `[HIGH/OBSERVED]`
+> finalize address `0xa390`. **Use index `0x60`.**
 
 ```c
 // sync/wait handler @0x2e89  (dispatch table index 0x60)
@@ -334,7 +333,7 @@ void setup_halt(running_flag_t *flag /*a2*/, u32 halt_reason /*a3, saved at a1+1
 > `a4`(=`0x04001060`) + `0x20` = `0x04001080`; the `movi a5,0x400 ; const16 a5,0x1080` pair
 > *materialises* the HI address into `a5` but `a5` is **not** the store base — a dead pair,
 > like the `a5` in §2. Both resolve to `0x04001080`; do not be misled into thinking two
-> different addresses are touched. `[HIGH/OBSERVED]`
+> different addresses are touched.
 
 ### 4c. Entering-HALT `@0x3a44` + fatal dispatch `@0xa2e0` + finalize `0xa390`
 
@@ -456,7 +455,7 @@ void raise_fatal(err_t *e) {            // 13e00: entry a1,48
 > exits the loop on `poll-surprises==0` *or* the stop-flag clearing, returns `retw.n` at
 > `0x31a9` to the outer boot loop `@0x2499`, which re-enters `enter_run` and spin-polls
 > `start_ctrl` again. HALT is reserved for the fatal/error path and the explicit
-> `op@2e89` bit2-clear case. `[HIGH/OBSERVED]`
+> `op@2e89` bit2-clear case.
 
 > **NOTE — PC-bounds is a *soft* guard.** `is_pc_in_bounds @0x68d0`
 > ([pc-bounds.md](pc-bounds.md)) is a speculative prefetch guard (skip the prefetch on
@@ -535,7 +534,7 @@ bytes match):
 | `run_state==2` dispatcher test | `0x4c82` | `0x4e02` | `0x4e9e` |
 
 ⇒ CSR aperture, register offsets, enum values (`1`/`2`), handshake, Pause/Halt logic, and
-dispatcher are **100% invariant** across the three Cayman-class gens. `[HIGH/OBSERVED]`
+dispatcher are **100% invariant** across the three Cayman-class gens.
 
 > **NOTE — offset anchors.** The `run_state=1` row anchors on the start of the
 > `52a4005408004913` byte signature (the `const16 a5,8` materialise + the `s32i.n a4,a3,4`

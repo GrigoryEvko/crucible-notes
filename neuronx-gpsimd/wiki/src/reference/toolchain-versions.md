@@ -42,10 +42,12 @@ is shipped: `$T/XtensaTools/include/xtensa-versions.h` (byte-identical copy at
 
 Reading `ncore2gp-params` against this header pins both axes precisely:
 
-| Axis | Param key (value) | Maps to header symbol | "RI" label | Confidence |
-|---|---|---|---|---|
-| **Hardware** | `HWMicroArchLatest = 281040`, `TargetHWVersion = NX1.1.4` | `XTENSA_HWVERSION_RI_2020_4 = 281040` | hardware = **RI-2020.4** | `[HIGH/OBSERVED]` |
-| **Software tools** | `SWToolsVersion = 1409000`, `SWToolsVername = 14.09`, `SWToolsRelease = RI-2022.9` | `XTENSA_SWVERSION_RI_2022_9 = 1409000` | tools = **RI-2022.9** | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Axis | Param key (value) | Maps to header symbol | "RI" label |
+|---|---|---|---|
+| **Hardware** | `HWMicroArchLatest = 281040`, `TargetHWVersion = NX1.1.4` | `XTENSA_HWVERSION_RI_2020_4 = 281040` | hardware = **RI-2020.4** |
+| **Software tools** | `SWToolsVersion = 1409000`, `SWToolsVername = 14.09`, `SWToolsRelease = RI-2022.9` | `XTENSA_SWVERSION_RI_2022_9 = 1409000` | tools = **RI-2022.9** |
 
 > **Note — NX1.1.4 ≡ LX7.1.4 ≡ HW RI-2020.4; tools are RI-2022.9.** `versions.h:317`
 > defines, verbatim, that HW number `281040` *is* `NX1.1.4` *is* `LX7.1.4` *is* the
@@ -93,18 +95,20 @@ SW_ABI = windowed
 SW_FloatingPointABI = 1
 ```
 
-| Key | Value | Meaning | Confidence |
-|---|---|---|---|
-| `ConfigName` | `Xm_ncore2gp` | Customer config name (`m` = managed/multicore variant) | `[HIGH/OBSERVED]` |
-| `arch` | `Xtensa24` | ISA architecture family (the XEA3-era 24-bit-PC Xtensa) | `[HIGH/OBSERVED]` |
-| `uarchName` | `Cairo` | Tensilica micro-architecture codename for this NX core | `[HIGH/OBSERVED]` |
-| `HWConfigID0` | `0xC4019686` | Config ID word 0 — burned into the ELF, checked by the loader | `[HIGH/OBSERVED]` |
-| `HWConfigID1` | `0x2908E4E3` | Config ID word 1 | `[HIGH/OBSERVED]` |
-| `Customer ID` | `19270` | TPG customer (Amazon) | `[HIGH/OBSERVED]` |
-| `Build` | `0xc23fe` (`795646`) | TPG build stamp = `BuildUniqueID` | `[HIGH/OBSERVED]` |
-| `BuildMode` | `Evaluation` | This config was generated under an evaluation license | `[HIGH/OBSERVED]` |
-| `IsaCoprocessorCount` | `7` | Seven coprocessors — the `-mcoproc` target | `[HIGH/OBSERVED]` |
-| `SW_ABI` | `windowed` | Windowed register ABI (call0 not used) | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Key | Value | Meaning |
+|---|---|---|
+| `ConfigName` | `Xm_ncore2gp` | Customer config name (`m` = managed/multicore variant) |
+| `arch` | `Xtensa24` | ISA architecture family (the XEA3-era 24-bit-PC Xtensa) |
+| `uarchName` | `Cairo` | Tensilica micro-architecture codename for this NX core |
+| `HWConfigID0` | `0xC4019686` | Config ID word 0 — burned into the ELF, checked by the loader |
+| `HWConfigID1` | `0x2908E4E3` | Config ID word 1 |
+| `Customer ID` | `19270` | TPG customer (Amazon) |
+| `Build` | `0xc23fe` (`795646`) | TPG build stamp = `BuildUniqueID` |
+| `BuildMode` | `Evaluation` | This config was generated under an evaluation license |
+| `IsaCoprocessorCount` | `7` | Seven coprocessors — the `-mcoproc` target |
+| `SW_ABI` | `windowed` | Windowed register ABI (call0 not used) |
 
 `ConfigID 0xC4019686 / 0x2908E4E3` is the same word the loader validates against the running
 core, so it is the most operationally meaningful identity in the file.
@@ -133,13 +137,15 @@ compiler; the embedded string `%s/llvm/bin/clang` shows they exec the real drive
 `$T/XtensaTools/llvm/bin/`, where `clang → clang-10` and `clang++ → clang`. The wrapper sets
 `TENSILICA_LLVM_TARGET_TRIPLE` and loads the per-core code-generator plugin.
 
-| Field | Value | Where read | Confidence |
-|---|---|---|---|
-| Driver | `xt-clang` / `xt-clang++` (wrapper) → `clang-10` | `clang` symlink → `clang-10` | `[HIGH/OBSERVED]` |
-| Clang version | **clang 10.0.1** | device object `.comment`; `strings libclangBasic.so.10` → `"Clang 10.0.1 "` | `[HIGH/OBSERVED]` |
-| LLVM SONAME | `.so.10` (LLVM 10) | `ls $T/XtensaTools/llvm/lib/*.so.10` | `[HIGH/OBSERVED]` |
-| Build tree | `RI-2022.9` | `strings clang-10` → `/home/xpgcust/tree/RI-2022.9/ib/p4root/Xtensa/Software/llvm/...` | `[HIGH/OBSERVED]` |
-| Code-gen plugin | `$T/ncore2gp/config/llvm/lib/libXtensaCodeGen.so` (`SONAME libLLVMXtensaCodeGen.so.10`) | loaded at driver start; per-config | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Field | Value | Where read |
+|---|---|---|
+| Driver | `xt-clang` / `xt-clang++` (wrapper) → `clang-10` | `clang` symlink → `clang-10` |
+| Clang version | **clang 10.0.1** | device object `.comment`; `strings libclangBasic.so.10` → `"Clang 10.0.1 "` |
+| LLVM SONAME | `.so.10` (LLVM 10) | `ls $T/XtensaTools/llvm/lib/*.so.10` |
+| Build tree | `RI-2022.9` | `strings clang-10` → `/home/xpgcust/tree/RI-2022.9/ib/p4root/Xtensa/Software/llvm/...` |
+| Code-gen plugin | `$T/ncore2gp/config/llvm/lib/libXtensaCodeGen.so` (`SONAME libLLVMXtensaCodeGen.so.10`) | loaded at driver start; per-config |
 
 `libXtensaCodeGen.so` is what makes this Clang a Q7 backend; it is loaded with an executable
 stack, so on a hardened host you must allow that (otherwise the driver aborts with
@@ -199,16 +205,18 @@ LIBS_SINGLE = ' .../neuron/libneuroncustomop.a .../c10/lib/libc10.a -lloader '
               '-lxmem -lhal -lc++-e -lm -lgcc .../neuron/libcweak.a'
 ```
 
-| Flag | Effect | Confidence |
-|---|---|---|
-| `-std=c++14` | The custom-op ABI is fixed at C++14 | `[HIGH/OBSERVED]` |
-| `-stdlib=libc++-e` | Link the *embedded / exceptions-disabled* libc++ (`libc++-e.a`) | `[HIGH/OBSERVED]` |
-| `-mcoproc` | Enable the 7 coprocessors (`IsaCoprocessorCount = 7`); required for the vector pipe | `[HIGH/OBSERVED]` |
-| `-mlongcalls` | Far calls relaxed to L32R relays — code can sit anywhere in the 1 GB SRAM window | `[HIGH/OBSERVED]` |
-| `-fno-jump-tables` | Avoid `.rodata` jump tables (placement/relocation constraints) | `[HIGH/OBSERVED]` |
-| `-Os` | Optimize for size — IRAM/DRAM are 64 KB each | `[HIGH/OBSERVED]` |
-| `-fpic` | Position-independent device code | `[HIGH/OBSERVED]` |
-| `-mlsp=<lsp>` | Select the linker support package (memory map) — see A.4 | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Flag | Effect |
+|---|---|
+| `-std=c++14` | The custom-op ABI is fixed at C++14 |
+| `-stdlib=libc++-e` | Link the *embedded / exceptions-disabled* libc++ (`libc++-e.a`) |
+| `-mcoproc` | Enable the 7 coprocessors (`IsaCoprocessorCount = 7`); required for the vector pipe |
+| `-mlongcalls` | Far calls relaxed to L32R relays — code can sit anywhere in the 1 GB SRAM window |
+| `-fno-jump-tables` | Avoid `.rodata` jump tables (placement/relocation constraints) |
+| `-Os` | Optimize for size — IRAM/DRAM are 64 KB each |
+| `-fpic` | Position-independent device code |
+| `-mlsp=<lsp>` | Select the linker support package (memory map) — see A.4 |
 
 The core is selected by `--xtensa-core=ncore2gp` / `--xtensa-system=<sys>`, **not** by a
 `-target` triple. The flags `-fno-exceptions` and `-mtext-section-literals` do **not** appear
@@ -313,13 +321,15 @@ run on host x86-64 with the `ncore2gp` core in scope. It is the only correct way
 device code, because it understands the `ncore2gp` FLIX bundle formats and TIE opcodes; a
 generic upstream `objdump` does not.
 
-| Field | Value | Confidence |
-|---|---|---|
-| Tool | `$T/XtensaTools/bin/xtensa-elf-objdump` (1.34 MB ELF64) | `[HIGH/OBSERVED]` |
-| Version | `GNU Binutils 2.34.20200201 Xtensa Tools 14.09` | `[HIGH/OBSERVED]` |
-| Core | `--xtensa-core=ncore2gp` (only core in the registry) | `[HIGH/OBSERVED]` |
-| Registry | `XTENSA_SYSTEM=$T/XtensaTools/config` | `[HIGH/OBSERVED]` |
-| Target | `elf32-xtensa-le` | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Field | Value |
+|---|---|
+| Tool | `$T/XtensaTools/bin/xtensa-elf-objdump` (1.34 MB ELF64) |
+| Version | `GNU Binutils 2.34.20200201 Xtensa Tools 14.09` |
+| Core | `--xtensa-core=ncore2gp` (only core in the registry) |
+| Registry | `XTENSA_SYSTEM=$T/XtensaTools/config` |
+| Target | `elf32-xtensa-le` |
 
 > **Callout — the missing scalar-LX disasm config.** `ncore2gp` is the *Vision* core (512-bit
 > FLIX vector DSP) and the right config for vector custom-op code and per-generation vector
@@ -379,10 +389,12 @@ Pinned from the Debian control fields inside the two `.deb` archives under
 `neuronx-gpsimd/archives/` (read via `ar p … control.tar.gz | tar xzO ./control`), not from
 the directory names:
 
-| Package | Version | Architecture | Notes | Confidence |
-|---|---|---|---|---|
-| `aws-neuronx-gpsimd-tools` | `0.21.0.0-bc9b5fad5` | amd64 | `Depends: libtinfo5, libncursesw5`; "gpsimd_tools built using CMake"; trailing `bc9b5fad5` is the source git short-hash | `[HIGH/OBSERVED]` |
-| `aws-neuronx-gpsimd-customop-lib` | `0.21.2.0` | amd64 | "custom_op_trn1_install built using CMake"; ships `build_custom_op.py`, the LSPs, the ABI archives, and the FlexLM `.out` | `[HIGH/OBSERVED]` |
+Every row below is `[HIGH/OBSERVED]`.
+
+| Package | Version | Architecture | Notes |
+|---|---|---|---|
+| `aws-neuronx-gpsimd-tools` | `0.21.0.0-bc9b5fad5` | amd64 | `Depends: libtinfo5, libncursesw5`; "gpsimd_tools built using CMake"; trailing `bc9b5fad5` is the source git short-hash |
+| `aws-neuronx-gpsimd-customop-lib` | `0.21.2.0` | amd64 | "custom_op_trn1_install built using CMake"; ships `build_custom_op.py`, the LSPs, the ABI archives, and the FlexLM `.out` |
 
 Both maintained by `neuron-maintainers@amazon.com`. Internal version axes read from
 `build_custom_op.py`: `__version__ = '0.21.2.0'`, `ulib_to_ucode_version = '1.21.1.0'`,

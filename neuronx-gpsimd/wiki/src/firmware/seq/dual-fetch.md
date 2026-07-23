@@ -32,7 +32,7 @@ decodes the *different* NCFW management core and is wrong here.
 > evidence: `SUNDA_NX_POOL_DEBUG` (iram **59,600 B**), `MARIANA_NX_POOL_DEBUG`
 > (iram **114,816 B**), `MARIANA_PLUS_NX_POOL_DEBUG` (iram **119,616 B**). All IRAM
 > offsets equal device IRAM VA (reset vector at byte 0); DRAM string offset = device
-> DRAM VA − `0x80000`. `[HIGH/OBSERVED]`
+> DRAM VA − `0x80000`.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
 `OBSERVED` = a byte/string read from the shipped image; `INFERRED` =
@@ -49,7 +49,7 @@ an explicit tag.
 > table at all (§5). **"Sunda-mode"** is a runtime software-fetch *fallback* present only
 > on CAYMAN-and-later images, named after the legacy SUNDA-style software fetch and
 > retained as a boot-selectable alternative to the new HW-Decode path. Keep this
-> distinction straight or every per-gen claim below inverts. `[HIGH/OBSERVED]`
+> distinction straight or every per-gen claim below inverts.
 
 ---
 
@@ -131,7 +131,7 @@ flagged FLIX-desync span between them (§4).
 ### 2a. The Sunda software-fetch FSM `@0x2d81` (the SW path)
 
 ```c
-/* LEVEL 3a — Sunda software-fetch FSM. SEQ firmware (Xtensa). [HIGH/OBSERVED]
+/* LEVEL 3a — Sunda software-fetch FSM. SEQ firmware (Xtensa).
  * head 0x2d81 ; back-edge 0x31a3 -> 0x2d81 ; indexes LOWER table 0x80814.
  * a4 = SW instruction-stream cursor ; NO iter counter ; NO RTL coherence telemetry. */
 sunda_loop:                                  /* back-edge 0x31a3 -> 0x2d81 */
@@ -207,7 +207,7 @@ iter increment and the back-edge interior land in the FLIX-desync span, §4]`
 > ⇒ exit) and the HW-decode body the **`bnez`** sense (`a10!=0` ⇒ continue). A
 > reimplementation that copies one branch sense into both FSMs inverts the HW-decode
 > loop's exit. The two `call8 0x6af4` sites — exactly two, `@0x2d81` and `@0x31c0` — *are*
-> the two modes (this is the dual-caller fact the surprises-poll page anchors). `[HIGH/OBSERVED]`
+> the two modes (this is the dual-caller fact the surprises-poll page anchors).
 
 > **QUIRK — what the HW-Decode path consumes that the SW path does not: the decode FIFO /
 > RTL decoder index.** The HW-Decode FSM does **not** software-read an opcode word through
@@ -247,7 +247,7 @@ silicon generation. The branch is byte-exact at `0x23b5`.
 ```
 
 ```c
-/* BEGIN boot mode-pick. SEQ firmware (Xtensa) @0x23af. [HIGH/OBSERVED]
+/* BEGIN boot mode-pick. SEQ firmware (Xtensa) @0x23af.
  * MODE_FLAG = state[0x855e0 + 108] (bit0) : 1=Sunda-mode, 0=HW-Decode.
  * HW_ACTIVE = state[0x85070]              : set 1 only in the HW-Decode arm.
  * CSR_HWDEC_CONTROL = 0x4000 (hw_decode.control; disable_hw_decode = bit0). */
@@ -380,7 +380,7 @@ The decode idiom is byte-identical to the LOWER table's, decoded from
 > The `addi −65`, the `movi 177`/`bgeu` bound, the `addx4`/`l32i`/`jx` indexing, and the
 > per-fetch `"S: Dispatch opcode=0x%x"` log (DRAM `0x80e38`, the *same* string) are
 > **identical** to the Sunda site. Only `const16 0x0adc` (vs `0x0814`) and `j 0x3a04`
-> (vs `0x3198`) differ. `[HIGH/OBSERVED]`
+> (vs `0x3198`) differ.
 
 ### 5b. The two tables contrasted
 
@@ -442,7 +442,6 @@ HW-Decode path. It is **RESOLVED** here, and the prior mis-label is folded as an
 > | **HIGHER** | `0x80adc` | `0x31ac` (a7-frame, iter counter, RTL_PC_check coherence, fetch-gate) | **HW-Decode** (FIFO-assisted) |
 >
 > The IMG "lower = HW-Decode" label is **refuted as a positional artifact**.
-> `[HIGH/OBSERVED]`
 
 **The binary evidence that HIGHER = HW-Decode** — a whole-IRAM `const16`-immediate
 uniqueness census over the 116,768-byte `iram.bin`:
@@ -467,7 +466,6 @@ The reasoning chain, each link byte-grounded:
 3. That same `0x31ac` body builds **`0x80adc`** (`const16 a3,0x0adc @0x36d1`, the only such
    site) and indexes the HIGHER table. The Sunda FSM `0x2d81` has *neither* the iter log
    nor the RTL_PC_check, and builds **`0x80814`** (the only `0x0814` site `@0x2e6e`).
-   `[HIGH/OBSERVED]`
 
 Therefore: **HIGHER `0x80adc` = HW-Decode**, **LOWER `0x80814` = Sunda**. The lone MED
 residual (§4) — the un-decoded boot-flag → gate-predicate register — does **not** affect
@@ -514,7 +512,7 @@ dual-mode construct exists:
 > it added the HW-decode path*, to mark the retained legacy path as "the old Sunda-style
 > fetch". So "Sunda-mode" is a CAYMAN+ runtime fallback name, not the silicon generation.
 > This single fact kills the
-> per-generation hypothesis. `[HIGH/OBSERVED]`
+> per-generation hypothesis.
 
 ### 7b. The per-gen presence table
 
