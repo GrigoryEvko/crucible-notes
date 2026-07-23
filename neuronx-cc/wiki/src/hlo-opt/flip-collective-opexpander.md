@@ -1,6 +1,6 @@
 # Flip-Collective OpExpander Family
 
-> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`, not stripped); they resolve directly in `disasm/` and `*_strings.json` (VMA-keyed) and via `objdump --start-address`. VA ≠ raw file offset here: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). The all-gather field offsets (+0x250/+0x258/+0x260) are pinned from the XLA `HloAllGatherInstruction` ctor/accessor and are HIGH-confidence, not re-bit-verified in this skip-decompiled binary. Other versions will differ.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc 2.24.5133.0+58f8de22` (cp310 wheel, `neuronxcc/starfish/bin/hlo-opt`, not stripped); they resolve directly in `disasm/` and `*_strings.json` (VMA-keyed) and via `objdump --start-address`. VA ≠ raw file offset here: `.text` file_off = VA − 0x201000, `.rodata` file_off = VA − 0x200000 (section headers). The all-gather field offsets (+0x250/+0x258/+0x260) are pinned from the XLA `HloAllGatherInstruction` ctor and `dimensions()` accessor rather than re-verified byte-by-byte in this skip-decompiled binary. Other versions will differ.*
 
 ## Abstract
 
@@ -48,7 +48,7 @@ xla::OpExpanderPass::Run                     @0x29f0bb0  (862 B)  ── STOCK d
 
 The matcher is the only virtual the framework calls (slot +0x28); `ExpandInstruction` is reached directly from `Run`'s match arm, so its address is resolved from the symbol table, not a vtable slot. Each pass also has a one-line `name()` at vtable+0x10 returning the registry key string.
 
-> **NOTE —** this binary was decompile-skipped (`NVOPEN_IDA_SKIP_DECOMPILE`), so the rewrite bodies below are reconstructed from disassembly plus the verified callee/string/opcode evidence. Control flow is HIGH; the callee set, the opcode bytes, and the construction calls are CERTAIN (cross-checked against each function's `callees` list in `*_functions.json`).
+> **NOTE —** this binary was decompile-skipped (`NVOPEN_IDA_SKIP_DECOMPILE`), so the rewrite bodies below are reconstructed from disassembly plus callee, string, and opcode evidence. The callee set, the opcode bytes, and the construction calls come straight from each function's `callees` list in `*_functions.json`; the statement-by-statement control flow between them is reconstructed.
 
 ### The `HloAllGatherInstruction` field layout the expanders read
 
@@ -63,7 +63,7 @@ All four all-gather flips read three fields off the matched (or operand) all-gat
 
 > **GOTCHA —** a naive reader eyeballing the expander disasm will call `byte[+0x260]` "the dimension" because it is the *third-from-last* byte fed to `CreateAllGather`. It is **`use_global_device_ids`**. The dimension is the **int64 at +0x258**, which `dimensions()` returns. Treating +0x260 as the dim silently scrambles every flip.
 
-The `CreateAllGather` overload all four flips call is the `Span<ReplicaGroup>` form `HloInstruction::CreateAllGather(Shape, Span<HloInstruction*>, long dim, Span<ReplicaGroup>, bool constrain, optional<long> channel, bool global)` @0x96680b0 — confirmed as a callee of #96/#97/#98/#92 expanders.
+The `CreateAllGather` overload all four flips call is the `Span<ReplicaGroup>` form `HloInstruction::CreateAllGather(Shape, Span<HloInstruction*>, long dim, Span<ReplicaGroup>, bool constrain, optional<long> channel, bool global)` @0x96680b0, which appears in the callee list of all four all-gather expanders (#96/#97/#98/#92).
 
 ---
 
@@ -102,7 +102,7 @@ HloInstruction* FlipAllGatherConvert::ExpandInstruction(conv):   // 0x1f82590 (4
     return g;                                                    // Run then ReplaceAllUsesWith(conv → g)
 ```
 
-Confirmed callees: `MakeConvertToHlo` (@0x90f7ab0) and the `Span<ReplicaGroup>` `CreateAllGather` only — **no `NextChannelId`**, so the channel id is copied verbatim from the source all-gather. (CERTAIN — callee list of 0x1f82590.) The new convert is created empty-named.
+The callee list of `0x1f82590` holds exactly two construction calls — `MakeConvertToHlo` (@0x90f7ab0) and the `Span<ReplicaGroup>` `CreateAllGather` — and **no `NextChannelId`**, so the channel id is copied verbatim from the source all-gather. The new convert is created empty-named.
 
 ---
 
@@ -133,7 +133,7 @@ The two legality helpers both pivot on `GetReshapeDimMapping` @0x1f81d30 (1072 B
 ### Rewrite
 
 ```c
-HloInstruction* FlipAllGatherReshape::ExpandInstruction(rs):      // 0x1f82810 (HIGH)
+HloInstruction* FlipAllGatherReshape::ExpandInstruction(rs):      // 0x1f82810
     // VLOG: "Running flip all-gather reshape for instruction: "  (@0x3dacb0)
     ag       = rs->mutable_operand(0);
     AG       = Cast<HloAllGatherInstruction>(ag);
@@ -151,7 +151,7 @@ HloInstruction* FlipAllGatherReshape::ExpandInstruction(rs):      // 0x1f82810 (
     return g;
 ```
 
-Confirmed callees: `MakeReshapeHlo` and `CreateAllGather`, **no `NextChannelId`** (channel reused). (CERTAIN — callee list of 0x1f82810.) The extent-rescale arithmetic over CommonFactors groups is summarised, not enumerated dim-by-dim (skip-decompiled — see Gaps).
+The callee list of `0x1f82810` holds `MakeReshapeHlo` and `CreateAllGather` and **no `NextChannelId`**, so the channel is reused. The extent-rescale arithmetic over CommonFactors groups is summarised here rather than enumerated dimension by dimension — see *Limits of this reading*.
 
 > **QUIRK —** the new all-gather's dimension is **not** the original `all_gather_dimension`; it is `GetReshapeDimMapping[old_dim][0]`, the position the AG axis lands at after the reshape. Carry the dim through the dim-map or the rewrite gathers along the wrong axis.
 
@@ -173,7 +173,7 @@ bool FlipAllGathersBinary::InstructionMatchesPattern(inst):       // 0x1f83370
     return ag0->IdenticalInternal(ag1, …, /*flags*/ 1,1,0,1)      // same shape/dim/groups/channel/dtype
 ```
 
-`IsElementWiseBinary` @0x1ec7430 is a `flat_hash_set<HloOpcode>` membership test over the nine elementwise binaries — `add`(0x01), `and`(0x0B), `divide`(0x2C), `maximum`(0x43), `minimum`(0x44), `multiply`(0x45), `or`(0x49), `remainder`(0x59), `subtract`(0x72). (HIGH — opcode set from the set's init immediates; the function's `constants_used` shows `1` and `114`=0x72 directly.)
+`IsElementWiseBinary` @0x1ec7430 is a `flat_hash_set<HloOpcode>` membership test over the nine elementwise binaries — `add`(0x01), `and`(0x0B), `divide`(0x2C), `maximum`(0x43), `minimum`(0x44), `multiply`(0x45), `or`(0x49), `remainder`(0x59), `subtract`(0x72). The opcode set is read from the set's initialisation immediates; the function's `constants_used` shows `1` and `114` (= 0x72) directly, bracketing the range.
 
 ### Rewrite
 
@@ -191,7 +191,7 @@ HloInstruction* FlipAllGathersBinary::ExpandInstruction(bin):     // 0x1f83480 (
     return g;
 ```
 
-Confirmed callees: `MakeBinaryHlo`, **`hlo_query::NextChannelId` @0x8ab1ac0**, and `CreateAllGather`. (CERTAIN — callee list of 0x1f83480.)
+The callee list of `0x1f83480` holds `MakeBinaryHlo`, **`hlo_query::NextChannelId` @0x8ab1ac0**, and `CreateAllGather`.
 
 > **QUIRK —** this is the only all-gather flip that **mints a fresh channel id**. The combined collective is a brand-new operation that subsumes two distinct source channels, so reusing either source id would alias a channel; `NextChannelId` allocates a unique one. The convert/reshape/dynamic-slice flips keep one all-gather (one channel) and reuse it.
 
@@ -210,7 +210,7 @@ bool NeuronFlipAllGatherDynamicSlice::InstructionMatchesPattern(inst):  // 0x1fa
     // VLOG: "Found pattern: all-gather -> dynamic slice" / "… All Gather -> Dynamic Slice"
     if inst->opcode() != 0x30 (kDynamicSlice):  return false
     if !IsAllGather(inst->operand(0)):          return false
-    if inst->shape().array_state()[0] <= 5:     return false     // rank guard ≈ rank ≥ 3 (MED)
+    if inst->shape().array_state()[0] <= 5:     return false     // rank guard, approx rank >= 3
     sliced = find_slice_dimensions(inst);                        // 0x1fa7a30
     if sliced.size() <= 1:                       return false    // need >1 sliced dim
     if ag_dim ∈ sliced:                          return false    // AG dim must be UN-sliced
@@ -239,9 +239,9 @@ HloInstruction* NeuronFlipAllGatherDynamicSlice::ExpandInstruction(ds):  // 0x1f
     return g;
 ```
 
-Confirmed callees: `CreateDynamicSlice`, `CreateAllGather`, and `HloInstruction::ReplaceAllUsesWith` — **no `NextChannelId`** (channel reused). (CERTAIN — callee list of 0x1fa81a0.)
+The callee list of `0x1fa81a0` holds `CreateDynamicSlice`, `CreateAllGather`, and `HloInstruction::ReplaceAllUsesWith` — and **no `NextChannelId`**, so the channel is reused.
 
-> **NOTE —** the rank guard reads `inst->shape().array_state()[0] > 5`, where `array_state()[0]` is the tagged dims header `(size<<1)|inline_flag`. `>5` is roughly "rank ≥ 3"; the exact rank threshold is MED (the inline-flag bit muddies the decode).
+> **NOTE —** the rank guard reads `inst->shape().array_state()[0] > 5`, where `array_state()[0]` is the tagged dims header `(size<<1)|inline_flag`. `>5` decodes to roughly "rank ≥ 3"; the inline-flag bit makes the exact threshold ambiguous [UNRESOLVED].
 
 ---
 
@@ -304,9 +304,9 @@ HloInstruction* NeuronFlipReduceConvertAdd::ExpandInstruction(add):  // 0x1fa8ff
     return new_add;
 ```
 
-Confirmed callees: `CreateConvert`, **`CreateAllReduce` AND `CreateReduceScatter`** (both branches present), `ShapeUtil::ChangeElementType`, `CreateBinary`, and `hlo_query::NextChannelId`. (CERTAIN — callee list of 0x1fa8ff0.) The reduction sub-computation (`called_computations()[0]`), replica-groups, constrain-layout, use-global-device-ids, and (RS) scatter-dimension are copied verbatim; only the element dtype widens and the channel id is fresh.
+The callee list of `0x1fa8ff0` holds `CreateConvert`, **both `CreateAllReduce` and `CreateReduceScatter`** (so both branches are really present), `ShapeUtil::ChangeElementType`, `CreateBinary`, and `hlo_query::NextChannelId`. The reduction sub-computation (`called_computations()[0]`), replica-groups, constrain-layout, use-global-device-ids, and (RS) scatter-dimension are copied verbatim; only the element dtype widens and the channel id is fresh.
 
-> **CORRECTION (FLIP-1) —** earlier summaries cited `NeuronFlipReduceConvertAdd::ExpandInstruction @0x1fa8db4`. That address is the **`.cold`** clone (30 B); the real body is **@0x1fa8ff0** (3841 B). The matcher (OpExpander entry, vtable+0x28) is **@0x1fa8c50**.
+> **GOTCHA —** `0x1fa8db4` is the **`.cold`** clone of this expander (30 B), not the rewrite. Symbol lookups that land on it will show an empty-looking body; the real `ExpandInstruction` is **@0x1fa8ff0** (3841 B), and the matcher (OpExpander entry, vtable+0x28) is **@0x1fa8c50**.
 
 > **NOTE —** this pass's vtable is `_ZTVN3xla4hilo26NeuronFlipReduceConvertAddE` @0x411bc0, with `_ZTI…` @0x411ba8 and `_ZTS…` @0x411b80 immediately preceding (binary `names.json`). The #104 vtable @0x4112e0 and the #92 vtable @0x411b08 are distinct objects.
 
@@ -372,7 +372,7 @@ HloInstruction* FlipReduceScatterTranspose::ExpandInstruction(t):  // 0x1f83e50 
     return new_rs;
 ```
 
-Confirmed callees: `CreateConvert`, **`MakeTransposeHlo` @0x90f1590**, `ShapeUtil::ChangeElementType`, and `CreateReduceScatter` — and **no `NextChannelId`** (channel reused). (CERTAIN — callee list of 0x1f83e50.) The output shape is pinned to the original transpose's shape, so downstream users see an identically-shaped value.
+The callee list of `0x1f83e50` holds `CreateConvert`, **`MakeTransposeHlo` @0x90f1590**, `ShapeUtil::ChangeElementType`, and `CreateReduceScatter` — and **no `NextChannelId`**, so the channel is reused. The output shape is pinned to the original transpose's shape, so downstream users see an identically-shaped value.
 
 > **GOTCHA —** the scatter-dim remap is a *hard FATAL*, not a silent skip. If the permutation does not contain the old scatter dim (impossible for a well-formed transpose, but a reimplementation bug could produce it) the pass aborts with `"FATAL: Failed to find new scatter dim …"` @0x333fc0. Do not swallow the not-found case — XLA does not.
 
@@ -395,13 +395,13 @@ The flips manufacture matching keys:
 
 `#102` and `#104` canonicalize the *collective's own form*: `#102` widens the reduction to the accumulate dtype (precision plus key-dtype uniformity for the reduce-scatter/all-reduce combiners), and `#104` rotates the layout so the scatter axis is contiguous and the producer can fuse. Both are precondition shaping for later combining and lowering, not cost-modelled transforms.
 
-> **NOTE —** order matters: the convert/reshape/binary trio is registered as a block (#96→#97→#98) and feeds a *later* combine opportunity, while the dynamic-slice flip (#92) runs earlier. The exact executed subset/order is driver-supplied (`HLOToTensorizer`/Python), not traced from this binary — the registry order is a proxy (MED).
+> **NOTE —** order matters: the convert/reshape/binary trio is registered as a block (#96→#97→#98) and feeds a *later* combine opportunity, while the dynamic-slice flip (#92) runs earlier. The exact executed subset and order is driver-supplied (`HLOToTensorizer` / the Python layer) and was not traced from this binary; the registry order is a proxy for it [INFERRED].
 
 ---
 
 ## Pass Map
 
-| # | name() key | Class | name()@ | Matcher@ | Expand@ | vtable@ | Channel | Conf |
+| # | name() key | Class | name()@ | Matcher@ | Expand@ | vtable@ | Channel | Confidence |
 |---|---|---|---|---|---|---|---|---|
 | 96 | `aws_neuron_flip_all_gather_convert` | `FlipAllGatherConvert` | 0x1f81650 | 0x1f81670 | 0x1f82590 | 0x411140 | reuse | CERTAIN |
 | 97 | `aws_neuron_flip_all_gather_reshape` | `FlipAllGatherReshape` | 0x1f81660 | 0x1f82510 | 0x1f82810 | 0x4111a0 | reuse | HIGH |
@@ -410,7 +410,7 @@ The flips manufacture matching keys:
 | 102 | `aws_neuron_flip_reduce_convert_add` | `NeuronFlipReduceConvertAdd` | 0x1fa8b00 | 0x1fa8c50 | 0x1fa8ff0 | 0x411bc0 | **fresh** | CERTAIN |
 | 104 | `aws_neuron_flip_reduce_scatter_transpose` | `FlipReduceScatterTranspose` | 0x1f836a0 | 0x1f838f0 | 0x1f83e50 | 0x4112e0 | reuse | CERTAIN |
 
-> **NOTE —** the `name()` accessor and the vtable are distinct objects: e.g. for #102, `name()` @0x1fa8b00 is a `.text` function (11 B, returns the StringRef), the vtable @0x411bc0 is `.rodata` (preceded by `_ZTI…` @0x411ba8, `_ZTS…` @0x411b80). All six vtables are distinct addresses (0x411140 / 0x4111a0 / 0x411240 / 0x411b08 / 0x411bc0 / 0x4112e0) — re-resolve each by its mangled `_ZTV…` symbol, not by eyeballing nearby `.rodata`. (CERTAIN — `names.json`.)
+> **NOTE —** the `name()` accessor and the vtable are distinct objects: e.g. for #102, `name()` @0x1fa8b00 is a `.text` function (11 B, returns the StringRef), the vtable @0x411bc0 is `.rodata` (preceded by `_ZTI…` @0x411ba8, `_ZTS…` @0x411b80). All six vtables are distinct addresses (0x411140 / 0x4111a0 / 0x411240 / 0x411b08 / 0x411bc0 / 0x4112e0) — re-resolve each by its mangled `_ZTV…` symbol, not by eyeballing nearby `.rodata`.
 
 ---
 
@@ -444,13 +444,13 @@ combiner stop conditions (downstream):
 
 ---
 
-## Gaps & Confidence
+## Limits of this reading
 
-- **Skip-decompiled binary** — all bodies are disassembly-reconstructed (`NVOPEN_IDA_SKIP_DECOMPILE`). The callee set, opcode bytes, and construction calls are CERTAIN (verified against each function's `callees` list); exact control flow inside the reshape extent-rescale and the #104 convert-branch operand order are HIGH.
-- **AllGather field offsets** (+0x250/+0x258/+0x260) and the RS/AR `scatter_dimension`/`constrain_layout`/`use_global_device_ids` offsets (+0x258/+0x251/+0x250) are pinned from the XLA ctor/accessor and are consistent across #79/#99/#102/#104, but not independently re-bit-verified in *this* binary (HIGH).
-- **All six vtables are distinct and verified** in `names.json`: #96 @0x411140, #97 @0x4111a0, #98 @0x411240, #104 @0x4112e0, #92 @0x411b08, #102 @0x411bc0 (CERTAIN). An earlier draft transiently conflated #92 and #102 at 0x411b08; that is wrong — #102 is 0x411bc0.
-- **Run/registration order** — the executed pass subset is driver-supplied, not traced; the registry order is a proxy (MED).
-- **#92 rank guard** `array_state()[0] > 5` decodes to ≈ rank ≥ 3 but the tagged inline-flag bit leaves the exact rank threshold MED.
+- The binary is skip-decompiled (`NVOPEN_IDA_SKIP_DECOMPILE`), so all bodies are reconstructed from disassembly. The callee sets, opcode bytes, and construction calls come from each function's `callees` list; the statement ordering inside the reshape extent-rescale and the #104 convert branch is reconstructed rather than read.
+- The all-gather field offsets (+0x250 / +0x258 / +0x260) and the reduce-scatter / all-reduce `scatter_dimension` / `constrain_layout` / `use_global_device_ids` offsets (+0x258 / +0x251 / +0x250) are pinned from the XLA constructor and accessors and are consistent across #79/#99/#102/#104, but were not independently re-verified byte-by-byte in this binary.
+- The six vtables are distinct addresses in `names.json`: #96 @0x411140, #97 @0x4111a0, #98 @0x411240, #104 @0x4112e0, #92 @0x411b08, #102 @0x411bc0. They sit close enough together that resolving one by proximity rather than by its `_ZTV…` symbol will pick up a neighbour.
+- The executed pass subset and its order is driver-supplied and was not traced; the registry order stands in for it.
+- The #92 rank guard `array_state()[0] > 5` decodes to approximately rank ≥ 3; the tagged inline-flag bit leaves the exact threshold open.
 
 ---
 
