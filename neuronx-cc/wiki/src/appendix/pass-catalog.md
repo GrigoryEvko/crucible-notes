@@ -15,7 +15,7 @@ The four stages and their headline counts, each re-derived from the binary in [�
 
 Each stage uses a structurally different name→pass mechanism, and that difference is itself the most useful thing this catalog records — a reimplementer who assumes one registry for the whole compiler will get all four wrong. [§0](#0-the-four-registry-shapes) lays the four mechanisms side by side. [§1](#1-stage-1--hlo-opt-b-strand-112-passes)–[§4](#4-stage-4--walrus-backend-150-names--121-classes) index each stage's passes by family, with the documenting page per family. The full row-level tables are **not** reproduced here — they live in the four normative pages — because pasting 112 + 37 + ~240 + 150 rows would be a dump, not an index; this page is the map *to* those tables, with the cross-stage counts reconciled in one place.
 
-This is a reference catalog, not an algorithm walkthrough; its value is **completeness and correct cross-stage ordering**. Confidence is per-row, and reconciled in [§5](#5-how-the-counts-are-grounded): the four name counts (112 / 32+5 / 248 / 150) come off the binary; the 121-class walrus total is derived from them; the Penguin run *order* comes from the version-counter source-order trace, and is HIGH rather than read from a table.
+This is a reference catalog, not an algorithm walkthrough; its value is **completeness and correct cross-stage ordering**. Confidence is per-row, and reconciled in [§5](#5-how-the-counts-are-grounded): the four name counts (112 / 32+5 / 248 / 150) come off the binary; the 121-class walrus total is derived from them; the Penguin run *order* is **[INFERRED]** from the version-counter source-order trace rather than read off a table.
 
 | | |
 |---|---|
@@ -133,7 +133,7 @@ The StableHLO spine twins every MHLO step and adds 5 of its own ([4.32](../hlo-o
 | 26 | `LegalizeSRA` | `shift_right_arithmetic` signedness | CERTAIN |
 | 26 | `LegalizeScatter` | `stablehlo.scatter` → F32 + canonical body | CERTAIN |
 
-> **QUIRK — step 25 is prepended, not appended.** `SixtyFourHack`'s gate (`jz`→altblk @ `0x1ee19a0`, on global `qword_9C71338==0`) inserts it *before* step 26 `PenguinizeIO`, so it runs ahead of IO packaging despite appearing 25th in the source. A reimplementer who `addPass`-es it in textual position sequences it wrong. (HIGH — disasm-only control flow.)
+> **QUIRK — step 25 is prepended, not appended.** `SixtyFourHack`'s gate (`jz`→altblk @ `0x1ee19a0`, on global `qword_9C71338==0`) inserts it *before* step 26 `PenguinizeIO`, so it runs ahead of IO packaging despite appearing 25th in the source. A reimplementer who `addPass`-es it in textual position sequences it wrong. The ordering is read from the disassembled control flow only — there is no registration table that states it.
 
 ---
 
@@ -151,7 +151,7 @@ The Penguin middle-end is **not** a registry and **not** a flat pipeline — it 
 
 The `targets/transforms/autotune/` subpackage (6 modules: `Autotuner` `_Compiler` `_PerformanceMetric` `_Search` `_TreeSearch` `_TreeSearchVisualizer`) is counted separately, not in the 131.
 
-> **GOTCHA — module count ≠ pass count.** ~8–10 modules in the two `transforms/` dirs export no `Pass`/`DotTransform` subclass — they are helper libraries (`DataflowUtil` `InstTransformUtils` `IPUtils` `LoopTransformUtils` `TensorContractUtils` `TensorOpUtils` `InstBuilder` `IntrinsicBuilder` `DataflowUtils`). The real pass-class set is the subset whose top-level class subclasses `DotTransform` or `BaseAnalysis`. The 248 is the verifiable *module* anchor; the pass-class subset is a few smaller. (HIGH — by-class filtering not exhaustively enumerated.)
+> **GOTCHA — module count ≠ pass count.** ~8–10 modules in the two `transforms/` dirs export no `Pass`/`DotTransform` subclass — they are helper libraries (`DataflowUtil` `InstTransformUtils` `IPUtils` `LoopTransformUtils` `TensorContractUtils` `TensorOpUtils` `InstBuilder` `IntrinsicBuilder` `DataflowUtils`). The real pass-class set is the subset whose top-level class subclasses `DotTransform` or `BaseAnalysis`. The 248 is the verifiable *module* anchor; the pass-class subset is a few smaller — **[INFERRED]**, since the by-class filtering was spot-checked rather than exhaustively enumerated.
 
 ### Run order — the driver, not the directory
 
@@ -171,7 +171,7 @@ There is no static order in the directory listing. The order is set by the four 
 | ISel (per-target) | `SundaISel` (sunda), `TongaISel` (tonga) | [5.7](../penguin/pass-roster-pipeline.md#per-target-packs) | CERTAIN |
 | Codegen / emit | `NkiCodegenPass`, `BirCodeGenLoop`, `targets/codegen/*` | [ir-mlir-bir-mapping](../penguin/ir-mlir-bir-mapping.md) | CERTAIN |
 
-> **QUIRK — a pass can appear twice in the run-list.** `FastSpillGeneration` runs before *and* after `SFKVectorizer` (vectorization creates new live ranges to spill); `nki_codegen` is chained into the post-fusion list. A `set`-based reimplementation that de-dups specs by class silently drops the second spill. The Penguin run-list length is therefore *not* a function of the module count — it is the generator's yield sequence, with repeats. (Membership is exact; the *order* is HIGH, from the version-counter source-order trace.)
+> **QUIRK — a pass can appear twice in the run-list.** `FastSpillGeneration` runs before *and* after `SFKVectorizer` (vectorization creates new live ranges to spill); `nki_codegen` is chained into the post-fusion list. A `set`-based reimplementation that de-dups specs by class silently drops the second spill. The Penguin run-list length is therefore *not* a function of the module count — it is the generator's yield sequence, with repeats. Membership is exact; the *order* is **[INFERRED]** from the version-counter source-order trace.
 
 ---
 
@@ -180,7 +180,7 @@ There is no static order in the directory listing. The order is set by the four 
 The walrus backend is a `GeneratorRegistration` registry: **150** `register_generator_<name>__` static initializers each install a `name → factory` entry, but they construct only **121** distinct C++ pass classes — **10** classes are registered under multiple names, parameterized at construction by a memory space, optimization level, or scheduling phase. The pipeline schedules these into **~180** steps (some names at several positions, plus interposed `!isRealPass` check/dump/sim passes).
 
 - **150**, straight off the binary: `nm -DC libwalrus.so | rg -o 'register_generator_[a-z0-9_]+' | sort -u | wc -l` = 150.
-- **121**, derived (HIGH): the count of distinct `_M_invoke` ctor targets over the 150 bodies. The 10 multi-registered groups contribute 29 surplus names (`9+7+3+2+2+2+1+1+1+1`); `121 + 29 = 150`.
+- **121**, derived: the count of distinct `_M_invoke` ctor targets over the 150 bodies. The 10 multi-registered groups contribute 29 surplus names (`9+7+3+2+2+2+1+1+1+1`); `121 + 29 = 150`.
 
 The full 150-name → class → granularity → evidence table is the canonical listing in [8.1 §"The full 150-name table"](../walrus/backendpass-registry.md#the-full-150-name--class--granularity-table). The 150→121 collapse must be represented, not flattened — here are the **10 multi-registered classes** that produce the gap:
 
@@ -235,9 +235,9 @@ The other **111** names are 1:1 with their class. Index of the 150 names by fami
 Each cross-stage count this catalog turns on, and what pins it in the cp310 binaries:
 
 1. **Stage 1 = 112.** `objdump -d --start-address=0x1e72270 --stop-address=0x1e744b0 hlo-opt | rg -c 'call.*1ebc3f0'` → **112** calls to `RegisterHloPass`. One name per call, key = `pass->name()`.
-2. **Stage 2 = 32 MHLO + 5 = 37 StableHLO.** `registerMHLOPasses` @ `0x1ee12f0` (3096 B) is a flat 32-step `addPass` spine; `registerStableHLOPasses` @ `0x1ee2120` (3142 B) is the twin plus 5 insertions. The five inserts (`HloLegalizeToStablehlo`, `ConvertCustomCallToAllReduce`, `FusionToComposite`, `LegalizeSRA`, `LegalizeScatter`) are enumerated in [4.32](../hlo-opt/hlo2penguin-mlir-pipeline.md#the-five-stablehlo-only-insertions). The step count is exact; the `SixtyFourHack` prepend at step 25 is disasm-only, so HIGH.
+2. **Stage 2 = 32 MHLO + 5 = 37 StableHLO.** `registerMHLOPasses` @ `0x1ee12f0` (3096 B) is a flat 32-step `addPass` spine; `registerStableHLOPasses` @ `0x1ee2120` (3142 B) is the twin plus 5 insertions. The five inserts (`HloLegalizeToStablehlo`, `ConvertCustomCallToAllReduce`, `FusionToComposite`, `LegalizeSRA`, `LegalizeScatter`) are enumerated in [4.32](../hlo-opt/hlo2penguin-mlir-pipeline.md#the-five-stablehlo-only-insertions). The step count is exact; the `SixtyFourHack` prepend at step 25 rests on disassembled control flow alone.
 3. **Stage 3 = 248 modules (71/131/6/40).** `ls <dir>/*.so | grep -v __init__ | wc -l` in each of the four directories → **71, 131, 6, 40**, summing to 248. `targets/transforms/autotune/` accounts for the 6. `targets/cayman/passes/` and `targets/core_v4/passes/` contain only `__init__`. That is the *module* count; the pass-class subset is slightly smaller because of helper libs, flagged in [§3](#3-stage-3--penguin-middle-end-248-modules-run-list-varies).
-4. **Stage 4 = 150 names → 121 classes.** `nm -DC libwalrus.so | rg -o 'register_generator_[a-z0-9_]+' | sort -u | wc -l` → **150**. The 10 multi-registered groups (`MemoryAnalysis`=10, `ColoringAllocator`=8, `AddressRotation`=4, `DMAOptimization`/`FullUnroll`/`SeparateLoadAndCompute`=3 each, four more ×2) contribute 29 surplus names, and `121 + 29 = 150`. The 150 is grep-able; the 121 is a distinct-ctor-target count over the [8.1](../walrus/backendpass-registry.md) table and is HIGH.
+4. **Stage 4 = 150 names → 121 classes.** `nm -DC libwalrus.so | rg -o 'register_generator_[a-z0-9_]+' | sort -u | wc -l` → **150**. The 10 multi-registered groups (`MemoryAnalysis`=10, `ColoringAllocator`=8, `AddressRotation`=4, `DMAOptimization`/`FullUnroll`/`SeparateLoadAndCompute`=3 each, four more ×2) contribute 29 surplus names, and `121 + 29 = 150`. The 150 is grep-able; the 121 is a distinct-ctor-target count derived over the [8.1](../walrus/backendpass-registry.md) table.
 5. **The four name→pass mechanisms really are different.** Stage 1 = `llvm::StringMap` keyed by `name()` read-back; Stage 2 = imperative `addPass` with no name table; Stage 3 = `PassType` specs folded by `PassConstructorBuilder`, again no name table; Stage 4 = `_Hashtable` keyed by the literal `registerGenerator` string. Each is symbol-anchored in its normative page ([4.1](../hlo-opt/pass-registry.md), [4.32](../hlo-opt/hlo2penguin-mlir-pipeline.md), [5.7](../penguin/pass-roster-pipeline.md), [8.1](../walrus/backendpass-registry.md)).
 
 No pass name on this page is fabricated: every name is the verbatim string carried by its normative source page, which in turn read it from the binary — a `name()` literal, a `create…Pass` factory symbol, a `__pyx_n_s_` interned token, or a `register_generator_*__` symbol. Where this catalog points a family at a documenting wiki page, the slug is present on disk; families with no dedicated detail page point at their stage's normative registry page. The libBIR and libwalrus binaries and their IDA databases are present in-corpus, so the backend class addresses cited via [8.1](../walrus/backendpass-registry.md) are read, not inferred.

@@ -28,8 +28,6 @@ For reimplementation, the contract is:
 | **Producer** | `LowerPWPImpl::generateInstLoadActFuncSet` (`libwalrus.so`, stripped) |
 | **Catalog scope** | 35 sets, 409 funcs, 32,759 `bkt` + 3,071 `ctrl` records — zero mismatch vs JSON |
 
-Confidence labels used below: **CERTAIN** = decoded from the shipped bytes and matched against the JSON; **HIGH** = symbol/disasm grounded; **MEDIUM** = a derived rule checked over the catalog.
-
 ---
 
 ## 1. File Inventory and the Manifest
@@ -416,8 +414,8 @@ To **pack** a fresh set from per-func profiles:
 
 ## 9. Confidence and Cross-References
 
-**CERTAIN** — byte decode plus JSON match across the full 35-set / 409-func / 32,759-bkt + 3,071-ctrl catalog, zero mismatch: the 32-byte `bkt` record `[d0,d1,d2,d3,x]+12B-zero-pad` (disk d0-first, raw IEEE-754 = profile `.int`); neg-octaves-then-pos disk ordering; the 4 saturation slots `[pos_low,neg_low,pos_high,neg_high]`; the `ctrl` `uint32` bitfields `base[0:11] / lsb[11:16] / size[16:24]`, reserved `[24:32]=0`; `extract_lsb == 23 − extract_size`; `ctrl` stride 32 B trainium / 16 B with_ln (word identical); `bkt_base` = `func_to_bkt_start_idx` + Σ actual sections; `func_id = sunda_id`/`tonga_id`; cp310/11/12 byte-identical.
+Byte decode plus JSON match across the full 35-set / 409-func / 32,759-bkt + 3,071-ctrl catalog, zero mismatch, covers: the 32-byte `bkt` record `[d0,d1,d2,d3,x]+12B-zero-pad` (disk d0-first, raw IEEE-754 = profile `.int`); neg-octaves-then-pos disk ordering; the 4 saturation slots `[pos_low,neg_low,pos_high,neg_high]`; the `ctrl` `uint32` bitfields `base[0:11] / lsb[11:16] / size[16:24]`, reserved `[24:32]=0`; `extract_lsb == 23 − extract_size`; `ctrl` stride 32 B trainium / 16 B with_ln (word identical); `bkt_base` = `func_to_bkt_start_idx` + Σ actual sections; `func_id = sunda_id`/`tonga_id`; cp310/11/12 byte-identical.
 
-**HIGH**: the consumer selection math (`find_pwp_nonsat_section @0x9340`, `libpwp_sim.so`, symboled disasm — `sectid = mant >> (23 − extract_size)`, `region = base + 40·expo`); the 2048-tile DMA rationale for the 11-bit `bkt_base` (`libwalrus` `num_2048_tiles_cur_section` rodata asserts). **MEDIUM**: the blobs are precomputed offline (KaenaPWP) and merely selected/referenced by `LowerPWPImpl`, not recomputed at compile time. **GAP** (→ §10.6): the `generateInstLoadActFuncSet` IT6 wire layout and the exact `(size<<16)|((23−size)<<11)|base` packing instruction (the producing lib is stripped, so the bitfield split is proven from the *bytes* and the *consumer*, not from the packer code itself).
+Symbol- and disasm-grounded: the consumer selection math (`find_pwp_nonsat_section @0x9340`, `libpwp_sim.so`, symboled disasm — `sectid = mant >> (23 − extract_size)`, `region = base + 40·expo`); the 2048-tile DMA rationale for the 11-bit `bkt_base` (`libwalrus` `num_2048_tiles_cur_section` rodata asserts). **[INFERRED]** — the blobs are precomputed offline (KaenaPWP) and merely selected/referenced by `LowerPWPImpl`, not recomputed at compile time; this is a rule derived over the catalog, not read off a code path. **GAP** (→ §10.6): the `generateInstLoadActFuncSet` IT6 wire layout and the exact `(size<<16)|((23−size)<<11)|base` packing instruction (the producing lib is stripped, so the bitfield split is proven from the *bytes* and the *consumer*, not from the packer code itself).
 
 Cross-references: [10.1 (`pwp-model.md`)](pwp-model.md) for the evaluation model and the `find_pwp_nonsat_section` algorithm this format feeds; [10.5 (activation profile-json)](activation-profile-json.md) for the per-set `profile_json` manifest that indexes these blobs (the per-*function* coefficient source of truth is `pwp_jsons`, §10.1); [10.6 (LoadActFuncSet)](loadactfuncset.md) and [10.7 (set-cover)](set-cover.md) for the set-selection and `LoadActFuncSet` codegen.

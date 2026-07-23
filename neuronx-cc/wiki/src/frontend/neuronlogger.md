@@ -167,7 +167,7 @@ The produced developer line is, for example:
 2026-04-08 21:07:10.123456: E /path/to/file.cc:123] message text
 ```
 
-> **NOTE —** the two-character tag is selected by `curLogLevel <= 3` (`setle`) at `0x1e80db3`, and the tag *length* (2) is stored alongside. The exact bytes of the two tags (`"I "` for the chatty branch, `"E "` for the severe branch) come from the level-tag rodata at `ds:0x2045 + idx*4`; this decode is HIGH, the gate logic is CERTAIN.
+> **NOTE —** the two-character tag is selected by `curLogLevel <= 3` (`setle`) at `0x1e80db3`, and the tag *length* (2) is stored alongside. The exact bytes of the two tags (`"I "` for the chatty branch, `"E "` for the severe branch) come from the level-tag rodata at `ds:0x2045 + idx*4`. The gate logic is read off the `setle`; the tag-byte decode is **[INFERRED]** from that rodata indexing.
 
 ### Algorithm — `getCurrentTime`
 
@@ -183,7 +183,7 @@ std::string getCurrentTime():                          // 0x759c8e0
     return ss.str();
 ```
 
-The verbatim format string `"%Y-%m-%d %H:%M:%S"` is confirmed present in hlo-opt rodata, followed by a literal `"."` and a 6-digit zero-padded microsecond field. (CERTAIN.)
+The verbatim format string `"%Y-%m-%d %H:%M:%S"` is confirmed present in hlo-opt rodata, followed by a literal `"."` and a 6-digit zero-padded microsecond field.
 
 ### Algorithm — `flush`
 
@@ -235,7 +235,7 @@ A `std::unordered_map<LogLevel, absl::LogSeverity>` built once at static-init ti
 | `0x00000003_00000006` | 6 | 3 (FATAL) | HIGH |
 | `0x00000003_00000005` | 5 | 3 (FATAL) | HIGH |
 
-> **QUIRK —** these keys are the **compact 1..6 ordinal**, *not* the `0,10,…,70` scale of §5a. That is the proof that two LogLevel encodings coexist in the same process: `logging::LogLevel` is the 10-step public enum, while `NeuronLogger`'s thresholds and this bridge table speak the compact ordinal. (The exact key→severity pairing is HIGH not CERTAIN because the on-stack pair ordering versus map insertion order was not single-stepped; the six pairs themselves are read directly from the `mov` immediates at `0x759d6ba`–`0x759d6e6`.)
+> **QUIRK —** these keys are the **compact 1..6 ordinal**, *not* the `0,10,…,70` scale of §5a. That is the proof that two LogLevel encodings coexist in the same process: `logging::LogLevel` is the 10-step public enum, while `NeuronLogger`'s thresholds and this bridge table speak the compact ordinal. The six pairs themselves are read directly from the `mov` immediates at `0x759d6ba`–`0x759d6e6`; the exact key→severity pairing is **[INFERRED]**, because the on-stack pair ordering versus map insertion order was not single-stepped.
 
 ### 5c. `NeuronLogger` compact threshold gates
 
@@ -279,7 +279,9 @@ logging::Logger =
     > >
 ```
 
-So it is severity + channel + one custom feature (`type_feature`, carrying `logging::LogType`). The default channel string is `"Logging"` (rodata). The threading model is `single_thread_model` (the records are pumped into async sinks; the model refers to the *source*, not the sinks). (CERTAIN — demangled symbols.)
+So it is severity + channel + one custom feature (`type_feature`, carrying `logging::LogType`). The default channel string is `"Logging"` (rodata). The threading model is `single_thread_model` (the records are pumped into async sinks; the model refers to the *source*, not the sinks).
+
+*Anchors: demangled symbols.*
 
 ### Attribute set (6 members)
 
@@ -315,7 +317,7 @@ stream << function_eval[ std::string(*)() ]            // timestamp function (no
 
 The separator *widths* (A2 / A3 / A4 — array-of-char terminals `A2_c`, `A3_c`, `A4_c`) are read directly from the formatter type. The printable rodata neighbors of the level table give the building blocks — `" ("`, `"]: "`, the `"module"` keyword. The formatter imbues `en_US.UTF-8` (rodata string confirmed).
 
-> **NOTE —** the exact bytes of the A2/A3/A4 literals are not byte-extracted from the compiled phoenix tree, so the fully-rendered Boost line layout is HIGH, not CERTAIN. The term *order*, the attribute *types*, and the separator *widths* are CERTAIN from the demangled formatter type.
+> **NOTE —** the exact bytes of the A2/A3/A4 literals are not byte-extracted from the compiled phoenix tree, so the fully-rendered Boost line layout is **[INFERRED]**. The term *order*, the attribute *types*, and the separator *widths* are read off the demangled formatter type.
 
 ### Two async sinks
 

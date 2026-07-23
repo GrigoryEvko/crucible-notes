@@ -70,13 +70,15 @@ def buildPipeline(self, argv, logger):                 # 0x619d0, py 1146
     return (pipeline, args)                             # 2-tuple, py 1349
 ```
 
-> **NOTE — ordering of `processSerialTpbOpts` / `validateArgs` is firm.** Both run *before* any collector: their `GetAttrStr` call sites (L3377, L3537) precede the three collector `GetAttrStr` sites (L7946 / L8073 / L8167) in straight-line decompiled order, and their AddTraceback line numbers (around py 1146-region setup) precede py 1241–1245. So argument validation completes before the schedule is shaped — a collector never sees an unvalidated `Namespace`. (HIGH)
+> **NOTE — ordering of `processSerialTpbOpts` / `validateArgs` is firm.** Both run *before* any collector: their `GetAttrStr` call sites (L3377, L3537) precede the three collector `GetAttrStr` sites (L7946 / L8073 / L8167) in straight-line decompiled order, and their AddTraceback line numbers (around py 1146-region setup) precede py 1241–1245. So argument validation completes before the schedule is shaped — a collector never sees an unvalidated `Namespace`.
 
-> **QUIRK — the three collectors are concatenated, not interleaved or merged.** The name list is literally `fe + wd + be` via two `PyNumber_Add` operations (L8257, L8282) on three Python lists. There is no sort, no dependency resolution, no topological pass. **Whatever order each collector appends its names in IS the compile order.** A reimplementation that builds a graph and topologically sorts it will produce subtly different output; the binary just splices three lists end to end. (CERTAIN — two `PyNumber_Add` on the three collector return values.)
+> **QUIRK — the three collectors are concatenated, not interleaved or merged.** The name list is literally `fe + wd + be` via two `PyNumber_Add` operations (L8257, L8282) on three Python lists. There is no sort, no dependency resolution, no topological pass. **Whatever order each collector appends its names in IS the compile order.** A reimplementation that builds a graph and topologically sorts it will produce subtly different output; the binary just splices three lists end to end.
+>
+> *Anchors: two `PyNumber_Add` on the three collector return values.*
 
 ### The name special-case loop (`Watchpoint`, `BIRSim`)
 
-After concatenation, py 1252 rebuilds the list through a comprehension that tests each name string with `_Pyx_PyUnicode_Equals(name, K, 3)` for `K ∈ {MetaInferGoldens, InferGoldens, Watchpoint, BIRSim}` (decomp L8455–8472), appending survivors with `_Pyx_ListComp_Append` (L8514). This is a name-level filter/special-case applied while the names are still strings — **not** a collector. `Watchpoint` and `BIRSim` are therefore never emitted by `collectFrontend/Walrus/Backend`; they are debug/aux names that this loop recognises and routes specially. (HIGH — the four `Equals` constants and the comprehension append are explicit; the precise keep/drop semantics of each branch is MED.)
+After concatenation, py 1252 rebuilds the list through a comprehension that tests each name string with `_Pyx_PyUnicode_Equals(name, K, 3)` for `K ∈ {MetaInferGoldens, InferGoldens, Watchpoint, BIRSim}` (decomp L8455–8472), appending survivors with `_Pyx_ListComp_Append` (L8514). This is a name-level filter/special-case applied while the names are still strings — **not** a collector. `Watchpoint` and `BIRSim` are therefore never emitted by `collectFrontend/Walrus/Backend`; they are debug/aux names that this loop recognises and routes specially. The four `Equals` constants and the comprehension append are explicit in the decompile; the precise keep/drop semantics of each branch is **[INFERRED]**.
 
 ---
 
@@ -101,7 +103,7 @@ The slot stores are unambiguous (decomp L814–825):
 | `[2]` | `Frontend` | `v44[2] = n_u_Frontend` (L822) |
 | `[3]` | `StaticIOTranspose` | `v44[3] = n_u_StaticIOTranspose` (L825) |
 
-The goldens choice (py 1647) is a `framework == XLAInterface` test: `GetAttr 'framework'` (L731) → `PyObject_RichCompare` against the `XLAInterface` builtin (L748/L764/L769). True ⇒ `XLAInferGoldens` (L802), False ⇒ `InferGoldens` (L807). `MetaInferGoldens` is a string the binary knows (in the `Watchpoint`/name-filter set and the registry) but is **not** the operand of this slot store; it is selected elsewhere (the modular path / name-filter), not by `collectFrontendPipeline`'s default arm. (HIGH for the four-slot order; the `MetaInferGoldens` vs `InferGoldens` substitution path is MED.)
+The goldens choice (py 1647) is a `framework == XLAInterface` test: `GetAttr 'framework'` (L731) → `PyObject_RichCompare` against the `XLAInterface` builtin (L748/L764/L769). True ⇒ `XLAInferGoldens` (L802), False ⇒ `InferGoldens` (L807). `MetaInferGoldens` is a string the binary knows (in the `Watchpoint`/name-filter set and the registry) but is **not** the operand of this slot store; it is selected elsewhere (the modular path / name-filter), not by `collectFrontendPipeline`'s default arm. Where `MetaInferGoldens` *does* substitute for `InferGoldens` is **[INFERRED]** — no substitution site was traced.
 
 ### `--meta-module` arm (py 1642–1643)
 
@@ -113,7 +115,7 @@ return [HLOToTensorizer, Frontend]            # PyList_New, slots L909/L913, py 
 
 The two slot stores are `n_u_HLOToTensorizer` (L909–912) then `n_u_Frontend` (L913–915). The golden evaluator and `StaticIOTranspose` are **dropped**, and `self.logical_nc_config` is forced to `1` immediately before the list is built.
 
-> **GOTCHA — `--meta-module` does two things, and they are coupled.** It both collapses the front sub-list to `[HLOToTensorizer, Frontend]` *and* pins `logical_nc_config = 1` (decomp L896, the `tp_setattro(self, n_s_logical_nc_config_2, int_1)` store). A reimplementation that collapses the list but forgets the LNC pin will diverge on multi-NeuronCore configs: meta-module compilation is single-logical-NC by construction. The two effects are emitted in the same branch arm, in this order (LNC pin first, then list). (CERTAIN — both are explicit stores in the meta-module arm.)
+> **GOTCHA — `--meta-module` does two things, and they are coupled.** It both collapses the front sub-list to `[HLOToTensorizer, Frontend]` *and* pins `logical_nc_config = 1` (decomp L896, the `tp_setattro(self, n_s_logical_nc_config_2, int_1)` store). A reimplementation that collapses the list but forgets the LNC pin will diverge on multi-NeuronCore configs: meta-module compilation is single-logical-NC by construction. The two effects are emitted in the same branch arm, in this order (LNC pin first, then list) — both are explicit stores in the meta-module arm.
 
 > **GOTCHA — meta-module drops the goldens job too, not just `StaticIOTranspose`.** The meta-module arm is a *separate* `PyList_New` of length 2 holding only `HLOToTensorizer` and `Frontend`; it does not trim the tail of the default 4-list. Both the golden evaluator (`{XLA}InferGoldens`) and `StaticIOTranspose` are absent, because meta-module compiles a sub-module that is linked later and those steps are handled at link time.
 
@@ -134,9 +136,9 @@ The pass list is accumulated by repeated appends, gated by a handful of `Namespa
 
 Interned alternative-stage strings also present (selected by experimental flags): `experimental_loop_lsa`, `experimental_loop_shift_left`, `shift_left`.
 
-> **GOTCHA — `WalrusDriver` is one Job, not a chain.** The ~18 names above look like a pipeline but are *backend pass* names accumulated in `self.walrus_passes` and handed to a single `walrus_driver` invocation via `--walrus-passes`. The collector's return value is unambiguously the one-element `["WalrusDriver"]` (L2646–2649). A reimplementation that turns each pass name into a Job will fork ~18 processes instead of one. See [Part 8 — libwalrus Backend](../walrus/) for the in-process `EmbeddedWalrusDriver` alternative (`--enable-internal-fork-walrus`). (CERTAIN.)
+> **GOTCHA — `WalrusDriver` is one Job, not a chain.** The ~18 names above look like a pipeline but are *backend pass* names accumulated in `self.walrus_passes` and handed to a single `walrus_driver` invocation via `--walrus-passes`. The collector's return value is unambiguously the one-element `["WalrusDriver"]` (L2646–2649). A reimplementation that turns each pass name into a Job will fork ~18 processes instead of one. See [Part 8 — libwalrus Backend](../walrus/) for the in-process `EmbeddedWalrusDriver` alternative (`--enable-internal-fork-walrus`).
 
-> **NOTE — `birverifier` / `bir_sim` are pass names here, but `BIRVerifier` is a real Job elsewhere.** The `birverifier` string appended to `walrus_passes` (py 1723) is a `walrus_driver` pass, distinct from the `BIRVerifier` *Job* class that reuses the `walrus_driver` ELF in verify-only mode (see [3.4](job-registry.md)). The casing differs because one is a pass token and the other a Python class name. (HIGH.)
+> **NOTE — `birverifier` / `bir_sim` are pass names here, but `BIRVerifier` is a real Job elsewhere.** The `birverifier` string appended to `walrus_passes` (py 1723) is a `walrus_driver` pass, distinct from the `BIRVerifier` *Job* class that reuses the `walrus_driver` ELF in verify-only mode (see [3.4](job-registry.md)). The casing differs because one is a pass token and the other a Python class name.
 
 ---
 
@@ -168,9 +170,9 @@ The gate envelope and per-step gating:
 | B1 | `Kelper` | same | none — always, within the gated block | 1738 |
 | B2 | `NeffWrapper` | same | `enable_internal_neff_wrapper` | 1740–1741 |
 
-> **GOTCHA — `Backend` is gated on the legacy-standalone flag; `Kelper` is not.** Within the four-condition envelope, `Kelper` is appended unconditionally (L868–882, reached via `LABEL_83` from *both* the legacy and non-legacy arms), whereas `Backend` is appended only when `internal_run_standalone_legacy_compilation` is truthy (L946–951). So the two are not a single "legacy codegen block": the NEFF-linker `Kelper` runs in the common gated flow even when the experimental `Backend` executor does not. (HIGH — the `LABEL_83` fall-through from the non-legacy arm at L865 `if (!v34) goto LABEL_83` is explicit.)
+> **GOTCHA — `Backend` is gated on the legacy-standalone flag; `Kelper` is not.** Within the four-condition envelope, `Kelper` is appended unconditionally (L868–882, reached via `LABEL_83` from *both* the legacy and non-legacy arms), whereas `Backend` is appended only when `internal_run_standalone_legacy_compilation` is truthy (L946–951). So the two are not a single "legacy codegen block": the NEFF-linker `Kelper` runs in the common gated flow even when the experimental `Backend` executor does not. The `LABEL_83` fall-through from the non-legacy arm at L865 (`if (!v34) goto LABEL_83`) is explicit in the decompile.
 
-> **GOTCHA — the entire backend sub-list is empty in three flows.** If `enable_internal_modular_compilation` is true, OR `enable_internal_bir_linker` is true, OR `layer_unroll_factor <= 0`, the outer `if` is false and `collectBackendPipeline` returns `[]`. In the modular / bir-linker flows the `walrus_driver` output is consumed by those paths directly, so `Backend` / `Kelper` / `NeffWrapper` never run. The `layer_unroll_factor > 0` condition is a `PyObject_RichCompare` against `0` (L796/L801, `Py_GT`), so a zero or negative unroll factor also empties the block. (CERTAIN.)
+> **GOTCHA — the entire backend sub-list is empty in three flows.** If `enable_internal_modular_compilation` is true, OR `enable_internal_bir_linker` is true, OR `layer_unroll_factor <= 0`, the outer `if` is false and `collectBackendPipeline` returns `[]`. In the modular / bir-linker flows the `walrus_driver` output is consumed by those paths directly, so `Backend` / `Kelper` / `NeffWrapper` never run. The `layer_unroll_factor > 0` condition is a `PyObject_RichCompare` against `0` (L796/L801, `Py_GT`), so a zero or negative unroll factor also empties the block.
 
 ---
 
@@ -200,7 +202,9 @@ The gate envelope and per-step gating:
 
 **Modular / bir-linker / legacy-standalone-off flow:** backend sub-list empty; the schedule ends at `WalrusDriver` (its output consumed downstream).
 
-> **GOTCHA — `Frontend` runs the HLO frontend in-process; it does not fork `hlo-opt`.** `jobs/Frontend.so` contains no `hlo-opt` / `opt-driver` / `hlo_opt` string and no `Popen`: the HLO/penguin frontend runs in-process through `neuronxcc.starfish.penguin.Penguin` (`runPenguin` / `runXLAFrontend`), and `hlo-opt` ships as a standalone debug pass-driver ELF wired to no driver Job. `StaticIOTranspose` is likewise in-process — it writes `io_transposes.json` with Python's `json` module, not via an ELF. This page's table marks F2/F3 in-process for that reason. (HIGH — negative string evidence plus the absent `Popen`.)
+> **GOTCHA — `Frontend` runs the HLO frontend in-process; it does not fork `hlo-opt`.** `jobs/Frontend.so` contains no `hlo-opt` / `opt-driver` / `hlo_opt` string and no `Popen`: the HLO/penguin frontend runs in-process through `neuronxcc.starfish.penguin.Penguin` (`runPenguin` / `runXLAFrontend`), and `hlo-opt` ships as a standalone debug pass-driver ELF wired to no driver Job. `StaticIOTranspose` is likewise in-process — it writes `io_transposes.json` with Python's `json` module, not via an ELF. This page's table marks F2/F3 in-process for that reason.
+>
+> *Anchors: negative string evidence (no `hlo-opt`/`opt-driver`/`hlo_opt` literal) plus the absent `Popen`.*
 
 ---
 
@@ -218,13 +222,13 @@ def makePipeline(self, jobnames):                 # 0xbb80
 
 So the registry contributes **no ordering** — it is a pure name→class lookup plus `argparse`-group wiring. The compile order is fixed entirely by the collectors. `buildPipeline` then returns `(pipeline, args)` (py 1349), which `Daemon` / `runPipeline` unpack.
 
-> **NOTE — `RTLD_DEEPBIND` is why every Job `.so` can carry its own XLA/penguin symbols.** `loadAllJobs` imports each job module with deep-bind dlopen flags so statically-linked duplicate symbols (XLA, penguin) do not clash across the process. This is a property of the registry, not the pipeline, but it explains why each `jobs/*.so` is a self-contained 10–60 MB module rather than a thin wrapper. (HIGH.)
+> **NOTE — `RTLD_DEEPBIND` is why every Job `.so` can carry its own XLA/penguin symbols.** `loadAllJobs` imports each job module with deep-bind dlopen flags so statically-linked duplicate symbols (XLA, penguin) do not clash across the process. This is a property of the registry, not the pipeline, but it explains why each `jobs/*.so` is a self-contained 10–60 MB module rather than a thin wrapper.
 
 ---
 
 ## 7. Execution — `runPipeline` and fatal exits
 
-`runPipeline` (`0x7a3a0`, py 1513–1572) takes the `(pipeline, args)` from `buildPipeline`, sets up `GlobalState` (`InitGlobalState` / `GetGlobalState` / `FinalizeGlobalState`), `chdir`s into the work dir (`getWorkingDir` / `getLaunchDir` / `checkArtifactDir`), logs `"Intermediate files stored in %s …"`, forks a progress-dot child (`print_dot_context` / `print_dots`, a `@contextmanager` fork wrapper, MED), runs the pipeline, then emits metrics (`logMetrics` / `submitMetrics` / `tallyMetrics`). The pipeline body runs each Job sequentially in `Pipeline.runSingleInput` (`0xe030`) with per-job timers and the log lines `"Running pipeline %s %d"`, `"Starting job %s"`, `"Finished job %s"`, `"Finished pipeline %s"`.
+`runPipeline` (`0x7a3a0`, py 1513–1572) takes the `(pipeline, args)` from `buildPipeline`, sets up `GlobalState` (`InitGlobalState` / `GetGlobalState` / `FinalizeGlobalState`), `chdir`s into the work dir (`getWorkingDir` / `getLaunchDir` / `checkArtifactDir`), logs `"Intermediate files stored in %s …"`, forks a progress-dot child (`print_dot_context` / `print_dots`, reconstructed as a `@contextmanager` fork wrapper — **[INFERRED]**), runs the pipeline, then emits metrics (`logMetrics` / `submitMetrics` / `tallyMetrics`). The pipeline body runs each Job sequentially in `Pipeline.runSingleInput` (`0xe030`) with per-job timers and the log lines `"Running pipeline %s %d"`, `"Starting job %s"`, `"Finished job %s"`, `"Finished pipeline %s"`.
 
 A native-spawning Job's failure (non-zero `subprocess` return) propagates up as a `CalledProcessError` / `'Child process job "%s" exited abnormally!'`. The top-level fatal wrap lives in `CommandDriver.run` (`0x1c510`), which runs the subcommand inside a `multiprocessing.Process`, `join()`s it, reads `process.exitcode`, and routes through `handleError` (`0x30470`):
 
@@ -236,7 +240,7 @@ A native-spawning Job's failure (non-zero `subprocess` return) propagates up as 
 
 `run_subcommand_in_process` ends with `logging.shutdown()` + `sys.exit(<code>)`.
 
-> **GOTCHA — the exact exitcode→`[F13x]` thresholds are a derived branch, not a clean switch.** Ownership of the three codes by `CommandDriver.run` / `handleError` is HIGH (the interned strings live in `CommandDriver.so` and are selected on `process.exitcode`), but the precise code→string mapping (e.g. which negative exitcodes map to `[F137]` vs `[F139]`) is a reconstructed branch — treat the exitcode boundaries as **MED**. The negative-exitcode → `[F137]` (OOM/kill) reading is the strongest of the three. (MED on thresholds.)
+> **GOTCHA — the exact exitcode→`[F13x]` thresholds are a derived branch, not a clean switch.** Ownership of the three codes by `CommandDriver.run` / `handleError` is anchored — the interned strings live in `CommandDriver.so` and are selected on `process.exitcode`. But the precise code→string mapping (e.g. which negative exitcodes map to `[F137]` vs `[F139]`) is a reconstructed branch, so treat the exitcode boundaries as **[INFERRED]**. The negative-exitcode → `[F137]` (OOM/kill) reading is the best-supported of the three.
 
 ---
 
@@ -259,7 +263,7 @@ The job list is shaped by `Namespace` attributes the collectors read. `--optleve
 | `--enable-bir-vnsplitter` (`enable_bir_vnsplitter`) | gates `vn_splitter` / `bir_splitter` passes | collectWalrus body |
 | `--neuroncore-pipeline-cores` (`neuroncore_pipeline_cores`) | gates pipeline-core walrus passes | collectWalrus body |
 
-> **GOTCHA — `--optlevel` is a string that tunes flags, not a job toggle.** `optlevel` is read as a string `"0".."3"` (default `"2"`, L5519) and shapes the `--walrus-passes` set plus the `enable_internal_*` derivations the collectors read. It changes the top-level job list only *indirectly* — when `"0"` flips `enable_internal_new_backend`, or when it selects the modular / bir-linker flow that empties the backend sub-list. A reimplementer wiring `--optlevel` straight into the job list is wrong. (HIGH.)
+> **GOTCHA — `--optlevel` is a string that tunes flags, not a job toggle.** `optlevel` is read as a string `"0".."3"` (default `"2"`, L5519) and shapes the `--walrus-passes` set plus the `enable_internal_*` derivations the collectors read. It changes the top-level job list only *indirectly* — when `"0"` flips `enable_internal_new_backend`, or when it selects the modular / bir-linker flow that empties the backend sub-list. A reimplementer wiring `--optlevel` straight into the job list is wrong.
 
 ---
 
@@ -267,18 +271,18 @@ The job list is shaped by `Namespace` attributes the collectors read. `--optleve
 
 The five structural claims and what pins each:
 
-1. **`buildPipeline` is at `0x619d0`** — CERTAIN. The decompiled symbol is `__pyx_pw_9neuronxcc_6driver_8commands_14CompileCommand_14CompileCommand_9buildPipeline_0x619d0` — the Cython public-wrapper mangling carries both the qualified name `CompileCommand.buildPipeline` and the offset `0x619d0`; the file name itself embeds `_9buildPipeline_0x619d0`.
+1. **`buildPipeline` is at `0x619d0`.** The decompiled symbol is `__pyx_pw_9neuronxcc_6driver_8commands_14CompileCommand_14CompileCommand_9buildPipeline_0x619d0` — the Cython public-wrapper mangling carries both the qualified name `CompileCommand.buildPipeline` and the offset `0x619d0`; the file name itself embeds `_9buildPipeline_0x619d0`.
 
-2. **The three-collector concatenation order is front → walrus → backend** — CERTAIN. `GetAttrStr` of `collectFrontendPipeline` (L7946), `collectWalrusPipeline` (L8073), `collectBackendPipeline` (L8167) appear in that decompiled order, each anchored to py 1241 / 1243 / 1245, joined by two `PyNumber_Add` (L8257, L8282). No reorder occurs between.
+2. **The three-collector concatenation order is front → walrus → backend.** `GetAttrStr` of `collectFrontendPipeline` (L7946), `collectWalrusPipeline` (L8073), `collectBackendPipeline` (L8167) appear in that decompiled order, each anchored to py 1241 / 1243 / 1245, joined by two `PyNumber_Add` (L8257, L8282). No reorder occurs between.
 
-3. **Default front order is `[HLOToTensorizer, {XLA}InferGoldens, Frontend, StaticIOTranspose]`** — HIGH. The four `PyList` slot stores are explicit at L817/819/822/825 with constants `n_u_HLOToTensorizer`, the goldens choice, `n_u_Frontend`, `n_u_StaticIOTranspose`. The slot indices (`*v44`, `v44[1]`, `v44[2]`, `v44[3]`) fix the order. The only variability is `[1]` (goldens choice), driven by the `framework == XLAInterface` RichCompare (L748–807).
+3. **Default front order is `[HLOToTensorizer, {XLA}InferGoldens, Frontend, StaticIOTranspose]`.** The four `PyList` slot stores are explicit at L817/819/822/825 with constants `n_u_HLOToTensorizer`, the goldens choice, `n_u_Frontend`, `n_u_StaticIOTranspose`. The slot indices (`*v44`, `v44[1]`, `v44[2]`, `v44[3]`) fix the order. The only variability is `[1]` (goldens choice), driven by the `framework == XLAInterface` RichCompare (L748–807).
 
-4. **`--meta-module` collapses front to `[HLOToTensorizer, Frontend]` and pins `logical_nc_config = 1`** — HIGH. The meta-module arm (reached when `args.meta_module` is truthy, L679/L687/L894) does `tp_setattro(self, logical_nc_config, int_1)` (L896, py 1642) then `PyList_New` with `n_u_HLOToTensorizer` (L909) and `n_u_Frontend` (L913) — exactly two slots, py 1643.
+4. **`--meta-module` collapses front to `[HLOToTensorizer, Frontend]` and pins `logical_nc_config = 1`.** The meta-module arm (reached when `args.meta_module` is truthy, L679/L687/L894) does `tp_setattro(self, logical_nc_config, int_1)` (L896, py 1642) then `PyList_New` with `n_u_HLOToTensorizer` (L909) and `n_u_Frontend` (L913) — exactly two slots, py 1643.
 
-5. **The backend sub-list is gated by a four-condition AND, and `Kelper` is unconditional within it** — HIGH. The nested-`if` reads `enable_internal_modular_compilation` (L743) → `enable_internal_bir_linker` (L769) → `layer_unroll_factor > 0` (L796/801) → `internal_run_standalone_legacy_compilation` (L836); `Backend` appends only on the legacy arm (L946), and *both* arms reach `LABEL_83` (the non-legacy arm via `if (!v34) goto LABEL_83`, L865) which appends `Kelper` (L868–882). `NeffWrapper` is then gated by `enable_internal_neff_wrapper` (L886/L912).
+5. **The backend sub-list is gated by a four-condition AND, and `Kelper` is unconditional within it.** The nested-`if` reads `enable_internal_modular_compilation` (L743) → `enable_internal_bir_linker` (L769) → `layer_unroll_factor > 0` (L796/801) → `internal_run_standalone_legacy_compilation` (L836); `Backend` appends only on the legacy arm (L946), and *both* arms reach `LABEL_83` (the non-legacy arm via `if (!v34) goto LABEL_83`, L865) which appends `Kelper` (L868–882). `NeffWrapper` is then gated by `enable_internal_neff_wrapper` (L886/L912).
 
-**Limits.** Not fully traced:
-- The exact code→`[F134]/[F137]/[F139]` exitcode thresholds in `handleError` (§7) — branch reconstructed, MEDIUM.
-- Whether `MetaInferGoldens` ever substitutes for `InferGoldens` in slot `[1]`: the modular/meta path may route goldens through `MetaInferGoldens`, but the default-arm store is `InferGoldens`/`XLAInferGoldens` only — MEDIUM.
-- The keep/drop semantics of each branch in the py-1252 name-filter loop (`Watchpoint` / `BIRSim` / goldens `Equals` tests) — the four `Equals` constants are certain, the per-branch action MEDIUM.
-- `print_dots` / `print_dot_context` fork mechanics in `runPipeline` — MEDIUM (`@contextmanager` reconstruction).
+**Limits.** Not fully traced — each of these is **[INFERRED]**:
+- The exact code→`[F134]/[F137]/[F139]` exitcode thresholds in `handleError` (§7); the branch is reconstructed.
+- Whether `MetaInferGoldens` ever substitutes for `InferGoldens` in slot `[1]`: the modular/meta path may route goldens through `MetaInferGoldens`, but the default-arm store is `InferGoldens`/`XLAInferGoldens` only.
+- The keep/drop semantics of each branch in the py-1252 name-filter loop (`Watchpoint` / `BIRSim` / goldens `Equals` tests); the four `Equals` constants themselves are read directly, only the per-branch action is reconstructed.
+- `print_dots` / `print_dot_context` fork mechanics in `runPipeline` (`@contextmanager` reconstruction).

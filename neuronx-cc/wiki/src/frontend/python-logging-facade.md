@@ -132,7 +132,7 @@ So **`to_log_level(n)` returns the smallest defined `LogLevel` whose value is �
 
 > **GOTCHA —** `to_log_level(35)` rounds 35 up to **`ERROR(40)`** — the wrong level for the intended "user-facing output + progress dots" mode (which needs `USER(60)`). This is the entire motivation for the magic-35 special case below: the façade must intercept 35 *before* it reaches `lower_bound`. A reimplementation that simply forwards every CLI integer through `to_log_level` will silently route the user/dots mode to ERROR.
 
-> **NOTE —** for `n > 70` no key satisfies `key ≥ n`, so `lower_bound` returns `end()` and the `->second` deref is undefined. `OFF=70` is the maximum documented input, so no in-tree caller is known to reach this; tagged MEDIUM because the path is not proven unreachable. (G2.)
+> **NOTE —** for `n > 70` no key satisfies `key ≥ n`, so `lower_bound` returns `end()` and the `->second` deref is undefined. `OFF=70` is the maximum documented input, so no in-tree caller is known to reach this. Unreachability is **[INFERRED]** — the path was not proven dead. (G2.)
 
 ---
 
@@ -225,13 +225,13 @@ A class with mutable class-level attributes used as process globals: `_initializ
 
 Instance methods `logDebug/logInfo/logWarning/logError` (`:78-88`) join varargs via `_concat_msgs` (`"".join(str(m) …)`, `:194-195`) and emit with `extra=self.metadata_opt`; the `logf*` variants (`:91-101`) pass `*msgs` straight to stdlib for `%`-style formatting. There is **no** `logFatal`/`logUser`/`logTrace` instance method. Module-level wrappers `logDebug…logfError` (`:216-245`) delegate to a lazily-built `_default_logger()` (channel `"global"`).
 
-> **GOTCHA —** `Logger.root_logger()` (`logging.py:67-71`) references `GlobalLoggerState._root_logger`, a field that is **never defined** on the class (the real field is `_default_logger`, `:47`). Calling `root_logger()` raises `AttributeError`. It is dead/buggy API with no in-tree caller in the readable sources. Do not reproduce it; use `_default_logger()`. (HIGH — G3, source bug.)
+> **GOTCHA —** `Logger.root_logger()` (`logging.py:67-71`) references `GlobalLoggerState._root_logger`, a field that is **never defined** on the class (the real field is `_default_logger`, `:47`). Calling `root_logger()` raises `AttributeError`. It is dead/buggy API with no in-tree caller in the readable sources. Do not reproduce it; use `_default_logger()`. (G3, source bug.)
 
 ### Format constants & runtime mutation
 
 Three formats (`logging.py:21-23`): `user_logging_format='%(asctime)s %(message)s'`; the metadata-bearing `developer_logging_format='%(asctime)s %(levelname)s %(process)d %(metadata_opt)s[%(name)s]: %(message)s'`; and the tty-only red `tty_err_user_logging_format`. `set_logfile_log_level`/`set_console_log_level` (`:140-159`) take a `LogLevel` **directly** (no int→enum mapping), re-`setLevel` every handler, then recompute `_min_log_level()` (`:181-187`, the chattier of console/logfile, in python ints) and re-`setLevel` all registered loggers. `flush_logfile`/`flush_console` flush each handler; `shutdown` (`:176-177`) calls `logging.shutdown()`.
 
-> **NOTE —** the driver's own `developer_logging_format` (in `CommandDriver.…so`) has **no** `%(metadata_opt)s` field — there are two developer formats. The metadata-BEARING one (`logging.py:23`) raises `KeyError` on a record that omits the `metadata_opt` extra, but `Logger` always passes `extra=self.metadata_opt`, so it is safe. A reimplementer mixing record sources across the two formats must supply the extra. (HIGH.)
+> **NOTE —** the driver's own `developer_logging_format` (in `CommandDriver.…so`) has **no** `%(metadata_opt)s` field — there are two developer formats. The metadata-BEARING one (`logging.py:23`) raises `KeyError` on a record that omits the `metadata_opt` extra, but `Logger` always passes `extra=self.metadata_opt`, so it is safe. A reimplementer mixing record sources across the two formats must supply the extra.
 
 ---
 

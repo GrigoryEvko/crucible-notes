@@ -184,7 +184,7 @@ A mixed family: a handful of rich ops (`Activation`, `TensorReduce`, `Pool`, `Ra
 | `InstMaxIndexAndMatchReplace` (91) | `0x415250` (jmp→MatchReplace) / `0x43d6d0` (jmp→MatchReplace) | `imm_value` `+0xF0` SerializableFloat (inherited) |
 | `InstLoadActFuncSet` (6) | `0x4155c0` / `0x435850` | `act_func_set_id` `+0xF0` MA\<int\> opt |
 | `InstDveReadAccumulator` (102) | `0x415410` / `0x43dbf0` | `negated` `+0xF0` MaybeAffine\<u8\>(=bool) opt |
-| `InstTongaReduceMacroSymbolic` (109) | `createFromJson` `0x2d08b0` / `0x2d15d0` | `op` `+0xF0` AluOpType bypass(0) · `is_first_reduce` bool (HIGH) · `reduce_axes` array `vector<axis>` · `debug` OpDebugInfo |
+| `InstTongaReduceMacroSymbolic` (109) | `createFromJson` `0x2d08b0` / `0x2d15d0` | `op` `+0xF0` AluOpType bypass(0) · `is_first_reduce` bool [INFERRED] · `reduce_axes` array `vector<axis>` · `debug` OpDebugInfo |
 | `InstActivationReadAccumulator` (101) | `0x40d340` (`ret`) | **none** |
 | `InstReciprocal` (21) | `0x405e10` (`ret`) | **none** |
 | `InstGenericRelu` (2) | (no real body; PLT thunk `0x1756a0`) | **none** (header-only) |
@@ -446,7 +446,7 @@ Instruction
 | `InstNoOp` (12) | `0x405060` (`ret`) | **none** |
 | `InstGeneric` (0) | (inherit) | **none** (base Generic) |
 
-Three structural notes on this family. The loop bounds are spelled `lb`/`ub`/`stride` alongside `name` — there is no `loop_count`, `trip_count`, or `branch_target` key anywhere in `libBIR`. `BranchHint` (80) carries its own keys but sits **outside** the `EventSemaphore` thunk chain (consistent with `byte_7858CE[3]=0`), which is why it is drawn detached in the tree above. And the `Loop`/`DynamicForLoop`/`DoWhile` container fields are parsed inline inside `createFromJson` (`0x3243b0`/`0x325380`/`0x25e8e0`) rather than by a flat `readFieldsFromJson`, so their offsets here are read off `toJson` alone and carry HIGH rather than CERTAIN confidence.
+Three structural notes on this family. The loop bounds are spelled `lb`/`ub`/`stride` alongside `name` — there is no `loop_count`, `trip_count`, or `branch_target` key anywhere in `libBIR`. `BranchHint` (80) carries its own keys but sits **outside** the `EventSemaphore` thunk chain (consistent with `byte_7858CE[3]=0`), which is why it is drawn detached in the tree above. And the `Loop`/`DynamicForLoop`/`DoWhile` container fields are parsed inline inside `createFromJson` (`0x3243b0`/`0x325380`/`0x25e8e0`) rather than by a flat `readFieldsFromJson`, so their offsets here are read off `toJson` alone, with no reader-side confirmation.
 
 ---
 
@@ -472,14 +472,14 @@ Three structural notes on this family. The loop bounds are spelled `lb`/`ub`/`st
 
 ## Kernel / custom-op family (4 ops)
 
-The kernel ops are the richest records in BIR-JSON. Non-`MaybeAffine` vector/string offsets are marked HIGH (their field↔key pairing is by `lea`/`operator[]` adjacency); the `MaybeAffine` members are CERTAIN.
+The kernel ops are the richest records in BIR-JSON. The `MaybeAffine` members are byte-pinned; the non-`MaybeAffine` vector/string offsets are **[INFERRED]** — their field↔key pairing rests on `lea`/`operator[]` adjacency.
 
 | Op (IT) | readFields / toJson | Op-specific keys (key · ~offset · type) |
 |---|---|---|
-| `InstCustomOp` (53) | `0x433aa0` / `0x439b60` | `opFunctionName` `+0xF0` string · `opLibFile` `+0x110` string · `ulib_to_ucode_version` `+0x130` · `ulib_to_isa_version` `+0x150` · `is_builtin` `+0x170` MA\<bool\> · `srcsShape` `+0x198` vector (HIGH) · `dstsShape` `+0x1B0` vector (HIGH) |
-| `InstBIRKernel` (54) | `0x433d40` / `0x439ed0` | `kernel_name` `+0xF0` string · `srcs_shape` `+0x110` · `dsts_shape` `+0x128` · `kernel_attrs` `+0x140` (HIGH) · `sb_buf_shape` `+0x150` · `psum_buf_shape` `+0x158` · `auto_cast` `+0x168` MA\<bool\> · `is_causal` `+0x188` MA\<bool\> · `fused_rmsnorm` `+0x1A8` MA\<bool\> · `norm_type` `+0x1D0` MA\<i32\> · `lnc_size` `+0x1F8` MA\<i32\> · `store_add` `+0x220` MA\<bool\> · `quant_kernel` `+0x250` MA\<bool\> · `output_layout` `+0x2A0` MA\<i32\> · `lower_bound` (last key, HIGH) |
-| `InstNKIKernel` (55) | `0x430410` / `0x43a4f0` | `func` `+0xF8` `FunctionArgumentMap` · `func_args` `+0x120` `FunctionArgumentMap` · `func_outs` `+0x148` vector (HIGH) · `sb_buf_shape` `+0x150` · `psum_buf_shape` `+0x158` · `address_rotation_scope_val` `+0x15C` `AddressRotationScope` · `kernel_source_val` `+0x160` `KernelSource` |
-| `InstNKIKLIRKernel` (56) | `0x434870` / `0x43a990` | `klir_binary` `+0xF0` string/blob · `kernel_format` `+0x110` string · `nki_binary_version_identifier` `+0x130` string · `enable_device_dump` `+0x150` MA\<bool\> · `func_args` `+0x1B0` (HIGH) · `func_outs` `+0x1DC` · `sb_buf_shape` `+0x1E0` · `psum_buf_shape` `+0x1EC` · `address_rotation_scope_val` (HIGH) |
+| `InstCustomOp` (53) | `0x433aa0` / `0x439b60` | `opFunctionName` `+0xF0` string · `opLibFile` `+0x110` string · `ulib_to_ucode_version` `+0x130` · `ulib_to_isa_version` `+0x150` · `is_builtin` `+0x170` MA\<bool\> · `srcsShape` `+0x198` vector [INFERRED] · `dstsShape` `+0x1B0` vector [INFERRED] |
+| `InstBIRKernel` (54) | `0x433d40` / `0x439ed0` | `kernel_name` `+0xF0` string · `srcs_shape` `+0x110` · `dsts_shape` `+0x128` · `kernel_attrs` `+0x140` [INFERRED] · `sb_buf_shape` `+0x150` · `psum_buf_shape` `+0x158` · `auto_cast` `+0x168` MA\<bool\> · `is_causal` `+0x188` MA\<bool\> · `fused_rmsnorm` `+0x1A8` MA\<bool\> · `norm_type` `+0x1D0` MA\<i32\> · `lnc_size` `+0x1F8` MA\<i32\> · `store_add` `+0x220` MA\<bool\> · `quant_kernel` `+0x250` MA\<bool\> · `output_layout` `+0x2A0` MA\<i32\> · `lower_bound` (last key) [INFERRED] |
+| `InstNKIKernel` (55) | `0x430410` / `0x43a4f0` | `func` `+0xF8` `FunctionArgumentMap` · `func_args` `+0x120` `FunctionArgumentMap` · `func_outs` `+0x148` vector [INFERRED] · `sb_buf_shape` `+0x150` · `psum_buf_shape` `+0x158` · `address_rotation_scope_val` `+0x15C` `AddressRotationScope` · `kernel_source_val` `+0x160` `KernelSource` |
+| `InstNKIKLIRKernel` (56) | `0x434870` / `0x43a990` | `klir_binary` `+0xF0` string/blob · `kernel_format` `+0x110` string · `nki_binary_version_identifier` `+0x130` string · `enable_device_dump` `+0x150` MA\<bool\> · `func_args` `+0x1B0` [INFERRED] · `func_outs` `+0x1DC` · `sb_buf_shape` `+0x1E0` · `psum_buf_shape` `+0x1EC` · `address_rotation_scope_val` [INFERRED] |
 
 > **GOTCHA —** the kernel ops use `opFunctionName`/`opLibFile` (CustomOp) and `func`/`klir_binary` (the NKI trio). There is no `function_name`, `lib_file_name`, `kernel_text`, or `opaque` key. Separately: `NKIKernel`, `NKIKLIRKernel`, and `Call` assert "Not Implemented" in `sameInst` (structural equality) only — their JSON (de)serializers are complete.
 
@@ -525,13 +525,13 @@ The dominant shape of the catalog: **a large fraction of ops carry zero op-speci
 
 The strongest claims on this page and their anchors in `libBIR.so` cp310:
 
-- **`InstMatmultBase::toJson` (`0x4358b0`)** references exactly the 13 key literals tabulated and no more, by enumeration of its `lea …, a<Key>` sites. **CERTAIN.**
-- **`InstActivation::toJson` (`0x435450`)** references exactly 11 keys; `op0`/`op1` resolve via the rodata substrings `aCompareOp0+8`/`aCompareOp1+8` at `0x43571f`/`0x4356df`. **CERTAIN.**
-- **The DMA tree split**: `InstDMADescriptor::toJson` (`0x43c3e0`) chains `Instruction::toJson` and emits `num_tiling_dimensions`, while `InstDMA::toJson` (`0x4363d0`) emits `queue` and chains `Instruction::toJson` — the descriptor subtree is provably **not** under `InstDMA`. **CERTAIN.**
-- **`InstAbstractCopy::readFieldsFromJson` (`0x416b30`)** reads `dma_qos` into `[r12+0F0h]` via `from_json<DMAQoSClass>` (jmp `0x416ca8`). **CERTAIN.**
-- **The 110-op partition** is cross-checked against the 110-case `InstructionType2string` (`0x2d5bf0`), verified in [the opcode-enum page](./instruction-type.md). **CERTAIN.**
+- **`InstMatmultBase::toJson` (`0x4358b0`)** references exactly the 13 key literals tabulated and no more, by enumeration of its `lea …, a<Key>` sites.
+- **`InstActivation::toJson` (`0x435450`)** references exactly 11 keys; `op0`/`op1` resolve via the rodata substrings `aCompareOp0+8`/`aCompareOp1+8` at `0x43571f`/`0x4356df`.
+- **The DMA tree split**: `InstDMADescriptor::toJson` (`0x43c3e0`) chains `Instruction::toJson` and emits `num_tiling_dimensions`, while `InstDMA::toJson` (`0x4363d0`) emits `queue` and chains `Instruction::toJson` — the descriptor subtree is provably **not** under `InstDMA`.
+- **`InstAbstractCopy::readFieldsFromJson` (`0x416b30`)** reads `dma_qos` into `[r12+0F0h]` via `from_json<DMAQoSClass>` (jmp `0x416ca8`).
+- **The 110-op partition** is cross-checked against the 110-case `InstructionType2string` (`0x2d5bf0`), verified in [the opcode-enum page](./instruction-type.md).
 
-Ceiling on the rest: families fully covered at CERTAIN for their primary keys are matmul/MX, activation/reduce/pool, copy/tensor-scalar/tensor-tensor, the three DMA trees, BN, RNG, and the control-flow/queue/sync core. Sampled at **HIGH** (offset-precise but not every member byte-pinned): the deep `CollectiveCompute` field block below `cc_type_hint` (`pipe_id`/`recv_from_rank`/`permute_chain`/`src1_bitmap`/`unique_tensors`), the kernel-op non-`MaybeAffine` vector/string offsets (`srcsShape`/`sb_buf_shape`/`func_outs`/`kernel_attrs`/`lower_bound`), and the structured-control container offsets (`Loop`/`DynamicForLoop`/`DoWhile`, read from `toJson` only). The `MaybeAffine<T>` per-field ctor defaults (beyond `perf_mode`=None and the bool-false sentinels) are the uniform 0x28-B zero/identity init and are marked "ctor", not byte-traced per field. No NEFF/BIR-JSON fixture round-trip byte-diff was performed.
+Ceiling on the rest: families fully byte-pinned for their primary keys are matmul/MX, activation/reduce/pool, copy/tensor-scalar/tensor-tensor, the three DMA trees, BN, RNG, and the control-flow/queue/sync core. Sampled only — offset-precise but not every member byte-pinned, so **[INFERRED]**: the deep `CollectiveCompute` field block below `cc_type_hint` (`pipe_id`/`recv_from_rank`/`permute_chain`/`src1_bitmap`/`unique_tensors`), the kernel-op non-`MaybeAffine` vector/string offsets (`srcsShape`/`sb_buf_shape`/`func_outs`/`kernel_attrs`/`lower_bound`), and the structured-control container offsets (`Loop`/`DynamicForLoop`/`DoWhile`, read from `toJson` only). The `MaybeAffine<T>` per-field ctor defaults (beyond `perf_mode`=None and the bool-false sentinels) are the uniform 0x28-B zero/identity init and are marked "ctor", not byte-traced per field. No NEFF/BIR-JSON fixture round-trip byte-diff was performed.
 
 ---
 

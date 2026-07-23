@@ -203,7 +203,9 @@ belongs to; `CCMod(rank, group_size, rg_id)` = its lane within that shard.
 > (=27) is `CCDiv`, and there is **no case for 28**. A `CCMod` node only ever reaches JSON as a
 > sub-tree of a `CCDiv`/`Sum` that recurses, or is resolved/lowered before BIR-JSON emission.
 > A serializer that round-trips a top-level `CCMod` will hit the `default:` arm
-> (`report_fatal_error("Unsupported expression kind")`). [absence = HIGH]
+> (`report_fatal_error("Unsupported expression kind")`). The claim rests on the absence of a
+> case, so it is **[INFERRED]** — a case reachable only through an unenumerated jump table
+> would not show up here.
 
 ### ShardId (kind 13) — the shard identifier
 
@@ -310,8 +312,8 @@ return std::string(reg + 296, reg + 296 + len@+304) // same Register-name read
 
 ### OpaqueFnExpr — the escape hatch
 
-`OpaqueFnExpr` (vtable libwalrus `0x3da9e70`; own kind value not isolated — ctor inlined,
-MEDIUM) wraps an opaque function over a set of AP indices
+`OpaqueFnExpr` (vtable libwalrus `0x3da9e70`; own kind value not isolated — the ctor is
+inlined) wraps an opaque function over a set of AP indices
 (`keepApIndicies`/`dropApIndicies`/`substituteIndices`/`projectMin`/`projectMax` manipulate
 that set). Its `isLegalDelinearizedAddress` (`0x18e4910`) is a hard `return 0` — an opaque
 function can never be statically delinearized, so its presence forces the runtime/indirect
@@ -463,13 +465,13 @@ selects which pair runs; see [Wire Versioning](wire-versioning.md).
 
 Verified firsthand against the cp310 decompiled sidecars and `readelf` relocs:
 
-- **`regref@+0x40`** — CERTAIN. Witnessed in `fromJsonv2` (`*(node+64) = getRegisterByName(...)`), `toJsonv2` case 7 (`*(v168+296)` off `v6[8]`), and `BirIntRuntimeValue::getNameStr` (`*(this+64)`). Three independent reads agree.
-- **CC kind tags 27 / 28** — CERTAIN. `BinaryExpr_ctor(node, 27, …)` and `(…, 28, …)` literal in `createCCDivExpr` / `createCCModExpr`; distinct vtables `off_3DA9A48` / `off_3DA9B98`.
-- **vtable slot 12 = `+0x60`** — CERTAIN. Computed for six subclasses from `.data.rel.ro` relocs; every one resolves to offset `0x60`, slot index 12. AffineIdx base reloc at `0x3da8808` confirms independently.
-- **`IntRuntimeValueBase` role** (opaque loop-invariant register scalar) — CERTAIN on the `+0x40`/kind-7/`getLoopdepth→−1` mechanics; the `+0x20` idx-vector (HIGH) and `+0x30` flags (MEDIUM) are reconstructed by role, not pinned to a named type.
-- **`isLegalDelinearizedAddress` rules** — CERTAIN on the six impls read in full; the `DivLikeExpr` gcd branch's `requirePredicate` denominator argument (`floor_div(denom,g)`) is HIGH (the gcd loop is unambiguous; the exact arg threading is reconstructed).
+- **`regref@+0x40`** — witnessed in `fromJsonv2` (`*(node+64) = getRegisterByName(...)`), `toJsonv2` case 7 (`*(v168+296)` off `v6[8]`), and `BirIntRuntimeValue::getNameStr` (`*(this+64)`). Three independent reads agree.
+- **CC kind tags 27 / 28** — `BinaryExpr_ctor(node, 27, …)` and `(…, 28, …)` literal in `createCCDivExpr` / `createCCModExpr`; distinct vtables `off_3DA9A48` / `off_3DA9B98`.
+- **vtable slot 12 = `+0x60`** — computed for six subclasses from `.data.rel.ro` relocs; every one resolves to offset `0x60`, slot index 12. AffineIdx base reloc at `0x3da8808` confirms independently.
+- **`IntRuntimeValueBase` role** (opaque loop-invariant register scalar) — the `+0x40`/kind-7/`getLoopdepth→−1` mechanics are read directly; the `+0x20` idx-vector and `+0x30` flags are **[INFERRED]** by role, not pinned to a named type.
+- **`isLegalDelinearizedAddress` rules** — the six impls were read in full; the `DivLikeExpr` gcd branch's `requirePredicate` denominator argument (`floor_div(denom,g)`) is **[INFERRED]** — the gcd loop is unambiguous, but the exact arg threading is reconstructed.
 
-Open items (not pinned): kind values 8/11 within the 6..13 range (host `InvariantId`/`APIndexLike`, MEDIUM — ctors inlined); `OpaqueFnExpr`'s own kind value (its behaviour is CERTAIN); the literal field offset of `AffineIV`'s `BirLoopAxis` back-pointer (reached only via the vtable axis-name accessor). No NEFF/BIR-JSON fixture was available; all offsets are cross-checked via ctor ⇄ factory ⇄ serializer agreement across libBIR and libwalrus.
+Open items (not pinned): kind values 8/11 within the 6..13 range (host `InvariantId`/`APIndexLike` — ctors inlined); `OpaqueFnExpr`'s own kind value (its behaviour is read in full); the literal field offset of `AffineIV`'s `BirLoopAxis` back-pointer (reached only via the vtable axis-name accessor). No NEFF/BIR-JSON fixture was available; all offsets are cross-checked via ctor ⇄ factory ⇄ serializer agreement across libBIR and libwalrus.
 
 ## Cross-References
 
