@@ -28,13 +28,14 @@ integrity sibling [`nsm.md`](./nsm.md), and the fault→isolation→IRQ flow in
 > `csrs/sprot/user_remapper.json`, 27,816 B — both RTL-generated, binary-derived vendor
 > data and citeable as such). Counts and reset values are `jq`-computed from those two
 > files; cross-generation figures come from the Sunda/Mariana arch-header twins of the
-> same schema. The match/rewrite **boolean algebra** (§3) is `[MED · INFERRED]` from
+> same schema. The page default is `[HIGH · OBSERVED]`; claims that depart from it carry
+> an explicit tag. The match/rewrite **boolean algebra** (§3) is `[MED · INFERRED]` from
 > field names + semantics — the schema describes the storage, not the comparator RTL.
 > Arch revision string (consts header): `cayman_golden_tapeout_candidate_2_2023_07_21`.
 
 ---
 
-## 1. The two variants at a glance `[HIGH · OBSERVED]`
+## 1. The two variants at a glance
 
 | property | `amzn_remapper` (privileged) | `user_remapper` (guest) |
 |----------|------------------------------|-------------------------|
@@ -72,11 +73,11 @@ integrity sibling [`nsm.md`](./nsm.md), and the fault→isolation→IRQ flow in
 > the fabric edge. The two are **disjoint, complementary** virtualization layers — VMID
 > = which guest VM owns the buffer; AXI ID = which hardware master issued the bus
 > transaction. Treat any "VMID gating" framing of the remapper as resolved here to
-> **address-region + master-ID** gating. `[HIGH · OBSERVED]`
+> **address-region + master-ID** gating.
 
 ---
 
-## 2. Address map (bundle layout) `[HIGH · OBSERVED]`
+## 2. Address map (bundle layout)
 
 Register `AddressOffset` is **relative to its bundle base**. `BundleSizeInBytes` and the
 regfile `SizeInBytes` are **hex strings** throughout (`tdma_model` convention); the
@@ -127,7 +128,7 @@ WRITE entry N:  fill wr_buf_0..4;  wr_buf_5.wr_index[31:24] = N  →  commits en
 in any shipped artifact** — the addressing ceiling is 128 but the synthesized depth is
 unknown. `[HIGH · index widths; LOW · INFERRED actual depth ≤ 128]`
 
-### 3.2 Per-entry word layout (read-back view, `rd_buf_*`) `[HIGH · OBSERVED]`
+### 3.2 Per-entry word layout (read-back view, `rd_buf_*`)
 
 | word | bits | field | meaning |
 |------|------|-------|---------|
@@ -191,7 +192,7 @@ A **miss** does *not* use the entry verdict — it falls through to `control.pas
 (§4.1). A **deny** (from a hit with `*_pass=0`, or a fail-closed miss, or a checker)
 terminates the transaction and raises the FIS `sprot` interrupt (§6).
 
-### 3.5 The one-line CAM diff — empty-entry ID policy `[HIGH · OBSERVED]`
+### 3.5 The one-line CAM diff — empty-entry ID policy
 
 ```
 amzn_cam.rd_buf_1.id_cmp_dis  reset = 0x0   → a reset/empty AMZN entry: ID-compare ENABLED
@@ -204,9 +205,9 @@ sorted field diff). It reinforces the trust split: an empty privileged entry def
 
 ---
 
-## 4. The `control` bundle — miss policy, AxPROT, management `[HIGH · OBSERVED]`
+## 4. The `control` bundle — miss policy, AxPROT, management
 
-### 4.1 Pass-on-miss — THE central trust boundary `[HIGH · OBSERVED]`
+### 4.1 Pass-on-miss — THE central trust boundary
 
 This is the chip's core isolation primitive, pinned **byte-for-byte from both JSONs**:
 
@@ -239,7 +240,7 @@ This matches [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot
 correction. *(That page's "408 / 612" figures are pkl address-map **leaf-record** counts,
 a different axis from the **register-definition** counts 87 / 28 here — not a divergence.)*
 
-### 4.2 `master_prot` — the AxPROT generator (AMZN-only) `[HIGH · OBSERVED]`
+### 4.2 `master_prot` — the AxPROT generator (AMZN-only)
 
 ```
 control.master_prot @0x10  (RW)
@@ -258,7 +259,7 @@ privileged, data** access. `[HIGH · OBSERVED field/reset; MED · INFERRED ARM e
 > `arprot`/`awprot` writability on the user side — doing so would let a guest claim
 > privileged/secure attributes on the fabric.
 
-### 4.3 Guest-CAM management hooks (AMZN-only) `[HIGH · OBSERVED]`
+### 4.3 Guest-CAM management hooks (AMZN-only)
 
 | register | `@off` | key field(s) | reset | effect |
 |----------|--------|--------------|-------|--------|
@@ -276,7 +277,7 @@ privileged, data** access. `[HIGH · OBSERVED field/reset; MED · INFERRED ARM e
 > bypass *itself*. The `*_byp_id_en` enable bits at `[31]` (reset `0x1`) are **new in
 > Cayman** vs Sunda (§7).
 
-### 4.4 Shared control — timeouts, denied-addr, interleave-swap `[HIGH · OBSERVED]`
+### 4.4 Shared control — timeouts, denied-addr, interleave-swap
 
 `amzn`-only timeout + violation latch:
 
@@ -301,7 +302,7 @@ positions (0..63) cover the 58-bit address. Each block carries its own swap conf
 
 ---
 
-## 5. Checkers, stats, observability (AMZN-side) `[HIGH · OBSERVED]`
+## 5. Checkers, stats, observability (AMZN-side)
 
 Beyond the CAM, the privileged remapper enforces three parallel AXI checks and keeps
 per-direction telemetry. **None of these exist in `user_remapper`** — the guest has only
@@ -329,11 +330,11 @@ its CAM, the miss/swap control, and its own pass/deny stats.
 
 > **NOTE — `0xb1` reset placeholder is absent.** Both files grep clean for the unbound
 > `0xb1` placeholder (`grep -ci '0xb1' = 0`): every reset value below is concrete, not a
-> generator stub. `[HIGH · OBSERVED]`
+> generator stub.
 
 ---
 
-## 6. Protection verdict → interrupt tie `[HIGH · OBSERVED]`
+## 6. Protection verdict → interrupt tie
 
 Per AXI transaction the remapper resolves:
 
@@ -372,7 +373,7 @@ The FIS `sprot` interrupt is a 6-entry vector (`fis_sprot_intr[5:0]`, all `edge_
 
 ---
 
-## 7. Cross-generation — frozen core, widened ID `[HIGH · OBSERVED]`
+## 7. Cross-generation — frozen core, widened ID
 
 The CAM IP is **stable from Sunda**; Cayman is the intermediate that widened the master-ID
 space and added the burst-length checker; Mariana is a later control-bundle hardening pass.
@@ -406,7 +407,7 @@ default `0x0`→**`0x1`** (Cayman makes a reset guest entry ID-agnostic).
 
 ---
 
-## 8. Reimplementation checklist `[summary]`
+## 8. Reimplementation checklist
 
 - **Reset the privileged remapper fail-CLOSED** (`amzn_cam_pass_on_miss.rd/wr = 0x0`) and
   the **guest remapper fail-OPEN** (`user_cam_pass_on_miss.rd/wr = 0x1`). Never invert.

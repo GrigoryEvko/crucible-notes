@@ -16,8 +16,9 @@
 > is read directly from the shipped register-description schema
 > `csrs/tpb/tpb.json` (binary-derived CSR JSON, 123 778 bytes, **Cayman / NC-v3**
 > arch-regs tree). The schema is the lawful, citeable artifact; all counts here
-> are **re-derived from scratch** with `jq`/`python`, not carried from any
-> upstream tally. Confidence tags: HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED.
+> are computed from it directly. The page default is **[HIGH · OBSERVED]**;
+> claims that depart from it carry an explicit
+> HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED tag.
 
 ---
 
@@ -25,7 +26,7 @@
 
 This is the single most important distinction on the page. The two register
 files have **disjoint jobs** and live at different addresses with different
-aperture sizes: **[HIGH · OBSERVED]**
+aperture sizes:
 
 | | `tpb` (this page) | [`tpb_xt_local_reg`](tpb-xt-local-reg.md) |
 |---|---|---|
@@ -41,13 +42,12 @@ aperture sizes: **[HIGH · OBSERVED]**
 > (`release_run_stall` / `start_ctrl`). `tpb` never gates power or clock; it
 > gates *how arithmetic rounds*, *whether and where events surface*, and
 > *whether POOL and DVE co-issue*. The two are complementary, not duplicate.
-> **[HIGH · OBSERVED]**
 
 ---
 
 ## 2. Regfile metadata
 
-Read from `.RegFile` of `tpb.json`. **[HIGH · OBSERVED]**
+Read from `.RegFile` of `tpb.json`.
 
 | Property | Value | Meaning |
 |---|---|---|
@@ -61,21 +61,20 @@ Read from `.RegFile` of `tpb.json`. **[HIGH · OBSERVED]**
 | `HalName` / `HalFilenameUnitName` / `Description` | `""` | all empty |
 | `Memories` / `Parameters` / `Includes` | `[]` | all empty |
 
-### Counts (re-derived, with CORRECTION vs `SX-CSR-04`)
+### Counts (with CORRECTION to the per-bundle field tallies)
 
-`jq`/`python` over `tpb.json` gives **9 bundle-arrays, 146 registers, 185
-bitfields**. The bundle/register/field totals match the backing survey, but the
-**per-bundle field tallies** in `SX-CSR-04` were miscounted; the byte-exact
-truth is below. **[HIGH · OBSERVED]**
+`tpb.json` holds **9 bundle-arrays, 146 registers, 185 bitfields**. The
+bundle/register/field totals are uncontested, but the **per-bundle field
+tallies** are commonly miscounted; the byte-exact truth is below.
 
-> **CORRECTION (vs `SX-CSR-04`).** The report's per-bundle field column read
-> `pool=11`, `misc=23`, `performance_counter=63`. The schema actually has
+> **CORRECTION — per-bundle field counts.** The per-bundle field column is often
+> given as `pool=11`, `misc=23`, `performance_counter=63`. The schema actually has
 > `pool_sequencer=10` fields (2 of those on the single `stochastic_rnd`
 > register), `misc=22` fields (the only multi-field misc reg is `chicken_ctrl`,
 > 2 fields), and `performance_counter=66` fields — the three
 > `*_perf_cntr_ctrl` registers each carry **two** fields (`en` + `reset`), so
 > `60` data words `+ 3×2` = `66`, not `63`. The grand total is unaffected:
-> `6+10+24+13+3+33+22+66+8 = 185`. **[HIGH · OBSERVED]**
+> `6+10+24+13+3+33+22+66+8 = 185`.
 
 | Bundle | Base | ArraySize | Regs | Fields | Abs span |
 |---|---|---|---|---|---|
@@ -93,7 +92,7 @@ truth is below. **[HIGH · OBSERVED]**
 All bundles have `ArraySize=1`, so **absolute offset = bundle base +
 register `AddressOffset`**. Two address gaps exist inside the 4 KiB aperture:
 `0x400..0x7FF` (1 KiB, between `dve_sequencer` and `events_semaphores`) and
-`0xE20..0xFFF` (tail after `intc_bypass`). **[HIGH · OBSERVED]**
+`0xE20..0xFFF` (tail after `intc_bypass`).
 
 ### Access / reset distribution
 
@@ -110,7 +109,6 @@ register `AddressOffset`**. Two address gaps exist inside the 4 KiB aperture:
 > generator-placeholder reset appears anywhere; every non-zero reset is a
 > correct IEEE-754 FP32 constant, a clock-derived timestamp increment, a
 > status=ready, or an all-ones ECO spare. Treat resets here as **verified**.
-> **[HIGH · OBSERVED]**
 
 ---
 
@@ -121,20 +119,20 @@ The four sequencer bundles (`pe`/`pool`/`act`/`dve` @ `0x000`/`0x100`/`0x200`/
 Every engine carries `instr_dbg_ctrl.dbg_level[3:0]` and `timestamp_inc_val
 [23:0]`; the arithmetic-relevant fields are layered on top. PE is the spare
 case — **no register at `0x000`, no `bias_adjust`, no `stochastic_rnd`** (its
-systolic array does not run the output data-converter path). **[HIGH · OBSERVED]**
+systolic array does not run the output data-converter path).
 
 ### 3.1 FP8 bias adjust
 
 `bias_adjust.bias[5:0]` (RW, reset `0x0`) — *"FP8 bias adjust"* — present on
 **POOL `0x100` / ACT `0x200` / DVE `0x300`**, absent on PE. A 6-bit signed-ish
 exponent-bias offset applied in the FP8 output converter; firmware programs it
-per dtype before issuing FP8-producing instructions. **[HIGH · OBSERVED]**
+per dtype before issuing FP8-producing instructions.
 
 ### 3.2 Stochastic-rounding seeds (the WO seed bank)
 
 This is the heart of the shared datapath. Three engines expose a write-only
 `stochastic_rnd` register feeding the output data-converter's stochastic-
-rounding adder, plus a mode bit: **[HIGH · OBSERVED]**
+rounding adder, plus a mode bit:
 
 | Abs | Engine | Register | Field | Bits | Acc | Verbatim description |
 |---|---|---|---|---|---|---|
@@ -157,14 +155,14 @@ IEEE round-to-nearest-even, `1` = stochastic rounding. Because the seed
 register is **WO**, reads are meaningless: firmware must keep a shadow copy if
 it needs to re-derive state. The DVE-only `lfsr.seed[31:0]` is a *separate*
 write-only seed for the RNG **instruction** path (distinct from the output-
-converter stochastic rounder above). **[HIGH · OBSERVED]**
+converter stochastic rounder above).
 
 > **Cross-link.** The firmware that manages these PRNG seeds — save/restore of
 > RNG state, dtype-keyed seeding, and the LFSR generator dispatch — is
 > documented in [`rng-seed-state-ops.md`](../../firmware/kernels/rng-seed-state-ops.md)
 > (the `0x77`/`0x78` RandGet/SetState checkpoint pair) and
 > [`rng-lfsr-dispatch.md`](../../firmware/kernels/rng-lfsr-dispatch.md) (the
-> LFSR generator that `dve_sequencer.lfsr.seed` initialises). **[HIGH · OBSERVED]**
+> LFSR generator that `dve_sequencer.lfsr.seed` initialises).
 
 ### 3.3 ACT special-value (NaN/Inf) compare bank
 
@@ -173,7 +171,7 @@ compare bank** at `0x240..0x25F`. Each special value has a `val`/`mask` pair;
 the engine compares an incoming FP32 word `w` against `(w & mask) == val` to
 classify it as zero / NaN / +Inf / −Inf during activation post-processing. The
 reset values are the **correct IEEE-754 bit patterns**, which is strong
-evidence they are intentional, not placeholders: **[HIGH · OBSERVED]**
+evidence they are intentional, not placeholders:
 
 | Abs | Register | Field | Reset | Meaning |
 |---|---|---|---|---|
@@ -191,7 +189,6 @@ evidence they are intentional, not placeholders: **[HIGH · OBSERVED]**
 `act_sequencer.rnd_mode @ 0x2C0` packs six **independent 2-bit** rounding-mode
 selectors, one per FMA/subtractor lane of the activation datapath. Each lane is
 byte-aligned with a 2-bit gap (bits `[3:2]`, `[7:6]`, … are unused):
-**[HIGH · OBSERVED]**
 
 | Field | Bits | Verbatim |
 |---|---|---|
@@ -239,14 +236,14 @@ maps every notification source to a 4-bit SW-queue number and selects where the
 > target (256 events + 256 semaphores, container `TPB_0_EVT_SEM @
 > 0x2802700000`, read/set/inc/dec windows at `+0x1000`/`+0x1400`/`+0x1800`/
 > `+0x1C00`) are decoded in
-> [`evt-sem-regions.md`](../address/evt-sem-regions.md). **[HIGH · OBSERVED]**
+> [`evt-sem-regions.md`](../address/evt-sem-regions.md).
 
 ### 4.2 `sw_queue_num0..5` + `queue_idx_ctrl` @ `0xA00..0xA18`
 
 Each notification source gets a **4-bit SW-queue selector**. Sources are
 grouped three classes per engine — **NX-generated implicit** (notifs for NX-
 executed instrs), **explicit** (instruction-emitted), and **engine-generated
-implicit** (notifs for engine instrs): **[HIGH · OBSERVED]**
+implicit** (notifs for engine instrs):
 
 | Abs | Register | Fields (`[bits]`) |
 |---|---|---|
@@ -263,7 +260,7 @@ for that source class. `queue_idx_ctrl.<engine>_instr_queue_idx` is a 1-bit
 override — when set, the **queue index** for that engine's notifications is
 taken from the **instruction** instead of the static register. The destination
 queues themselves (depth, doorbell, head/tail) are modelled in
-[`notific-queue.md`](notific-queue.md). **[HIGH · OBSERVED]**
+[`notific-queue.md`](notific-queue.md).
 
 > **NOTE.** SP is routed here (`sw_queue_num2[7:0]` + `queue_idx_ctrl[4]`)
 > even though `tpb.json` has **no `sp_sequencer` config bundle** — SP's datapath
@@ -271,7 +268,7 @@ queues themselves (depth, doorbell, head/tail) are modelled in
 > (`misc.sp_nx_spc_*`) and notif routing appear in `tpb`. And `sw_queue_num5`
 > covers **all eight** Q7 cores, whereas the `tpb_xt_local_reg` notif surface
 > maps only `Q7_0..Q7_3` — they are distinct cluster-level vs local-level
-> surfaces. **[HIGH · OBSERVED]**
+> surfaces.
 
 ### 4.3 Programming an engine's event route — pseudocode
 
@@ -336,7 +333,6 @@ static void act_program_stochastic(uint32_t seed21 /* 21-bit */,
 ## 5. `misc` bundle @ `0xB00` — status, PC, error inject, arbitration
 
 The `misc` bundle is the cluster observability + arbitration surface.
-**[HIGH · OBSERVED]**
 
 | Abs | Register | Field(s) | Acc | Reset | Purpose |
 |---|---|---|---|---|---|
@@ -350,7 +346,7 @@ The `misc` bundle is the cluster observability + arbitration surface.
 `chicken_ctrl` is the only co-scheduling control in the file:
 `pool_dve_arb_en[0]` (reset **enabled** `0x1`) gates whether **POOL and DVE
 execute in parallel**, and `pool_dve_arb_single_lane[1]` controls `instr_id`
-usage when they do. **[HIGH · OBSERVED]**
+usage when they do.
 
 > **NOTE (polarity verbatim).** The schema description for
 > `pool_dve_arb_single_lane` reads *"... (0 - enable)"*, the inverse of what the
@@ -368,7 +364,7 @@ Each engine has a 0x60-byte block: one `*_perf_cntr_ctrl` (RW; `en[0]` +
 `reset[4]`, the latter **PulseOnW**) at the block base, then **ten 64-bit
 counters** as `cntr_N_lsb`/`cntr_N_msb` RO word pairs starting at `base+0x10`.
 That is `3 × (1 ctrl + 10×2 data) = 63` registers and `3×2 + 60×1 = 66`
-fields. Block bases: POOL `0xC00`, ACT `0xC60`, DVE `0xCC0`. **[HIGH · OBSERVED]**
+fields. Block bases: POOL `0xC00`, ACT `0xC60`, DVE `0xCC0`.
 
 **`intc_bypass`** @ `0xE00` is eight 32-bit RW words (`intc_bypass_0..7`, field
 `bypass[31:0]`, reset `0x0`) = **256 interrupt-controller trigger bypass bits**;
@@ -387,14 +383,14 @@ register. The closest datapath influence on values written toward PSUM is the
 ACT special-value compare bank (§3.3) and the rounding/stochastic config
 (§3.2–3.4); actual PSUM/SB control is owned by a separate register file. It
 also contains **no** per-engine clock/reset/run-stall — that is
-[`tpb_xt_local_reg`](tpb-xt-local-reg.md)'s job (§1). **[HIGH · OBSERVED]**
+[`tpb_xt_local_reg`](tpb-xt-local-reg.md)'s job (§1).
 
 ---
 
 ## 8. Per-generation applicability
 
 `tpb.json` is **gen-specific**, and the shape changes across the NC family —
-re-derived from the per-arch schema trees: **[HIGH · OBSERVED for NC-v2/v3/v4;
+read from the per-arch schema trees: **[HIGH · OBSERVED for NC-v2/v3/v4;
 INFERRED for v5]**
 
 | Gen | Arch codename | `tpb.json` shape | Source |

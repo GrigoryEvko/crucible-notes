@@ -19,8 +19,9 @@ independently-generated renderings of the same block
 on 2023/08/08 10:27 / arch revision
 `cayman_golden_tapeout_candidate_2_2023_07_21-3-g4723889`"*), the Cayman flat
 address map, and the `intc/` trigger YAMLs. All four generated views and the JSON
-agree field-for-field; any disagreement is flagged as a `CORRECTION`. Confidence
-is tagged `[conf · prov]` where `prov ∈ {OBSERVED, INFERRED, CARRIED}`.
+agree field-for-field; any disagreement is flagged as a `CORRECTION`. The page
+default is `[HIGH · OBSERVED]`; claims that depart from it carry an explicit
+`[conf · prov]` tag where `prov ∈ {OBSERVED, INFERRED, CARRIED}`.
 
 The fault→isolation→IRQ flow is unified in
 [`../interrupt/nsm-flow-unified.md`](../interrupt/nsm-flow-unified.md); the fabric
@@ -36,7 +37,7 @@ and the fleet/trust-boundary census is
 > **N**etwork-**S**ecurity **M**onitor hardware CSR block. It is **not** the
 > Cadence Xtensa Secure-Monitor library's "**N**on-**S**ecure **M**ode"
 > (`-D_BUILD_NSM`, `secmon/*-nsm.S`, `libsec.a`), which is a firmware-side
-> privilege mode. They share only an acronym. `[HIGH · OBSERVED]`
+> privilege mode. They share only an acronym.
 
 > **WHAT NSM IS NOT.** NSM is **not** an `AxPROT` / master-ID / VMID allow-list
 > checker — that role belongs to its `sprot` neighbours
@@ -50,7 +51,7 @@ and the fleet/trust-boundary census is
 
 ---
 
-## 1. Block-level metadata `[HIGH · OBSERVED]`
+## 1. Block-level metadata
 
 Read from `.RegFile` scalar fields of the Cayman `nsm.json`:
 
@@ -67,9 +68,8 @@ Read from `.RegFile` scalar fields of the Cayman `nsm.json`:
 | `HalName` / `HalFilenameUnitName` | `""` | empty |
 | `Includes` / `Parameters` / `Memories` | `[]` | all empty |
 
-Totals grounded directly to the JSON (`jq … | length`, **never** a decompile
-grep): **4 bundles, 50 registers, 74 bitfields.** Per-bundle register counts
-`3 / 17 / 26 / 4`.
+Totals read from the JSON: **4 bundles, 50 registers, 74 bitfields.** Per-bundle
+register counts `3 / 17 / 26 / 4`.
 
 | bundle | base | `BundleSizeInBytes` | #regs | `HalExists` | `Description` |
 |--------|------|------|-------|-------------|---------------|
@@ -83,7 +83,7 @@ Each bundle `ArraySize=1`, `GenFlavor=NORMAL`. Note the `0x300..0x8FF` gap befor
 the generated `.h` (`CONTROL_REPORT_OFFSET 0x0`, `WR_STATUS_OFFSET 0x100`,
 `RD_STATUS_OFFSET 0x200`, `SPARE_ALL_ZEROS_0_OFFSET 0x900`).
 
-> **SCHEMA GOTCHAS (verified).** (1) `RegFile.SizeInBytes` and every
+> **SCHEMA GOTCHAS.** (1) `RegFile.SizeInBytes` and every
 > `BundleSizeInBytes` are **hex** (`0x1000`/`0x100`). (2) Register
 > `AddressOffset` is **mixed-radix**: bare-decimal (`"4"`, `"8"`) for
 > `control.bypass`/`control.reset_staging_fifo`, hex (`"0x14"`, `"0x1c"`, …)
@@ -91,7 +91,7 @@ the generated `.h` (`CONTROL_REPORT_OFFSET 0x0`, `WR_STATUS_OFFSET 0x100`,
 > key, single bit (`"0"`, `"4"`) or range (`"31:0"`, `"11:0"`, `"2:0"`,
 > `"1:0"`) — **not** `BitOffset`/`BitWidth`. (4) Field access is `AccessType ∈
 > {RO, RW}`; `SpecialAccess ∈ {None, PulseOnW}`. (5) No `0xb1` placeholder
-> anywhere. `[HIGH · OBSERVED]`
+> anywhere.
 
 In the per-field tables below, register `AddressOffset` is **bundle-relative**
 (each bundle restarts at `0x0`); the **absolute** offset is `bundle base + reg
@@ -100,7 +100,7 @@ offset` (e.g. `rd.error_data_0` = `0x200 + 0x1c = 0x21c`, matching
 
 ---
 
-## 2. The nine protocol-shape causes `[HIGH · OBSERVED]`
+## 2. The nine protocol-shape causes
 
 The malformed AXI transaction shapes NSM detects are exactly the nine sticky
 error bits across `wr.status` (4 causes) and `rd.status` (5 causes) — `jq`-counted
@@ -147,7 +147,7 @@ All nine roll up into the 2-bit top-level summary `control.report`
 
 ---
 
-## 3. Outstanding-transaction tracking and the timeout model `[HIGH · OBSERVED]`
+## 3. Outstanding-transaction tracking and the timeout model
 
 NSM tracks every in-flight transaction **per AXI ID** in linked-list FIFOs whose
 empty status is exposed in the `*_pillm` (per-ID linked-list-memory) registers:
@@ -167,7 +167,7 @@ boundary counters (`sta_up_cnt_*` at the `pcie→NSM` boundary, `sta_dn_cnt_*` a
 > `wr.sta_pillm_0` resets to `0x0` on **all** gens. Both polarities are
 > independently confirmed in the generated `.h`
 > (`RD_STA_PILLM_0_RESET_VALUE 0xffffffff`, `WR_STA_PILLM_0_RESET_VALUE 0x0`).
-> This is cosmetic (RO status), not a functional/security change. `[HIGH · OBSERVED]`
+> This is cosmetic (RO status), not a functional/security change.
 
 **Timeout model.** Each direction has **two independent timers** — a *request*
 stall timer and a *response* latency timer — and each timer is
@@ -182,7 +182,7 @@ Max programmable window ≈ `2^32 × 2^12` AXI cycles. The four timer pairs are
 
 ---
 
-## 4. Violation response — fault latch, error injection, isolation `[HIGH · OBSERVED]`
+## 4. Violation response — fault latch, error injection, isolation
 
 ### 4a. Sticky latch and clear
 
@@ -218,7 +218,7 @@ words are `RW`, secure firmware may reprogram the poison pattern after reset.
 > **NOTE — constant is endianness-unambiguous.** `3735928559 = 0xDEADBEEF`
 > exactly; the `.go` decimal and the `.h`/`.hpp`/`.yaml` hex are the same value,
 > and the generated `.h` pins `RD_ERROR_DATA_0_RESET_VALUE 0xdeadbeef`. There is
-> no representation ambiguity in the poison word. `[HIGH · OBSERVED]`
+> no representation ambiguity in the poison word.
 
 ### 4c. Isolation entry — two complementary trigger paths
 
@@ -293,7 +293,7 @@ up and locked by secure boot.
 
 ---
 
-## 5. Full per-field register table `[HIGH · OBSERVED]`
+## 5. Full per-field register table
 
 Offsets are bundle-relative; absolute = bundle base + offset. Resets are the
 field `ResetValue`.
@@ -397,7 +397,7 @@ patterns. `[MED · INFERRED]`
 
 ---
 
-## 6. The PCIe isolation state-machine feed and the IRQ `[HIGH · OBSERVED]`
+## 6. The PCIe isolation state-machine feed and the IRQ
 
 A latched NSM violation that triggers isolation feeds **two** interrupt fabrics,
 both confirmed verbatim in the Cayman `intc/` trigger YAMLs:
@@ -418,7 +418,7 @@ both confirmed verbatim in the Cayman `intc/` trigger YAMLs:
 
 It is a direct, **level-sensitive, critical** input to the `peb_intc` 128-input
 apex summary tree (the L2 apex), sitting adjacent to the
-`apb_outstding_flushed_*` outstanding-flush handshake. `[HIGH · OBSERVED]`
+`apb_outstding_flushed_*` outstanding-flush handshake.
 
 ### 6b. PCIe isolation state machine — edge-triggered handshake
 
@@ -446,7 +446,7 @@ All eight are `edge_triggered: true`. The isolation SM consumes source `[11]`
 > trailing `n` in "isolatio". It is the **only** index in `[8..15]` using the
 > misspelled `isolatio_sm` prefix; `[8..10]` and `[12..15]` all use the correct
 > `isolation_sm`. A reimplementation matching the binary's symbol table must
-> reproduce the typo on this one source. `[HIGH · OBSERVED]`
+> reproduce the typo on this one source.
 
 ### 6c. End-to-end flow
 
@@ -492,12 +492,11 @@ All eight are `edge_triggered: true`. The isolation SM consumes source `[11]`
 
 ---
 
-## 7. Instances — which masters/slaves NSM guards `[HIGH · OBSERVED]`
+## 7. Instances — which masters/slaves NSM guards
 
 NSM is instantiated **per PCIe interface**, inline on that interface's AXI master
 path into the PEB IO fabric. From `output/address_map/address_map_flat.yaml`
-(`rg -c NSM` = **220**: **28** real + **192** broadcast aliases — independently
-counted by two readers):
+(`rg -c NSM` = **220**: **28** real + **192** broadcast aliases):
 
 * **28 real instances** = 2 `PEB_APB_IO` blocks (`_0`, `_1`) × 14 interfaces. The
   14 interfaces per block: `AMZN_IO_PCIE_A_NSM` (admin/physical-function path),
@@ -528,7 +527,7 @@ against each PCIe **master's** malformed AXI traffic. `[HIGH bind · MED roles]`
 > `PEB_APB_IO` leaf (the [`pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md)
 > census places it at `AMZN_PEB_NSM` offset `0x11c000` inside `amzn_peb`,
 > secure-only). "`sprot`" here is the schema directory, not the same hardware
-> container. `[HIGH · OBSERVED]`
+> container.
 
 > **CORRECTION / RECONCILIATION — 28 vs 24 instance counts.** This page's **28**
 > comes from the Cayman **flat address-map YAML** (2 `PEB_APB_IO` blocks × 14
@@ -543,7 +542,7 @@ against each PCIe **master's** malformed AXI traffic. `[HIGH bind · MED roles]`
 
 ---
 
-## 8. Cross-generation divergence `[HIGH · OBSERVED]`
+## 8. Cross-generation divergence
 
 `nsm.json` was located for **cayman** (authoritative, nested
 `cayman-arch-regs_tgz`), **mariana**, **mariana_plus**, **sunda**, and
@@ -568,7 +567,7 @@ signature (bundle/reg@off/field[pos]/reset/access/special, `md5`-folded) yields:
 > wiring) remains `[* · INFERRED]` per the
 > [`pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md) WALL, but
 > the layout is not inferred. Cayman is authoritative and representative for all
-> gens. `[HIGH · OBSERVED]`
+> gens.
 
 ---
 

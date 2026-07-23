@@ -24,8 +24,9 @@ artifacts — the `csrs/<sub>/<unit>.json` schema tree, the
 the `maverick/ext/al_address_map_db.{pkl,json}` binding mirror. These are
 RTL-generated artifacts shipped in the customop library; semantics come from the
 per-field `Description` strings. No HAL doc accompanies them
-(`HalName`/`RegFile.Description` are empty). All counts below were re-derived this
-session by direct `jq` / `rg` over the shipped JSON/YAML.
+(`HalName`/`RegFile.Description` are empty). All counts below are read directly
+from the shipped JSON/YAML. The page default is `[HIGH · OBSERVED]`; claims that
+depart from it carry an explicit tag.
 
 > **Schema shape (all RegFile JSONs).**
 > `RegFile{ UnitName, Type, RegfileFlavor, InterfaceType, AddrWidth, DataWidth,
@@ -37,7 +38,7 @@ session by direct `jq` / `rg` over the shipped JSON/YAML.
 > zero-padded/mixed-case (`"0x08"`, `"0xC"`). `SizeInBytes` is HEX for most blocks
 > (`"0x1000"`) but DECIMAL for a few (`gpio="4096"`, `pvt="65536"`). `ArraySize`
 > can be a **parameter name** (`"NUM_SW_Q"`) resolved from `Parameters[]`, not a
-> literal. `[HIGH · OBSERVED]`
+> literal.
 
 **Per-gen applicability.** Cayman is **NC-v3** and byte-grounded (`OBSERVED`).
 Maverick is **v5**: its `maverick/address_map/` is a tree of per-die C headers
@@ -74,7 +75,7 @@ documented on the dedicated page
 variant reconciliation: `notific_1_queue` vs `notific_10_queue` are the **same RTL
 macro** at `NUM_SW_Q = 1` vs `10`, and they bind **different** address-map blocks.
 
-### 2.1 The diff is exactly two scalar parameters `[HIGH · OBSERVED]`
+### 2.1 The diff is exactly two scalar parameters
 
 `jq -S '.RegFile.RegistersBundleArrays'` on both files is **byte-identical**. The
 only divergence is two values in `Parameters[]`:
@@ -99,9 +100,9 @@ SW queues") — `[HIGH for the value, MED · INFERRED for the semantics]`.
 > **NOTE.** Footprint after array expansion: 1-queue = `0x100 + 1·0x28 = 0x128`;
 > 10-queue = `0x100 + 10·0x28 = 0x290`. Both sit well inside the `0x1000` APB
 > window, so the variant difference is **purely** descriptor depth — there is no
-> register-level structural divergence. `[HIGH · OBSERVED+calc]`
+> register-level structural divergence.
 
-### 2.2 Which blocks each variant binds `[HIGH · OBSERVED]`
+### 2.2 Which blocks each variant binds
 
 Instance multiplicity from the `json_xref` side-car (the bind oracle; agrees
 byte-exactly with the inline flat-map binding):
@@ -153,11 +154,11 @@ were *named* but not dumped; their byte-exact schemas are below, completing
 All three: `Type=REGFILE`, `RegfileFlavor=POSEDGE`, `InterfaceType=APB`,
 `AddrWidth=12`, `DataWidth=32`, `SizeInBytes=0x1000`, no `0xb1` reset-placeholder
 leak. Each binds **132** instances on the PEB AMZN plane
-(`…_amzn_se_*_sdma_<n>_{cce,cme,dre}`). `[HIGH · OBSERVED]`
+(`…_amzn_se_*_sdma_<n>_{cce,cme,dre}`).
 
 ### 3.1 `sdma/dre.json` — Data Reordering Engine (the tensor-DMA transpose)
 
-**6** reg-defs, **23** bitfield-defs, on disk **17,012** bytes. `[HIGH · OBSERVED]`
+**6** reg-defs, **23** bitfield-defs, on disk **17,012** bytes.
 
 | Bundle | off | `ArraySize` | `BundleSize` | regs |
 |---|---|---|---|---|
@@ -185,7 +186,7 @@ the COUNTER/ROUTER; the reorder itself lives here. `[MED · INFERRED for the rol
 
 ### 3.2 `sdma/cce.json` — Compute/Collective Engine (FP32 FMA + decompress)
 
-**14** reg-defs, **16** bitfield-defs, on disk **18,136** bytes. `[HIGH · OBSERVED]`
+**14** reg-defs, **16** bitfield-defs, on disk **18,136** bytes.
 
 | Bundle | off | regs | content |
 |---|---|---|---|
@@ -207,7 +208,7 @@ MED · INFERRED for "collective"]`
 ### 3.3 `sdma/cme.json` — Command/Merge Engine (the smallest SDMA sub-block)
 
 **1** reg-def, **3** bitfield-defs, on disk **2,521** bytes — a single config
-register. `[HIGH · OBSERVED]`
+register.
 
 ```c
 // cme/cfg @0x000 — the only register in the schema.
@@ -219,13 +220,13 @@ struct cme_cfg {
 ```
 
 ⇒ CME is a lightweight multi-packet command-merge; `fifo_ack_enable` resetting to
-`0x1F` (5 bits) means all five command FIFOs ack at reset. `[HIGH · OBSERVED]`
+`0x1F` (5 bits) means all five command FIFOs ack at reset.
 
 ---
 
 ## 4. The MISC residual + the COVERAGE LEDGER
 
-### 4.1 MISC residual — `erg` RAS regfiles and `misc_ram_model` `[HIGH · OBSERVED]`
+### 4.1 MISC residual — `erg` RAS regfiles and `misc_ram_model`
 
 **`erg/` ECC + parity** are tiny RAM error-reporting CSRs: all four are APB,
 `AddrWidth=6`, `SizeInBytes=0x40` (64-byte windows).
@@ -242,7 +243,7 @@ struct cme_cfg {
 > that controls whether the block auto-initializes memory at reset
 > (`diff <(jq -S … erg_ecc_model.json) <(jq -S … erg_ecc_model_noinit.json)` = the
 > single `"ResetValue": "0"` → `"1"` hunk). The `csrs/` tree ships variant pairs
-> by flipping exactly one reset bit and renaming the unit. `[HIGH · OBSERVED]`
+> by flipping exactly one reset bit and renaming the unit.
 
 **`misc/misc_ram_model.json`** — APB, `AddrWidth=12`, `SizeInBytes=0x1000`,
 on-disk 9,837 bytes, **4** registers, all up at `0x800`:
@@ -255,7 +256,7 @@ on-disk 9,837 bytes, **4** registers, all up at `0x800`:
 | `0x80c` | `pacific_spare` | RO | spare |
 
 `zebu_build_id` / `pacific_*` are emulation/silicon-id tells; this scratch/status
-RAM block is paired with the INTC_RDM region. `[HIGH · OBSERVED]`
+RAM block is paired with the INTC_RDM region.
 
 ### 4.2 The two coverage lenses
 
@@ -263,8 +264,8 @@ The `csrs/` tree can be "covered" two independent ways, and the ledger must carr
 both because they disagree by design:
 
 - **Lens A — address-map binding** (does any flat-map node bind this schema?).
-  **85 on disk → 76 referenced → 9 orphans**, **0** referenced-but-missing.
-  Re-derived this session: `comm -23 set(on_disk) set(referenced)` = exactly 9.
+  **85 on disk → 76 referenced → 9 orphans**, **0** referenced-but-missing:
+  `comm -23 set(on_disk) set(referenced)` = exactly 9.
   This is the lens the block→schema xref ([block-schema-xref.md](../address/block-schema-xref.md))
   uses.
 - **Lens B — CSR-task byte-exactness** (did a CSR-lane page dump this schema's
@@ -277,9 +278,9 @@ both because they disagree by design:
 > `intc_1grp_no_msix_unit` — real schemas that bind no Cayman node yet are
 > understood at byte level), and a schema can be address-map-**bound** but not
 > CSR-task-dumped at byte level (the 18 peripheral residual). The intersection is
-> what §4.3 reconciles. `[HIGH · OBSERVED]`
+> what §4.3 reconciles.
 
-### 4.3 The full ledger — all 85 schemas, both lenses `[HIGH · OBSERVED]`
+### 4.3 The full ledger — all 85 schemas, both lenses
 
 `A` = address-map binding (`#inst` from `json_xref`, or `orphan`); `B` = CSR-lane
 byte-exactness (page that dumped it, or `—` for peripheral residual). Escaped `\|`
@@ -345,7 +346,7 @@ in cells.
 | xtensa_nx | `xtensa_nx.json` | 60 | [xtensa-nx.md](xtensa-nx.md) |
 | xtensa_q7 | `xtensa_q7.json` | 80 | [xtensa-q7.md](xtensa-q7.md) |
 
-**Ledger rollup `[HIGH · OBSERVED]`:**
+**Ledger rollup:**
 
 - **85** schemas on disk; **76** address-map-referenced; **9** orphans
   (`ap_intc_1grp/2grp/4grp_unit`, `ap_intc_grp_ctrl`, `erg_ecc_model_noinit`,
@@ -366,8 +367,7 @@ in cells.
 > e.g. `erg_ecc_model_noinit`, `intc_1grp_no_msix_unit`, and the four `ap_intc_*`
 > are address-map orphans yet are byte-understood (shipped for a later gen);
 > conversely `gpio`/`pll`/`pvt`/`i2c` are address-map-**bound** yet byte-undumped.
-> Always state *which lens* a coverage number is on. `[HIGH · OBSERVED — this
-> ledger states both]`
+> Always state *which lens* a coverage number is on; this ledger states both.
 
 ### 4.4 The consequential orphan — `tpb_events_semaphores_axi`
 
@@ -380,11 +380,11 @@ aperture is real and decomposed into op sub-windows, but **no Cayman node carrie
 its `json:` bind** (`rg 'EVT_SEM' … \| rg -c 'json:'` = **0**). Maverick *does* bind
 its equivalent `TPB_EVT_SEM.json`. On Cayman the op layout is recovered from
 address arithmetic; see [block-schema-xref.md §4d](../address/block-schema-xref.md)
-and [tpb-subblocks.md](tpb-subblocks.md). `[HIGH · OBSERVED]`
+and [tpb-subblocks.md](tpb-subblocks.md).
 
 ---
 
-## 5. The AXI fault-terminator family (NTS poison) `[HIGH · OBSERVED]`
+## 5. The AXI fault-terminator family (NTS poison)
 
 Three security/QoS blocks in `csrs/sprot/` share one AXI-error idiom for a
 denied/no-target transaction, and the ledger names them as the **terminators**:
@@ -403,7 +403,7 @@ on a deny they return an AXI error response with a poison read-data pattern.
 > denied path. The trust polarity lives in the remappers
 > (`amzn` = fail-CLOSED `0x0`, `user` = fail-OPEN `0x1`); the terminator response
 > lives in `qos_prot`/`nsm`. See [remapper.md](remapper.md), [qos-prot.md](qos-prot.md),
-> [nsm.md](nsm.md). `[HIGH · OBSERVED]`
+> [nsm.md](nsm.md).
 
 `0xDEADBEEF` (= `3735928559`) is the canonical read-data poison across the SoC;
 `udma_gen_ex.drop_addr_msb` defaults to the same value for dropped-transaction
@@ -442,9 +442,9 @@ notification engine is a Cayman/Mariana-era feature. `[counts HIGH · OBSERVED;
 
 ---
 
-## 7. Adversarial self-verification `[HIGH · OBSERVED]`
+## 7. Count cross-checks
 
-The five strongest count claims, re-checked against the binary this session:
+The five strongest count claims and the check behind each:
 
 | # | claim | check | result |
 |---|---|---|---|
@@ -472,8 +472,7 @@ peripheral/infrastructure residual (clock/PLL, thermal/PVT, I2C/SPI/GPIO, OTP,
 DFT/scan, ring bus, service fabric, URB, APB bridge, `misc_model`, `pmdt_complex`)
 — none on any GPSIMD ucode / tensor / notification / interrupt path. The 18 are an
 explicit, enumerated, low-priority residual; an optional "CSR-PERIPH" sweep could
-byte-dump them if peripheral coverage is ever desired. **This is the last CSR
-task.** `[HIGH]`
+byte-dump them if peripheral coverage is ever desired.
 
 ---
 
@@ -499,7 +498,7 @@ task.** `[HIGH]`
 
 - §2.1, §3, §4.1, §4.3, §5, §7: **HIGH · OBSERVED** — literal from the shipped
   `csrs/*.json`, `address_map_flat.yaml`, and `address_map_json_xref.yaml`.
-- §2.2 errtrig=962 **CORRECTION**: **HIGH · OBSERVED** (re-derived) / **CARRIED**
+- §2.2 errtrig=962 **CORRECTION**: **HIGH · OBSERVED** / **CARRIED**
   from the #930 fix of #908's 642.
 - §2.3 variant rationale, §3.1/§3.2 "tensor-DMA"/"collective" roles, §6
   "grew/predates" reading: **MED · INFERRED**.

@@ -18,14 +18,16 @@ AXI fabric:
 Everything below is reconstructed byte-exact from the shipped Cayman register schema
 (`csrs/fis/fis_control.json`, `csrs/fis/papb_bcast.json`, `csrs/intc/intc_4grp_{no_msix,msix}_unit.json`,
 `csrs/notific/notific_1_queue.json`), the trigger YAMLs, the flat address map, and — for the
-H-die scratchpad — the Maverick `arch-headers`. The errtrig `intc_4grp` PAIR primitive and the
+H-die scratchpad — the Maverick `arch-headers`. The page default is `[HIGH · OBSERVED]`;
+claims that depart from it carry an explicit tag, and the per-claim-class breakdown is the
+Provenance ledger at the end. The errtrig `intc_4grp` PAIR primitive and the
 abort-freeze controls are detailed in
 [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md) and
 [`../interrupt/abort-scandump-clockstop.md`](../interrupt/abort-scandump-clockstop.md);
 the routing of these triggers into the `peb_intc` apex is in the primary cross-link,
 [`../interrupt/errtrig-fis-routing.md`](../interrupt/errtrig-fis-routing.md).
 
-> **Scope / naming clarification `[HIGH · OBSERVED]`.** Only **one** of the three subjects is a
+> **Scope / naming clarification.** Only **one** of the three subjects is a
 > discrete CSR JSON. `fis_control` (and `papb_bcast`) are real register files. `errtrig` is a
 > *generator* — an address-map source leaf (`apb/intc_rdm/errtrig_{user,amzn}.yaml`) that
 > instantiates two `intc_4grp` units + one notific queue; it has no register file of its own.
@@ -35,7 +37,7 @@ the routing of these triggers into the `peb_intc` apex is in the primary cross-l
 
 ---
 
-## 1. The FIS container — where the three blocks live `[HIGH · OBSERVED]`
+## 1. The FIS container — where the three blocks live
 
 A FIS is a `0x10000` (64 KiB) container the fabric stamps once per master. Streaming the flat
 address map for one representative master (`PEB_APB_IO_0_AMZN_SE_0_SDMA_0_FIS_0_*`) gives the
@@ -55,7 +57,7 @@ So the `0x3000` errtrig region is **exactly** `TRIG_0 @+0x2000 · TRIG_1 @+0x300
 `user_remapper` / `nsm` on the user side) is documented in
 [remapper.md](remapper.md), [qos-prot.md](qos-prot.md), and [nsm.md](nsm.md).
 
-> **Privilege split `[HIGH · OBSERVED]`.** `fis_control` is **AMZN-only** — all **582** physical
+> **Privilege split.** `fis_control` is **AMZN-only** — all **582** physical
 > `FIS_0_CTL` instances are under the `PEB_APB_IO_*_AMZN_*` (privileged) branch; **zero** appear
 > on the USER side (`rg -c FIS_0_CTL` = 582). The USER FIS has *no* `fis_control`; its control
 > surface is the cut-down `papb_bcast` (§2.9, **464** USER instances) plus the user-side sprot
@@ -64,7 +66,7 @@ So the `0x3000` errtrig region is **exactly** `TRIG_0 @+0x2000 · TRIG_1 @+0x300
 
 ---
 
-## 2. `fis_control` — the privileged FIS control regfile `[HIGH · OBSERVED]`
+## 2. `fis_control` — the privileged FIS control regfile
 
 ### 2.1 Regfile-level facts
 
@@ -84,7 +86,7 @@ So the `0x3000` errtrig region is **exactly** `TRIG_0 @+0x2000 · TRIG_1 @+0x300
 | `SpecialAccess` | all `None` | no `PulseOnW` etc. anywhere in this file |
 | `0xb1` reset placeholder | **absent** (`grep -ci 0xb1` = 0) | |
 
-> **GOTCHA — DECIMAL `AddressOffset`s `[HIGH · OBSERVED]`.** Unlike its all-hex sprot siblings
+> **GOTCHA — DECIMAL `AddressOffset`s.** Unlike its all-hex sprot siblings
 > (`qos_prot`, `amzn_remapper`), `fis_control`'s bundle bases and register offsets are **decimal
 > strings**. Proven by contiguity closure: the 7 bundle bases `0, 24, 40, 48, 76, 120, 140` are
 > contiguous **only** under decimal (`24+16=40`, `40+8=48`, `48+28=76`, `76+44=120`, `120+20=140`,
@@ -138,7 +140,7 @@ The quiesce protocol: SW asserts `sprot_gating` / `nts_gating` (or `apb/gating_r
 transactions, then polls `outstanding_flushed.*_combined` until the FIS confirms drain. This is
 the FIS-wide complement of `qos_prot`'s per-NTS `nts_isolation` ([qos-prot.md](qos-prot.md)).
 
-> **QUIRK — schema typo preserved `[HIGH · OBSERVED]`.** `axi/outstanding_flushed`'s field
+> **QUIRK — schema typo preserved.** `axi/outstanding_flushed`'s field
 > descriptions ship the misspelling *"Combined **Outstadning** flushed signal from all SPROTs/NTSs
 > in this FIS instance"* — quoted as-is; the field semantics are unaffected.
 
@@ -159,7 +161,7 @@ Two independently programmable USER APB **base/size/remap** windows + a block-ID
 APB-side address-decode/remap counterpart to the AXI-side `amzn_remapper` ([remapper.md](remapper.md)).
 `apb_decode` holds only the **geometry**.
 
-> **GOTCHA — the region *enables* are in a different bundle `[HIGH · OBSERVED]`.** `apb_decode`
+> **GOTCHA — the region *enables* are in a different bundle.** `apb_decode`
 > carries window geometry only. The `user1_en`/`user2_en` enables — and the `user_fis_en` /
 > `user_debug_en` region gates — live in `sw_cntrl.apb_amzn_decode` / `sw_cntrl.apb_user_decode`
 > (§2.6). Do not look for `user_fis_en` in `apb_decode`; it is not there.
@@ -215,7 +217,7 @@ A free-running watchdog: a posted APB write that does not complete within `limit
 **8192**) is declared a hung endpoint. `0` disables it. Its expiry is what produces the five
 posted-write **SLVERR** conditions described next.
 
-> **CORRECTION — the posted-write SLVERR latch is a Cayman→Mariana addition `[HIGH · OBSERVED]`.**
+> **CORRECTION — the posted-write SLVERR latch is a Cayman→Mariana addition.**
 > In Cayman the five posted-write SLVERR conditions exist **only** as fire-and-forget HW interrupt
 > triggers — `fis_cntrl_intr[0..4]` in the trigger YAMLs (`edge_triggered:true`, `needs_cdc:false`,
 > e.g. *"AMZN chain AMZN EP posted write slave error"*) — with **no** cause/mask/status register in
@@ -223,7 +225,7 @@ posted-write **SLVERR** conditions described next.
 > (@base `256`/`0x100`, 4 regs: `mask` / `clr_on_read` / `status` / `apb_blk_error_addr`), turning a
 > fire-and-forget trigger into a software-readable, maskable, address-capturing latch — see §5.
 
-### 2.9 `papb_bcast` — the FIS APB-broadcast group mask `[HIGH · OBSERVED]`
+### 2.9 `papb_bcast` — the FIS APB-broadcast group mask
 
 `papb_bcast` is a tiny USER-side regfile (`AddrWidth 11` → `0x800`, APB, POSEDGE, **464** USER
 instances) holding **one** register — the per-FIS broadcast-target mask:
@@ -255,7 +257,7 @@ membership by clearing bits.
 
 ---
 
-## 3. `errtrig` — the error-trigger generator `[HIGH · OBSERVED]`
+## 3. `errtrig` — the error-trigger generator
 
 ### 3.1 It is a generator, not a regfile
 
@@ -290,7 +292,7 @@ wire-ORs upward into the `peb_intc` apex). `TRIG_0 == TRIG_1 == 962` by construc
 symmetric, and the notific queue (962) is the same on both paths.
 
 > **CORRECTION vs [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md)
-> (#908) `[HIGH · OBSERVED]`.** That page's Maverick-pkl headline (`TRIG_0 == TRIG_1 = 1,372`) is the
+> (#908).** That page's Maverick-pkl headline (`TRIG_0 == TRIG_1 = 1,372`) is the
 > **Maverick** generation count and stands. But its *Cayman cross-check column* lists **"642 pairs"**
 > — which does **not** match the byte-grounded Cayman flat-YAML, where `TRIG_0`, `TRIG_1`, and
 > `NOTIFIC` each count **962** (962 PAIRS), and the two `intc_4grp` schemas total **1928** units
@@ -336,7 +338,7 @@ access types are identical across both flavors; the **diff** is exactly: `int_cd
 - **msix** `Sunda` (1 reg) + `PBA` (arr=4) + `VecTable` (arr=4) + `MSIX_Vector_Table_Space`
   (arr=`NUM_OF_TRIGS`): the MSI-X delivery apparatus instead of the abort-freeze block.
 
-### 3.4 The 50-cause `fis_errtrig_intr` source vector `[HIGH · OBSERVED]`
+### 3.4 The 50-cause `fis_errtrig_intr` source vector
 
 The trigger YAMLs carry a `fis_errtrig_intr[0..49]` group = **50 entries**, all
 `needs_cdc:false`, `edge_triggered:true`. It is a **mirror pair**: indices `[0..24]` are 25
@@ -360,7 +362,7 @@ The 25-cause pattern, verbatim from the schema (index order):
 So the FIS exports **two parallel 25-cause NOTIFIC error vectors** — a USER instruction-notification
 path and an AMZN/privileged one — one feeding the MSIX `TRIG`, one the no_msix `TRIG`.
 
-> **GOTCHA — count hazard `[HIGH · OBSERVED]`.** A naive `rg -c 'fis_errtrig'` returns **100**
+> **GOTCHA — count hazard.** A naive `rg -c 'fis_errtrig'` returns **100**
 > because it matches both the `trigger:` and `description:` lines. The true entry count is **50**
 > (`rg -c '^- trigger: fis_errtrig_intr\['` = 50); the index range is `[0..49]`, split 25 user + 25
 > amzn. Use the index range, not a raw line count.
@@ -389,7 +391,7 @@ the bit→index ordinal is `[MED · INFERRED]`; the registers and the 50 cause s
 
 ---
 
-## 4. `spad` — the scratchpad surfaces `[HIGH · OBSERVED]`
+## 4. `spad` — the scratchpad surfaces
 
 ### 4.1 No `spad` CSR regfile exists
 
@@ -434,7 +436,7 @@ the same concept (`[MED · INFERRED]` link).
 
 ---
 
-## 5. Cross-generation divergence `[HIGH · OBSERVED]`
+## 5. Cross-generation divergence
 
 `fis_control` is the surface that moves across generations; the errtrig PAIR and notific are frozen.
 
@@ -461,7 +463,7 @@ they are HW triggers only (`fis_cntrl_intr[0..4]`, §2.8); Mariana hardens them 
 maskable, address-capturing latch — the same hardening pattern as `qos_prot`'s Cayman→Mariana
 AXI-parity addition. The `apb_timeout` (§2.8) is the watchdog that produces these SLVERRs.
 
-> **QUIRK — schema typo preserved `[HIGH · OBSERVED]`.** The Mariana `fis_cntrl_intr` field
+> **QUIRK — schema typo preserved.** The Mariana `fis_cntrl_intr` field
 > descriptions ship *"A posted write **restulted** AMZN chain … APB SLVERR"* across all five causes —
 > quoted as-is.
 
@@ -472,7 +474,7 @@ struct spans gens with the same `cc_op`(1b)/`algo_type`(4b) field widths.
 
 ---
 
-## 6. The FIS's three interrupt vectors, reconciled `[HIGH · OBSERVED]`
+## 6. The FIS's three interrupt vectors, reconciled
 
 The FIS contributes exactly three interrupt source vectors, one from each of its three control
 sub-regions (CTL / SPROT / ERRTRIG); all are `needs_cdc:false`, `edge_triggered:true`:

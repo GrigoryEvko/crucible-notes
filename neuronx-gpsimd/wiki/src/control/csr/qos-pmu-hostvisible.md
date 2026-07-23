@@ -23,6 +23,8 @@ Everything below is reconstructed byte-exact from the shipped Cayman register sc
 (`csrs/sprot/qos_pmu.json`, `csrs/sprot/qos_host_visible.json`), their `.json.mako` generators,
 the FIS-level control schema (`csrs/fis/fis_control.json`), the flat address map
 (`output/address_map/address_map_flat.yaml`), and the intc trigger YAML (`intc/sdma_triggers.yaml`).
+The page default is `[HIGH · OBSERVED]`; claims that depart from it carry an explicit tag,
+and the per-claim-class breakdown is the Confidence ledger at the end.
 
 The sibling shaper is [`qos-prot.md`](./qos-prot.md) (the observed control surface — primary link);
 the FIS AXI-integrity watchdog is [`nsm.md`](./nsm.md); the profiling/trace-debug gating that
@@ -34,9 +36,9 @@ FIS sprot interrupt routing is
 
 ---
 
-## 1. Regfile-level facts `[HIGH · OBSERVED]`
+## 1. Regfile-level facts
 
-Both re-derived this session (`jq`-counted from the Cayman JSON, **not** decompile-grepped):
+Both read from the Cayman JSON:
 
 | property | `qos_pmu` | `qos_host_visible` |
 |----------|-----------|--------------------|
@@ -61,20 +63,20 @@ Both re-derived this session (`jq`-counted from the Cayman JSON, **not** decompi
 Key scalar observations:
 
 * **Both windows are `0x800` (2 KiB), `AddrWidth=11` — exactly half `qos_prot`'s `0x1000`.**
-  Confirmed by `SizeInBytes` *and* by the address-map node size `0x800`. `[HIGH · OBSERVED]`
+  Confirmed by `SizeInBytes` *and* by the address-map node size `0x800`.
 * **`qos_pmu` is RW-dominant (114/146 regs RW) — it is a CONFIG surface.** The only 32 RO regs
   are the 8 × 4 snapshot read-outs. **`qos_host_visible` is RO-dominant (60/64 regs RO) — it is a
   READ-OUT surface**; the only 4 RW regs are the `spare_user` zeros/ones. This RW-vs-RO split is
-  the structural signature of "programmable profiler" vs "fixed-function monitor". `[HIGH · OBSERVED]`
+  the structural signature of "programmable profiler" vs "fixed-function monitor".
 * **Every `qos_pmu` field resets to `0` ⇒ all counters boot DISABLED** (`event_select` one-hot
   `= 0` = no event selected); SW must arm them. The PMU is transparent at reset, the same boot
-  contract as `qos_prot`'s `chicken=1`. `[HIGH · OBSERVED]`
+  contract as `qos_prot`'s `chicken=1`.
 * **The `IpReg:"true"` marker** appears on all 52 `qos_user` registers and on **none** of the
   `qos_pmu` registers — a second machine-readable tag that the host monitor is fixed-function IP
-  hardware, while the PMU is a configurable block. `[HIGH · OBSERVED]`
+  hardware, while the PMU is a configurable block.
 
 > **GOTCHA — hex-string sizes, the "mixed hex/decimal" trap does NOT bite the `qos_*` files
-> `[HIGH · OBSERVED]`.** Every size in both files is an explicit `0x`-prefixed **hex string**:
+>.** Every size in both files is an explicit `0x`-prefixed **hex string**:
 > `SizeInBytes="0x0800"`, and `BundleSizeInBytes` `"0x400"` / `"0x300"` / `"0x80"` / `"0x10"`. The
 > `qos_*` family follows the all-hex convention (same as `qos_prot`), so the usual
 > "`AddressOffset` is hex but `BundleSizeInBytes` is decimal" pitfall does **not** apply here.
@@ -100,7 +102,7 @@ map (§10).
 
 ---
 
-## 2. `qos_pmu` — bundle map + counter/matcher geometry `[HIGH · OBSERVED]`
+## 2. `qos_pmu` — bundle map + counter/matcher geometry
 
 A **single** bundle `csr` @ `0x0000`, `BundleSizeInBytes="0x400"`, `ArraySize="1"`, **146 regs**.
 The highest register offset is `axi_txn_matcher3_reg19 @ 0x33c` (`+4 = 0x340` `< 0x400`, fits). The
@@ -116,7 +118,7 @@ Register-group layout (mako loop bounds verified — §7):
 | AXI txn matchers `0..3` | `0x200` | `0x50` (20 × `0x4`) | 4 | 20 regs each = **80** |
 
 Reconcile: `2 + 8·8 + 4·20 = 146` register-defs; `2 + 8·9 + 4·20 = 154` bitfields (the counter's
-`cmp` register carries **2** fields, so 9 fields/counter, not 8). Both match the `jq` counts. `[HIGH · OBSERVED]`
+`cmp` register carries **2** fields, so 9 fields/counter, not 8). Both match the `jq` counts.
 
 > **NOTE — the IP provisions 16 counters; Cayman wires 8 `[HIGH counts · MED interpretation]`.**
 > The `0x100..0x1FF` counter region holds exactly 8 counters at `0x20` each (the live counters span
@@ -129,7 +131,7 @@ Reconcile: `2 + 8·8 + 4·20 = 146` register-defs; `2 + 8·9 + 4·20 = 154` bitf
 
 ---
 
-## 3. `qos_pmu` — full per-field register table `[HIGH · OBSERVED]`
+## 3. `qos_pmu` — full per-field register table
 
 All offsets are relative to the `csr` bundle base `0x000` (so abs = the same value, `ArraySize=1`).
 
@@ -167,7 +169,7 @@ is exported to the FIS as `fis_sprot_intr[4]` (§8).
 | `pmu_counterI_snap1_hi` | `+0x1c` | 15:0 | `val` | **RO** | `0x0` | Snapshot1 read-out bits `[47:32]` (⇒ **48-bit**) |
 
 Absolute `event_select` offsets (stride `0x20`, mako-verified): `0x100, 0x120, 0x140, 0x160,
-0x180, 0x1a0, 0x1c0, 0x1e0`. `[HIGH · OBSERVED]`
+0x180, 0x1a0, 0x1c0, 0x1e0`.
 
 The counter model, for a reimplementer:
 
@@ -186,7 +188,7 @@ The counter model, for a reimplementer:
   window while the other keeps counting (the classic atomic-read-of-a-moving-counter pattern). The
   freeze pulse comes from outside this file (§6). `[HIGH fields · MED "double-buffer/freeze" classification]`
 
-> **QUIRK — `pmu_counterI_cmp` description copy-paste `[HIGH · OBSERVED]`.** The `Description` of
+> **QUIRK — `pmu_counterI_cmp` description copy-paste.** The `Description` of
 > **all eight** `cmp` registers literally reads *"Comparison to be used for PMU Counter 0"* — the
 > `${i}` substitution is missing from this one line of the generator (the template hardcodes
 > `Counter 0` while every *register name* correctly carries `${i}`). It is a schema-text artifact,
@@ -200,7 +202,7 @@ The counter model, for a reimplementer:
 |----------|-----:|-----:|-------|--------|----:|---------|
 | `axi_txn_matcherM_reg0` .. `axi_txn_matcherM_reg19` | `+0x00` .. `+0x4c` | 31:0 | `val` | RW | `0x0` | opaque "Pattern" — 20 × 32 bit = **640 bits** per matcher |
 
-Matcher base offsets (stride `0x50`, mako-verified): `0x200, 0x250, 0x2a0, 0x2f0`. `[HIGH · OBSERVED]`
+Matcher base offsets (stride `0x50`, mako-verified): `0x200, 0x250, 0x2a0, 0x2f0`.
 
 Four matchers, each **20 × 32-bit = 640 bits** of "Pattern". A matcher is an AXI-beat classifier:
 640 bits is consistent with a `{match-value, mask}` CAM over a wide AXI sideband vector
@@ -212,7 +214,7 @@ bit-layout of the 640-bit pattern is **not decoded** in the JSON/mako (all 80 re
 
 ---
 
-## 4. `qos_host_visible` — bundle map `[HIGH · OBSERVED]`
+## 4. `qos_host_visible` — bundle map
 
 Three arrays, no overlap; `BundleSizeInBytes` hex strings, spans computed:
 
@@ -226,11 +228,11 @@ The highest `qos_user` register is `write_channel_delta @ +0xd4` (`< 0x300`); th
 `nts_user` is `total_bytes_written_hi @ +0x44` (`< 0x80`); `spare_user` is pinned to the **top** of
 the window (`0x7F0`, last 16 B — an AMZN convention identical to `qos_prot.spare_amzn`). Gaps
 `0xd8–0x3FF`, `0x480–0x7EF` are reserved headroom; the `0x800` window is fully spanned with the
-spare at the top. `[HIGH · OBSERVED]`
+spare at the top.
 
 ---
 
-## 5. `qos_host_visible` — full per-field register table `[HIGH · OBSERVED]`
+## 5. `qos_host_visible` — full per-field register table
 
 All counters `RO`, `rst=0x0`, field `cnt` unless noted. The richer descriptions below merge the
 JSON text with the `.json.mako` text (the JSON shortened some — e.g. JSON "Number of reads" vs mako
@@ -247,7 +249,7 @@ JSON text with the `.json.mako` text (the JSON shortened some — e.g. JSON "Num
 | `total_bytes_written_lo` | `+0x10` | 31:0 | — | bytes written `[31:0]` |
 | `total_bytes_written_hi` | `+0x14` | 15:0 | **48-bit** | bytes written `[47:32]` |
 
-> **CORRECTION vs `qos_prot` byte widths `[HIGH · OBSERVED]`.** The byte counters here are **48-bit**
+> **CORRECTION vs `qos_prot` byte widths.** The byte counters here are **48-bit**
 > (`lo[31:0]` + `hi[15:0]`), but `qos_prot`'s byte-**LIMIT** fields are only **36-bit**
 > (`read_byte_limit_in_window_lo[31:0]` + `…_hi[3:0]`, [see `qos-prot.md §3d`](./qos-prot.md)). This
 > is **not** a contradiction: the *monitor* counts up to `2^48` bytes per window, while the *limiter*
@@ -280,7 +282,7 @@ The LIVE register keeps counting; the `perf_` mirror is atomically frozen at the
 snapshot/freeze pair: read `perf_` for a coherent window total, read the live reg for instantaneous
 progress. Two windows let SW run e.g. a short and a long averaging window concurrently.
 
-> **NOTE — `perf_snapshot[w]` is in the shipped JSON `[HIGH · OBSERVED]`.** The phrases "since the
+> **NOTE — `perf_snapshot[w]` is in the shipped JSON.** The phrases "since the
 > last reset or perf_snapshot[w]" and "snapshotted on the last perf_snapshot[w]" appear **34×** in
 > the shipped `qos_host_visible.json` itself, not only in the mako — so the *existence* of the
 > per-window freeze event is OBSERVED. Only the *wiring* of `perf_snapshot[w]` **back** to
@@ -350,7 +352,7 @@ All `RO`, `rst=0x0`, field `count`, all carry `SpecialAccess:"None"` (the 8 expl
 | `total_bytes_written_lo` | `+0x40` | 31:0 | NTS-mode bytes written `[31:0]` |
 | `total_bytes_written_hi` | `+0x44` | 15:0 | NTS-mode bytes written `[47:32]` (48-bit) |
 
-> **NOTE — occupancy width = cap width + 1 `[HIGH · OBSERVED]`.** `outstanding_reads` is **8-bit**
+> **NOTE — occupancy width = cap width + 1.** `outstanding_reads` is **8-bit**
 > and `outstanding_writes` is **6-bit**, exactly **one bit wider** than `qos_prot`'s
 > `read_limit[6:0]` (7-bit, `0→128`) and `write_limit[12:8]` (5-bit, `0→32`)
 > ([`qos-prot.md §3b`](./qos-prot.md)). The +1 bit of headroom lets the live occupancy counter
@@ -371,14 +373,14 @@ absent — letting SW size the impact of a missing / powered-down target. `[HIGH
 | `ones_1` | `+0xC` | 31:0 | `spares` | RW | `0xffffffff` |
 
 Identical to the `qos_prot.spare_amzn` convention — these are the **only 4 RW registers** in the
-file; everything else is RO observability. `[HIGH · OBSERVED]`
+file; everything else is RO observability.
 
 ---
 
-## 6. Where the windows are set — the snapshot/threshold config `[HIGH · OBSERVED]`
+## 6. Where the windows are set — the snapshot/threshold config
 
 > **CRITICAL FINDING — the window/snapshot config is in NONE of the `qos_*` JSONs
-> `[HIGH · OBSERVED]`.** Neither `qos_host_visible` nor `qos_pmu` nor `qos_prot` contains a
+>.** Neither `qos_host_visible` nor `qos_pmu` nor `qos_prot` contains a
 > `perf_snapshot` trigger, a monitor-window-period register, or a freeze control. A full-tree scan
 > for `perf_snapshot` / `monitor_window` / `snapshot_trigger` / `freeze` over `csrs/` resolves the
 > trigger source to **`csrs/fis/fis_control.json`** — the FIS-level control regfile, `AddrWidth=13`
@@ -386,7 +388,7 @@ file; everything else is RO observability. `[HIGH · OBSERVED]`
 > reading the `qos_*` files alone.
 
 `fis_control.sw_cntrl` bundle — **DECIMAL `AddressOffset`s** (a different convention from the all-hex
-`qos_*` files), `jq`-confirmed this session:
+`qos_*` files):
 
 | register | @off (dec) | bits | field | rst | meaning |
 |----------|-----------:|-----:|-------|----:|---------|
@@ -401,7 +403,7 @@ file; everything else is RO observability. `[HIGH · OBSERVED]`
 | `perf_snapshot_lo_1` | `36` | 31:0 | `count` | `0` | window-1 snapshot period/value `[31:0]` |
 | `perf_snapshot_hi_1` | `40` | 15:0 | `count` | `0` | window-1 snapshot period/value `[47:32]` (48-bit) |
 
-> **NOTE — two independent region enables `[HIGH · OBSERVED]`.** `user_fis_en` (bit 16) gates the
+> **NOTE — two independent region enables.** `user_fis_en` (bit 16) gates the
 > host monitor's region; `user_debug_en` (bit 24) gates the debug PMU's region. Both reset to **`1`**
 > — both regions are live out of reset — and they can be gated **separately**: the always-on host
 > telemetry and the deep-debug PMU are two independently-enableable surfaces. The debug-domain gate
@@ -429,7 +431,7 @@ external `perf_snapshot[w]` pulse from `fis_control`. `[HIGH facts · MED stitch
 
 ---
 
-## 7. The `.mako` generators — parametric emission `[HIGH · OBSERVED]`
+## 7. The `.mako` generators — parametric emission
 
 ### 7a. `qos_pmu.json.mako` — the per-counter / per-matcher loops
 
@@ -466,7 +468,7 @@ a running `offset`:
 Eight `offset += 0x4` per counter ⇒ the `0x20` counter stride; `4 × 20` `offset += 0x4` matcher
 registers ⇒ the `0x50` matcher stride. The trailing-comma guard `if (i!=3 or j!=19)` suppresses the
 comma on the very last register (`axi_txn_matcher3_reg19`). The free parameters are exactly
-`range(8)` (counters, IP-max 16) and `range(4)×range(20)` (matchers, 640-bit each). `[HIGH · OBSERVED]`
+`range(8)` (counters, IP-max 16) and `range(4)×range(20)` (matchers, 640-bit each).
 
 ### 7b. `qos_host_visible.json.mako` — the per-window / per-channel loops
 
@@ -492,7 +494,7 @@ running `offset` from `0x20`:
 The **channel loop nests window inside channel** — for each channel it emits
 `${ch}_…_${i}` then `perf_${ch}_…_${i}` for `i` in `{0,1}` — which is exactly why the byte order is
 (live_w0, perf_w0, live_w1, perf_w1) per channel (the CORRECTION in §5c). `nts_user` and `spare_user`
-are written literally (no loop). `[HIGH · OBSERVED]`
+are written literally (no loop).
 
 ---
 
@@ -513,7 +515,7 @@ The FIS exports a **6-entry sprot interrupt group**. From `intc/sdma_triggers.ya
 
 The "interrrupts" triple-`r` typo is verbatim from the YAML.
 
-> **CORRECTION — `intr[5]` differs by generation `[HIGH · OBSERVED]`.** In the **Cayman**
+> **CORRECTION — `intr[5]` differs by generation.** In the **Cayman**
 > `sdma_triggers.yaml`, `fis_sprot_intr_5 = "fis_sprot_spare_0"` (a spare). In the **maverick**
 > trigger file the same index is repurposed as `"axi_checks interrupt"` — consistent with maverick's
 > added `axi_checks_*` shaper bundles ([`qos-prot.md §6`](./qos-prot.md)). This page cites **Cayman
@@ -532,7 +534,7 @@ group but come from different register files**:
 The FIS aggregates: remapper(deny) + delta-monitor(×2 underflow) + tmu(timeout) + qos_pmu(counter) +
 1 spare. Different masters carry different sprot multiplicity (tpb: sprot 0..4; d2d/io_fabric/cc: 2;
 sdma/top_sp/peb: 1) — one 6-entry group per FIS sprot the master owns. Each group feeds that master's
-intc; routing is in [`../interrupt/nsm-flow-unified.md`](../interrupt/nsm-flow-unified.md). `[HIGH · OBSERVED]`
+intc; routing is in [`../interrupt/nsm-flow-unified.md`](../interrupt/nsm-flow-unified.md).
 
 ---
 
@@ -602,10 +604,10 @@ interrupts, in the debug domain. `[HIGH register sets · MED mechanism map]`
 
 ---
 
-## 10. Physical placement `[HIGH · OBSERVED]`
+## 10. Physical placement
 
-Triad node counts from the **Cayman** `address_map_flat.yaml` (`rg -c`, re-grounded this session —
-these are Cayman figures; the `mariana` flat map gives different counts, see QUIRK):
+Triad node counts from the **Cayman** `address_map_flat.yaml` (these are Cayman figures;
+the `mariana` flat map gives different counts, see QUIRK):
 
 | regfile | Cayman flat nodes | domain |
 |---------|------------------:|--------|
@@ -627,7 +629,7 @@ USER DEBUG-FIS (debug profiler) — qos_pmu:
     +0x1000 ..._SPROT_QOS_PMU        size 0x800   csrs/sprot/qos_pmu.json     <== PMU
 ```
 
-Key placement facts `[HIGH · OBSERVED]`:
+Key placement facts:
 
 * **All 528 `qos_pmu` nodes live under `*_USER_FIS_*_DEBUG_FIS_0_SPROT_QOS_PMU`** (528/528 contain
   `DEBUG_FIS`); **all 1208 `qos_host_visible` nodes live under `*_USER_FIS_*_FIS_n_SPROT_QOS`**
@@ -642,7 +644,7 @@ Key placement facts `[HIGH · OBSERVED]`:
   `IO_PCIE_A/U`, `IO_SDMA_H2D/D2H`, `PEB`, `PEB_PCIE_M` — one `qos_pmu` per debug-instrumented fabric
   master, the same master set as `qos_prot`/`qos_host_visible`. `[HIGH names + counts]`
 
-> **QUIRK — node counts are per-generation; re-ground to the Cayman map `[HIGH · OBSERVED]`.** The
+> **QUIRK — node counts are per-generation; re-ground to the Cayman map.** The
 > `mariana` `address_map_flat.yaml` gives `qos_pmu=516` / `qos_host_visible=1320` / `qos_prot=1940`,
 > **different** from the Cayman `528` / `1208` / `1500`. The instance multiplicity differs by silicon
 > (more/fewer fabric masters), so any node-count claim **must** name its address-map source. This
@@ -653,7 +655,7 @@ Key placement facts `[HIGH · OBSERVED]`:
 
 ## 11. Cross-generation provenance `[MED]`
 
-> **PROVENANCE LIMITATION `[HIGH · OBSERVED]`.** Unlike `qos_prot` (which ships a 5-generation
+> **PROVENANCE LIMITATION.** Unlike `qos_prot` (which ships a 5-generation
 > arch-headers corpus, [`qos-prot.md §6`](./qos-prot.md)), the byte-exact **field tables** in §3
 > and §5 are derived from the **Cayman** `qos_pmu.json` / `qos_host_visible.json`. The other
 > generations ship only thin schema copies under `arch-headers/{mariana,mariana_plus,maverick,sunda}/`,

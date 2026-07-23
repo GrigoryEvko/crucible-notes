@@ -15,8 +15,10 @@ trees. The descriptor is a plain-text generator artifact emitted by the build;
 it is a citeable binary-derived source. Every register name, offset, bit
 position, access type, reset value, and the *verbatim* field Description strings
 quoted here are read from that JSON. No disassembly is needed for the register
-map itself; the architectural tie-in (how a debugger drives the block) is
-labelled **INFERRED** where it goes beyond the descriptor text.
+map itself. The page default is `[HIGH/OBSERVED]`; the architectural tie-in (how
+a debugger drives the block) is labelled **INFERRED** where it goes beyond the
+descriptor text, and every claim that departs from the default carries an
+explicit tag.
 
 > **Generation:** This is the **`ncore2gp` (Cayman / NC-v3) Q7** debug aperture,
 > byte-grounded from `xtensa_q7.json` as shipped in the customop package
@@ -25,7 +27,7 @@ labelled **INFERRED** where it goes beyond the descriptor text.
 > identical content, so the block is carried forward across those packaged gens.
 > Any **v5 / MAVERICK** projection is flagged **INFERRED** — it is the *same JSON*
 > in the maverick tree, but a silicon-level v5 confirmation is not in hand.
-> `[HIGH/OBSERVED — descriptor read in full; per-gen carry CARRIED]`
+> `[HIGH/OBSERVED; per-gen carry CARRIED]`
 
 ---
 
@@ -39,15 +41,14 @@ base**, so the absolute offset is `bundle.base + register.offset`. Access flows
 over **APB** (`InterfaceType=APB`), the file is `POSEDGE` (`RegfileFlavor`), and
 the declared aperture is **14-bit-addr / 32-bit-data / 0x4000 bytes**.
 
-> **CORRECTION vs SX-CSR-02.** The backing report states the RegFile-level
-> `AddrWidth / DataWidth / SizeInBytes` are *"ALL null"* and that the 0x4000 span
-> is only *implied* by the bundle layout. Re-reading the JSON, these fields are in
-> fact **populated**: `AddrWidth="14"`, `DataWidth="32"`,
+> **CORRECTION — the RegFile scalars are populated, not null.** The RegFile-level
+> `AddrWidth / DataWidth / SizeInBytes` are sometimes reported as *"ALL null"*,
+> with the 0x4000 span only *implied* by the bundle layout. In the JSON these
+> fields are in fact **populated**: `AddrWidth="14"`, `DataWidth="32"`,
 > `SizeInBytes="0x4000"`, `InterfaceType="APB"`, `RegfileFlavor="POSEDGE"`. The
 > 0x4000 size is therefore **stated explicitly**, not merely implied — and it
-> agrees with the bundle arithmetic (`0x3F00 + 0x100 = 0x4000`). Everything else
-> in the report's count table reproduces exactly.
-> `[HIGH/OBSERVED — jq over RegFile root]`
+> agrees with the bundle arithmetic (`0x3F00 + 0x100 = 0x4000`). The count table
+> below is unaffected.
 
 | Bundle | Base | Size | Regs | Fields | Block |
 |---|---|---|---|---|---|
@@ -57,9 +58,7 @@ the declared aperture is **14-bit-addr / 32-bit-data / 0x4000 bytes**.
 | `Miscellaneous_Registers`       | `0x3000` | `0x0F00` | 5  | 36  | power/reset, ECC/RAS fault info |
 | `CoreSight_Registers`           | `0x3F00` | `0x0100` | 20 | 20  | CoreSight ROM-table identification |
 
-`[HIGH/OBSERVED — counts re-derived from scratch via jq; not carried from the report]`
-
-**Verified totals** (independent jq enumeration, not trusting the report):
+**Verified totals:**
 **5 bundles · 78 registers · 296 bitfields**; per-bundle field totals
 `63 + 107 + 70 + 36 + 20 = 296`; register count `12 + 26 + 15 + 5 + 20 = 78`.
 Register-level access split **RW=62 / RO=16** (no WO, no Reserved); field-level
@@ -70,7 +69,7 @@ collision. The aperture is `[0x0000 .. 0x4000)`.
 > their base. `Miscellaneous_Registers` is based at `0x3000` but its first
 > register (`PWRCTL`) sits at rel `0x20` (abs `0x3020`); `CoreSight_Registers` is
 > based at `0x3F00`, starts with `ITCTRL` @ rel `0x00` (`0x3F00`), then jumps to
-> rel `0xA0`. Always compute `base + rel`. `[HIGH/OBSERVED]`
+> rel `0xA0`. Always compute `base + rel`.
 
 ---
 
@@ -91,7 +90,7 @@ counters + 8 selectors + 8 status**.
 | `PMSTAT0..7` | `0x1180..0x119c` | RW | per-counter status: `OVFL[0]`, `INTASRT[4]`. |
 
 ¹ `INTPC` carries register-level access `RW` in the JSON but its single field is
-RO — the value is hardware-latched. `[HIGH/OBSERVED]`
+RO — the value is hardware-latched.
 
 **`PMCTRLn` selector layout** (identical across all eight; `0x4`-stride):
 
@@ -200,7 +199,7 @@ core's address/special registers and memory.
 > exposed only as the **`DCRSET` / `DCRCLR`** set/clear pair (abs `0x200c` /
 > `0x2008`). To toggle a control bit you write a 1 to the matching position in the
 > appropriate alias; there is no single readable DCR in this aperture. Both
-> aliases carry the **same 14-field** layout. `[HIGH/OBSERVED]`
+> aliases carry the **same 14-field** layout.
 
 **`DCRSET` / `DCRCLR` control fields** (identical 14 fields each):
 
@@ -340,14 +339,14 @@ the OCD debugger (`DSR.DebugPendTrax`, §3).
 | `EXTTIMEHI`    | `0x44` | RW¹ | RO field: external-timestamp high 32 bits. |
 
 ¹ register-level `RW`, single field `RO` (hardware-driven from the timestamp
-pins). `[HIGH/OBSERVED]`
+pins).
 
 **Trace → debug coupling.** `TRAXCTRL.PTOWT`/`PTOWS` raise the Processor Trigger
 Output (`TRAXSTAT.PTO`), which the descriptor's own text says *"is latched into
 OCD register bit DSR.DebugPendTrax when a TRAX trigger causes a debug
 interrupt."* So a PC-range trace trigger (`TRIGGERPC` + `PCMATCHCTRL`) is, in
 effect, the aperture's **hardware PC breakpoint** — it both stops the trace and
-can halt the core through §3's DSR vector. `[HIGH/OBSERVED — verbatim cross-ref in TRAXSTAT.PTO]`
+can halt the core through §3's DSR vector.
 
 ---
 
@@ -363,8 +362,6 @@ controls** and the **ECC/RAS fault-reporting** surface.
 | `ERISTAT`     | `0x3028` | RW | `WRISUC[0]` (RO) *"ERI write success indication"*. |
 | `FAULTINFOLO` | `0x302c` | RW | `UserCode[23:20]`(RW), `HaltCode[27:24]` *"provided by HALT instruction"*, `TE[28]` *"Triple exception"*, `DE[29]` *"Double exception"*, `Halted[30]`, `PFatalError[31]` *"Sticky fatal error"*. |
 | `FAULTINFOHI` | `0x3030` | RW | **17 ECC flags** across DataRAM/InstrRAM/ICache/DPref-RAM/IPref-RAM (Corr/Unc/Refl/Cln/Drt variants), plus `ECCTstMde[19]`. The ECC/RAS reporting register. |
-
-`[HIGH/OBSERVED — note the rel-0x20 base]`
 
 ---
 
@@ -424,7 +421,7 @@ arm a stop (`DCRSET.DebugInterrupt`, a TRAX PC-match, or an injected `IBREAK`);
 This is the **Cayman / NC-v3 Q7** debug aperture. The diff variant — the NX core
 register file — is documented separately; the two share the Cadence OCD/TRAX/PMU
 heritage but differ in counts and a handful of fields. See
-[xtensa-nx.md](xtensa-nx.md) for the **NX-vs-Q7** delta. `[forward-ref]`
+[xtensa-nx.md](xtensa-nx.md) for the **NX-vs-Q7** delta.
 
 ### 7.3 This aperture vs the SEQ firmware debugger
 
@@ -436,7 +433,6 @@ heritage but differ in counts and a handful of fields. See
 > page's block is the **silicon's own** Cadence debugger, driven over the external
 > debug bus (APB/JTAG), orthogonal to the SEQ firmware debugger. Do not conflate
 > the `0x2000` OCD base here with the SEQ `0x04004000` breakpoint CSRs.
-> `[HIGH/OBSERVED — corroborated by the uarch-debugger page's scan]`
 
 ### 7.4 Security gating
 
@@ -450,7 +446,7 @@ heritage but differ in counts and a handful of fields. See
 > production parts — is covered on the
 > [Profiling / Trace / Debug + Access Gating](../security/profiling-trace-debug-gating.md)
 > page. The host-visible PMU mirror is a separate block; see also the
-> [tpb_xt_local_reg](tpb-xt-local-reg.md) Q7-local CSR window. `[forward-ref]`
+> [tpb_xt_local_reg](tpb-xt-local-reg.md) Q7-local CSR window.
 
 ---
 

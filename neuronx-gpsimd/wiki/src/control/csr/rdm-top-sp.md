@@ -11,8 +11,9 @@ core with an event/semaphore `tsync` substrate that doubles as collective-sequen
 
 Both register files are extracted byte-exact from the Cayman arch-regs schema
 (`csrs/rdm/rdm_model.json`, `csrs/top_sp/top_sp_ram.json`). Every numeric claim
-below is re-grounded to the JSON itself (`jq`), never to a decompile grep.
-Confidence is tagged **HIGH / MED / LOW** × **OBSERVED / INFERRED / CARRIED**
+below is grounded in the JSON itself. The page default is
+**`[HIGH · OBSERVED]`**; claims that depart from it carry an explicit
+**HIGH / MED / LOW** × **OBSERVED / INFERRED / CARRIED** tag
 (CARRIED = imported from a committed sibling page, not present in these two JSONs).
 
 Related: [TOP_SP collective lowering](../../collectives/ops/top-sp-lowering.md) ·
@@ -24,7 +25,7 @@ Related: [TOP_SP collective lowering](../../collectives/ops/top-sp-lowering.md) 
 
 ---
 
-## 1 · RegFile-level facts (both files) `[HIGH · OBSERVED]`
+## 1 · RegFile-level facts (both files)
 
 Both are 4 KiB (`AddrWidth = "12"` ⇒ a `0x1000` window), 32-bit-data, POSEDGE,
 APB regfiles with exactly **one** bundle array (`ArraySize = "1"`).
@@ -49,13 +50,11 @@ APB regfiles with exactly **one** bundle array (`ArraySize = "1"`).
 > `rdm_model` offsets are **decimal** strings (`"0","4","8",…,"940"`) while
 > `top_sp_ram` offsets are **hex** strings (`"0x0","0x4",…,"0x900","0x904"`).
 > A parser that assumes one radix will mis-place every register in one of the two
-> files. Verified by raw `jq -r '…AddressOffset'` on each.
-> `[HIGH · OBSERVED]`
+> files. Verified against the raw `AddressOffset` strings in each.
 
 > **NOTE — no `0xb1` reset placeholder.** Some arch-regs files seed unfilled reset
 > values with the sentinel `0xb1`; `grep -ci 0xb1` = **0** in both of these. Every
 > reset value quoted below is a real silicon default, not a placeholder.
-> `[HIGH · OBSERVED]`
 
 ### 1.1 · Worked bundle-base computation
 
@@ -109,9 +108,9 @@ register and every interrupt is ring / descriptor / linked-list / `bvalid`
 (write-response) semantics, so the *mechanism* is HIGH even where the *name* is MED.
 
 `rdm_model.json` is **byte-identical** across cayman / mariana / mariana_plus /
-sunda (`jq -S` sorted diff = empty for all three vs cayman). `[HIGH · OBSERVED]`
+sunda (`jq -S` sorted diff = empty for all three vs cayman).
 
-### 2.2 · Per-queue register block — the ring & tail-pointer model `[HIGH · OBSERVED]`
+### 2.2 · Per-queue register block — the ring & tail-pointer model
 
 The 216 per-queue registers are **9 regs × 24 queues** on a **36-byte stride**
 (queue *i* occupies decimal offsets `i·36 … i·36+32`). The Cayman JSON carries
@@ -138,7 +137,7 @@ aligned). A tail-pointer write-back slot is a **57-bit byte address** split
 `[57:32]:[31:0]` (full 32-bit low half; no page alignment forced on the WB slot).
 **`queue_size`** is counted in units of **four 16-byte descriptors = 64 B**
 (reset `0xa` ⇒ 10 such blocks = 640 B = 40 descriptors); the constraint is that the
-M2S and S2M halves of a queue share one size. `[HIGH · OBSERVED]`
+M2S and S2M halves of a queue share one size.
 
 > **NOTE — `queue_base_hi` resets encode the queue index (queues 1–11 only).**
 > Reading the JSON's `ResetValue` across all 24 queues shows a striped default:
@@ -147,10 +146,10 @@ M2S and S2M halves of a queue share one size. `[HIGH · OBSERVED]`
 > m2s_11 = 11, s2m_11 = 22). Queues **0** and **12…23** reset to **0**. This is a
 > power-on default that seeds distinct high-address bits per ring so an unconfigured
 > RDM never aims two queues at the same HBM page; firmware is still expected to
-> program real bases before enabling a queue. Surfaced here because §2.1 of the
-> backing analysis treated all `queue_base` resets as zero. `[HIGH · OBSERVED]`
+> program real bases before enabling a queue. Surfaced here because these resets
+> are commonly treated as uniformly zero.
 
-### 2.3 · Control / status tail `[HIGH · OBSERVED]`
+### 2.3 · Control / status tail
 
 The 20 control/status registers occupy decimal offsets **864 … 940**. Unlike the
 queue block, these **do** carry descriptions in the Cayman JSON.
@@ -186,14 +185,15 @@ queue block, these **do** carry descriptions in the Cayman JSON.
 | 3 | `pop_one` | pop the head of the queue if non-empty |
 | 4 | `pop_all` | pop entries while the queue is non-empty |
 
-> **CORRECTION vs SX-CSR-16 §2.2.** The backing analysis listed
-> `queue_disabled_drop_count` as `[23:0]`. The JSON bitfield is `bitmap[31:0]` —
+> **CORRECTION — `queue_disabled_drop_count` is 32-bit.** It is sometimes listed
+> as `[23:0]`. The JSON bitfield is `bitmap[31:0]` —
 > a **32-bit** field. (The *queue* count is still 24; the upper byte is simply not
-> a per-queue bit.) Corrected here. `[HIGH · OBSERVED]`
+> a per-queue bit.) Corrected here.
 
-> **CORRECTION vs SX-CSR-16 §2.2.** The analysis glossed `bresp_value` /
-> `bresp_value_1` as *"Two bits per 128B slot. Slot0(queue0)=bits 1:0 … slots
-> 16..23"*. That gloss originates in the sibling header, **not** in
+> **CORRECTION — the `bresp_value` slot packing is header-derived, not in the JSON.**
+> `bresp_value` / `bresp_value_1` are commonly glossed as *"Two bits per 128B slot.
+> Slot0(queue0)=bits 1:0 … slots 16..23"*. That gloss originates in the sibling
+> header, **not** in
 > `rdm_model.json`, whose bitfield is a flat `status[31:0]` with **blank
 > Description**. The "2 bits per slot" packing is consistent with the 24-queue ×
 > 2-bit B-response model but is INFERRED, not literal from this JSON. Both reset to
@@ -223,7 +223,7 @@ This is the same AXI *descriptor-ring + tail-pointer write-back* idiom the SDMA
 of that idiom (it writes back the notification / MSI-X descriptor rings the INTC
 produces), *not* a tensor-DMA or collective-reduce datapath.
 
-### 2.5 · RDM 64-cause interrupt set `[HIGH · OBSERVED]`
+### 2.5 · RDM 64-cause interrupt set
 
 `aws_intc_rdm_count = 64`. Causes 0–8 are functional; 9–63 are FIS/security-protect
 (`sprot_intr_*`) spares. Every functional cause is an AXI-write-response or
@@ -242,7 +242,7 @@ linked-list condition — corroborating the write-only model of §2.1/§2.4:
 | 9 … 63 | `sprot_intr_*` | FIS security-protection block |
 
 RDM rolls up to the apex aggregator as a **single** summary NMI
-(`rdm_nmi` / `rdm_summary`, node `RDM`). `[HIGH · OBSERVED]`
+(`rdm_nmi` / `rdm_summary`, node `RDM`).
 
 ---
 
@@ -277,7 +277,7 @@ not reduction- or remote-DMA. `[map HIGH · OBSERVED; sibling/negative-evidence 
 
 ## 4 · TOP_SP — `top_sp_ram` config surface
 
-### 4.1 · The container and where `top_sp_ram` sits `[HIGH · OBSERVED]`
+### 4.1 · The container and where `top_sp_ram` sits
 
 TOP_SP is a **4 MiB** NODE (maverick address-map view) / a **256 KiB** APB-IO view
 (Cayman), holding three 1 MiB sub-windows + 1 MiB reserved:
@@ -304,7 +304,7 @@ in `TPB_SP/LOCAL_REG` (`tpb_xt_local_reg`); the sync substrate is `TPB_EVT_SEM`
 > header is OBSERVED. All maverick-interior register claims are therefore INFERRED
 > from the cayman/mariana family. `[header HIGH · OBSERVED; v5 interior INFERRED]`
 
-### 4.2 · `top_sp_ram` — full register table (8 regs, 11 bitfields) `[HIGH · OBSERVED]`
+### 4.2 · `top_sp_ram` — full register table (8 regs, 11 bitfields)
 
 `top_sp_ram` has one bundle `top_sp_ram_cfg`; offsets are **hex** strings.
 
@@ -336,7 +336,6 @@ semaphore blocks**, i.e. the §5 EVT_SEM array advances on this tick.
 > cayman/mariana = `value[8:0]`, *"top_sp0-9 ⇒ 0x98–0xa1"* (10 TOP_SP + 10 PEB_SP);
 > sunda = `value[7:0]`, *"top_sp_0–5, peb_sp_0–1 (encoded 6 and 7)"* (6 TOP_SP +
 > 2 PEB_SP). A control plane that decodes `whoami` must branch on generation.
-> `[HIGH · OBSERVED]`
 
 ### 4.3 · TOP_SP is collective-sequencer **engine 5** `[role HIGH · CARRIED; not present in these two JSONs]`
 
@@ -360,7 +359,7 @@ sequencer touches — they share the model, not the block.) `[engine-5 HIGH · C
 
 ---
 
-## 5 · Global EVENT / SEMAPHORE (`tsync`) — hosted by TOP_SP `[HIGH · OBSERVED]`
+## 5 · Global EVENT / SEMAPHORE (`tsync`) — hosted by TOP_SP
 
 `TPB_EVT_SEM` (1 MiB at TOP_SP `+0x0`) is the classic Trainium **event +
 semaphore** primitive: distinct APB op-windows **alias the same semaphore array**,
@@ -390,7 +389,7 @@ instances live elsewhere: Cayman `TOP_SP_0` base `0x8280000000`, stride
 > layout applies to the TOP_SP-hosted EVT_SEM, but **its** base is `0x8280000000`
 > (TOP_SP_0). Cayman TOP_SP EVT_SEM has **no `SEMAPHORE_CNTR_INC` port** — that
 > fifth window is a maverick-only extension. Don't carry the TPB base onto the
-> TOP_SP block. `[HIGH · OBSERVED]`
+> TOP_SP block.
 
 **Tie to device `tsync`.** `timestamp_inc` (§4.2) drives the timestamp counters in
 "TPB SP and semaphore blocks"; an EVT_SEM semaphore overflow raises TOP_SP INTC
@@ -402,7 +401,7 @@ in these artifacts; the hardware hosting is OBSERVED, the `tsync` tie is
 
 ---
 
-## 6 · TOP_SP interrupt triggers (cayman, 82 causes) `[HIGH · OBSERVED]`
+## 6 · TOP_SP interrupt triggers (cayman, 82 causes)
 
 `aws_intc_top_sp_count = 82` (cayman). The stable, register-correlatable causes:
 
@@ -421,11 +420,11 @@ Cause count varies by generation: **cayman 82**, mariana / mariana_plus / maveri
 **80**, sunda **76** — the delta is entirely in the FIS / SPROT / parity region
 (causes ≥ 3). The **stable** set across all gens: `err_sem_overflow` (0), ERG UE/CE
 (1/2), `notific_intr[0..8]`, `notify_error_wr_buffer_full/drop`, and
-`nx_non_fatal / nx_fatal / nx_interrupt_2/3/4`. `[HIGH · OBSERVED]`
+`nx_non_fatal / nx_fatal / nx_interrupt_2/3/4`.
 
 ---
 
-## 7 · TOP_SP WOB / QoS misc CSRs (mariana family) `[HIGH · OBSERVED]`
+## 7 · TOP_SP WOB / QoS misc CSRs (mariana family)
 
 The NX-core AXI-master write-ordering and QoS controls are **not** in `top_sp_ram`;
 they live in two small sibling CSRs present only on some generations:
@@ -456,11 +455,11 @@ bypass, WID base).
 
 Presence: mariana + mariana_plus have **both**; maverick has **wob only**;
 **cayman + sunda have NEITHER** as a CSR JSON. A rebuild targeting Cayman must not
-assume a programmable WOB/QoS surface here. `[HIGH · OBSERVED]`
+assume a programmable WOB/QoS surface here.
 
 ---
 
-## 8 · Cross-gen summary `[HIGH · OBSERVED]`
+## 8 · Cross-gen summary
 
 | aspect | cayman | mariana / mariana_plus | maverick (v5) | sunda |
 |---|---|---|---|---|
@@ -475,7 +474,7 @@ assume a programmable WOB/QoS surface here. `[HIGH · OBSERVED]`
 | PEB→apex rollup | single `top_sp_combined_nmi` | — | — | per-instance `top_sp_{0..5}_nmi` |
 
 TOP_SP instance multiplicity (cayman flat map): `TOP_SP_0..19` = 20/die × 2 dies;
-`TOP_SP_0` base `0x8280000000`, stride `0x40000000`. `[HIGH · OBSERVED]`
+`TOP_SP_0` base `0x8280000000`, stride `0x40000000`.
 
 ---
 

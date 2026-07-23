@@ -13,16 +13,17 @@
 > (`csrs/xtensa_nx/xtensa_nx.json`, `csrs/xtensa_q7/xtensa_q7.json`); they are SVD-style
 > register maps consumed at build time by the GPSIMD HAL generator and are therefore
 > citeable as static-analysis artifacts. All counts, offsets, positions, access types,
-> and reset values below were re-derived from scratch by exhaustive enumeration of the
-> two JSON trees (`RegFile → RegistersBundleArrays → Registers → BitFields`) — the diff
-> rests on the schema, not on any prior report.
+> and reset values below come from exhaustive enumeration of the two JSON trees
+> (`RegFile → RegistersBundleArrays → Registers → BitFields`) — the diff rests on the
+> schema alone.
 
 **Applicability.** Cayman / NC-v3 (the schema's own target). The two-core split this
 diff exposes is the Cayman generation's GPSIMD complex. Carry-forward to later silicon
 (v5) is **INFERRED** — flagged inline where it appears; no v5 CSR JSON is present in the
 shipped descriptor set, so every v5 statement is extrapolation, not observation.
 
-**Confidence tags.** `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`. *OBSERVED* = a literal
+**Confidence tags.** The page default is *OBSERVED HIGH*; claims that depart from it carry
+an explicit `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` tag. *OBSERVED* = a literal
 JSON value (offset/name/position/access/most resets). *INFERRED* = architectural reading
 beyond the JSON text. *CARRIED* = asserted true for v5 by continuity, not re-measured.
 
@@ -50,7 +51,7 @@ surface (DSR/DIR injection, TRAX trigger PC, PMU counter selects). The per-engin
 `*_LOCAL_REG` aperture that sits *in front of* this Xtensa block is documented at
 [`tpb_xt_local_reg`](tpb-xt-local-reg.md).
 
-`RegFile` scalars (both cores, OBSERVED HIGH):
+`RegFile` scalars (both cores):
 `DataWidth=32`, `AddrWidth=14`, `SizeInBytes=0x4000`, `InterfaceType=APB`,
 `Type=REGFILE`, `RegfileFlavor=POSEDGE`. The 14-bit address width and `0x4000` size are
 **explicitly populated in both** NX and Q7 descriptors; the address span `0x3F00 + 0x100
@@ -58,20 +59,20 @@ surface (DSR/DIR injection, TRAX trigger PC, PMU counter selects). The per-engin
 `POSEDGE` flavor are byte-identical between cores — the **bus wrapper is shared**; only
 the register *contents* differ.
 
-> **CORRECTION (vs SX-CSR-03 §SCHEMA note).** SX-CSR-03 states the Q7 descriptor "left
-> the same `RegFile` scalars null" while NX populated them. Re-reading
-> `xtensa_q7.json` directly, **both** cores carry `SizeInBytes="0x4000"`,
-> `AddrWidth="14"`, `RegfileFlavor="POSEDGE"`, `InterfaceType="APB"` populated and
-> identical. There is **no descriptor-metadata asymmetry** in the top-level scalars — the
-> `0x4000` size is explicit for *both*. The substantive deltas are exactly the three in
-> §4. (MED × OBSERVED — re-grounded on the raw JSON.)
+> **CORRECTION — no RegFile-scalar asymmetry.** The Q7 descriptor is sometimes described
+> as leaving the `RegFile` scalars null while NX populates them. In `xtensa_q7.json`
+> **both** cores carry `SizeInBytes="0x4000"`, `AddrWidth="14"`,
+> `RegfileFlavor="POSEDGE"`, `InterfaceType="APB"` populated and identical. There is
+> **no descriptor-metadata asymmetry** in the top-level scalars — the `0x4000` size is
+> explicit for *both*. The substantive deltas are exactly the three in §4.
+> (MED × OBSERVED.)
 
 ---
 
-## 2. Counts — NX vs Q7 (re-derived from the JSON)
+## 2. Counts — NX vs Q7
 
-Re-enumerated from both trees independently. The sibling Q7 page reports **78 / 296 / 5**;
-that re-derives **exactly** here (no Q7 correction). NX is strictly smaller.
+Enumerated from both trees. The sibling Q7 page reports **78 / 296 / 5**, which matches
+**exactly** here (no Q7 correction). NX is strictly smaller.
 
 | Metric | **NX** | Q7 (baseline) | Δ (NX − Q7) |
 |---|---|---|---|
@@ -82,7 +83,7 @@ that re-derives **exactly** here (no Q7 correction). NX is strictly smaller.
 | Field access RW / RO | **143 / 132** | 147 / 149 | −4 RW / −17 RO |
 | Address span | `0x4000` | `0x4000` | 0 |
 
-**Per-bundle register / field counts** (NX, OBSERVED HIGH):
+**Per-bundle register / field counts** (NX):
 
 | Bundle | Base | Size | **NX regs** | Q7 regs | **NX fields** | Q7 fields | Delta |
 |---|---|---|---|---|---|---|---|
@@ -95,7 +96,7 @@ that re-derives **exactly** here (no Q7 correction). NX is strictly smaller.
 **Reconciliation (all exact):** `78 − 5 = 73` regs ✓ · `296 − 21 = 275` fields ✓ ·
 `147 − 4(DIR) = 143` RW fields ✓ · `149 − 17(FAULTINFOHI) = 132` RO fields ✓.
 No within-bundle offset collisions (each bundle: `#regs == #unique offsets`); every
-register has ≥1 bitfield (no empty registers). (OBSERVED HIGH.)
+register has ≥1 bitfield (no empty registers).
 
 > The 8-bit `RESERVED` padding fields are counted as bitfields throughout (they carry
 > `Position`/`AccessType`/`ResetValue` records in the JSON), so "fields" here means *all*
@@ -118,7 +119,7 @@ The headline result, stated precisely:
 
 So NX is **Q7 with two amputations and one reconfigured ID hash** — nothing grafted on.
 This is the cleanest possible diff shape: a strict register-set subset plus a single reset
-delta. (OBSERVED HIGH, by full set/record comparison of both JSON trees.)
+delta, by full set/record comparison of both JSON trees.
 
 ---
 
@@ -136,7 +137,7 @@ delta. (OBSERVED HIGH, by full set/record comparison of both JSON trees.)
 
 \* `FAULTINFOHI`'s *register-level* `AccessType` is `RW` in the Q7 JSON, but **all 17 of
 its bitfields are RO** — it is a read-only status surface; the register-level RW is a
-generator artifact. The 17 fields (Q7-only, OBSERVED HIGH):
+generator artifact. The 17 fields (Q7-only):
 
 | Bit | Field | Bit | Field | Bit | Field |
 |---|---|---|---|---|---|
@@ -154,9 +155,8 @@ but **not** this per-array ECC itemisation.
 
 ### 4b. NX-only registers / fields
 
-**None.** (OBSERVED HIGH — `NX-only regs: []`, `NX-only fields: 0`.) The brief asked
-whether NX adds anything — extra PMU events, a wider trace, an NX-specific debug path. The
-descriptor says **no**: NX introduces zero registers and zero bitfields that Q7 lacks. The
+**None** — `NX-only regs: []`, `NX-only fields: 0`. NX adds nothing Q7 lacks: no extra PMU
+events, no wider trace, no NX-specific debug path — zero registers and zero bitfields. The
 NX core is a *reduction* of the Q7 debug surface, never an extension of it.
 
 ### 4c. Shared-but-changed — the single field delta
@@ -167,13 +167,12 @@ NX core is a *reduction* of the Q7 debug surface, never an extension of it.
 
 Position (`15:0`), access (`RO`), and absolute offset (`0x0000`) are **unchanged**; the
 **only** difference is the reset value. This is the *sole* bit-pattern delta among the 73
-shared registers. (OBSERVED HIGH.)
+shared registers.
 
 ### 4d. Shared register offset / access changes
 
 **None.** Every common register lands at a byte-identical absolute offset with an
-identical `AccessType`. The two maps are layout-identical wherever they overlap. (OBSERVED
-HIGH.)
+identical `AccessType`. The two maps are layout-identical wherever they overlap.
 
 ---
 
@@ -188,21 +187,20 @@ The following are **byte-identical** between NX and Q7 and are fully tabulated o
   reset = **60 (`0x3C`)** in both. So the **CFGID delta is *not* a trace-size delta** — the
   TraceRAM is the same 8 KB on both cores; CFGID differs on some other TRAX config knob.
   `TRAXADDR`/`TRAXDATA`/`TRIGGERPC`/`PCMATCHCTRL`/`DELAYCNT`/`MEMADDRSTART`/`MEMADDREND`/
-  `EXTTIMELO`/`EXTTIMEHI` are field-for-field identical. (OBSERVED HIGH.)
+  `EXTTIMELO`/`EXTTIMEHI` are field-for-field identical.
   - *Note (both cores):* `EXTTIMELO`/`EXTTIMEHI` carry register-level `RW` but a single
     `RO` `[31:0]` field — read-only external-time taps, RW at register granularity is a
     generator artifact (same pattern as `FAULTINFOHI`).
 - **Performance_Monitor bundle (26 regs / 107 fields)** — **identical, every bit.**
   `PMG` (global enable) + `INTPC` + `PM0..PM7` (8 counters) + `PMCTRL0..7` + `PMSTAT0..7`.
-  The PMU is the **standard 8-counter Xtensa PMU**, shared verbatim. (OBSERVED HIGH.)
+  The PMU is the **standard 8-counter Xtensa PMU**, shared verbatim.
 - **OCD bundle — the 11 shared regs** — `OCDID` (`CFGID=1538`, `MAJVER=4`, `MINVER=1` —
   **identical in both**), `DCRCLR`/`DCRSET` (14 fields each), `DSR` (all 25 fields
   identical), `DDR`, `DDREXEC`, `DIR0EXEC`, `DIR0..DIR3`. The amputation is purely the
-  *upper* `DIR` half (§4a). (OBSERVED HIGH.)
+  *upper* `DIR` half (§4a).
 - **Miscellaneous bundle — the 4 shared regs** — `PWRCTL`, `PWRSTAT` (`reserved`
   reset = 4369 = `0x1111`, the PSO tie-high pattern), `ERISTAT`, `FAULTINFOLO` (7 fields:
   `UserCode`, `HaltCode`, `TE`, `DE`, `Halted`, `PFatalError` + reserved — **identical**).
-  (OBSERVED HIGH.)
 - **CoreSight bundle (20 regs / 20 fields)** — **identical names, offsets, access AND
   reset values**, including the full ID block:
   `Peripheral_ID0=0x03 ID1=0x21 ID2=0x0f ID3=0x00 ID4=0x24 ID5..7=0x00`,
@@ -381,7 +379,7 @@ the 4-vs-8 `DIR` split, or the 73/275 counts to v5 without re-measurement. (CARR
 
 *Provenance: byte-exact diff of the shipped, binary-derived `cayman-arch-regs` CSR
 descriptors `csrs/xtensa_nx/xtensa_nx.json` and `csrs/xtensa_q7/xtensa_q7.json`. Counts,
-offsets, positions, access types and reset values re-derived from scratch by exhaustive
-JSON enumeration; architectural interpretations flagged INFERRED. No external register
+offsets, positions, access types and reset values come from exhaustive JSON
+enumeration; architectural interpretations flagged INFERRED. No external register
 documentation was consulted — register/field semantics quoted are the descriptors' own
 embedded `Description` strings.*

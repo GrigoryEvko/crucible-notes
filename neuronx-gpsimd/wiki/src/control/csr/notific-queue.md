@@ -19,6 +19,9 @@ the customop library; semantics below come from the per-field `Description`
 strings and the header struct definitions — there is no separate HAL doc
 (`HalName` / `HalFilenameUnitName` / `RegFile.Description` are empty strings).
 
+**Confidence.** The page default is `HIGH · OBSERVED`; claims that depart from it
+carry an explicit tag.
+
 **Per-gen applicability.** `OBSERVED` on **Cayman / NC-v3** (arch-regs
 `cayman-arch-regs`). The identical block ships under `mariana`, `mariana_plus`,
 `maverick`, and `sunda` arch dirs in the customop-lib — the register layout and
@@ -27,7 +30,7 @@ v5-specific schema is present; treat any v5 statement here as carried-forward.
 
 ---
 
-## 1. Regfile metadata (HIGH · OBSERVED)
+## 1. Regfile metadata
 
 | Property | Value | Source |
 |---|---|---|
@@ -50,15 +53,14 @@ Two register-bundle arrays:
 Register **definitions**: `41 + 6 = 47`. Physical readable registers after array
 expansion: `41 + 6·10 = 101`. No `0xb1` placeholder reset-value leak is present
 (the CSR-02/03 management-reg artifact) — every `ResetValue` here is one of
-`{0, 0x1, 0xf, 0x0400, 0x1000, 0xffffffff}`. (HIGH · OBSERVED)
+`{0, 0x1, 0xf, 0x0400, 0x1000, 0xffffffff}`.
 
 ---
 
 ## 2. Bundle 0 `notific` — global control block (base `0x000`)
 
 Offsets are absolute (bundle base `0x0`). `acc` = field access; `rst` = reset
-value. Every row is literal from `notific_10_queue.json`. (HIGH · OBSERVED
-unless tagged)
+value. Every row is literal from `notific_10_queue.json`.
 
 ### 2.1 Timestamp (64-bit free-running ps counter)
 
@@ -179,7 +181,7 @@ across multiple streams raises `intr_8` (non-deterministic AXI).
 | `0xf0` | `spare_0s` | RW | `val[31:0]` | `0x0` | spare, default 0. |
 | `0xf4` | `spare_1s` | RW | `val[31:0]` | **`0xffffffff`** | spare, default all-1s. |
 
-> **CORRECTION (vs SX-CSR-06).** SX-CSR-06 lists `spare_0s` reset as
+> **CORRECTION — `spare_0s` reset literal.** It is commonly written as
 > `0x00000000`; the schema literal is `ResetValue: "0x0000"` (same numeric
 > value). No semantic difference; recorded for byte-exactness.
 
@@ -189,7 +191,7 @@ across multiple streams raises `intr_8` (non-deterministic AXI).
 
 Six registers replicated `NUM_SW_Q` (10) times. Offsets below are **within** the
 per-queue descriptor; the descriptor for queue *i* starts at
-`0x100 + i·0x28`. (HIGH · OBSERVED)
+`0x100 + i·0x28`.
 
 | +Off | Reg | acc | Field | rst | `SpecialAccess` | Meaning |
 |---|---|---|---|---|---|---|
@@ -204,7 +206,7 @@ per-queue descriptor; the descriptor for queue *i* starts at
 emits a one-cycle pulse (latch / re-arm) — an RTL-gen attribute; software just
 writes the value. (MED · INFERRED — RTL semantics.)
 
-### 3.1 Absolute offset map (HIGH · OBSERVED)
+### 3.1 Absolute offset map
 
 Queue *i* descriptor base = `0x100 + i·0x28`:
 
@@ -230,7 +232,6 @@ window.
 
 Source: `aws_neuron_isa_notification.h`. `NEURON_ISA_NOTIFICATION_NBYTES = 0x10`
 ⇒ **every queue entry is 16 B = 128 b**, little-endian, four `uint32` words.
-(HIGH · OBSERVED)
 
 ### 4.1 Common header byte (word0 `[31:24]`)
 
@@ -280,7 +281,7 @@ Field offset map (header lines 95-109):
 | `[63:32]` | `metadata_2` | 4–7 | 32 |
 | `[127:64]` | `timestamp` | 8–15 | 64 |
 
-### 4.3 Phase-bit fast path (HIGH · OBSERVED)
+### 4.3 Phase-bit fast path
 
 Software polls the phase bit of the next-expected entry at
 `base_addr + head_ptr`. When it matches the current epoch the entry is valid —
@@ -291,7 +292,7 @@ signal). Each ring wrap inverts the expected phase.
 ### 4.4 Per-type record bodies (word0`[23:0]` + word1)
 
 All bodies share the header byte and the trailing 64-b timestamp; they differ in
-how the 24-b `[23:0]` + 32-b `[63:32]` payload is interpreted. (HIGH · OBSERVED)
+how the 24-b `[23:0]` + 32-b `[63:32]` payload is interpreted.
 
 | Notific kind | Body fields (header-literal) |
 |---|---|
@@ -316,7 +317,7 @@ The DMA sub-type lives in `dma_notific_type:4`
 S2M_SOP=0x4 S2M_EOP=0x5 S2M_COMPLETION=0x6 AXI_REQ_0/1=0x8/0x9 AXI_RSP_0/1=0xa/0xb
 APB_REQ_0/1=0xc/0xd`.
 
-#### 4.5 DGE completion record (HIGH · OBSERVED)
+#### 4.5 DGE completion record
 
 A DGE op's completion is reported as a TPB **EXPLICIT** notification whose
 `debug_hint == NEURON_ISA_TPB_INSTRUCTION_METADATA_TYPE_DGE (0x1)`
@@ -345,7 +346,7 @@ DMA engines/packets a *dynamic* DGE instruction used. See
 ## 5. `notific_type` enum (the notification kinds)
 
 `NEURON_ISA_NOTIFICATION_TYPE`, header lines 66-92 — 24 values in the 5-bit
-field. (HIGH · OBSERVED)
+field.
 
 | Code | Name | Code | Name |
 |---|---|---|---|
@@ -378,7 +379,7 @@ SEQUENCER_FATAL(0x0a)`.
 
 ## 6. `wr_buffer` mask enum + trigger-bit map
 
-### 6.1 `NEURON_ISA_TPB_NOTIFIC_WR_BUFFER` (HIGH · OBSERVED)
+### 6.1 `NEURON_ISA_TPB_NOTIFIC_WR_BUFFER`
 
 One-hot 64-bit class mask used by `wr_buf_enable_lo/hi` (§2.4) to mask records by
 `header.notific_type`. Header lines 533-578:
@@ -403,7 +404,7 @@ The reduced `NEURON_ISA_TOPSP_NOTIFIC_WR_BUFFER` exposes only `EVSEM (1<<0)` and
 `ERROR_SEQUENCER (1<<2, both fatal+nonfatal)` — matching the header note "only
 evsem and error wr_buffer controls are exposed."
 
-### 6.2 Trigger-bit map (HIGH · OBSERVED)
+### 6.2 Trigger-bit map
 
 `#define`s at the tail of `notification.h` (lines 778-784) — these set the
 NOTIFIC interrupt trigger bits driving the INTC:
@@ -429,7 +430,7 @@ Trigger bits 0–6 map 1:1 to the named `#define`s; `intr_7` (SW-NQ overlap) and
 From `intc/tpb_triggers.yaml`: `tpb_notific_intr_0 .. tpb_notific_intr_8` — **9
 interrupts** total. All share `needs_cdc: true`, `source_clock:
 clk_core_gated`, `source_reset_n: core_reset_extended_n`, `edge_triggered: true`,
-`msix_mask: 0`. (HIGH · OBSERVED)
+`msix_mask: 0`.
 
 | Intr | Trigger bit (§6.2) | Condition (YAML literal) |
 |---|---|---|
@@ -458,7 +459,7 @@ follows the parameter so the per-queue descriptor array collapses to a single
 entry at `0x100..0x128`. The `[NUM_SW_Q-1:0]` fields
 (`sw_backpressure`, `nq_enable`, `nq_sw_overflow`, `nq_threshold_en`, `nq_full`,
 `nq_threshold_passed`) collapse to **1 bit**, and `SW_Q_RESET_TO_ALL_1` is `1`
-(vs `1023`). (HIGH · OBSERVED)
+(vs `1023`).
 
 | | `notific_10_queue` | `notific_1_queue` |
 |---|---|---|
@@ -481,7 +482,7 @@ parameter difference and the routing structure.)
 
 ## 9. Queue protocol + producer/consumer signaling
 
-### 9.1 Configuration (host/SP, via APB) — HIGH · OBSERVED
+### 9.1 Configuration (host/SP, via APB)
 
 1. For each SW NQ *i*: write `notific_nq[i].base_addr_lo/hi` (RAM ring address),
    `.size` (bytes), optional `.threshold`; clear/program `head_ptr`.
@@ -578,8 +579,8 @@ top-level `notific` bundle; routing is described in
 HAM / Q7 classes are mapped to a 4-bit SW-queue number; a per-engine
 `queue_idx_ctrl` bit lets the SW-queue index come from the **instruction** instead
 of the static field. The 4-bit index selects one of this block's `NUM_SW_Q`
-descriptors. (CARRIED from SX-CSR-06 §5 / SX-CSR-04; `tpb.md` is a stub pending
-authoring — the routing CSR offsets are unverified here.)
+descriptors. (CARRIED; the routing CSR offsets are byte-exact on
+[tpb.md](tpb.md), not re-derived here.)
 
 The committed anchor (#901/#902/#913/#916): `notific_ctrl @ 0x808` lives in
 `tpb.json` events_semaphores, inside the EVT_SEM container at `0x2802700000`; the
@@ -613,8 +614,7 @@ event/notification path.
   `queue_idx_ctrl`) that selects which `notific_nq[idx]` a record targets.
 - The ENS notification-queue mirror struct
   ([host execution-state struct census](../../appendix/struct-exec-state-census.md))
-  — NOTE: the dedicated `struct-device-firmware-globals.md` appendix page is not
-  yet authored; the closest existing appendix target is linked here.
+  and the [device firmware globals census](../../appendix/struct-device-firmware-globals.md).
 
 ---
 
@@ -627,5 +627,5 @@ event/notification path.
   `PulseOnW` semantics (§3): **MED · INFERRED** from field widths / RTL
   attributes.
 - Routing CSR offsets (§9.4) and the 1-queue rationale (§8): **MED · CARRIED**
-  from SX-CSR-06 / SX-CSR-04 pending `tpb.md` authoring.
+  from [tpb.md](tpb.md).
 - v5 applicability: **INFERRED CARRIED** (no v5-specific schema present).

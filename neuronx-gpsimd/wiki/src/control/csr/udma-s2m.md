@@ -12,8 +12,9 @@ anchored to a register, bitfield, offset, or schema line.
 All facts below are derived by static analysis of the shipped, binary-derived register
 schema `csrs/sdma/udma_s2m.json` (the Cayman arch-regs tarball) cross-checked
 byte-for-byte against the generated Maverick C accessor header
-`arch-headers/maverick/al_udma_s2m_regs.h`. Confidence is tagged
-`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
+`arch-headers/maverick/al_udma_s2m_regs.h`. The page default is
+`[HIGH/OBSERVED]`; claims that depart from it carry an explicit
+`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` tag.
 
 ---
 
@@ -29,7 +30,7 @@ byte-for-byte against the generated Maverick C accessor header
 | `InterfaceType` | `NONE` | M2S declares `APB`; S2M literally `NONE` |
 | `HalName` / `Description` | empty | `Memories: []`, `Parameters: []` |
 
-`[HIGH/OBSERVED]` — all literal from the regfile root of `udma_s2m.json`.
+All literal from the regfile root of `udma_s2m.json`.
 
 S2M prefetches RX descriptors (software-supplied **empty** receive buffers) from a host
 descriptor ring, accepts a packet from the stream, writes the payload (and optionally a
@@ -40,7 +41,7 @@ stream and **writes** memory. Therefore S2M owns an AXI **write-data** path, a p
 header-split surface, and RX no-descriptor (drop / hint / wait) handling — none of which
 have an M2S analogue — and it **drops** the four M2S egress-shaping bundles (MLA
 enhanced-prefetch, DWRR, two rate-limiters), because a receiver neither schedules nor
-rate-limits what it is given. `[HIGH/OBSERVED]` (bundle diff §6).
+rate-limits what it is given (bundle diff §6).
 
 ---
 
@@ -62,16 +63,16 @@ the schema gotcha** (callout below).
 | `S2M_feature` | 0x600 | 1 | 256 (0x100) | 6 | feature / FIFO-size readback |
 | `S2M_Q` | 0x1000 | **16** | 4096 (0x1000) | 20 | **per-queue** RX descriptor-ring programming surface |
 
-**Verified counts** (re-parsed from `udma_s2m.json`, not carried):
+**Verified counts** (from `udma_s2m.json`):
 
-- register **definitions** = **73** (53 in singleton bundles + 20 in `S2M_Q`) `[HIGH/OBSERVED]`
-- bitfield **definitions** = **264** `[HIGH/OBSERVED]`
-- register **instances** (defs × ArraySize) = 53·1 + 20·16 = **373** `[HIGH/OBSERVED]`
-- field-level access: **RO = 146, RW = 102, WO = 16** (= 264) `[HIGH/OBSERVED]`
-- reg-level access: **RW = 44, RO = 25, WO = 4** (= 73) `[HIGH/OBSERVED]`
+- register **definitions** = **73** (53 in singleton bundles + 20 in `S2M_Q`)
+- bitfield **definitions** = **264**
+- register **instances** (defs × ArraySize) = 53·1 + 20·16 = **373**
+- field-level access: **RO = 146, RW = 102, WO = 16** (= 264)
+- reg-level access: **RW = 44, RO = 25, WO = 4** (= 73)
 
 No `ResetValue` ends in `0xb1` (the unrelated TPB ISA `SET_ORDERING_MODE` opcode); the
-placeholder check is clean. `[HIGH/OBSERVED]`
+placeholder check is clean.
 
 > ### ⚠️ GOTCHA — `AddressOffset` is HEX, `BundleSizeInBytes` is DECIMAL
 >
@@ -99,7 +100,7 @@ not bytes** (each `descriptor_offset` field says so verbatim). The ring base is 
 aligned (`RDRBP_low[5:0]` is RO-zero). The `0x00..0x50` layout is byte-for-byte the M2S ring
 renamed `TDR→RDR` (Rx Descriptor) and `TCR→RCR` (Rx Completion) — the standard Annapurna
 UDMA producer/consumer ring: the ring is the buffer pool the host **pushes** into and the
-engine **pops** from. `[HIGH/OBSERVED]`
+engine **pops** from.
 
 ### RX descriptor ring (buffer-supply)
 
@@ -116,7 +117,7 @@ engine **pops** from. `[HIGH/OBSERVED]`
 `RDRHP/RDRTP/RDCP` (and `RCRHP`/`RCRHP_internal`) each carry `ring_id[31:30]` with reset
 `0x1` — the wrap/generation tag the engine matches against each descriptor's ring-id bit.
 S2M has **no data-tail-pointer pair** (M2S's `TDRDTP_inc/TDRDTP@0xe0/0xe4` and the
-`AXI_M2S_MLA` enhanced-prefetch are absent) — RX prefetch is single-tail. `[HIGH/OBSERVED]`
+`AXI_M2S_MLA` enhanced-prefetch are absent) — RX prefetch is single-tail.
 
 ### RX completion ring (engine → host writeback)
 
@@ -145,7 +146,7 @@ S2M has **no data-tail-pointer pair** (M2S's `TDRDTP_inc/TDRDTP@0xe0/0xe4` and t
 analogue of M2S `en_scheduling`. **Queue count = 16** (`S2M_Q.ArraySize=16`),
 independently corroborated by the shipped interrupt-source table naming
 "RX (S2M) Completion Queue 0…15" and by the Mariana reg-dump emitting
-`q_rx_pkt<0>..q_rx_pkt<15>`. `[HIGH/OBSERVED]`
+`q_rx_pkt<0>..q_rx_pkt<15>`.
 
 ### C pseudocode — post an RX (empty) buffer and consume a completion
 
@@ -238,7 +239,7 @@ The `state` register exposes **five** sub-machine states — one more than M2S �
 `data_rd_ctrl`). `stream_cfg.flush` "stops at end of packet reception and asserts ready to
 the stream I/F"; `stop_prefetch` "stops descriptor prefetch when the stream is disabled and
 the S2M is idle" — both RX-specific drains. M2S's `rd_mode`/`rd_th`
-cut-through-vs-threshold egress fields are absent: RX has no read threshold. `[HIGH/OBSERVED]`
+cut-through-vs-threshold egress fields are absent: RX has no read threshold.
 
 ### Data-write FIFO + RX no-descriptor handling (`S2M_wr` @ 0x340) — *S2M-specific*
 
@@ -258,7 +259,7 @@ cut-through-vs-threshold egress fields are absent: RX has no read threshold. `[H
 
 The trio `{hint_if_no_desc, drop_if_no_desc, wait_for_pref/desc_wait_timer}` is the
 receiver's back-pressure / overflow policy and has **no TX counterpart** — M2S never
-starves for descriptors mid-packet the same way. `[HIGH/OBSERVED]`
+starves for descriptors mid-packet the same way.
 
 ### AXI master parameters (`AXI_S2M` @ 0x100)
 
@@ -277,7 +278,7 @@ only descriptors:
 There is exactly **one read class** (descriptor read) — S2M never reads bulk data, so there
 is no "data read" AXI class. The split `ostand_cfg_rd`/`ostand_cfg_wr` pair replaces M2S's
 single read-dominated `ostand_cfg`. Per-queue AXI overrides come from
-`S2M_Q.cfg.{AXI_qos, axi_awcache_data/hdr/comp}`. `[HIGH/OBSERVED]`
+`S2M_Q.cfg.{AXI_qos, axi_awcache_data/hdr/comp}`.
 
 ---
 
@@ -298,14 +299,14 @@ carried. Per queue, the completion path is gated by `comp_cfg.en_comp_ring_updat
 `comp_cfg.dis_comp_coal` (reset 1 — coalescing OFF by default), and the byte-count
 writeback location chosen by `comp_cfg.buf2_len_location` (reset 1: buffer-2 length in
 completion WORD 2 [31:16] rather than WORD 1). The per-queue interrupt is named
-"RX (S2M) Completion Queue *i*" in the shipped interrupt-source table. `[HIGH/OBSERVED]`
+"RX (S2M) Completion Queue *i*" in the shipped interrupt-source table.
 
 ### Statistics (`S2M_stat` @ 0x500)
 
 `drop_pkt`@0x504 (**RX-only** dropped-packet count), `rx_bytes_low/high`@0x508/0x50c
 (64-bit received-byte counter), `prefed_desc`@0x510, `comp_pkt`@0x514, `comp_desc`@0x518,
 `ack_pkts`@0x51c. There is **no** `cfg_st`/`use_extra_len` at 0x500 and **no** `tx_pkt`: the
-first counter slot is `drop_pkt` at +0x504. `[HIGH/OBSERVED]`
+first counter slot is `drop_pkt` at +0x504.
 
 ### Error log and FIFO status (`S2M` @ 0x20c..0x254)
 
@@ -327,7 +328,7 @@ latter also exposes `coal_active_state[21:20]` (completion-coalescing FSM state,
 
 `S2M_feature`@0x600 mirrors the FIFO/outstanding limits for readback
 (`desc_preferch_fifo_depth=0x400`, data-write/comp/unack FIFO sizes, outstanding limits).
-Unlike M2S there is **no `dma_version` register** — `reg_2`@0x604 is reserved. `[HIGH/OBSERVED]`
+Unlike M2S there is **no `dma_version` register** — `reg_2`@0x604 is reserved.
 
 ---
 
@@ -353,7 +354,7 @@ independent data/desc tail pointers), `M2S_dwrr` (DWRR scheduler), `M2S_rate_lim
 `M2S_stream_rate_limiter`. A receiver neither schedules nor rate-limits, so all four are
 **dropped** on S2M; S2M **adds** exactly one bundle, `S2M_wr@0x340` (data-write FIFO + the
 DROP/HINT/WAIT no-descriptor surface). The per-queue stride stays 0x1000 but with 20 regs
-instead of 30, so the file fits in 0x18000. `[HIGH/OBSERVED]`
+instead of 30, so the file fits in 0x18000.
 
 Per-queue field-semantic flips on the otherwise-shared registers:
 `cfg.en_scheduling → cfg.en_stream`; `comp_cfg.en_comp_ring_update` reset `0 → 1`;
@@ -363,7 +364,6 @@ Per-queue field-semantic flips on the otherwise-shared registers:
 header). The 10 M2S_Q-only registers dropped on RX are the per-queue rate-limiter (5),
 DWRR (4) and `q_tx_pkt`/`read_data_snp`/`TDRDTP_inc`/`TDRDTP` (egress / data-read
 concerns); the 4 S2M_Q-only additions are `comp_cfg_2`, `pkt_cfg`, `qos_cfg`, `q_rx_pkt`.
-`[HIGH/OBSERVED]`
 
 ### Physical placement (within one SDMA channel's APB sub-window)
 
@@ -378,7 +378,7 @@ concerns); the 4 S2M_Q-only additions are `comp_cfg_2`, `pkt_cfg`, `qos_cfg`, `q
 e.g. `APB_SE_0_SDMA_0_UDMA_S2M` base `0x0000_0100_2020_0000`, size `0x18000`. Across the
 SoC the address map counts **280 `*_UDMA_S2M`** (264 unicast + 16 broadcast), identical
 multiplicity to M2S — every SDMA channel has exactly one M2S and one S2M, each owning 16
-RX queues. `[HIGH/OBSERVED]`
+RX queues.
 
 > **Anchor consistency:** the committed [pkl-dma subtree](../address/pkl-dma-subtree.md)
 > records the UDMA core geometry **M2S@+0x0 (0x40000) then S2M@+0x40000 (size 0x38000)**,
@@ -415,12 +415,6 @@ Maverick is a **superset**: it adds `AXI_S2M_LMA_*`, `S2M_LMA_cfg_1c/2c`,
 names are independently corroborated by the Mariana `udma_s2m_reg_dump.cpp`
 (`q_rx_pkt<0..15>`, `drop_pkt`) and the queue count by the Cayman interrupt-source table
 ("RX (S2M) Completion Queue 0..15" plus the S2M AXI-write parity-error sources).
-`[HIGH/OBSERVED]`
-
-> **No CORRECTION to SX-CSR-08.** Every count (73 / 264 / 373; access RW=44/RO=25/WO=4 and
-> RO=146/RW=102/WO=16), the hex/decimal bundle-base rule, the ring set, the completion
-> sub-block, and all six reset-word comparisons reproduce exactly when re-parsed from
-> `udma_s2m.json` and re-grepped from `al_udma_s2m_regs.h`.
 
 ---
 
@@ -428,7 +422,7 @@ names are independently corroborated by the Mariana `udma_s2m_reg_dump.cpp`
 
 | Generation | Codename | `udma_s2m` schema | Grounding |
 |---|---|---|---|
-| NC-v2 | Sunda | 8 bundles, 73 regdefs, 264 flddefs, `SizeInBytes=0x18000`, `AddrWidth=17` — **byte-identical** to Cayman | `[HIGH/OBSERVED]` (`arch-headers/sunda/csrs/sdma/udma_s2m.json` re-parsed) |
+| NC-v2 | Sunda | 8 bundles, 73 regdefs, 264 flddefs, `SizeInBytes=0x18000`, `AddrWidth=17` — **byte-identical** to Cayman | `[HIGH/OBSERVED]` (`arch-headers/sunda/csrs/sdma/udma_s2m.json`) |
 | NC-v3 | Cayman | the schema documented on this page | `[HIGH/OBSERVED]` (cayman-arch-regs `udma_s2m.json`) |
 | (Maverick) | — | superset (adds LMA + extra cfg regs), same offsets/field layout | `[HIGH/OBSERVED]` (`al_udma_s2m_regs.h`) |
 | NC-v5 | Maverick-class | **INFERRED** — no NC-v5 `udma_s2m.json` in this corpus; the UDMA core is stable across the captured generations, so the S2M descriptor-ring/completion model is expected to carry forward, but bit-exact resets and any LMA-style additions are unconfirmed | `[MED/INFERRED]` |

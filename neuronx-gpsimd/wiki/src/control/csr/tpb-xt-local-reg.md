@@ -12,14 +12,15 @@
 > **Provenance.** Every offset / reset / bit-range below is read directly from
 > the shipped register-description schema
 > `csrs/tpb/tpb_xt_local_reg.json` (binary-derived CSR JSON, 55 641 bytes,
-> Cayman / NC-v3 arch-regs tree). Confidence tags: HIGH/MED/LOW ×
-> OBSERVED/INFERRED/CARRIED.
+> Cayman / NC-v3 arch-regs tree). The page default is **[HIGH · OBSERVED]**;
+> claims that depart from it carry an explicit
+> HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED tag.
 
 ---
 
 ## 1. Regfile metadata
 
-Read from `.RegFile` of `tpb_xt_local_reg.json`. **[HIGH · OBSERVED]**
+Read from `.RegFile` of `tpb_xt_local_reg.json`.
 
 | Property | Value | Meaning |
 |---|---|---|
@@ -36,7 +37,7 @@ The 64 KiB `SizeInBytes` is the same `0x10000` that [`tpb-pool`](../address/tpb-
 reserves for `TPB_0_POOL_LOCAL_REG` at SoC-absolute `0x2803060000` (slot
 `+0x3060000` off the `0x2800000000` cluster pseudo-base). For the POOL engine
 the q7-bundle doorbell therefore lands at `0x2803060000 + 0x3000 + 0x0 =
-0x2803063000`, which is exactly the boot doorbell cited by `#900`. **[HIGH · OBSERVED]**
+0x2803063000`, which is exactly the boot doorbell cited by `#900`.
 
 ### Addressing model
 
@@ -53,7 +54,7 @@ abs_byte_off(reg, i) = bundle.AddressOffset
 
 `BitFields[].Position` is either a single bit `"N"` or an inclusive range
 `"hi:lo"`. Reset values live in `BitFields[].ResetValue` (hex string), **not**
-in any `Reset` key. **[HIGH · OBSERVED]**
+in any `Reset` key.
 
 > **GOTCHA (extraction).** The reset key is literally `ResetValue`. A naive
 > `.Reset` lookup returns `null` for every field and will make you think the
@@ -65,10 +66,10 @@ in any `Reset` key. **[HIGH · OBSERVED]**
 
 ## 2. Bundle map
 
-The file declares **7 bundle-arrays, 55 registers, 84 bitfields** (jq-counted,
-re-verified). Every `AccessType` (register and bitfield) is `RW`; every
+The file declares **7 bundle-arrays, 55 registers, 84 bitfields**. Every
+`AccessType` (register and bitfield) is `RW`; every
 `SpecialAccess` is `None` — there are **no RO/WO fields** in this block, even
-the field literally named `reserved`. **[HIGH · OBSERVED]**
+the field literally named `reserved`.
 
 | bundle | base | `ArraySize` | stride (`BundleSizeInBytes`) | regs | fields | array span |
 |---|---|---|---|---|---|---|
@@ -82,7 +83,7 @@ the field literally named `reserved`. **[HIGH · OBSERVED]**
 
 Each array span is verified to fit inside its `0x1000`-aligned reserved window
 (`window` ends at `0x2000 + 40*0x1C = 0x245C`; `tensor_replace` ends at
-`0x5000 + 32*0x20 = 0x5400`). **[HIGH · OBSERVED]**
+`0x5000 + 32*0x20 = 0x5400`).
 
 > **QUIRK.** Bundle strides do not pack tightly to the register footprint.
 > `general` reserves `0x20` per instance for a single 4-byte register;
@@ -97,7 +98,6 @@ Each array span is verified to fit inside its `0x1000`-aligned reserved window
 
 The single Tensilica NX core that runs the engine's control firmware. This is
 the boot path: at reset the core is held in run-stall and FW releases it.
-**[HIGH · OBSERVED]**
 
 | off | register | field | bits | reset | purpose |
 |---|---|---|---|---|---|
@@ -117,7 +117,7 @@ the boot path: at reset the core is held in run-stall and FW releases it.
 The eight Q7 sequencer cores live behind a **single** bundle instance whose
 `release_run_stall` carries **one bit per core** (`[7:0]`, reset `0xFF` ⇒ all 8
 stalled). This is the CSR-level confirmation of `NUM_POOL_CORES = 8`. The base
-`0x3000` is the anchor every sibling page cites. **[HIGH · OBSERVED]**
+`0x3000` is the anchor every sibling page cites.
 
 | off | register | field | bits | reset | purpose |
 |---|---|---|---|---|---|
@@ -194,7 +194,6 @@ selects a requester class (any / NX-only / Q7-only / a single selected Q7) and
 a 40-bit `match`/`mask` page key that, on hit, substitutes a relocated address.
 This is the `LOCAL_REG` side of the windows documented end-to-end in
 [`soc-q7-translation-windows`](../address/soc-q7-translation-windows.md).
-**[HIGH · OBSERVED]**
 
 Per-window register layout (relative offsets; instance `i` base = `0x2000 + i*0x1C`):
 
@@ -219,7 +218,7 @@ Per-window register layout (relative offsets; instance `i` base = `0x2000 + i*0x
 > 1 MiB-aligned (`2^20`) pages, so there is no `[19:0]` field. `replace` is the
 > 64-bit substitute split as `replace_lo[31:20]` + `replace_hi` = `[63:32]`.
 > The bit ranges are taken verbatim from `Position`; do not assume contiguous
-> 32-bit lo/hi halves. **[HIGH · OBSERVED]**
+> 32-bit lo/hi halves.
 
 ### 5.1 Program one translation window
 
@@ -261,7 +260,7 @@ static void window_program(volatile uint32_t *base, unsigned w /*0..39*/,
 > **GOTCHA (valid-bit ordering).** The `window_valid` description is explicit:
 > clear it before touching any other window state, set it **only after** mask /
 > match / replace are fully written. Writing `control` first (or never clearing
-> it) lets the remap fire on a half-programmed key. **[HIGH · OBSERVED]**
+> it) lets the remap fire on a half-programmed key.
 
 ---
 
@@ -269,7 +268,7 @@ static void window_program(volatile uint32_t *base, unsigned w /*0..39*/,
 
 32 instances of a 4D tensor descriptor. Each descriptor packs **two 16-bit
 subfields per 32-bit register** across four registers: per-axis step size
-(X/Y/Z/W) and per-axis element count (X/Y/Z/W). **[HIGH · OBSERVED]**
+(X/Y/Z/W) and per-axis element count (X/Y/Z/W).
 
 Per-instance layout (relative offsets; instance `i` base = `0x5000 + i*0x20`):
 
@@ -286,7 +285,7 @@ Per-instance layout (relative offsets; instance `i` base = `0x5000 + i*0x20`):
 
 > **NOTE.** The eight logical subfields (`step_size_*`, `num_elem_*`) are
 > **packed into four registers**, not eight; the `0x10`‥`0x1F` tail of each
-> `0x20` slot is unused. Steps and counts are `uint16`. **[HIGH · OBSERVED]**
+> `0x20` slot is unused. Steps and counts are `uint16`.
 
 ### 6.1 Program one tensor-replace descriptor
 
@@ -320,7 +319,6 @@ counters (IC0/IC1), two address breakpoints, single-step, and immediate pause.
 Cross-link the CAM programming side in
 [`hw-decode-cam-programming`](../../runtime/hw-decode-cam-programming.md) and the
 debugger driver in [`uarch-debugger`](../../firmware/seq/uarch-debugger.md).
-**[HIGH · OBSERVED]**
 
 | off | register | field | bits | reset | purpose |
 |---|---|---|---|---|---|
@@ -361,12 +359,12 @@ debugger driver in [`uarch-debugger`](../../firmware/seq/uarch-debugger.md).
 > `ucode_force_pause_enable`) — the breakpoint engine is **armed at reset**; the
 > *triggers* (`*_valid`, `immediate_pause`) reset to 0. The CAM-search byte
 > selectors default to the identity sequence `{0,1,2,3}`, and
-> `hw_decode_flush_cntr` resets to `0x10` cycles. **[HIGH · OBSERVED]**
+> `hw_decode_flush_cntr` resets to `0x10` cycles.
 
 > **QUIRK.** `iram_block_size_mask` is **17 bits** (`[18:2]`) — not a clean
 > power-of-two field — and resets to `0x1FFF` (13 set bits). It masks the cache
 > block index out of the IRAM address so rtl can reconstruct the PC. Do not
-> assume it spans the whole register. **[HIGH · OBSERVED]**
+> assume it spans the whole register.
 
 ### 7.1 Arm an address breakpoint
 
@@ -393,7 +391,7 @@ static void hw_decode_break_at(volatile uint32_t *base, uint64_t addr)
 ## 8. Bundle `notific` — SW-queue mapping + timestamp (base `0x6000`, 1 instance)
 
 Maps each Q7 sequencer's generated notifications to a SW queue number and sets
-the timestamp increment. **[HIGH · OBSERVED]**
+the timestamp increment.
 
 | off | register | field | bits | reset | purpose |
 |---|---|---|---|---|---|
@@ -417,13 +415,13 @@ the timestamp increment. **[HIGH · OBSERVED]**
 | `0x0` | `lr` | `value` | `[31:0]` | `0x0` | general local register (`glr`) for NX/Q7 |
 
 60 instances at `0x1000 + i*0x20` (`lr[0]`@`0x1000` ‥ `lr[59]`@`0x1760`); one
-register per `0x20` slot, the remaining `0x1C` is unused. **[HIGH · OBSERVED]**
+register per `0x20` slot, the remaining `0x1C` is unused.
 
 ---
 
 ## 10. Interrupt control summary
 
-Two separate interrupt apertures, one per core domain. **[HIGH · OBSERVED]**
+Two separate interrupt apertures, one per core domain.
 
 | domain | enable reg | width | metadata regs | semantics |
 |---|---|---|---|---|
@@ -483,12 +481,12 @@ The four added bundles on v4/v5 are **atomic-op apertures** appended after
 > reimplementation that ignores the atomic region is forward-compatible for the
 > control path. **[HIGH · OBSERVED for v3/v4/v5; v2/V1 INFERRED — not shipped]**
 
-> **CORRECTION (vs SX-CSR-01).** SX-CSR-01 enumerated only the Cayman variant
-> and reports "7 bundles / 55 regs / 84 fields" as *the* layout. That is exact
-> **for Cayman**, but the v4/v5 arch-regs trees ship **11 bundles / 59 regs /
-> 88 fields** — the four `atomic_*` apertures at `0x8000`‥`0x8FFF` are absent
-> from the report because it did not cross-check the maverick/mariana trees.
-> All other SX-CSR-01 offsets, resets, and field positions reproduce exactly.
+> **CORRECTION — "7 bundles / 55 regs / 84 fields" is Cayman-only.** That count
+> is often quoted as *the* layout. It is exact **for Cayman**, but the v4/v5
+> arch-regs trees ship **11 bundles / 59 regs / 88 fields** — the four `atomic_*`
+> apertures at `0x8000`‥`0x8FFF` are missed by any survey that does not
+> cross-check the maverick/mariana trees. All offsets, resets, and field positions
+> outside those four bundles are unchanged.
 
 ---
 
@@ -505,7 +503,7 @@ The four added bundles on v4/v5 are **atomic-op apertures** appended after
 ## Appendix A — full register map (offset / name / width / access)
 
 All 55 Cayman registers, absolute byte offsets (instance 0 for indexed
-bundles). Every register is 32-bit `RW`. **[HIGH · OBSERVED]**
+bundles). Every register is 32-bit `RW`.
 
 | abs off | bundle\[i] | register | width | access |
 |---|---|---|---|---|
@@ -550,4 +548,4 @@ bundles). Every register is 32-bit `RW`. **[HIGH · OBSERVED]**
 
 > **Schema cross-check.** 8 (`nx`) + 1 (`general`) + 7 (`window`) + 19 (`q7`) +
 > 14 (`hw_decode`) + 4 (`tensor_replace`) + 2 (`notific`) = **55 registers**,
-> **84 bitfields** — matches the jq count of the JSON exactly. **[HIGH · OBSERVED]**
+> **84 bitfields** — matches the JSON exactly.
