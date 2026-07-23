@@ -41,7 +41,7 @@ For reimplementation, the contract is:
 
 `AwsNeuronLNCShardingConstraint` is one of the real `AwsNeuron*` custom-call targets catalogued in the front-end's verifier whitelist. Semantically it is a **sharding-constraint op**: a no-op-on-data, side-effect-free custom-call whose output shape equals its input shape, existing solely to carry a required `HloSharding` into the SPMD partitioner. The sharding it carries is a tile assignment over the **LNC device mesh** — the *N* Logical-NeuronCore SPMD devices the module is being partitioned across. It is the one op that ties an abstract SPMD `HloSharding` to the *physical* LNC topology.
 
-It is a **purely front-end construct**. The string `AwsNeuronLNCShardingConstraint` (`.rodata` 0x360f50, len 30) appears **only** in `hlo2penguin` — verified absent (jq count 0) from the `hlo-opt` mid-level optimizer's string table, where the sibling `AwsNeuronTransferWithStaticRing` *is* present (count 1). The constraint is therefore consumed inside the HLO→penguin import path — which is where the stock SPMD partitioner runs — and stripped once partitioning has applied it, exactly as a sharding-constraint op should be. (CONFIRMED.)
+It is a **purely front-end construct**. The string `AwsNeuronLNCShardingConstraint` (`.rodata` 0x360f50, len 30) appears **only** in `hlo2penguin`; it is absent from the `hlo-opt` mid-level optimizer's string table, where the sibling `AwsNeuronTransferWithStaticRing` *is* present. The constraint is therefore consumed inside the HLO→penguin import path — which is where the stock SPMD partitioner runs — and stripped once partitioning has applied it, exactly as a sharding-constraint op should be.
 
 > **QUIRK —** the op is "front-end only" not because Neuron hides it, but because it is a *transient annotation*. SPMD propagation reads it, reshards the operand to its sharding, and the op evaporates before the optimized HLO reaches `hlo-opt`. A reimplementer who looks for it in the mid-level IR will not find it; it lives only between import and the end of the front-end SPMD pass.
 
@@ -51,12 +51,12 @@ The string's complete referencing-function set (from the strings sidecar `refere
 
 | Referencing function | Address | Role | Confidence |
 |---|---|---|---|
-| `xla::hilo::CustomCallOpChecker::CheckMisc` | 0x203e890 | validation whitelist | CONFIRMED |
-| `xla::hilo::NeuronHloCostAnalysis::HandleCustomCall` | 0x21b8b10 | cost model | CONFIRMED |
-| `mlir::MhloToPythonPrinter::print<mhlo::CustomCallOp>` | 0x20d1f10 | penguin-IR printer dispatch | CONFIRMED |
-| `mlir::StableHLOToPythonPrinter::print<stablehlo::CustomCallOp>` | (StableHLO twin) | penguin-IR printer dispatch | CONFIRMED |
+| `xla::hilo::CustomCallOpChecker::CheckMisc` | 0x203e890 | validation whitelist | CERTAIN |
+| `xla::hilo::NeuronHloCostAnalysis::HandleCustomCall` | 0x21b8b10 | cost model | CERTAIN |
+| `mlir::MhloToPythonPrinter::print<mhlo::CustomCallOp>` | 0x20d1f10 | penguin-IR printer dispatch | CERTAIN |
+| `mlir::StableHLOToPythonPrinter::print<stablehlo::CustomCallOp>` | (StableHLO twin) | penguin-IR printer dispatch | CERTAIN |
 
-All four are import / validate / print / cost functions. There is **no** `xla::Legalize*` / `Partition*` / `Lower*` pass that special-cases this target string in either binary. The op is given no `CustomCallPartitioner` subclass. This is a confirmed negative result (exhaustive xref enumeration over both binaries) and is what licenses the whole "rides stock machinery" thesis. (CONFIRMED.)
+All four are import / validate / print / cost functions. There is **no** `xla::Legalize*` / `Partition*` / `Lower*` pass that special-cases this target string in either binary, and the op is given no `CustomCallPartitioner` subclass. That negative result — an exhaustive xref enumeration over both binaries — is what licenses the whole "rides stock machinery" thesis.
 
 ### The Penguin-IR Printer
 
@@ -69,7 +69,7 @@ MhloToPythonPrinter::print<mhlo::CustomCallOp>   @0x20d1f10 (2762 B)   ── di
   (StableHLO twin: StableHLOToPythonPrinter::print<...> ─→ printLNCShardingConstraint @0x217fb00)
 ```
 
-> **QUIRK —** dispatch from `print<CustomCallOp>` to `printLNCShardingConstraint` is **not** a direct call. The printer template builds a table of `std::function<void(mlir::Operation*)>` thunks keyed by target name; the only caller of `printLNCShardingConstraint` in the binary is the `std::_Function_handler<...print<CustomCallOp>...>::_M_invoke` thunk wrapper, not the template body. A reimplementer chasing a direct callee edge from the template will miss it — the routing goes through a function-pointer table. (CONFIRMED — caller of @0x20e37e0 is the `_M_invoke` thunk.)
+> **QUIRK —** dispatch from `print<CustomCallOp>` to `printLNCShardingConstraint` is **not** a direct call. The printer template builds a table of `std::function<void(mlir::Operation*)>` thunks keyed by target name; the only caller of `printLNCShardingConstraint` in the binary is the `std::_Function_handler<...print<CustomCallOp>...>::_M_invoke` thunk wrapper, not the template body. A reimplementer chasing a direct callee edge from the template will miss it — the routing goes through a function-pointer table.
 
 `printLNCShardingConstraint` @0x20e37e0 emits the penguin op form. Its three referenced string literals and five callees pin the exact emission:
 
@@ -93,14 +93,14 @@ void printLNCShardingConstraint(Operation* op):
     emit(")")
 ```
 
-The three literals (`.LNCShardingConstraintOp(`, `target_name=`, `sharding=`) and the five callees (`getCallTargetName`, `getBackendConfig`, `printSrcs`, `printDsts`, `printMeta`) are all CONFIRMED in the function's `strings_referenced` and `callees`. The `sharding=` value is the SPMD `HloSharding` attached to the custom-call op — the constraint payload, i.e. the tile-over-LNC assignment. The output shape equals the input shape; the op is identity on data and exists only to carry the sharding requirement into SPMD. The `sharding=` payload being the constraint's `HloSharding` is STRONG (the attribute is the op's defining content, which is exactly what a sharding-constraint op stores).
+The three literals (`.LNCShardingConstraintOp(`, `target_name=`, `sharding=`) and the five callees (`getCallTargetName`, `getBackendConfig`, `printSrcs`, `printDsts`, `printMeta`) all appear in the function's `strings_referenced` and `callees`. The `sharding=` value is the SPMD `HloSharding` attached to the custom-call op — the constraint payload, i.e. the tile-over-LNC assignment. The output shape equals the input shape; the op is identity on data and exists only to carry the sharding requirement into SPMD.
 
 ### Validation and Cost
 
 Two of the four referencing functions consume the op outside the printer:
 
-- **`CustomCallOpChecker::CheckMisc` @0x203e890** holds a `std::_Hashtable<string>` whitelist of legal `AwsNeuron*` target names (including `AwsNeuronLNCShardingConstraint`) and rejects unknown targets via `hilo::formatErrorMessage(ErrorCode, ...)`; it logs the `"[ERROR] ["` prefix on failure. The front-end verifier therefore *accepts* the LNC constraint as a known op. (CONFIRMED.)
-- **`NeuronHloCostAnalysis::HandleCustomCall` @0x21b8b10** routes the same target set through the Neuron cost model. Being an identity annotation, `AwsNeuronLNCShardingConstraint` contributes ~zero compute — it is a metadata op — unlike `AwsNeuronCollectiveMatmul`, which carries dot dimensions (lhs/rhs contracting + batch dims) read from `backend_config`. (CONFIRMED string xref; STRONG zero-cost rationale.)
+- **`CustomCallOpChecker::CheckMisc` @0x203e890** holds a `std::_Hashtable<string>` whitelist of legal `AwsNeuron*` target names (including `AwsNeuronLNCShardingConstraint`) and rejects unknown targets via `hilo::formatErrorMessage(ErrorCode, ...)`; it logs the `"[ERROR] ["` prefix on failure. The front-end verifier therefore *accepts* the LNC constraint as a known op.
+- **`NeuronHloCostAnalysis::HandleCustomCall` @0x21b8b10** routes the same target set through the Neuron cost model. Being an identity annotation, `AwsNeuronLNCShardingConstraint` contributes ~zero compute — it is a metadata op — unlike `AwsNeuronCollectiveMatmul`, which carries dot dimensions (lhs/rhs contracting + batch dims) read from `backend_config`.
 
 ---
 
@@ -108,7 +108,7 @@ Two of the four referencing functions consume the op outside the printer:
 
 ### Purpose
 
-Because the LNC constraint has no dedicated partitioner subclass, it must ride the **stock** `CustomCallPartitioner` registry. This section is the heart of the page: it shows the exact stock machinery that a Neuron custom-call target flows through, and how a sharding-constraint custom-call ends up reshard­ing its operand to the pinned sharding. Everything in this section is upstream XLA — the source-file string `xla/service/custom_call_sharding_helper.cc` (@0x3cf7d0) confirms it. (stock-XLA.)
+Because the LNC constraint has no dedicated partitioner subclass, it must ride the **stock** `CustomCallPartitioner` registry. This section is the heart of the page: it shows the exact stock machinery that a Neuron custom-call target flows through, and how a sharding-constraint custom-call ends up reshard­ing its operand to the pinned sharding. Everything in this section is upstream XLA — the source-file string `xla/service/custom_call_sharding_helper.cc` (@0x3cf7d0) names it.
 
 ### The Registry
 
@@ -135,7 +135,7 @@ const CustomCallPartitioner* GetCustomCallPartitioner(target):
     return it == end ? nullptr : it->second.get()
 ```
 
-The registry is keyed by `custom_call_target`. It is populated **once** via `absl::CallOnce` — its sole caller is the `.constprop` `CallOnceImpl<...ShardingPropagation::Run...UlvE_>` lambda, i.e. registration is run lazily from `ShardingPropagation::Run`. (CONFIRMED: the only caller of `RegisterCustomCallPartitioner` @0x2d25830 is that `CallOnceImpl` thunk.)
+The registry is keyed by `custom_call_target`. It is populated **once** via `absl::CallOnce` — the only caller of `RegisterCustomCallPartitioner` @0x2d25830 is the `.constprop` `CallOnceImpl<...ShardingPropagation::Run...UlvE_>` thunk, so registration runs lazily from `ShardingPropagation::Run`.
 
 ### Who Consults the Registry
 
@@ -143,15 +143,15 @@ The registry is keyed by `custom_call_target`. It is populated **once** via `abs
 
 | Caller | SPMD phase | Confidence |
 |---|---|---|
-| `SpmdPartitioningVisitor::HandleCustomCall` | the actual partition | CONFIRMED |
-| `SpmdPartitioner::PreprocessSharding` | pre-partition sharding fixup | CONFIRMED |
-| `SpmdPartitioner::CanSideEffectingHaveReplicatedSharding` | side-effect validation | CONFIRMED |
-| `StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding` | side-effect validation (RNG flavor) | CONFIRMED |
-| `ShardingPropagation::InferShardingFromOperands` | forward propagation | CONFIRMED |
-| `ShardingPropagation::InferShardingFromUsers` | backward propagation | CONFIRMED |
-| `xla::(anon)::SupportSpatialPartitioning` | partitionability test | CONFIRMED |
+| `SpmdPartitioningVisitor::HandleCustomCall` | the actual partition | CERTAIN |
+| `SpmdPartitioner::PreprocessSharding` | pre-partition sharding fixup | CERTAIN |
+| `SpmdPartitioner::CanSideEffectingHaveReplicatedSharding` | side-effect validation | CERTAIN |
+| `StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding` | side-effect validation (RNG flavor) | CERTAIN |
+| `ShardingPropagation::InferShardingFromOperands` | forward propagation | CERTAIN |
+| `ShardingPropagation::InferShardingFromUsers` | backward propagation | CERTAIN |
+| `xla::(anon)::SupportSpatialPartitioning` | partitionability test | CERTAIN |
 
-All seven are stock XLA. (CONFIRMED — the full caller list of @0x2d25140.)
+All seven are stock XLA; the list is the complete caller set of @0x2d25140.
 
 ### Dispatch and Reshard — the Algorithm
 
@@ -159,7 +159,7 @@ All seven are stock XLA. (CONFIRMED — the full caller list of @0x2d25140.)
 // SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo)   // @0x2c15e30, 4748 B  (stock-XLA)
 Status HandleCustomCall(hlo):
     target = hlo->custom_call_target()
-    ccp = GetCustomCallPartitioner(target)              // @0x2d25140 — registry dispatch (CONFIRMED edge)
+    ccp = GetCustomCallPartitioner(target)              // @0x2d25140 — registry dispatch
     if ccp != nullptr:
         return ccp->Partition(this, hlo)                // bespoke partitioner, if one was registered
 
@@ -173,12 +173,12 @@ Status HandleCustomCall(hlo):
     // requested HloSharding (the "sharding=" payload from §1):
     operand   = GetPartitionedHlo(hlo->operand(0))
     requested = hlo->sharding()                         // the pinned LNC tiling
-    return operand.Reshard(requested, /*literal=*/nullopt)   // @0x2cad850 (CONFIRMED edge)
+    return operand.Reshard(requested, /*literal=*/nullopt)   // @0x2cad850
 ```
 
-`HandleCustomCall` @0x2c15e30 confirmedly calls **both** `GetCustomCallPartitioner` and `PartitionedHlo::Reshard` @0x2cad850, plus `HandleElementwise` / `HandleSingleDevice` as the pass-through paths. The base `CustomCallPartitioner::Partition` @0x2d250a0 is an unimplemented stub (it logs `"Implement sharding for %s"`), and the base `CanSideEffectingHaveReplicatedSharding` @0x2bfc590 is a 3-byte `return false` (`xor eax,eax; ret`). So an *unregistered* target falls to the default reshard/elementwise/replicate handling — which is precisely the reshard a sharding-constraint forces. (CONFIRMED stubs and edges.)
+`HandleCustomCall` @0x2c15e30 calls **both** `GetCustomCallPartitioner` and `PartitionedHlo::Reshard` @0x2cad850, plus `HandleElementwise` / `HandleSingleDevice` as the pass-through paths. The base `CustomCallPartitioner::Partition` @0x2d250a0 is an unimplemented stub (it logs `"Implement sharding for %s"`), and the base `CanSideEffectingHaveReplicatedSharding` @0x2bfc590 is a 3-byte `return false` (`xor eax,eax; ret`). So an *unregistered* target falls to the default reshard/elementwise/replicate handling — which is precisely the reshard a sharding-constraint forces.
 
-`Reshard` @0x2cad850 is the stock collective machinery: all-to-all / collective-permute / all-gather / dynamic-slice, selected per the stock `GetReshardAllToAllSourceTargetDims` / `CanReshardWithCollectivePermute` predicates (all present in `hlo2penguin`). The same function also handles the stock `SPMDFullToShardShape` / `SPMDShardToFullShape` custom-calls. (CONFIRMED.)
+`Reshard` @0x2cad850 is the stock collective machinery: all-to-all / collective-permute / all-gather / dynamic-slice, selected per the stock `GetReshardAllToAllSourceTargetDims` / `CanReshardWithCollectivePermute` predicates (all present in `hlo2penguin`). The same function also handles the stock `SPMDFullToShardShape` / `SPMDShardToFullShape` custom-calls.
 
 ```text
                        Neuron data  ──────────────────────────────────►  stock-XLA machinery
@@ -194,9 +194,9 @@ Status HandleCustomCall(hlo):
                                           all-to-all / collective-permute / all-gather / dynamic-slice
 ```
 
-> **GOTCHA —** the honest gap. No symbol literally named e.g. `LNCShardingConstraintPartitioner` is registered in `GetPartitioners()`; the registrant set is populated indirectly (CallOnce from `ShardingPropagation::Run`) and is not enumerable from the skipped-decompile import. The dispatch *mechanism* (target → `GetCustomCallPartitioner` → `Partition` / `Propagate*` → `Reshard`) is CONFIRMED stock XLA. That `AwsNeuronLNCShardingConstraint` flows through *this* mechanism rather than a bespoke pass is **STRONG** — proven by the exhaustive negative xref of §1 (no Neuron pass references the string), not by observing a registry entry for it. The reshard-to-pinned-sharding behavior is the stock sharding-constraint behavior; whether a thin Neuron CCP is registered for it or it falls to the default reshard path is not separable from the skipped import, but the *result* (operand resharded to the pinned LNC tiling) is identical either way.
+One question stays open. The registrant set of `GetPartitioners()` is populated indirectly, through the `CallOnce` from `ShardingPropagation::Run`, and that import is a skipped decompile — so the map's contents cannot be enumerated. No symbol literally named something like `LNCShardingConstraintPartitioner` exists, and the §1 negative xref rules out any Neuron pass touching the target string, which is what places the constraint on the stock path. Whether a *thin* Neuron `CustomCallPartitioner` is nevertheless registered for the target, or whether the target simply misses the map and falls to the default reshard, is not separable from the outside. The observable result is the same either way: the operand is resharded to the pinned LNC tiling.
 
-> **NOTE —** the LNC constraint is side-effect-**free** (a pure annotation), so it is never gated by the side-effecting-sharding `RET_CHECK` path that fires only for side-effecting custom-calls. This is why it can be freely resharded and then stripped without a replication-legality check. (STRONG.)
+> **NOTE —** the LNC constraint is side-effect-**free** (a pure annotation), so it is never gated by the side-effecting-sharding `RET_CHECK` path that fires only for side-effecting custom-calls. This is why it can be freely resharded and then stripped without a replication-legality check.
 
 ---
 
@@ -204,7 +204,7 @@ Status HandleCustomCall(hlo):
 
 ### Purpose
 
-`AwsNeuronTransferWithStaticRing` (`.rodata` 0x2dfd28, len 31) is the Neuron collective-**transfer** custom-call: it moves a tensor between LNC cores along a **static ring** — a fixed, compile-time-determined ring of Logical NeuronCores — rather than a dynamically-routed collective. "Static" means the cross-core transfer path and order are baked at compile time (fixed by the LNC mesh), so the backend can emit a deterministic DMA schedule instead of a runtime-negotiated route. Unlike the LNC constraint, this op is present in **both** `hlo2penguin` and `hlo-opt` (count 1 in the optimizer's string table) — it survives into the mid-level optimizer because it is a real data-movement op, not a transient annotation. (CONFIRMED.)
+`AwsNeuronTransferWithStaticRing` (`.rodata` 0x2dfd28, len 31) is the Neuron collective-**transfer** custom-call: it moves a tensor between LNC cores along a **static ring** — a fixed, compile-time-determined ring of Logical NeuronCores — rather than a dynamically-routed collective. "Static" means the cross-core transfer path and order are baked at compile time (fixed by the LNC mesh), so the backend can emit a deterministic DMA schedule instead of a runtime-negotiated route. Unlike the LNC constraint, this op is present in **both** `hlo2penguin` and `hlo-opt` (count 1 in the optimizer's string table) — it survives into the mid-level optimizer because it is a real data-movement op, not a transient annotation.
 
 ### Who Touches It
 
@@ -212,13 +212,13 @@ The string's full referencing set (seven functions) splits into validate / cost 
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `xla::UnpackNestedAWSNTWSR::Run` | 0x20537f0 | flatten illegally-nested transfers | CONFIRMED |
-| `xla::partition::isCustomCallLoadingParam` | 0x1f3d6b0 | recognize as parameter-load | CONFIRMED |
-| `xla::partition::Rematter::isCustomCallLoadingParam` | 0x1f16550 | recognize as parameter-load (remat) | CONFIRMED |
-| `xla::hilo::NeuronHloCostAnalysis::HandleCustomCall` | 0x21b8b10 | transfer cost | CONFIRMED |
-| `xla::hilo::CustomCallOpChecker::CheckMisc` | 0x203e890 | validation whitelist | CONFIRMED |
-| `PenguinizeFunctions::runOnOperation()::lambda#2` | 0x2087ee0 | MHLO→penguin matcher | CONFIRMED |
-| `StableHLOPenguinizeFunctions::...::lambda#2` | 0x2127230 | StableHLO→penguin matcher | CONFIRMED |
+| `xla::UnpackNestedAWSNTWSR::Run` | 0x20537f0 | flatten illegally-nested transfers | CERTAIN |
+| `xla::partition::isCustomCallLoadingParam` | 0x1f3d6b0 | recognize as parameter-load | CERTAIN |
+| `xla::partition::Rematter::isCustomCallLoadingParam` | 0x1f16550 | recognize as parameter-load (remat) | CERTAIN |
+| `xla::hilo::NeuronHloCostAnalysis::HandleCustomCall` | 0x21b8b10 | transfer cost | CERTAIN |
+| `xla::hilo::CustomCallOpChecker::CheckMisc` | 0x203e890 | validation whitelist | CERTAIN |
+| `PenguinizeFunctions::runOnOperation()::lambda#2` | 0x2087ee0 | MHLO→penguin matcher | CERTAIN |
+| `StableHLOPenguinizeFunctions::...::lambda#2` | 0x2127230 | StableHLO→penguin matcher | CERTAIN |
 
 ### Flattening Nested Transfers
 
@@ -234,12 +234,12 @@ Status UnpackNestedAWSNTWSR::Run(m, exec):
             source = inst->mutable_operand(0)                    // @callee mutable_operand
             if source->custom_call_target() == "AwsNeuronTransferWithStaticRing":   // nested!
                 NeuronLogger << "found illegally nested AwsNeuronTransferWithStaticRing, "
-                                "replacing <tail> with <source>"  // str @0x354968, len 66 (CONFIRMED)
+                                "replacing <tail> with <source>"  // str @0x354968, len 66
                 comp->ReplaceInstruction(/*tail=*/inst, source)   // @callee HloComputation::ReplaceInstruction
     return OK
 ```
 
-The pass collapses `transfer(transfer(x)) → transfer(x)`: two consecutive static-ring transfers on the same value are illegal (a value already in transit on the ring must not be re-wrapped), so the inner is removed and the outer's operand is rebound to the source, keeping the static-ring schedule single-hop. The callee set (`MakeInstructionPostOrder`, `mutable_operand`, `ReplaceInstruction`) and the `NeuronLogger` diagnostic chain (`getInstance` / `setSourceFile` / `setSourceLine` / `shouldLogToFile` / `shouldLogToConsole`) are all CONFIRMED in the function. (CONFIRMED.)
+The pass collapses `transfer(transfer(x)) → transfer(x)`: two consecutive static-ring transfers on the same value are illegal (a value already in transit on the ring must not be re-wrapped), so the inner is removed and the outer's operand is rebound to the source, keeping the static-ring schedule single-hop. The function's callee set is exactly `MakeInstructionPostOrder`, `mutable_operand`, `ReplaceInstruction`, plus the `NeuronLogger` diagnostic chain (`getInstance` / `setSourceFile` / `setSourceLine` / `shouldLogToFile` / `shouldLogToConsole`).
 
 ### Static-Ring Transfer as a Parameter-Load
 
@@ -253,11 +253,11 @@ Rematter::isCustomCallLoadingParam @0x1f16550
    └─ partition::Rematter::trivialRemats        ── trivial rematerialization
 ```
 
-A static-ring transfer that brings a parameter onto a core is treated like a **parameter load**: (i) `SplitFinder::findInitSplits` seeds it as an *input boundary* of a partition — it is where data enters the per-core subgraph — and (ii) `Rematter::trivialRemats` marks it **trivially rematerializable**, so the loaded value can be re-fetched via the ring rather than spilled/recomputed, and `replicateTrivial` may replicate it cheaply. (CONFIRMED callers; STRONG "why" from caller names + the LNC split model.)
+A static-ring transfer that brings a parameter onto a core is treated like a **parameter load**: (i) `SplitFinder::findInitSplits` seeds it as an *input boundary* of a partition — it is where data enters the per-core subgraph — and (ii) `Rematter::trivialRemats` marks it **trivially rematerializable**, so the loaded value can be re-fetched via the ring rather than spilled/recomputed, and `replicateTrivial` may replicate it cheaply. The caller set is pinned; the *why* is read off the caller names plus the LNC split model.
 
 ### Penguinization
 
-`PenguinizeFunctions` (MHLO) @0x2087ee0 and `StableHLOPenguinizeFunctions` @0x2127230 each carry a per-`CustomCallOp` lambda that `memcmp`-matches the static-ring target name and lowers the op to the penguin transfer/collective representation. The exact penguin op kind was not decompilable (the lambda body is a skipped-decompile export); that it is a transfer/collective op rather than a compute op is STRONG (the cost model accounts its bytes-moved as a transfer cost, and the target-name match in the penguinize lambda is CONFIRMED). (CONFIRMED match; STRONG op-kind.)
+`PenguinizeFunctions` (MHLO) @0x2087ee0 and `StableHLOPenguinizeFunctions` @0x2127230 each carry a per-`CustomCallOp` lambda that `memcmp`-matches the static-ring target name and lowers the op to the penguin transfer/collective representation. The target-name match is pinned, but the exact penguin op kind is not: the lambda body is a skipped-decompile export. That it is a transfer/collective op rather than a compute op rests on the cost model accounting its bytes-moved as a transfer cost.
 
 ---
 
@@ -267,12 +267,12 @@ A static-ring transfer that brings a parameter onto a core is treated like a **p
 
 A single number — the **LNC count**, `logical_nc_config` = NeuronCores-per-Logical-NeuronCore — is what the SPMD mesh, the front-end sharding, and the backend split all key off:
 
-- **Front-end** (`CompileCommand`, owned by [distribution-strategy-seeding](distribution-strategy-seeding.md)): `self.logical_nc_config` (`--lnc` / `--logical-nc-config`), default **2 on Trn2** (codename `sunda`), forced 1 on other archs (constraint string `args.arch != "sunda" or args.logical_nc_config == 1`). It gates `enable_internal_spmd_opt` and is surfaced to `hlo2penguin` as the `HloPassOptions` core-count knob. (CONFIRMED; see the seeding page.)
-- **Backend** (`lnc_splitter`, [walrus/lnc-splitter](../walrus/lnc-splitter.md)): `lnc_size` = `PassOptions+0x1A4` (dword index 420), cached to `LncSplitter+0x60`, **default 1** — the per-module replication factor. `LncSplitter::run` @0x16d5ca0 (pipeline **order 8**) clones the one symbolic BIR module `lnc_size` times and concretizes per-core shard-ids; the cross-core collective lowering computes `getRemoteCores={0..lnc-1}\{self}` and `getAllCores={0..lnc-1}` from the same field. (CONFIRMED.)
+- **Front-end** (`CompileCommand`, owned by [distribution-strategy-seeding](distribution-strategy-seeding.md)): `self.logical_nc_config` (`--lnc` / `--logical-nc-config`), default **2 on Trn2** (codename `sunda`), forced 1 on other archs (constraint string `args.arch != "sunda" or args.logical_nc_config == 1`). It gates `enable_internal_spmd_opt` and is surfaced to `hlo2penguin` as the `HloPassOptions` core-count knob; see the seeding page.
+- **Backend** (`lnc_splitter`, [walrus/lnc-splitter](../walrus/lnc-splitter.md)): `lnc_size` = `PassOptions+0x1A4` (dword index 420), cached to `LncSplitter+0x60`, **default 1** — the per-module replication factor. `LncSplitter::run` @0x16d5ca0 (pipeline **order 8**) clones the one symbolic BIR module `lnc_size` times and concretizes per-core shard-ids; the cross-core collective lowering computes `getRemoteCores={0..lnc-1}\{self}` and `getAllCores={0..lnc-1}` from the same field.
 
-> **GOTCHA —** the raw backend field `lnc_size` (`PassOptions+0x1A4`) defaults to **1**, not 2. The "2 on Trn2" is an *arch-conditioned front-end default* that plumbs down into that field; do not state "`lnc_size` defaults to 2." A single-core compile leaves the field at 1 and `lnc_splitter`'s `if (lnc != 1)` fast path skips the clone loop entirely. (CONFIRMED — cross-checked against [arch/lnc-memory-model](../arch/lnc-memory-model.md) and [walrus/lnc-splitter](../walrus/lnc-splitter.md).)
+> **GOTCHA —** the raw backend field `lnc_size` (`PassOptions+0x1A4`) defaults to **1**, not 2. The "2 on Trn2" is an *arch-conditioned front-end default* that plumbs down into that field; do not state "`lnc_size` defaults to 2." A single-core compile leaves the field at 1 and `lnc_splitter`'s `if (lnc != 1)` fast path skips the clone loop entirely.
 
-Front-end `logical_nc_config` and backend `lnc_size` are the **same logical quantity** *N* (the LNC mesh size): the front-end shards an *N*-way mesh, the backend realizes it as *N* per-core BIR modules. This equality is **STRONG, not CONFIRMED** — there are two independent confirmations of *N* with the same semantic, but the exact plumbing from the CLI attribute to `PassOptions+0x1A4` spans the driver→penguin boundary and is not traced through a single symbol.
+Front-end `logical_nc_config` and backend `lnc_size` are the **same logical quantity** *N* (the LNC mesh size): the front-end shards an *N*-way mesh, the backend realizes it as *N* per-core BIR modules. Two independent sightings of *N* carry the same semantic, but the equality is not fully nailed down: the plumbing from the CLI attribute to `PassOptions+0x1A4` spans the driver→penguin boundary and is not traced through a single symbol.
 
 ### LNCShardingConstraint Is the Contract
 
@@ -292,11 +292,11 @@ Front-end `logical_nc_config` and backend `lnc_size` are the **same logical quan
 (4) per-core BIR modules, SPMD-identical replicas (the LncVerifier invariant)
 ```
 
-The sharding the front-end pins via `AwsNeuronLNCShardingConstraint` is exactly the shard-id assignment the backend splitter concretizes. The constraint is the contract that makes the SPMD-tile↔physical-LNC-core mapping deterministic, so `lnc_splitter`'s per-core prune produces SPMD-identical replicas. The ordering 7-before-8 is mandatory: replication is made explicit on the single module first; running it after the split would break SPMD identity. (CONFIRMED endpoints; STRONG linkage.)
+The sharding the front-end pins via `AwsNeuronLNCShardingConstraint` is exactly the shard-id assignment the backend splitter concretizes. The constraint is the contract that makes the SPMD-tile↔physical-LNC-core mapping deterministic, so `lnc_splitter`'s per-core prune produces SPMD-identical replicas. The ordering 7-before-8 is mandatory: replication is made explicit on the single module first; running it after the split would break SPMD identity.
 
 ### Static-Ring Transfer at the Split Boundary
 
-`AwsNeuronTransferWithStaticRing` (§3) is the cross-LNC data movement the split materializes: `getRemoteCores` / `getAllCores` feed the cross-core DMA / remote-target lowering. Because `partition::isCustomCallLoadingParam` treats a static-ring transfer as a parameter load (§3), the splitter sees it as a per-core *input boundary* — where the ring delivers this core's shard — rather than recomputable compute, so each cloned core reads its slice off the static ring. (STRONG.)
+`AwsNeuronTransferWithStaticRing` (§3) is the cross-LNC data movement the split materializes: `getRemoteCores` / `getAllCores` feed the cross-core DMA / remote-target lowering. Because `partition::isCustomCallLoadingParam` treats a static-ring transfer as a parameter load (§3), the splitter sees it as a per-core *input boundary* — where the ring delivers this core's shard — rather than recomputable compute, so each cloned core reads its slice off the static ring.
 
 ---
 
@@ -304,19 +304,19 @@ The sharding the front-end pins via `AwsNeuronLNCShardingConstraint` is exactly 
 
 | Claim | Tag |
 |---|---|
-| `AwsNeuronLNCShardingConstraint` string is hlo2penguin-only (0 in hlo-opt); 4 referencing fns; no dedicated pass | CONFIRMED (negative xref) |
-| `printLNCShardingConstraint` @0x20e37e0 emits `.LNCShardingConstraintOp(` / `target_name=` / `sharding=` | CONFIRMED |
-| dispatch from `print<CustomCallOp>` to the printer is via a `std::function` thunk, not a direct call | CONFIRMED |
-| stock registry: `GetPartitioners` / `Register` / `GetCustomCallPartitioner`, registered once from `ShardingPropagation::Run` | CONFIRMED |
-| 7-caller consult list; `HandleCustomCall` @0x2c15e30 calls `GetCustomCallPartitioner` + `Reshard` | CONFIRMED (call edges) |
-| base `Partition` stub `"Implement sharding for %s"`; base `CanSideEffecting...` = 3-byte `return false` | CONFIRMED |
-| LNC constraint rides the stock reshard (no bespoke pass); reshard forces operand to pinned sharding | STRONG |
-| `sharding=` payload is the constraint's tile-over-LNC `HloSharding` | STRONG |
-| `UnpackNestedAWSNTWSR::Run` flattens nested transfers (`ReplaceInstruction(tail, source)`) | CONFIRMED |
-| `isCustomCallLoadingParam` (+ Rematter) gate on the static-ring target; callers = `findInitSplits`/`replicateTrivial`/`trivialRemats` | CONFIRMED |
-| static-ring lowers to a penguin transfer/collective op (penguinize lambda body skipped) | STRONG |
-| LNC constraint pin == backend shard-id concretization (front↔back contract) | STRONG |
-| front-end `logical_nc_config` == backend `lnc_size` as one *N* (CLI→`+0x1A4` not traced in one symbol) | INFERRED-STRONG |
+| `AwsNeuronLNCShardingConstraint` string is hlo2penguin-only (0 in hlo-opt); 4 referencing fns; no dedicated pass | CERTAIN (negative xref) |
+| `printLNCShardingConstraint` @0x20e37e0 emits `.LNCShardingConstraintOp(` / `target_name=` / `sharding=` | CERTAIN |
+| dispatch from `print<CustomCallOp>` to the printer is via a `std::function` thunk, not a direct call | CERTAIN |
+| stock registry: `GetPartitioners` / `Register` / `GetCustomCallPartitioner`, registered once from `ShardingPropagation::Run` | CERTAIN |
+| 7-caller consult list; `HandleCustomCall` @0x2c15e30 calls `GetCustomCallPartitioner` + `Reshard` | CERTAIN (call edges) |
+| base `Partition` stub `"Implement sharding for %s"`; base `CanSideEffecting...` = 3-byte `return false` | CERTAIN |
+| LNC constraint rides the stock reshard (no bespoke pass); reshard forces operand to pinned sharding | HIGH |
+| `sharding=` payload is the constraint's tile-over-LNC `HloSharding` | HIGH |
+| `UnpackNestedAWSNTWSR::Run` flattens nested transfers (`ReplaceInstruction(tail, source)`) | CERTAIN |
+| `isCustomCallLoadingParam` (+ Rematter) gate on the static-ring target; callers = `findInitSplits`/`replicateTrivial`/`trivialRemats` | CERTAIN |
+| static-ring lowers to a penguin transfer/collective op (penguinize lambda body skipped) | HIGH |
+| LNC constraint pin == backend shard-id concretization (front↔back contract) | HIGH |
+| front-end `logical_nc_config` == backend `lnc_size` as one *N* (CLI→`+0x1A4` not traced in one symbol) | MEDIUM–HIGH |
 | no symbol literally named `LNCShardingConstraintPartitioner` in `GetPartitioners()`; registrant set not enumerable | NOT FOUND / OPEN |
 
 ---

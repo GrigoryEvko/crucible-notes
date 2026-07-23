@@ -22,7 +22,7 @@ QoS gate (`validate_dma_qos`). Second, the **per-method Inst construction**: whi
 each method builds, what dispatch picks between variants, and which kwargs (`dge_mode`, `oob_mode`,
 `rmw_op`, `dma_qos`) ride on the Inst straight down to the BIR fields.
 
-The map, all CONFIRMED by the constructed class-name string in the binary:
+The map, each row pinned by the constructed class-name string in the binary:
 
 | Method | Penguin Inst | Note |
 |---|---|---|
@@ -59,7 +59,7 @@ get_identity_tensor     0x0a3470    create_tensor           0x08b0e0
 helpers: insert 0x165f00 · combine_tiles 0x16ad90 · legalize_store_value 0x1585c0
 ```
 
-> **NOTE — two KernelBuilder `.so` files.** The cp310 wheel ships *two* `KernelBuilder.cpython-310-x86_64-linux-gnu.so`: a 820 KB one under `neuronxcc/generated/…` and the 14.5 MB one under `neuronxcc/nki/…`. The addresses on this page are from the **14.5 MB `nki/` binary** (`.text` runs to ~`0x299530`, which is the only one large enough to hold `load` at `0x24e330`). Its method-def symbols are numbered exactly as cited — `…NeuronCodegen_251load`, `_255store`, `_159dma_copy`, `_113dma_transpose`, `_243memset` — all CONFIRMED in `nm`. The `generated/` `.so` is the stub façade.
+> **NOTE — two KernelBuilder `.so` files.** The cp310 wheel ships *two* `KernelBuilder.cpython-310-x86_64-linux-gnu.so`: a 820 KB one under `neuronxcc/generated/…` and the 14.5 MB one under `neuronxcc/nki/…`. The addresses on this page are from the **14.5 MB `nki/` binary** (`.text` runs to ~`0x299530`, which is the only one large enough to hold `load` at `0x24e330`). Its method-def symbols are numbered exactly as cited — `…NeuronCodegen_251load`, `_255store`, `_159dma_copy`, `_113dma_transpose`, `_243memset` — all present in `nm`. The `generated/` `.so` is the stub façade.
 
 ---
 
@@ -71,7 +71,7 @@ are short.
 ### 1.1 `self.insert(inst, …)` — the single append point — `@0x165f00`
 
 ```c
-// __pyx_pw_…NeuronCodegen_insert  @0x165f00          [CONFIRMED]
+// __pyx_pw_…NeuronCodegen_insert  @0x165f00
 // the Penguin-Function equivalent of BIR InstBuilder::insertElement / addInstToBir
 PyObject *NeuronCodegen_insert(self, inst, buffer, name, deps, ...) {
     add_named_instruction(builder, inst, name);   // name the Inst into the Function
@@ -83,8 +83,8 @@ PyObject *NeuronCodegen_insert(self, inst, buffer, name, deps, ...) {
 }
 ```
 
-CONFIRMED: the symbols `add_named_instruction`, `add_predicates`, `process_dep_edges`,
-`process_new_neuroninst`, `update_debugloc`, `cur_function_scope`, `cur_scope`, `builder`,
+The symbols `add_named_instruction`, `add_predicates`, `process_dep_edges`,
+`process_new_neuroninst`, `update_debugloc`, `cur_function_scope`, `cur_scope`, `builder`, and
 `NeuronInst` are all present in the binary's name table (`__pyx_n_s_*`). **This is the only place an
 Inst is appended.** Every method below ends `self.insert(<Inst>, …)`; the `mask` argument becomes the
 Inst's predicate, the `deps` argument drives `process_dep_edges`, and `process_new_neuroninst` is the
@@ -93,7 +93,7 @@ hook where the codegen object updates its own per-Function state (live tiles, re
 ### 1.2 `self.combine_tiles(…)` — the operand-AP normalizer — `@0x16ad90`
 
 ```c
-// __pyx_pw_…NeuronCodegen_combine_tiles  @0x16ad90    [CONFIRMED]
+// __pyx_pw_…NeuronCodegen_combine_tiles  @0x16ad90
 PyObject *NeuronCodegen_combine_tiles(self, *operand_tiles, mask, sema, ir, ...) {
     if (is_number(op))                               // NumPy-style scalar broadcast →
         op = broadcast_num_to_memset(op, ...);       //   turn a bare scalar into a memset tile
@@ -106,8 +106,9 @@ PyObject *NeuronCodegen_combine_tiles(self, *operand_tiles, mask, sema, ir, ...)
 }
 ```
 
-CONFIRMED: symbols `broadcast_operands`, `align_tile`, `extra_tiles`, `broadcast_num_to_memset`,
-`is_number`, `err_indirect_indices_are_not_sup`, `mask`, `sema`, `ir`. `combine_tiles` appears in
+The symbols `broadcast_operands`, `align_tile`, `extra_tiles`, `broadcast_num_to_memset`,
+`is_number`, `err_indirect_indices_are_not_sup`, `mask`, `sema`, and `ir` are all present.
+`combine_tiles` appears in
 the binary's string table **61 times** — it is the universal operand-AP normalizer called by
 `load`/`store`/`dma_copy`/`dma_transpose`/`indirect_load`/`indirect_save`/`gather_flattened`/
 `memset`/`load_tensor_to_register`/`stream_shuffle`. The key thing it does *not* do: it explicitly
@@ -128,8 +129,8 @@ emitted: see [6.2.2 memref/view model](memref-view-model.md) for how `TensorView
 it, and the `bir::AccessPattern {step@+0, num@+8}` struct in [2.21](../isa/dma-encoding.md). So
 `NeuronCodegen` does **not** recompute the access pattern — it *reads back* the AP the
 allocator/view built and hands it to the Penguin Inst constructor. The partition (par) index is the
-partition step; the free indices are the inner descriptor dims. (STRONG, via the cross-strand AP
-model; the `canonical_par_indices`/`canonical_free_indices` symbols are CONFIRMED in `nm`.)
+partition step; the free indices are the inner descriptor dims. Both symbols resolve in `nm`; the
+mapping onto the `(step,num)` pair comes from the cross-strand AP model rather than from this `.so`.
 
 ### 1.4 `validate_dma_qos(…)` — the DMA legality gate
 
@@ -167,12 +168,12 @@ PyObject *NeuronCodegen_load(self, pointer, mask, dtype, other,
 }
 ```
 
-⭐ The interesting line is `dst.tensor.init_value = other` (CONFIRMED: `init_value` is in the name
-table, written via `PyObject_SetAttrString`). `other` is the **out-of-bounds / default fill** value:
+⭐ The interesting line is `dst.tensor.init_value = other` — `init_value` is in the name table,
+written via `PyObject_SetAttrString`. `other` is the **out-of-bounds / default fill** value:
 where a predicated or strided load does not reach a tile element, the element takes `init_value`.
 This is the trace-time source of the OOB-fill the BIR gather path concretizes.
 
-`SBAtomLoad` (CONFIRMED string) is the static-AP HBM→SBUF DMA load, lowered by `codegenSBAtomLoad`
+`SBAtomLoad` is the static-AP HBM→SBUF DMA load, lowered by `codegenSBAtomLoad`
 in the BirCodeGenLoop and eventually the BIR plain `InstLoad(19)` family (which
 [2.21](../isa/dma-encoding.md) distinguishes from `TensorLoad(75)`). `mode` selects the DMA
 transfer/dge mode.
@@ -194,14 +195,14 @@ PyObject *NeuronCodegen_store(self, pointer, value, mask, rmw_op,
 }
 ```
 
-`SBAtomStore` (CONFIRMED string) is the static-AP SBUF→HBM DMA store, byte-symmetric to `load`. The
+`SBAtomStore` is the static-AP SBUF→HBM DMA store, byte-symmetric to `load`. The
 `rmw_op` kwarg makes it a read-modify-write store. The `IndirectMemrefTileND` fork is the same
 mechanism as `dma_copy`'s (§3): an indirect destination is rerouted to the scatter.
 
 ### 2.3 `legalize_store_value` — `@0x1585c0`
 
 ```c
-// legalize_store_value(self, value, ...)  @0x1585c0          [CONFIRMED]
+// legalize_store_value(self, value, ...)  @0x1585c0
 PyObject *NeuronCodegen_legalize_store_value(self, value, ...) {
     if (is_number(value))                                    // scalar →
         return memset_or_broadcast_to(value, shape, dtype);  //   memset / broadcast_to tile
@@ -212,8 +213,8 @@ PyObject *NeuronCodegen_legalize_store_value(self, value, ...) {
 }
 ```
 
-CONFIRMED: symbols `is_number`, `expand_dims`, `copy`, `DataTile`, `NeuronPSUMTensor`, `shape`,
-`dtype`. The guarantee: `SBAtomStore` / `indirect_save` always receive a proper Penguin tile, never
+The symbols `is_number`, `expand_dims`, `copy`, `DataTile`, `NeuronPSUMTensor`, `shape`, and
+`dtype` are all present. The guarantee: `SBAtomStore` / `indirect_save` always receive a proper Penguin tile, never
 a raw Python scalar.
 
 ---
@@ -228,7 +229,7 @@ PyObject *NeuronCodegen_dma_copy(self, src, dst, mask, rmw_op,
     bool di = isinstance(dst, IndirectMemrefTileND);
     if (si && di)
         raise AssertionError(
-          "``src`` and ``dst`` operands cannot both be indirect memory accesses"); // CONFIRMED literal
+          "``src`` and ``dst`` operands cannot both be indirect memory accesses");
     if (si) return self.indirect_load(src, ..., dst=dst, ...);     // gather fork
     if (di) return self.indirect_save(dst, value=src, ...);        // scatter fork
 
@@ -240,16 +241,16 @@ PyObject *NeuronCodegen_dma_copy(self, src, dst, mask, rmw_op,
 }
 ```
 
-`DMACopyOp` (CONFIRMED string) is the generic Penguin DMA copy (any space↔space). Its
-`{dge_mode, oob_mode, rmw_op}` kwargs (all CONFIRMED in the name table) are exactly the
+`DMACopyOp` is the generic Penguin DMA copy (any space↔space). Its
+`{dge_mode, oob_mode, rmw_op}` kwargs — all three present in the name table — are exactly the
 `klr::NcDmaCopy` fields that `codegenNcDmaCopy` lowers: `dge_mode`→`translateDGEMode`→`DGEType@+0xF8`,
 `rmw_op(add)`→reduce field, `oob_mode`→`oob_is_err`. **The Penguin layer sets these at trace time;
 the BIR layer transcribes them.** The `IndirectMemrefTileND` fork mirrors `codegenNcDmaCopy`'s own
 fork into the indirect-save path.
 
 > **GOTCHA — both-indirect is a hard error.** A DMA cannot gather *and* scatter in one descriptor.
-> The literal `"``src`` and ``dst`` operands cannot both be indirect memory accesses"` is CONFIRMED
-> byte-exact in the binary. This is the trace-time guard that keeps the indirect dispatch
+> The literal `"``src`` and ``dst`` operands cannot both be indirect memory accesses"` is byte-exact
+> in the binary. This is the trace-time guard that keeps the indirect dispatch
 > single-sided.
 
 ---
@@ -288,22 +289,22 @@ PyObject *NeuronCodegen_dma_transpose(self, ..., axes, mask, engine, dma_qos, ..
 The transpose Inst is built from the reshaped `{par_shape, free_shape, shape_2d}` of an `NDTile`
 (via `np.prod`/reshape). The `engine` kwarg exists at the Penguin level here (the BIR side pins this
 to the Pool engine). All three class names — `DMATransposeLoad`, `DMATransposeCopy`,
-`DMAIndirectTranspose` — are CONFIRMED strings.
+`DMAIndirectTranspose` — are live strings in the binary.
 
-> ⭐ **The XZYW permutation is byte-exact across layers.** The 4-D axes literal `(3, 1, 2, 0)` is
-> CONFIRMED in the binary, and it is the *same* permutation the BIR `DmaTranspose` pins as **XZYW**
+> ⭐ **The XZYW permutation is byte-exact across layers.** The 4-D axes literal `(3, 1, 2, 0)` sits
+> in the binary, and it is the *same* permutation the BIR `DmaTranspose` pins as **XZYW**
 > (`TransposeOps=11=XZYW`, source `[W,Z,Y,X]`→`[X,Z,Y,W]`, perm `[3,1,2,0]`). This is an independent
 > cross-confirmation that the Penguin `dma_transpose` and the BIR `DmaTranspose` are the same
 > operation — the trace-time tracer and the C++ codegen leaf agree on the permutation byte-for-byte.
 > See [2.21 DMA encoding](../isa/dma-encoding.md) and [Penguin DGE-level dynamic DMA](../penguin/dge-level-dynamic-dma.md).
 
-> **GOTCHA — `oob_mode.skip` is rejected for direct DMA.** Literal (CONFIRMED byte-exact):
+> **GOTCHA — `oob_mode.skip` is rejected for direct DMA.** The literal, byte-exact:
 > `"oob_mode.skip is not supported for direct memory access. Only oob_mode.error is allowed (got …)"`.
 > A direct (non-indirect) transpose-DMA may only carry `oob_mode.error`; `skip` is reserved for the
 > indirect/gather path, where OOB indices are legitimately skipped.
 
 > **NOTE — gather-transpose is 3D-only.** The literal `"…provided for gather transpose, only 3D
-> supported."` (CONFIRMED) gates the `DMAIndirectTranspose` variant to a 3-D tile rank — narrower
+> supported."` gates the `DMAIndirectTranspose` variant to a 3-D tile rank — narrower
 > than the 2/3/4-D the direct transpose accepts.
 
 ---
@@ -318,7 +319,7 @@ These are the **index-driven gather/scatter**. Both read the indirect access pat
 - `pointer.generic_dims` — the indirect-dim coefficients;
 - `pointer.is_offset_dma` — the register/offset-DMA flag (dynamic offset supplied by a register).
 
-All four are CONFIRMED in the name table. They are the Penguin-level twins of the BIR index-AP
+All four are in the name table. They are the Penguin-level twins of the BIR index-AP
 coefficient (indirect-dim) and the offset-DMA path.
 
 ### 5.1 `indirect_load` — `@0x25d880` — `NeuronIndirectLoad`
@@ -337,7 +338,7 @@ PyObject *NeuronCodegen_indirect_load(self, pointer, mask, dst, ..., mode, dge_m
 }
 ```
 
-`NeuronIndirectLoad` (CONFIRMED string) is the Penguin gather-load; `codegenNeuronIndirectLoad` lowers
+`NeuronIndirectLoad` is the Penguin gather-load; `codegenNeuronIndirectLoad` lowers
 it to the BIR `GenericIndirectLoad(42)` family, which concretizes to a `ReadVarAddr`→TSP→Memset→
 IndirectLoad chain. `is_offset_dma` selects the offset-DMA (register-supplied dynamic offset) form.
 
@@ -350,9 +351,9 @@ PyObject *NeuronCodegen_indirect_save(self, pointer, value, mask, rmw_op, ...) {
     dims = pointer.generic_dims; off = pointer.is_offset_dma; oob = pointer.oob_mode;
     if (rmw_op is set) {
         assert rmw_op == np.add,
-            "scatter op can only support bypass or add for now";          // CONFIRMED literal
+            "scatter op can only support bypass or add for now";
         assert oob_mode in {error},
-            "scatter add cannot have other modes except for error";        // CONFIRMED literal
+            "scatter add cannot have other modes except for error";
         // (and: "``dst_rmw_op`` is not supported indirect memory access on source (``src``) operand")
         inst = NeuronIndirectRMW(value, idx, addr, dims, rmw_op, oob, ...); // accumulate scatter
     } else {
@@ -362,12 +363,12 @@ PyObject *NeuronCodegen_indirect_save(self, pointer, value, mask, rmw_op, ...) {
 }
 ```
 
-Both class names are CONFIRMED strings, as are all three error literals. The semantics map exactly
+Both class names and all three error literals are live strings. The semantics map exactly
 to the BIR scatter: `compute_op=none`→overwrite (`NeuronIndirectSave`), `compute_op=add`→accumulate
 (`NeuronIndirectRMW`). `rmw_op=np.add` here is `DgeComputeOp 2 (add)` there.
 
 > **GOTCHA — scatter accumulation is add-only.** `"scatter op can only support bypass or add for
-> now"` (CONFIRMED) means the only RMW the scatter supports is `np.add`; any other reduction op is a
+> now"` means the only RMW the scatter supports is `np.add`; any other reduction op is a
 > trace-time `AssertionError`. And when accumulating, the OOB mode is pinned to `error`
 > (`"scatter add cannot have other modes except for error"`).
 
@@ -385,13 +386,13 @@ GpSIMD with a `uint16` index, `gather_flattened` runs on the Pool engine with a 
 PyObject *NeuronCodegen_local_gather(self, src_buffer, index, num_elem_per_idx,
                                      num_valid_indices, mask, ...) {
     assert num_valid_indices <= total_indices_per_core,
-        "num_valid_indices cannot exceed total indices per core";        // CONFIRMED
+        "num_valid_indices cannot exceed total indices per core";
     assert num_valid_indices <= 4096,
-        "number of indices per core must be <= 4096";                    // CONFIRMED
+        "number of indices per core must be <= 4096";
     assert num_elem_per_idx in [1,2,4,8,16,32],
-        "num_elem_per_idx must be one of [1, 2, 4, 8, 16, 32]";          // CONFIRMED
+        "num_elem_per_idx must be one of [1, 2, 4, 8, 16, 32]";
     assert src_buffer.partition_size == index.partition_size,
-        "src_buffer and index must have same partition dimension size";  // CONFIRMED
+        "src_buffer and index must have same partition dimension size";
     src_ap = NeuronAP / APIndex over src_buffer;
     idx_ap = NeuronIndicesAP(linearize(index),                           // uint16 index
                 substituteApIndices(generate_subst_map(...)));           // index→address subst
@@ -400,11 +401,10 @@ PyObject *NeuronCodegen_local_gather(self, src_buffer, index, num_elem_per_idx,
 }
 ```
 
-`IndirectCopy` (CONFIRMED string) is the GpSIMD/on-engine **local** gather: intra-SBUF,
-partition-parallel, `uint16` index, with `num_elem_per_idx` being the contiguous run pulled per
-index. `codegenIndirectCopy` lowers it to the BIR `IndirectCopy`. All four bounds literals are
-CONFIRMED byte-exact, as are `NeuronAP`, `NeuronIndicesAP`, `substituteApIndices`,
-`generate_subst_map`.
+`IndirectCopy` is the GpSIMD/on-engine **local** gather: intra-SBUF, partition-parallel, `uint16`
+index, with `num_elem_per_idx` being the contiguous run pulled per index. `codegenIndirectCopy`
+lowers it to the BIR `IndirectCopy`. All four bounds literals are byte-exact, as are `NeuronAP`,
+`NeuronIndicesAP`, `substituteApIndices`, and `generate_subst_map`.
 
 ### 6.2 `gather_flattened` — `@0x2762e0` — `PoolGather`
 
@@ -421,9 +421,9 @@ PyObject *NeuronCodegen_gather_flattened(self, data, indices, mask, dtype, sched
 }
 ```
 
-`PoolGather` (CONFIRMED string) is the **Pool-engine** flattened gather: `uint32` index, multi-dim
-`data` flattened to free indices. The internal tile names `"gather_data"`/`"gather_indices"` are
-CONFIRMED literals (`__pyx_k_gather_data`, `__pyx_k_gather_indices`). The dtype/dimension asserts
+`PoolGather` is the **Pool-engine** flattened gather: `uint32` index, multi-dim `data` flattened to
+free indices. The internal tile names `"gather_data"`/`"gather_indices"` are literals
+(`__pyx_k_gather_data`, `__pyx_k_gather_indices`). The dtype/dimension asserts
 (`assert_dtype_in`, `assert_min_dimensions`, `assert_max_dimensions`) are the legality gate.
 `codegenPoolGather` lowers it to the BIR `PoolGather`.
 
@@ -448,18 +448,17 @@ PyObject *NeuronCodegen_shared_constant(self, constant, dtype) {
 }
 ```
 
-CONFIRMED: `enable_const_rewrite`, `NeuronWeightTensor`, `constants`, `TensorRef` are all in the
+`enable_const_rewrite`, `NeuronWeightTensor`, `constants`, and `TensorRef` are all in the
 name table. The False path is the constant→DRAM materialization: a numpy/scipy constant becomes a
 `NeuronWeightTensor` pushed onto `function.constants` (the kernel's constant/weight section, a
 DRAM/HBM resident at lowering), surfaced to callers as a `TensorRef`. `splitNeuronWeightTensor`
-handles weight-tile splitting downstream (that symbol lives in the BIR codegen binary, **not** this
-one — CONFIRMED absent from this `.so`'s string table, consistent with it being a later-stage name).
+handles weight-tile splitting downstream; that symbol lives in the BIR codegen binary, **not** this
+one — it is absent from this `.so`'s string table, consistent with it being a later-stage name.
 
-> **CORRECTION — `shared_constant` has two sinks, not one.** Any prior summary that says
-> "constant → DRAM resident" describes only the `enable_const_rewrite=False` path. When
-> `enable_const_rewrite=True`, `shared_constant` instead returns a plain graph `Tensor` (off
-> `self.function.tensor`) whose value the const-rewrite middle-end pass folds in — no
-> `NeuronWeightTensor`, no `function.constants` append. Both paths are CONFIRMED in the binary.
+> **GOTCHA — `shared_constant` has two sinks, not one.** "Constant → DRAM resident" describes only
+> the `enable_const_rewrite=False` path shown above. With `enable_const_rewrite=True`,
+> `shared_constant` returns a plain graph `Tensor` off `self.function.tensor` for the const-rewrite
+> middle-end to fold — no `NeuronWeightTensor`, no `function.constants` append.
 
 ### 7.2 `shared_identity_matrix` — `@0x7b490` — `IdentityWeightTensor`
 
@@ -472,7 +471,7 @@ PyObject *NeuronCodegen_shared_identity_matrix(self, n, dtype) {
 }
 ```
 
-`IdentityWeightTensor` (CONFIRMED string) is the identity-specialized sibling of `NeuronWeightTensor`
+`IdentityWeightTensor` is the identity-specialized sibling of `NeuronWeightTensor`
 — the DRAM-resident `n×n` identity matrix.
 
 ### 7.3 `get_identity_tensor` — `@0xa3470` — lazy front-of-kernel `SBAtomLoad`
@@ -496,15 +495,15 @@ PyObject *NeuronCodegen_get_identity_tensor(self, ...) {
 This is the identity-into-SBUF materialization: the DRAM identity (`IdentityWeightTensor`) is loaded
 by **one** front-of-kernel `SBAtomLoad` into a cached SBUF tile, which is then used as the
 **stationary matmul operand for transpose** (transpose-via-matmul). The lazy cache key is
-`self.identity_weight_hbm` (CONFIRMED attr) and `builder.set_insert_position` to the block front is
+`self.identity_weight_hbm`, and `builder.set_insert_position` to the block front is
 why it loads exactly once at the kernel head. This is the Python/Penguin source of the BIR
 `getIdentityMatrix` (the per-dtype 128×128 SBUF identity, name-cached, pushed to the
 `legalizeIdentityMatrices` vector).
 
-> **NOTE — partition count `n`.** `n = statebuf_num_partitions` (CONFIRMED symbol) with `dtype=int8`.
-> The integer is *not* a literal in this binary — it is resolved from the compiled arch/target
-> module. STRONG = **128** by the BIR `getIdentityMatrix` 128×128 geometry; SPECULATIVE on the exact
-> integer as read from *this* `.so`.
+> **NOTE — partition count `n`.** `n = statebuf_num_partitions`, with `dtype=int8`. The integer is
+> *not* a literal in this binary; it resolves from the compiled arch/target module. It is almost
+> certainly **128**, by the BIR `getIdentityMatrix` 128×128 geometry — but read from *this* `.so`
+> alone the value is [INFERRED].
 
 ---
 
@@ -521,7 +520,7 @@ PyObject *NeuronCodegen_create_tensor(self, parent_scope) {
 }
 ```
 
-CONFIRMED: `enable_scalar_expansion`, `block.tensor`, `function.tensor`. This is the
+`enable_scalar_expansion`, `block.tensor`, and `function.tensor` are all in the name table. This is the
 tensor/temporary **factory** the other emitters draw fresh tiles from — it emits no Inst.
 
 ### 8.2 `memset` — `@0x19aac0` — `MemsetOp`
@@ -531,7 +530,7 @@ tensor/temporary **factory** the other emitters draw fresh tiles from — it emi
 PyObject *NeuronCodegen_memset(self, tile_shape, value, dtype, mask, dst_tile, ..., engine, ...) {
     assert_shape_valid(tile_shape); assert_num_partition(...);
     assert engine in {NeuronEngine.Vector, NeuronEngine.GpSIMD, NeuronEngine.Unknown},
-        "Memset engine can only be Vector or GpSIMD or Unknown.";        // CONFIRMED literal
+        "Memset engine can only be Vector or GpSIMD or Unknown.";
     dst = NDTile(statebuf_num_partitions, shape_2d, ...);
     sv  = ScalarValue(value);                                            // wrap the fill value
     inst = MemsetOp(dst, value=sv, dtype=dtype, engine=engine, ...);
@@ -539,11 +538,11 @@ PyObject *NeuronCodegen_memset(self, tile_shape, value, dtype, mask, dst_tile, .
 }
 ```
 
-`MemsetOp` (CONFIRMED string) is the Penguin constant-fill; `value` is wrapped in a `ScalarValue`
-(CONFIRMED string). `codegenMemsetOp` lowers it to the BIR `Memset`.
+`MemsetOp` is the Penguin constant-fill; `value` is wrapped in a `ScalarValue`.
+`codegenMemsetOp` lowers it to the BIR `Memset`.
 
 > **GOTCHA — memset is a compute op, not a DMA.** The engine restriction
-> `"Memset engine can only be Vector or GpSIMD or Unknown."` (CONFIRMED literal) reflects that
+> `"Memset engine can only be Vector or GpSIMD or Unknown."` reflects that
 > memset is executed on a vector or GpSIMD engine — there is no DMA-engine memset path. `Unknown`
 > defers the engine choice to a later assignment pass.
 
@@ -562,13 +561,13 @@ PyObject *NeuronCodegen_broadcast_partition(self, tensor, mask, dtype, name, ...
 }
 ```
 
-CONFIRMED: `create_broadcast_partition`, `simple_unary`, `NeuronIndicesAP` are all in the name table.
+`create_broadcast_partition`, `simple_unary`, and `NeuronIndicesAP` are all in the name table.
 
-> **CORRECTION — `broadcast_partition` is NOT its own Inst.** It does not construct a dedicated
-> memory Inst. It builds a partition-broadcast access pattern (the inner `build_broadcast_partition`
-> closure at `0x1beaf0`, which replicates one partition across the band) and then defers to
-> `simple_unary` — i.e. it is lowered as a **unary op** whose AP broadcasts across partitions.
-> `codegenBroadcastPartition` is the BIR-side name. (CONFIRMED.)
+Unlike every other method in this section, `broadcast_partition` constructs no memory Inst of its
+own. It builds a partition-broadcast access pattern — the inner `build_broadcast_partition` closure
+at `0x1beaf0`, which replicates one partition across the band — and then defers to `simple_unary`,
+so it lowers as a **unary op** whose AP broadcasts across partitions. `codegenBroadcastPartition` is
+the BIR-side name.
 
 ### 8.4 `stream_shuffle` — `@0x187ea0` — `StreamShuffleInst`
 
@@ -576,7 +575,7 @@ CONFIRMED: `create_broadcast_partition`, `simple_unary`, `NeuronIndicesAP` are a
 // stream_shuffle(self, src, dst, shuffle_mask, mask, dtype, schedule, deps, name)  @0x187ea0
 PyObject *NeuronCodegen_stream_shuffle(self, src, dst, shuffle_mask, mask, dtype, ...) {
     validate err_valid_size;
-    assert src.dtype == dst.dtype, err_src_dst_same_dtype;               // CONFIRMED symbol
+    assert src.dtype == dst.dtype, err_src_dst_same_dtype;
     ap = NeuronIndicesAP(...);
     ds = DynamicScalar(shuffle_mask); set_shape(ds);                     // mask as DynamicScalar
     inst = StreamShuffleInst(src, dst, shuffle_mask=ds, ap, ...);
@@ -584,8 +583,8 @@ PyObject *NeuronCodegen_stream_shuffle(self, src, dst, shuffle_mask, mask, dtype
 }
 ```
 
-`StreamShuffleInst` (CONFIRMED string) is the cross-partition stream shuffle (DVE/stream engine);
-`shuffle_mask` is the per-lane permutation carried as a `DynamicScalar` (CONFIRMED string).
+`StreamShuffleInst` is the cross-partition stream shuffle (DVE/stream engine); `shuffle_mask` is
+the per-lane permutation carried as a `DynamicScalar`.
 `codegenStreamShuffleInst` lowers it.
 
 ### 8.5 `load_tensor_to_register` — `@0x111740` — `LoadTensorToRegister`
@@ -602,9 +601,9 @@ PyObject *NeuronCodegen_load_tensor_to_register(self, pointer, mask, dtype, deps
 }
 ```
 
-`LoadTensorToRegister` (CONFIRMED string) is the Penguin twin of BIR `InstTensorLoad(75)`: a
-runtime/register-addressed scalar load. It reads a tensor element into a named `DynamicScalar`
-register (CONFIRMED `dst_registers` symbol) — the dynamic address/offset source for
+`LoadTensorToRegister` is the Penguin twin of BIR `InstTensorLoad(75)`: a runtime/register-addressed
+scalar load. It reads a tensor element into a named `DynamicScalar` register (`dst_registers`) — the
+dynamic address/offset source for
 `indirect_load`'s `is_offset_dma` path. `codegenLoadTensorToRegister` lowers it.
 
 > **NOTE — two distinct indirection mechanisms.** The **dynamic-offset family**
@@ -648,31 +647,29 @@ engine-id remain deferred to later passes.
 
 ---
 
-## Adversarial verification log
+## Evidence Anchors
 
-The five strongest claims on this page, re-challenged against the binary:
+- **`dma_transpose` 4-D perm `(3,1,2,0)` == BIR XZYW.** `strings` on the `nki/` `.so` returns
+  `" provided for 4D transpose, only (3, 1, 2, 0) supported."` byte-exact, alongside the 2-D `(1,0)`
+  and 3-D `(2,1,0)` siblings and the gather-transpose 3-D-only literal.
+- **`load`→`SBAtomLoad`, `store`→`SBAtomStore`.** Both class-name strings appear four times each; the
+  `init_value` / `SetAttrStr` OOB-fill on `load` rests on the `init_value` name symbol.
+- **Scatter is add-only.** `"scatter op can only support bypass or add for now"`,
+  `"scatter add cannot have other modes except for error"`, and
+  `"``src`` and ``dst`` operands cannot both be indirect memory accesses"` are all byte-exact, with
+  the `NeuronIndirectSave` / `NeuronIndirectRMW` strings present alongside them.
+- **`memset` engine restriction.** `"Memset engine can only be Vector or GpSIMD or Unknown."` plus
+  the `MemsetOp` / `ScalarValue` strings.
+- **`get_identity_tensor` = front-of-kernel `SBAtomLoad` of a cached DRAM identity.**
+  `identity_weight_hbm`, `statebuf_num_partitions`, `IdentityWeightTensor`, `set_insert_position`,
+  `as_tile`/`as_tensor`, and `spmd_block`/`kernel_scope` all resolve.
+- **The remaining surface.** `local_gather` bounds (`<= 4096`, `[1, 2, 4, 8, 16, 32]`, partition-size
+  equality), the indirect-AP fields (`indirect_tensor_ref`, `generic_addrs`, `generic_dims`,
+  `is_offset_dma`), `gather_flattened` (`PoolGather`, `gather_data`/`gather_indices`,
+  `assert_dtype_in`), and the plumbing symbols (`add_named_instruction`, `process_dep_edges`,
+  `process_new_neuroninst`, `combine_tiles`×61, `validate_dma_qos`×24,
+  `canonical_par_indices`/`canonical_free_indices`) each resolve directly in the binary's
+  symbol/string table.
 
-1. **`dma_transpose` 4-D perm `(3,1,2,0)` == BIR XZYW.** `strings` on the `nki/` `.so` returns
-   `" provided for 4D transpose, only (3, 1, 2, 0) supported."` byte-exact, alongside the 2-D `(1,0)`
-   and 3-D `(2,1,0)` siblings and the gather-transpose 3-D-only literal. **CONFIRMED.**
-2. **`load`→`SBAtomLoad`, `store`→`SBAtomStore`.** Both class-name strings are present (4 hits each);
-   the `init_value`/`SetAttrStr` OOB-fill on `load` is CONFIRMED via the `init_value` name symbol.
-   **CONFIRMED.**
-3. **Scatter is add-only.** `"scatter op can only support bypass or add for now"`,
-   `"scatter add cannot have other modes except for error"`, and
-   `"``src`` and ``dst`` operands cannot both be indirect memory accesses"` are all CONFIRMED
-   byte-exact. `NeuronIndirectSave`/`NeuronIndirectRMW` strings present. **CONFIRMED.**
-4. **`memset` engine restriction.** `"Memset engine can only be Vector or GpSIMD or Unknown."` and
-   `MemsetOp`/`ScalarValue` strings CONFIRMED. **CONFIRMED.**
-5. **`get_identity_tensor` = front-of-kernel `SBAtomLoad` of a cached DRAM identity.**
-   `identity_weight_hbm`, `statebuf_num_partitions`, `IdentityWeightTensor`, `set_insert_position`,
-   `as_tile`/`as_tensor`, `spmd_block`/`kernel_scope` all CONFIRMED. The exact integer for `n` is
-   **not** a literal in this `.so` (resolved from the arch module) → tagged STRONG/SPECULATIVE = 128.
-
-`local_gather` bounds (`<= 4096`, `[1, 2, 4, 8, 16, 32]`, partition-size equality), the indirect-AP
-fields (`indirect_tensor_ref`, `generic_addrs`, `generic_dims`, `is_offset_dma`), `gather_flattened`
-(`PoolGather`, `gather_data`/`gather_indices`, `assert_dtype_in`), and the plumbing symbols
-(`add_named_instruction`, `process_dep_edges`, `process_new_neuroninst`, `combine_tiles×61`,
-`validate_dma_qos×24`, `canonical_par_indices`/`canonical_free_indices`) were each verified directly
-in the binary's symbol/string table. No claim on this page is fabricated; the only non-CONFIRMED
-quantity is the identity partition-count integer, tagged accordingly.
+The one quantity on this page that is *not* readable from this `.so` is the identity partition-count
+integer `n`, flagged in §7.3.

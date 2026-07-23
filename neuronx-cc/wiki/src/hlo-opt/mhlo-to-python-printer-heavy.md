@@ -8,7 +8,7 @@ The driver page ([4.43](mhlo-to-python-printer-driver.md)) established the one f
 
 The map has a clean three-way shape. **Heavy ops** are either native `mhlo` ops (`dot`, `dot_general`, `sort`, the reduce/scatter family) routed by `printOperation`, or `AwsNeuron*` custom-calls routed by a 15-lambda target-name dispatcher `print<mhlo::CustomCallOp>` @ `0x20d1f10`; each marshals an op-specific `ArrayRef<pair<string,string>>` of attributes and emits one `NeuronTensorOp`. **Collective ops** survive to emission as native `mhlo` collectives (they are *not* converted to custom-calls in this binary) and funnel through one templated body `printCollectiveOp<…>` in exactly three arities (0/1/3 attr-pairs) that builds `replica_groups`, `kind`, `stream_id`, and the reduction-op string. **Fusion ops** dispatch on the `FusionKind` inherent attribute to one of four printers, three of which emit a grouping header `NeuronTensorOp` *and then inline-traverse the fusion body*; the **reduce/scatter** emitters collapse their nested add/max/min computation to a numpy ufunc *name* (`op=np.add`, `xla_op='np.add'`) plus a reduction identity.
 
-Every symbol, size, attribute key, and emitted format-string fragment on this page was re-verified against the `hlo2penguin` function table and string pool. The one notable surprise — the `DotLogistic` fusion emits the surface name `op='DotFusion'`, not `'DotLogistic'` — is confirmed below by the string literal at `0x25a294`.
+One name in the map is deliberately misleading: the `DotLogistic` fusion emits the surface name `op='DotFusion'`, not `'DotLogistic'` — the string literal at `0x25a294` settles it (§6.3).
 
 For reimplementation, the contract is:
 
@@ -41,42 +41,42 @@ Every emitter below produces a single Python statement (fusion/schedule emitters
 | **Collective** | `printOperation` (native `mhlo`) | `NeuronTensorOp` | `printCollectiveOp<>` ×3 arities (§4) |
 | **Fusion** | `print<FusionOp>` (`FusionKind`) | `NeuronTensorOp` + body inline | `printArbitrary/MulRedSqrt/DotLogistic/ScheduleFusionOp` (§6) |
 
-The complete function map (all addresses and sizes re-verified against `*_functions.json`; demangled names are the IDA-recovered `mlir::MhloToPythonPrinter::*` symbols, all binary-derived):
+The complete function map (demangled names are the IDA-recovered `mlir::MhloToPythonPrinter::*` symbols):
 
 | Function | Addr | Size (B) | Emits | Conf |
 |---|---|---|---|---|
-| `printDotOp(Op*, ArrayRef<long>×4)` | `0x20c5af0` | 3804 | `NeuronTensorOp(xla_op='mhlo.dot', …)` | CONFIRMED |
-| `printSortOp(Op*)` | `0x20db230` | 2534 | `NeuronTensorOp(xla_op='mhlo.sort', …)` | CONFIRMED |
-| `printTopK(Op*)` | `0x20d9ed0` | 4581 | `NeuronTensorOp(xla_op='mhlo.top_k', …)` | CONFIRMED |
-| `printDropout(Op*)` | `0x20d0d00` | 1000 | `NeuronTensorOp(xla_op='mhlo.dropout', …)` | CONFIRMED |
-| `printRmsNorm(Op*, bool)` | `0x20e1a80` | 2844 | `NeuronTensorOp(xla_op='mhlo.rms_norm[_backward]', …)` | CONFIRMED |
-| `printResizeNearest(Op*)` | `0x20e5d50` | 3304 | `NeuronTensorOp(xla_op='mhlo.resize_nearest', …)` | CONFIRMED |
-| `printResizeBilinear(Op*)` | `0x20e27d0` | 3419 | `NeuronTensorOp(xla_op='mhlo.resize_bilinear', …)` | CONFIRMED |
-| `printOffloadedMemCpy(Value, StringRef, Op*)` | `0x20bfa10` | 922 | `<prefix>.OffloadedMemCpy(…)` | CONFIRMED |
-| `printCollectiveOp<>` (master) | `0x20e7cd0` | 9041 | `NeuronTensorOp(kind=…)` | CONFIRMED |
-| `printCollectiveOp<pair>` (AG/RS) | `0x20ea030` | 9335 | `NeuronTensorOp(…, <dim>=…)` | CONFIRMED |
-| `printCollectiveOp<pair,pair,pair>` (AllToAll) | `0x20d6e30` | 9613 | `NeuronTensorOp(…, split/concat/count)` | CONFIRMED |
-| `printCollectiveMatmulKernel(Op*)` | `0x20cfff0` | 1694 | `NeuronTensorOp(target_name=…, backend_config={…})` | CONFIRMED |
-| `printNativeKernel(Op*, pair)` | `0x20e3f10` | 6025 | `.NativeKernel(…)` + `.aliasTensors(…)` | CONFIRMED |
-| `printMLPNKIKernel(Op*)` | `0x20d0780` | 1182 | `NeuronTensorOp(target_name=…)` | CONFIRMED |
-| `printNeuronCustomOp(Op*)` | `0x20d2d70` | 5271 | `NeuronTensorOp(function_name=…, lib_file_name=…)` | CONFIRMED |
-| `printLNCShardingConstraint(Op*)` | `0x20e37e0` | 1281 | `.LNCShardingConstraintOp(sharding=…)` | CONFIRMED |
-| `printSendRecv(Op*, bool)` | `0x20e10f0` | 1995 | `NeuronTensorOp(xla_op='mhlo.send'/'recv', peer_id=…)` | CONFIRMED |
-| `print<FusionOp>` (dispatch) | `0x20f5090` | 1166 | (routes §6) | CONFIRMED |
-| `printArbitraryFusionOp(Op*, StringRef, StringRef)` | `0x20f3f00` | 3492 | header + body inline | CONFIRMED |
-| `printMulRedSqrtFusionOp(Op*)` | `0x20f1f60` | 4032 | `op='MulRedSqrt', reduce_dims=[…]` + body | CONFIRMED |
-| `printDotLogisticFusionOp(Op*)` | `0x20f3050` | 3441 | `op='DotFusion'` + body | CONFIRMED |
-| `printScheduleFusionOp(Op*)` | `0x20f4ce0` | 869 | body-only (no header) | CONFIRMED |
-| `print<ReduceOp>` | `0x20dc5a0` | 2743 | `op=np.<fn>, reduce_dims=[…]` | CONFIRMED |
-| `print<ReduceWindowOp>` | `0x20d5ff0` | 3642 | `op=np.<fn>, window_shape/stride/padding` | CONFIRMED |
-| `print<ScatterOp>` | `0x20cbc70` | 4388 | scatter dim-numbers + `scatter_kind=np.<fn>` | CONFIRMED |
-| `print<SelectAndScatterOp>` | `0x20de190` | 5359 | dual nested-comp + `scatter_ident` | CONFIRMED |
-| `getReduceOpStrFromOperation(Op*)` | `0x20af670` | 1244 | (helper: op → ufunc name) | CONFIRMED |
-| `extractReduceFunction(Op*)` | `0x20afca0` | 329 | (helper: body → fn-name) | CONFIRMED |
-| `extractReduceFunctionBlock(Block&)` | `0x20afbe0` | 181 | (helper: find Add/Mul/Min/Max/Or/And) | CONFIRMED |
-| `printReduceDefaultInit(string&, StringRef, Type)` | `0x20bc090` | 4474 | (helper: reduction identity) | CONFIRMED |
+| `printDotOp(Op*, ArrayRef<long>×4)` | `0x20c5af0` | 3804 | `NeuronTensorOp(xla_op='mhlo.dot', …)` | CERTAIN |
+| `printSortOp(Op*)` | `0x20db230` | 2534 | `NeuronTensorOp(xla_op='mhlo.sort', …)` | CERTAIN |
+| `printTopK(Op*)` | `0x20d9ed0` | 4581 | `NeuronTensorOp(xla_op='mhlo.top_k', …)` | CERTAIN |
+| `printDropout(Op*)` | `0x20d0d00` | 1000 | `NeuronTensorOp(xla_op='mhlo.dropout', …)` | CERTAIN |
+| `printRmsNorm(Op*, bool)` | `0x20e1a80` | 2844 | `NeuronTensorOp(xla_op='mhlo.rms_norm[_backward]', …)` | CERTAIN |
+| `printResizeNearest(Op*)` | `0x20e5d50` | 3304 | `NeuronTensorOp(xla_op='mhlo.resize_nearest', …)` | CERTAIN |
+| `printResizeBilinear(Op*)` | `0x20e27d0` | 3419 | `NeuronTensorOp(xla_op='mhlo.resize_bilinear', …)` | CERTAIN |
+| `printOffloadedMemCpy(Value, StringRef, Op*)` | `0x20bfa10` | 922 | `<prefix>.OffloadedMemCpy(…)` | CERTAIN |
+| `printCollectiveOp<>` (master) | `0x20e7cd0` | 9041 | `NeuronTensorOp(kind=…)` | CERTAIN |
+| `printCollectiveOp<pair>` (AG/RS) | `0x20ea030` | 9335 | `NeuronTensorOp(…, <dim>=…)` | CERTAIN |
+| `printCollectiveOp<pair,pair,pair>` (AllToAll) | `0x20d6e30` | 9613 | `NeuronTensorOp(…, split/concat/count)` | CERTAIN |
+| `printCollectiveMatmulKernel(Op*)` | `0x20cfff0` | 1694 | `NeuronTensorOp(target_name=…, backend_config={…})` | CERTAIN |
+| `printNativeKernel(Op*, pair)` | `0x20e3f10` | 6025 | `.NativeKernel(…)` + `.aliasTensors(…)` | CERTAIN |
+| `printMLPNKIKernel(Op*)` | `0x20d0780` | 1182 | `NeuronTensorOp(target_name=…)` | CERTAIN |
+| `printNeuronCustomOp(Op*)` | `0x20d2d70` | 5271 | `NeuronTensorOp(function_name=…, lib_file_name=…)` | CERTAIN |
+| `printLNCShardingConstraint(Op*)` | `0x20e37e0` | 1281 | `.LNCShardingConstraintOp(sharding=…)` | CERTAIN |
+| `printSendRecv(Op*, bool)` | `0x20e10f0` | 1995 | `NeuronTensorOp(xla_op='mhlo.send'/'recv', peer_id=…)` | CERTAIN |
+| `print<FusionOp>` (dispatch) | `0x20f5090` | 1166 | (routes §6) | CERTAIN |
+| `printArbitraryFusionOp(Op*, StringRef, StringRef)` | `0x20f3f00` | 3492 | header + body inline | CERTAIN |
+| `printMulRedSqrtFusionOp(Op*)` | `0x20f1f60` | 4032 | `op='MulRedSqrt', reduce_dims=[…]` + body | CERTAIN |
+| `printDotLogisticFusionOp(Op*)` | `0x20f3050` | 3441 | `op='DotFusion'` + body | CERTAIN |
+| `printScheduleFusionOp(Op*)` | `0x20f4ce0` | 869 | body-only (no header) | CERTAIN |
+| `print<ReduceOp>` | `0x20dc5a0` | 2743 | `op=np.<fn>, reduce_dims=[…]` | CERTAIN |
+| `print<ReduceWindowOp>` | `0x20d5ff0` | 3642 | `op=np.<fn>, window_shape/stride/padding` | CERTAIN |
+| `print<ScatterOp>` | `0x20cbc70` | 4388 | scatter dim-numbers + `scatter_kind=np.<fn>` | CERTAIN |
+| `print<SelectAndScatterOp>` | `0x20de190` | 5359 | dual nested-comp + `scatter_ident` | CERTAIN |
+| `getReduceOpStrFromOperation(Op*)` | `0x20af670` | 1244 | (helper: op → ufunc name) | CERTAIN |
+| `extractReduceFunction(Op*)` | `0x20afca0` | 329 | (helper: body → fn-name) | CERTAIN |
+| `extractReduceFunctionBlock(Block&)` | `0x20afbe0` | 181 | (helper: find Add/Mul/Min/Max/Or/And) | CERTAIN |
+| `printReduceDefaultInit(string&, StringRef, Type)` | `0x20bc090` | 4474 | (helper: reduction identity) | CERTAIN |
 
-> **NOTE —** the report drafts under-counted four of these (`printCollectiveMatmulKernel ~700→1694`, `printNativeKernel ~4100→6025`, `printNeuronCustomOp ~4400→5271`, `printLNCShardingConstraint ~430→1281`). The sizes here are the function table's, re-read in this pass; the larger bodies absorb the `.cold` siblings IDA folds into the parent extent.
+> **NOTE —** the sizes above are the function table's, so four of the kernel emitters (`printCollectiveMatmulKernel`, `printNativeKernel`, `printNeuronCustomOp`, `printLNCShardingConstraint`) look larger than their straight-line bodies: IDA folds each one's `.cold` sibling into the parent extent. Summing only the hot block undercounts them by roughly 2–3×.
 
 ---
 
@@ -116,18 +116,18 @@ This is the most consequential emitter and the cleanest illustration of the *pre
 ```text
 print<mhlo::DotGeneralOp>  @0x20c6d60
     DotGeneralOp::getDotDimensionNumbers
-    → DotDimensionNumbersAttr::getLhsBatchingDimensions      (CONFIRMED callee)
-    → DotDimensionNumbersAttr::getLhsContractingDimensions   (CONFIRMED callee)
-    → DotDimensionNumbersAttr::getRhsBatchingDimensions      (CONFIRMED callee)
-    → DotDimensionNumbersAttr::getRhsContractingDimensions   (CONFIRMED callee)
-    → printDotOp(op, lhsB, lhsC, rhsB, rhsC)                 (CONFIRMED callee)
+    → DotDimensionNumbersAttr::getLhsBatchingDimensions
+    → DotDimensionNumbersAttr::getLhsContractingDimensions
+    → DotDimensionNumbersAttr::getRhsBatchingDimensions
+    → DotDimensionNumbersAttr::getRhsContractingDimensions
+    → printDotOp(op, lhsB, lhsC, rhsB, rhsC)
 
 print<mhlo::DotOp>         @0x20c6a40
     plain dot has no dimension_numbers → uses a __cxa_guard-protected static
     (empty batching + synthesized trailing-dim contracting pair) → printDotOp(…)
 ```
 
-Inside `printDotOp`, each of the four `ArrayRef<long>` is rendered by `mlir::(anon)::printList<long>` (CONFIRMED: 4 calls in the callee graph) into a `[d0, d1, …]` literal and pushed as a pair. The asymmetric naming is a real schema hazard:
+Inside `printDotOp`, each of the four `ArrayRef<long>` is rendered by one of four calls to `mlir::(anon)::printList<long>` into a `[d0, d1, …]` literal and pushed as a pair. The asymmetric naming is a real schema hazard:
 
 ```text
 getLhsBatchingDimensions    → kwarg "lhs_batching_dims"   (str @0x226331)   [full]
@@ -136,9 +136,9 @@ getRhsBatchingDimensions    → kwarg "rhs_batching_dims"   (str @0x27ef25)   [f
 getRhsContractingDimensions → kwarg "rhs_contract_dims"   (str @0x20d98e)   [ABBREVIATED]
 ```
 
-> **QUIRK —** the contracting kwargs are spelled `*_contract_dims` (abbreviated), while the batching kwargs are spelled `*_batching_dims` (full). A reimplementer copying the MLIR accessor names verbatim will mis-name the contracting kwargs. The Penguin schema uses the abbreviated form. (Both literals re-verified in `*_strings.json`: `lhs_batching_dims`@`0x226331`, `lhs_contract_dims`@`0x246585`, `rhs_contract_dims`@`0x20d98e`.)
+> **QUIRK —** the contracting kwargs are spelled `*_contract_dims` (abbreviated), while the batching kwargs are spelled `*_batching_dims` (full). A reimplementer copying the MLIR accessor names verbatim will mis-name the contracting kwargs. The Penguin schema uses the abbreviated form.
 
-Two optional kwarg groups are read from the `mhlo.frontend_attributes` dictionary (via `StringAttr::getValue` — CONFIRMED in the callee set) and pushed only when present:
+Two optional kwarg groups are read from the `mhlo.frontend_attributes` dictionary (via `StringAttr::getValue`) and pushed only when present:
 
 - **Quantization:** `lhs_zero_point` (@`0x22231d`), `rhs_zero_point` (@`0x2522c7`).
 - **Autodiff hint:** `grad_x` (@`0x28315d`), `grad_y` (@`0x22e3ea`), rendered `True`/`False`.
@@ -153,7 +153,7 @@ v17 = m0.NeuronTensorOp(srcs=[v3, v8], dsts=[v17], op="NeuronTensorOp",
     dl=m9.DebugLocation('matmul', 41))
 ```
 
-> **CORRECTION —** the MHLO `printDotOp` emits **no** `precision_config` / `DotAlgorithm` — precision is dropped on the MHLO path. The StableHLO twin `printDotOp` @ `0x21600f0` takes a 6th `std::string` parameter (the precision string from its dispatcher); that path is 4.45's scope, not this page's. See [0.7 (matmul walkthrough)](../index.md) for the end-to-end dot lowering.
+Notice what is *absent*: the MHLO `printDotOp` emits no `precision_config` and no `DotAlgorithm`. Precision is simply dropped on the MHLO path — the emitted `NeuronTensorOp` carries dimension numbers, optional zero-points, and optional grad hints, nothing else. The StableHLO twin behaves differently: its `printDotOp` @ `0x21600f0` takes a sixth `std::string` parameter, the precision string handed down by its own dispatcher, so precision survives on that path only. See [0.7 (matmul walkthrough)](../index.md) for the end-to-end dot lowering.
 
 ### 3.2 `printSortOp` @ `0x20db230`
 
@@ -206,7 +206,9 @@ One emitter, two targets: `bool=false` → `AwsNeuronRmsNorm` → `xla_op='mhlo.
 "src_shapes"  ← operand shapes
 ```
 
-> **CORRECTION —** `epsilon` comes from a `ConstantOp` *operand* (a `FloatAttr` double, `%f`-formatted), while `reduce_dims` comes from `backend_config` (`strtol`). They are **not** both read from `backend_config`. This whole-op RMSNorm path is distinct from the `MulRedSqrt` fusion-cluster denominator core (§6.2), which emits `op='MulRedSqrt'` instead.
+This whole-op RMSNorm path is distinct from the `MulRedSqrt` fusion-cluster denominator core (§6.2), which emits `op='MulRedSqrt'` instead.
+
+> **GOTCHA —** `epsilon` and `reduce_dims` come from different places. `epsilon` is a `ConstantOp` *operand* (a `FloatAttr` double, `%f`-formatted); only `reduce_dims` is parsed out of `backend_config`. Reading both from `backend_config` yields a garbage epsilon.
 
 ### 3.6 `printResizeNearest` @ `0x20e5d50` / `printResizeBilinear` @ `0x20e27d0`
 
@@ -250,9 +252,9 @@ printCollectiveOp<pair,pair,pair>  @0x20d6e30  (9613 B)  — 3 extra pairs
                                          ("split_count",      …)
 ```
 
-> **CORRECTION —** the arities are **0 / 1 / 3 pairs**, not "0/2/4". Each "pair" is one `std::pair<string,string>` attribute. There is no 2-pair or 4-pair instantiation (verified by enumerating all `printCollectiveOp<…>` template demanglings). There is also **no** `printBroadcastPartition` emitter — it does not exist; the only broadcast emitter is the ordinary shape op `print<mhlo::BroadcastInDimOp>` @ `0x20cf990`.
+Each "pair" here is one `std::pair<string,string>` attribute, so the arity ladder is 0 / 1 / 3 and nothing else — there is no 2-pair or 4-pair instantiation. Nor is there a dedicated broadcast-partition emitter anywhere in the printer: the only broadcast surface is the ordinary shape op `print<mhlo::BroadcastInDimOp>` @ `0x20cf990`.
 
-The 0-pair master assembles the common attribute set itself (per-op subset varies). Verbatim keys, each re-verified in the string pool:
+The 0-pair master assembles the common attribute set itself (per-op subset varies). Verbatim keys:
 
 | key (@ addr) | value source |
 |---|---|
@@ -312,7 +314,7 @@ v30.aliasTensors(input=[…])               # in-place q/kv buffer aliasing
 - **`printMLPNKIKernel` @ `0x20d0780`** — one `NeuronTensorOp` with a 3-pair vector (`xla_op='mhlo.custom_call'`, `dtype`, `target_name="AwsNeuronMLPNKI"`). **No** `backend_config` pair — the MLP op is emitted with an empty backend_config upstream, so the structure is fully captured by operands + target_name.
 - **`printNeuronCustomOp` @ `0x20d2d70`** — parses a `;`-separated backend_config CSV into named attrs and emits `NeuronTensorOp(target_name='AwsNeuronCustomOp', function_name=…, name=…, lib_file_name=…, ulib_to_ucode_version=…, ulib_to_isa_version=…, dtype=…, shape=…)`. The `ulib_to_*_version` pairs pin the GPSIMD micro-lib versions; `path` segments are joined with `/`.
 - **`printLNCShardingConstraint` @ `0x20e37e0`** — a dedicated `.LNCShardingConstraintOp(srcs=[…], dsts=[…], sharding=<backend_config>, target_name=…)` (no `dl=`). The Logical-Neuron-Core shard spec is consumed by the downstream Penguin layout middle-end.
-- **`printSendRecv(Op*, bool)` @ `0x20e10f0`** — one `NeuronTensorOp`; the bool selects `xla_op='mhlo.send'` (@`0x211b53`) vs `'mhlo.recv'` (@`0x211b5d`). `peer_id=<N>` is the channel-id parsed from `getBackendConfig` and rendered decimal via `__to_chars_10` (CONFIRMED callee). Send/Recv pairing travels HLO `channel_id` → backend_config → Penguin `peer_id`. FATAL `NCC_PYP036` when channel_id is absent.
+- **`printSendRecv(Op*, bool)` @ `0x20e10f0`** — one `NeuronTensorOp`; the bool selects `xla_op='mhlo.send'` (@`0x211b53`) vs `'mhlo.recv'` (@`0x211b5d`). `peer_id=<N>` is the channel-id parsed from `getBackendConfig` and rendered decimal via `__to_chars_10`. Send/Recv pairing travels HLO `channel_id` → backend_config → Penguin `peer_id`. FATAL `NCC_PYP036` when channel_id is absent.
 
 ---
 
@@ -322,7 +324,7 @@ The reduce-family emitters share one elegant trick: they **collapse a nested MLI
 
 ### 5.1 The mapper — `getReduceOpStrFromOperation` @ `0x20af670`
 
-`extractReduceFunction` @ `0x20afca0` → `extractReduceFunctionBlock` @ `0x20afbe0` walks the reduction block and finds the first op whose TypeID is in `{AddOp, MulOp, MinOp, MaxOp, OrOp, AndOp}`, then `getReduceOpStrFromOperation` maps it to a ufunc name (table re-verified against the string pool):
+`extractReduceFunction` @ `0x20afca0` → `extractReduceFunctionBlock` @ `0x20afbe0` walks the reduction block and finds the first op whose TypeID is in `{AddOp, MulOp, MinOp, MaxOp, OrOp, AndOp}`, then `getReduceOpStrFromOperation` maps it to a ufunc name:
 
 ```text
 mhlo::AddOp      → "add"        mhlo::MinOp  → "minimum"
@@ -366,7 +368,7 @@ v20 = m0.NeuronTensorOp(srcs=[…], dsts=[v20], op=np.add,
     scatter_kind=np.add, dl=…)
 ```
 
-Keys re-verified: `index_vector_dim`@`0x22a622`, `update_scatter_dims`@`0x2870d8`, `update_window_dims`@`0x25e4b4`, `inserted_window_dims`@`0x25609e`, `scatter_dims_to_operand_dims`@`0x211b13`, `unique_indices`@`0x226363`, `scatter_kind`@`0x22a615`.
+Keys: `index_vector_dim`@`0x22a622`, `update_scatter_dims`@`0x2870d8`, `update_window_dims`@`0x25e4b4`, `inserted_window_dims`@`0x25609e`, `scatter_dims_to_operand_dims`@`0x211b13`, `unique_indices`@`0x226363`, `scatter_kind`@`0x22a615`.
 
 ### 5.5 `print<SelectAndScatterOp>` @ `0x20de190` — the dual-region emitter
 
@@ -382,7 +384,7 @@ Guards `NCC_PYP030`/`031` enforce the "select must be a Compare with BlockArgume
 
 ## 6. Fusion Emission — `print<mhlo::FusionOp>` @ `0x20f5090`
 
-`printOperation` routes `mhlo.fusion` → `print<FusionOp>`, the **FusionKind switchboard**. Its flow (CONFIRMED callee graph: `getInherentAttr`, `getScalar`, `defScalar`, all four fusion printers):
+`printOperation` routes `mhlo.fusion` → `print<FusionOp>`, the **FusionKind switchboard**. Its callee set is exactly `getInherentAttr`, `getScalar`, `defScalar`, and the four fusion printers:
 
 ```c
 // print<mhlo::FusionOp> @0x20f5090
@@ -403,7 +405,7 @@ switch (kind) {                                          // 8-way std::string::c
 }
 ```
 
-The FusionKind value literals are all verbatim `.rodata`, re-verified: `ScheduleFusion`@`0x25e519`, `MulRedSqrt`@`0x2560e7`, `DotLogistic`@`0x215ec2`, `Expm1`, `Log1p`, `Elementwise`@`0x2669e3`, `DotSoftmax`@`0x25e528`.
+The FusionKind value literals are all verbatim `.rodata`: `ScheduleFusion`@`0x25e519`, `MulRedSqrt`@`0x2560e7`, `DotLogistic`@`0x215ec2`, `Expm1`, `Log1p`, `Elementwise`@`0x2669e3`, `DotSoftmax`@`0x25e528`.
 
 > **NOTE —** the dispatcher **pre-registers fusion result scalars** (`getScalar`→`defScalar`) before any emitter runs, so that the three header-emitting printers — which inline the fusion *body* afterward — bind correctly to the fusion's output names.
 
@@ -440,7 +442,9 @@ v18 = m0.NeuronTensorOp(srcs=[…], dsts=[v18],
 # … inlined: the inner dot_general, logistic, mul ops carry their own dims …
 ```
 
-> **CORRECTION —** the Penguin surface name is `op='DotFusion'` (str @ `0x25a294`, len 9), **not** `'DotLogistic'`. `DotLogistic` is the *HLO-side FusionKind* (the dispatch key only); the emitted Python `op=` literal is `DotFusion`. No dot-dim attribute is emitted by the header — the inner `DotGeneralOp` inlines as its own statement carrying its own dims.
+The header emits no dot-dim attribute of its own — the inner `DotGeneralOp` inlines as a separate statement carrying its own dims.
+
+> **GOTCHA —** the Penguin surface name is `op='DotFusion'` (str @ `0x25a294`, len 9), **not** `'DotLogistic'`. `DotLogistic` is the HLO-side FusionKind and serves only as the dispatch key; it never reaches the emitted Python.
 
 ### 6.4 `printScheduleFusionOp` @ `0x20f4ce0` (transparent)
 
@@ -460,21 +464,26 @@ for (Value v : ret->getOperands())          // rewire live-outs:
 
 ---
 
-## 7. Adversarial Self-Verification
+## 7. Evidence Anchors and Open Questions
 
-The five strongest claims on this page, each re-challenged against the binary in this pass:
+The central claims above rest on these anchors, collected here so §§1–6 can stay prose:
 
-1. **All 30 emitter symbols exist at the cited addresses with the stated demangled names.** — CONFIRMED. A single `*_functions.json` lookup over all addresses returned every `mlir::MhloToPythonPrinter::*` symbol with matching name; the only deltas were *larger* sizes for four kernel emitters (now corrected in §1).
+- **The emitter symbol map (§1).** Every address in the §1 table resolves in the function table to an `mlir::MhloToPythonPrinter::*` symbol with the stated demangled name.
+- **Pre-decomposed dot dims (§3.1).** The callee set of `print<DotGeneralOp>` @ `0x20c6d60` contains `getDotDimensionNumbers`, all four `getLhs/RhsBatching/ContractingDimensions`, and the tail-call to `printDotOp`; `printDotOp`'s own callees include 4× `printList<long>` and `printOperandsAndAttributes`.
+- **The DotFusion / DotLogistic split (§6.3).** `"DotFusion"` @ `0x25a294` and `"DotLogistic"` @ `0x215ec2` are two distinct live strings — the surface/dispatch split is real, not a transcription slip.
+- **The ufunc name table (§5.1).** `add`, `multiply`, `minimum`@`0x21a2a6`, `maximum`@`0x2870ab`, `subtract`@`0x24652e`, `divide`@`0x23a6e6`, `bitwise_and`@`0x26693e`, `logical_and`@`0x22e3d9` all sit at distinct addresses; the bitwise/logical split rests on two live string pairs.
+- **Collective arity (§4.1).** The three `printCollectiveOp<…>` demangled signatures carry 0, 1, and 3 `std::pair<string,string>` parameters and no other instantiation exists; `print<BroadcastInDimOp>` @ `0x20cf990` is the only broadcast emitter in the symbol table.
 
-2. **`printDotOp` receives pre-decomposed dim lists; the DotGeneral dispatcher calls all four `DotDimensionNumbersAttr` accessors.** — CONFIRMED. The callee set of `print<DotGeneralOp>` @ `0x20c6d60` contains `getDotDimensionNumbers`, all four `getLhs/RhsBatching/ContractingDimensions`, and the tail-call to `printDotOp`. `printDotOp`'s own callees include 4× `printList<long>` and `printOperandsAndAttributes`.
+Four details on this page are **not** byte-pinned and are flagged as such:
 
-3. **`DotLogistic` fusion emits `op='DotFusion'`, not `'DotLogistic'`.** — CONFIRMED. The string `"DotFusion"` exists at `0x25a294`; `"DotLogistic"` at `0x215ec2` is the FusionKind dispatch key. Both are distinct live strings — the surface/dispatch split is real, not a transcription slip.
+| Open question | Confidence |
+|---|---|
+| `printTopK`'s `axis` derivation rule (operand-rank trailing default vs an explicit key) | MEDIUM |
+| The `use_init_operand` True/False gate predicate on `ReduceWindow` (present as an attr; exact gate unmapped) | HIGH |
+| `printReduceDefaultInit`'s full per-fn × dtype identity table (`add→0`, `multiply→1` pinned; min/max → dtype-extreme not) | MEDIUM |
+| The SelectAndScatter select-direction → name strings (assumed to match the `mapXla2PgDir` family) | MEDIUM |
 
-4. **`getReduceOpStrFromOperation` maps reduce ops to the listed numpy ufunc names.** — CONFIRMED. `add`, `multiply`, `minimum`@`0x21a2a6`, `maximum`@`0x2870ab`, `subtract`@`0x24652e`, `divide`@`0x23a6e6`, `bitwise_and`@`0x26693e`, `logical_and`@`0x22e3d9` all present at distinct addresses. The bitwise/logical split (i1 selector) is consistent with two live string pairs.
-
-5. **The collective template has exactly three arities (0/1/3 pairs); no `printBroadcastPartition`.** — CONFIRMED. The three `printCollectiveOp<…>` demangled signatures carry 0, 1, and 3 `std::pair<string,string>` parameters; no other instantiation exists. `printBroadcastPartition` returns no symbol; `print<BroadcastInDimOp>` @ `0x20cf990` is the only broadcast emitter.
-
-**INFERRED / not byte-pinned** (honestly flagged): the `printTopK` `axis` derivation rule (operand-rank-trailing-default vs an explicit key) — MED; the `use_init_operand` True/False gate predicate on `ReduceWindow` — HIGH (confirmed as an attr, exact gate not mapped); `printReduceDefaultInit`'s full per-fn × dtype identity table (`add→0`, `multiply→1` confirmed; min/max → dtype-extreme inferred) — MED-HIGH; the SelectAndScatter select-direction → name strings (inferred to match the `mapXla2PgDir` family) — MED. None of these affect the emitted statement *shape*.
+None of these affect the emitted statement *shape*.
 
 ---
 
