@@ -21,7 +21,7 @@ HWConfigID0       = 0xC4019686         HWConfigID1       = 0x2908E4E3
 SWToolsRelease    = RI-2022.9
 ```
 
-`HWMicroArchEarliest == HWMicroArchLatest == 281040` is the decisive fact: the software targets **exactly one** hardware revision, with no version range. The shipped `xtensa-versions.h` decodes that integer — `XTENSA_HWVERSION_RI_2020_4 281040 /* versions NX1.1.4, LX7.1.4 */` — so the **HW IP** is the RI-2020.4 release (NX1.1.4 = LX7.1.4) while the **toolchain** that builds for it is RI-2022.9. Every product generation loads device firmware built for this *one* config; the single shipped `ncore2gp` `xtensa-elf-objdump` disassembles every generation's device image. `[HIGH/OBSERVED — ncore2gp-params, xtensa-versions.h, read directly]`
+`HWMicroArchEarliest == HWMicroArchLatest == 281040` is the decisive fact: the software targets **exactly one** hardware revision, with no version range. The shipped `xtensa-versions.h` decodes that integer — `XTENSA_HWVERSION_RI_2020_4 281040 /* versions NX1.1.4, LX7.1.4 */` — so the **HW IP** is the RI-2020.4 release (NX1.1.4 = LX7.1.4) while the **toolchain** that builds for it is RI-2022.9. Every product generation loads device firmware built for this *one* config; the single shipped `ncore2gp` `xtensa-elf-objdump` disassembles every generation's device image. `[HIGH/OBSERVED]`
 
 What it actually **does** in the product is narrow and specific. The marketing phrase "GPSIMD kernel" (RmsNorm, Softmax, MoE) is a *multi-engine* micro-schedule whose float math runs on the Vector / Scalar / Tensor engines — **not** on the Q7 cores. The literal Q7 GPSIMD cluster owns exactly three lanes:
 
@@ -99,7 +99,7 @@ switch (coretype) {                  // arch_id column = coretype − 1 (a strid
 
 > **The gen-invariance thesis (in one line).** There exists a single Vision-Q7 reimplementation R(Q7) — one FLIX decoder, one microarch, one XEA3 boot/IRQ spine, one frozen Q7-control CSR core, one **write-once** opcode→semantics map (zero opcode-value drift v2→v5; the full-span sunda↔maverick mismatch join is *empty*) — that, parameterized by a small **scaling** vector and gated by a handful of **presence** flags, exactly reproduces SUNDA through MAVERICK. The scaling axes are monotonic/additive: CSR-bundle count (7→11), Q7 geometry (IRAM/DRAM 64K/64K→128K/256K), opcode count (≈145→165, append-only after v3), and cross-die transport (raw-RDMA → io_d2d/PCIe → UCIe). `[HIGH/OBSERVED for v2–v4+; v5 SoC-envelope INFERRED]` See [The Gen-Invariance Thesis](orientation/gen-invariance.md).
 
-> **CORRECTION / wall — flag this, do not fabricate it.** MAVERICK (v5) is **header-OBSERVED only**. There is no shipped v5 NCFW image: `libncfw_get_image` tops out at MARIANA_PLUS, and `arch_id > 0x1C → return 2` sends `arch_id 0x24` straight to the unsupported path (no `cmp` against `0x24`). Corroborated by exactly **four** codename `ctx_log` symbols (sunda/cayman/mariana/mariana_plus), **zero** maverick. So `coretype 37` is OBSERVED, but **arch_id 36/0x24 is INFERRED** from the coretype−1 stride. Any claim about v5 *interiors* on these pages is tagged INFERRED. `[wall — DX-SYN-09 Q8]` `[ct37 OBSERVED · arch_id 36 INFERRED]`
+> **CORRECTION / wall — flag this, do not fabricate it.** MAVERICK (v5) is **header-OBSERVED only**. There is no shipped v5 NCFW image: `libncfw_get_image` tops out at MARIANA_PLUS, and `arch_id > 0x1C → return 2` sends `arch_id 0x24` straight to the unsupported path (no `cmp` against `0x24`). Corroborated by exactly **four** codename `ctx_log` symbols (sunda/cayman/mariana/mariana_plus), **zero** maverick. So `coretype 37` is OBSERVED, but **arch_id 36/0x24 is INFERRED** from the coretype−1 stride. Any claim about v5 *interiors* on these pages is tagged INFERRED. `[wall]` `[ct37 OBSERVED · arch_id 36 INFERRED]`
 
 > **TONGA is out of scope by design.** TONGA (V1, the legacy "L"-family) predates the unified `NEURON_ISA_TPB_OPCODE` namespace, exposes only a register-block ISA (a 1-byte opcode *field*, no enumerated roster), and ships in a separate package with zero runtime identity. R(Q7) covers exactly v2..v5; the V1→V2 bridge is not in its domain.
 
@@ -130,7 +130,7 @@ The residual is a **small, fully-named, fully-categorized ledger of twelve open 
 
 ## A tour of the 16 Parts
 
-The reference is a journey: a reimplementer reads roughly top-to-bottom to rebuild a Vision-Q7-compatible GPSIMD engine. **Part 0** is the apparatus (how to read, the confidence model, methodology, the corpus inventory, the crosswalk, the correction ledger, the glossary). **Parts 1–16** descend from orientation, through the core and ISA, into firmware, the ABI, the runtime, the data plane, the collectives, the container, the compiler seam, the control plane, the executable oracle, validation, and the appendices.
+The reference is a journey: a reimplementer reads roughly top-to-bottom to rebuild a Vision-Q7-compatible GPSIMD engine. **Part 0** is the apparatus (how to read, the confidence model, methodology, the corpus inventory, the crosswalk, the glossary). **Parts 1–16** descend from orientation, through the core and ISA, into firmware, the ABI, the runtime, the data plane, the collectives, the container, the compiler seam, the control plane, the executable oracle, validation, and the appendices.
 
 | Part | Subject — what you rebuild here | Dir |
 |---|---|---|
@@ -150,8 +150,6 @@ The reference is a journey: a reimplementer reads roughly top-to-bottom to rebui
 | **14 — ISS as Executable Oracle** | `libcas-core` / `libfiss-base` reconstructed as a runnable value/cycles oracle — "given a bundle, here is the exact lib+symbol that computes its value" | [`iss/`](iss/iss-oracle-synthesis.md) |
 | **15 — Validation & Verification** | The 4-oracle bit-exact differential method + per-family pass/fail (soft-float, MAC, convert, reduce, gather, predicate, transcendental) | [`validation/`](validation/four-oracle-method.md) |
 | **16 — Appendices** | Struct census, the opcode↔kernel↔engine matrix, the master ISA encoding appendix, the CSR field-table index, the crosswalk, the open-questions register, the reimplementation checklist | [`appendix/`](appendix/reimplementation-checklist.md) |
-
-> **NOTE —** pages land Part-by-Part. The navigation sidebar lists what is written; the full ≈411-page plan is tracked one task per page. A section that is not yet linked in the sidebar is *planned*, not missing.
 
 ### Start here
 
