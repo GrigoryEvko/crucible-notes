@@ -139,7 +139,7 @@ dnnl_status_t dnnl_primitive_attr_set_zero_points(
 
 ### Purpose
 
-Three oneDNN graph-backend subgraph passes — the ones named in the task — fold int8 zero-points into the GEMM/conv primitive. They are **registered and live**, not dead code.
+Three oneDNN graph-backend subgraph passes fold int8 zero-points into the GEMM/conv primitive. They are **registered and live**, not dead code.
 
 | Pass | Address | Op-kind matched | Rewrite |
 |---|---|---|---|
@@ -240,7 +240,7 @@ function convert_runtime_zero_points(subgraph):               // 0x555a300
     // converge on ONE runtime form the oneDNN primitive can take.
 ```
 
-> **NOTE —** the runtime-vs-static distinction the task asks about: **static** zps (compile-time constants) are folded into the primitive **attr** (`fuse_src/dst_zero_points`); **runtime** zps (tensors) become primitive **inputs** (`convert_runtime_zero_points` + `fuse_dynamic_*`). Either way the final form is a oneDNN primitive attr/arg consumed by the matmul/conv kernel — entirely on the CPU golden path.
+> **NOTE —** the runtime-vs-static distinction: **static** zps (compile-time constants) are folded into the primitive **attr** (`fuse_src/dst_zero_points`); **runtime** zps (tensors) become primitive **inputs** (`convert_runtime_zero_points` + `fuse_dynamic_*`). Either way the final form is a oneDNN primitive attr/arg consumed by the matmul/conv kernel — entirely on the CPU golden path.
 
 ### `insert_u8_to_s8_for_matmul` — the s8u8s32 shift
 
@@ -248,7 +248,7 @@ function convert_runtime_zero_points(subgraph):               // 0x555a300
 function insert_runtime_u8_to_s8_for_matmul(subgraph):        // 0x55c1420
     for op where op.kind == 0x1258 and operand.dtype == u8:   // dnnl_matmul, u8 input @0x55c14fc
         // oneDNN GEMM is s8u8s32 → map u8[0,255] → s8[-128,127]:
-        insert sub_zps(128) with a compensating zp adjustment  // (STRONG: literal 128 not isolated)
+        insert sub_zps(128) with a compensating zp adjustment  // the 128 literal was not isolated
         thread with_runtime_scales / with_runtime_zps flags
 ```
 
@@ -272,7 +272,7 @@ function QuantizedMatmulOp::regionBuilder(builder, block, attrs):   // 0x7c6c7d0
     // (scales applied by a following requant).
 ```
 
-> **NOTE —** the 4-input shape is `STRONG`, from the stock op definition; the `.rodata` pool does contain a `"quantized_matmul"` token but the nearby `"Expected four"` fragment is a merged/spliced string and is **not** a clean standalone confirmation.
+> **NOTE —** the 4-input shape comes from the stock upstream op definition, not from this binary. The `.rodata` pool does contain a `"quantized_matmul"` token, but the nearby `"Expected four"` fragment is a merged/spliced string and does not stand on its own as evidence.
 
 ### (B) Primitive level — `ref_matmul_int8_t` `[STOCK oneDNN]`
 
@@ -299,7 +299,7 @@ function ref_matmul_int8_t::execute_ref(ctx):                  // 0x3fb9090
 
 The sharpest question: does the Neuron **device** path use calibration or any int8 per-tensor/per-channel scale, or is calibration purely a golden/accuracy concern?
 
-**Answer (CONFIRMED, three independent groundings): for int8, calibration and the scale+zero-point flow are purely a GOLDEN / frontend-IR concern. No int8 scale and no int8 zero-point reach Neuron device codegen.**
+**Answer, grounded three independent ways: for int8, calibration and the scale+zero-point flow are purely a GOLDEN / frontend-IR concern. No int8 scale and no int8 zero-point reach Neuron device codegen.**
 
 The grounding chain:
 
@@ -348,19 +348,21 @@ The only scale that reaches the device is the MX per-block scale (OCP MXFP8): sc
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Summary
 
-The five strongest claims, re-challenged against the binary:
+| Claim | Evidence | Confidence |
+|---|---|---|
+| The calibration→scale derivation is absent | `fakeQuantAttrsToType`, `getUniformQuantizedTypeForMinMax`, `UniformQuantizedValueConverter`, `ExpressedToQuantizedConverter` each have `nm` count **0** in `hlo-opt_function_addresses.json` | CERTAIN |
+| `fuse_src_zero_points` matches `0x1238`, `fuse_dst` matches `0x1237` | `objdump`: `0x5565194: cmpl $0x1238,0x18(%rax)`; `0x55648e0: cmpl $0x1237,0x18(%rax)` | CERTAIN |
+| oneDNN is v3.7.3 | `.rodata` `0x954fc0` = `03 00 00 00 07 00 00 00 03 00 00 00` | CERTAIN |
+| Int8 scale/zp enter only through the `"mhlo."`-gated importer | `IsOpEncodedCustomCall` `0x75d6423: cmpl $0x6f6c686d` ("mhlo") and `0x75d6442: cmpb $0x2e` (".") — two separate instructions | CERTAIN |
+| `ImportCustomCallAsOp` is the *only* caller of `getQuantizedType` | `getQuantizedType` (`0x75d65e0`) and `ImportCustomCallAsOp` (`0x75d6ac0`) are co-located in the import bridge; the sole-caller claim rests on an xref sweep | HIGH |
+| The only device scale is MX `E8M0` | `f8E8M0FNU`, `lhs_scale`, `rhs_scale`, `side_input_scale` strings present; `LegalizeQuantizeMX::Run` `0x1efc4f0` and `LegalizeScaledMatmul::Run` `0x1efe1a0` present; no `bir::`/`penguin::` quant-scale reader | CERTAIN |
+| MX carries no zero-point | an MX-format property; no explicit zp-absence assertion was single-stepped | HIGH |
 
-1. **"The calibration→scale derivation is absent."** Re-checked: `fakeQuantAttrsToType`, `getUniformQuantizedTypeForMinMax`, `UniformQuantizedValueConverter`, `ExpressedToQuantizedConverter` each have `nm` count **0** in `hlo-opt_function_addresses.json`. — **CONFIRMED.**
-2. **"`fuse_src_zero_points` matches `0x1238`, `fuse_dst` matches `0x1237`."** Re-checked in `objdump`: `0x5565194: cmpl $0x1238,0x18(%rax)` and `0x55648e0: cmpl $0x1237,0x18(%rax)`. — **CONFIRMED** (direct disasm).
-3. **"oneDNN is v3.7.3."** Re-checked `.rodata` `0x954fc0` = `03 00 00 00 07 00 00 00 03 00 00 00`. — **CONFIRMED.**
-4. **"Int8 scale/zp enter only via the `"mhlo."`-gated importer; the only caller of `getQuantizedType` is `ImportCustomCallAsOp`."** Re-checked: `IsOpEncodedCustomCall` `0x75d6423: cmpl $0x6f6c686d` ("mhlo"), `0x75d6442: cmpb $0x2e` ("."). The symbol table shows `getQuantizedType` (`0x75d65e0`) and `ImportCustomCallAsOp` (`0x75d6ac0`) co-located in the import bridge. — **CONFIRMED** for the gate; the *sole-caller* claim is **STRONG** (rests on the prior xref sweep, not re-run here).
-5. **"The only device scale is MX `E8M0`, no zero-point."** Re-checked: `f8E8M0FNU`, `lhs_scale`, `rhs_scale`, `side_input_scale` strings present; `LegalizeQuantizeMX::Run` `0x1efc4f0` and `LegalizeScaledMatmul::Run` `0x1efe1a0` present; no `bir::`/`penguin::` quant-scale reader. — **CONFIRMED** for the symbols/strings; "no zp on MX" is **STRONG** (MX-format property, no explicit zp-absence assertion single-stepped).
+### Limits of this reading
 
-> **CORRECTION (CSF-01) —** an early draft of the backing notes placed the `"."` comparison of the `mhlo.` gate at `0x75d6423` (the same instruction as the `"mhlo"` `cmpl`). Disassembly shows the `cmpb $0x2e` is a *separate* instruction at `0x75d6442`. The gate logic is unchanged; the address of the second comparison is corrected here.
-
-Items tagged below `CONFIRMED` (`acc = Σ(src−zp)(wei−zp)` arithmetic, the 4-input linalg shape, the literal-`128` u8→s8 shift) are `STRONG` — stock oneDNN/MLIR semantics plus the recovered node/fold structure, not single-stepped. The claim "the calibrated range was resolved upstream of `hlo-opt`" is `INFERRED` by elimination (the derivation code is absent and the type only ever arrives pre-serialized).
+Three descriptions rest on stock oneDNN/MLIR semantics plus recovered node/fold structure rather than single-stepped execution: the `acc = Σ(src−zp)(wei−zp)` arithmetic, the 4-input linalg op shape, and the literal `128` in the u8→s8 shift. The claim that a calibrated range was resolved *upstream* of `hlo-opt` is [INFERRED] by elimination — the derivation code is absent from this binary and the type only ever arrives pre-serialized, but nothing here shows the upstream step directly.
 
 ---
 

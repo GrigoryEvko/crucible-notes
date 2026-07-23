@@ -1,21 +1,21 @@
 # Symbol & Offset Index
 
-> *Every address on this page is a virtual address (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22, recovered from the **cp310** wheel. cp311/cp312 carry byte-near-identical twins of every binary, but renumber addresses — treat every value as version-pinned. The per-binary VA frame is **not** uniform: in the `.so` libraries (`libBIR`, `libwalrus`, …) `.text`/`.rodata` are loaded at VA == file-offset, so `nm`/`objdump` VAs index the file directly; in the standalone `hlo-opt`/`hlo2penguin` ELFs the section base is shifted (`.text` file-off = VA − `0x201000`, `.rodata` file-off = VA − `0x200000`). See [§0.5](#05-the-two-va-framing-conventions). Backing synthesis: **D-R09** (the cross-binary type-identity matrix) plus the per-binary `nm -DC` dynamic-symbol tables and IDA `rtti.json` typeinfo sets.*
+> *Every address on this page is a virtual address (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22, recovered from the **cp310** wheel. cp311/cp312 carry byte-near-identical twins of every binary, but renumber addresses — treat every value as version-pinned. The per-binary VA frame is **not** uniform: in the `.so` libraries (`libBIR`, `libwalrus`, …) `.text`/`.rodata` are loaded at VA == file-offset, so `nm`/`objdump` VAs index the file directly; in the standalone `hlo-opt`/`hlo2penguin` ELFs the section base is shifted (`.text` file-off = VA − `0x201000`, `.rodata` file-off = VA − `0x200000`). See [§0.5](#05-the-two-va-framing-conventions). Sources: the cross-binary type-identity matrix (RTTI typeinfo + RELA + `DT_NEEDED`), the per-binary `nm -DC` dynamic-symbol tables, and the IDA `rtti.json` typeinfo sets.*
 
 ## Abstract
 
 This appendix is the **reverse lookup** for the whole wiki: given a symbol name or a hex address cited anywhere in the book, it names the binary that owns the symbol and the page that documents it. The normative pages anchor every claim to a `sub_ADDR` / `0xNNNN`; this index lets a reader go the other way — from an address found in `nm`, `objdump`, or a crash backtrace to the page that explains what that code does. It is **curated, not exhaustive**: it carries the few hundred symbols a reader will actually look up (the dispatch cores, the per-engine encoders, the allocator drivers, the typeinfo anchors), not every one of the 59,466 functions in `libwalrus` or the 44,794 typeinfos in `hlo2penguin`.
 
-The index is organized **by binary**, because which artifact a symbol lives in is the first disambiguator — the backend is split across eight `.so` plus two standalone ELFs and a galaxy of Cython modules, and the same short name (`run`, `visit*`, `schedule`) recurs in several of them. [§0.1](#01-the-binary-roster) gives the binary roster and its ownership boundaries (from **D-R09**); [§0.5](#05-the-two-va-framing-conventions) gives the two VA-framing conventions and the two-VA-frame sidecar artifact that must be understood before any address on this page is unambiguous. [§1](#1-libbirso--the-bir-core)–[§8](#8-the-cython-codegen-modules) are the per-binary symbol tables. [§9](#9-cross-binary-classsymbol-matrix-d-r09) reproduces the cross-binary class/namespace matrix from **D-R09** — who *defines* each shared type and how it crosses binary boundaries.
+The index is organized **by binary**, because which artifact a symbol lives in is the first disambiguator — the backend is split across eight `.so` plus two standalone ELFs and a galaxy of Cython modules, and the same short name (`run`, `visit*`, `schedule`) recurs in several of them. [§0.1](#01-the-binary-roster) gives the binary roster and its ownership boundaries; [§0.5](#05-the-two-va-framing-conventions) gives the two VA-framing conventions and the two-VA-frame sidecar artifact that must be understood before any address on this page is unambiguous. [§1](#1-libbirso--the-bir-core)–[§8](#8-the-cython-codegen-modules) are the per-binary symbol tables. [§9](#9-cross-binary-classsymbol-matrix) reproduces the cross-binary class/namespace matrix — who *defines* each shared type and how it crosses binary boundaries.
 
-This is a reference catalog; its value is being a faithful, navigable index. Every row points at a page that **actually exists** in [SUMMARY.md](../SUMMARY.md). Where a symbol's primary page has not been written yet, the row says so rather than inventing a target. The five highest-traffic symbols were adversarially re-verified against the binary symbol tables ([§10](#10-adversarial-verification--five-highest-traffic-symbols)); each row carries a confidence tag.
+This is a reference catalog; its value is being a faithful, navigable index. Every row points at a page that **actually exists** in [SUMMARY.md](../SUMMARY.md). Where a symbol's primary page has not been written yet, the row says so rather than inventing a target. [§10](#10-symbol-table-spot-checks--five-highest-traffic-symbols) re-reads the five highest-traffic symbols straight out of the binaries' dynamic symbol tables.
 
 | | |
 |---|---|
 | **Target** | `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel) |
 | **Binaries indexed** | `libBIR.so`, `libwalrus.so`, `libBIRSimulator.so` + the `hlo-opt` / `hlo2penguin` ELFs + the NKI/Penguin Cython `.so` |
 | **Address frame** | `.so`: VA == file-offset · `hlo-opt`/`hlo2penguin`: `.text` − `0x201000`, `.rodata` − `0x200000` |
-| **Owner map source** | **D-R09** cross-binary type-identity matrix (RTTI typeinfo + RELA + DT_NEEDED) |
+| **Owner map source** | the cross-binary type-identity matrix (RTTI typeinfo + RELA + DT_NEEDED) |
 | **Symbol source** | per-binary `nm -DC` dynamic-symbol tables; IDA `rtti.json` typeinfo sets |
 | **Coverage** | curated — the *notable, cited* symbols, not an undifferentiated symbol dump |
 
@@ -23,9 +23,9 @@ This is a reference catalog; its value is being a faithful, navigable index. Eve
 
 ## 0.1. The binary roster
 
-The compiler's logic is split across the artifacts below. Ownership is from **D-R09** — the canonical *definer* of each shared C++ namespace (`OWN`), not merely a binary that references it. Sizes and paths are catalogued on [0.4 Binary Inventory & the .so Map](../reference/binary-inventory.md); this table is the per-binary index header.
+The compiler's logic is split across the artifacts below. "Owns" means the canonical *definer* of a shared C++ namespace (`OWN`), not merely a binary that references it. Sizes and paths are catalogued on [0.4 Binary Inventory & the .so Map](../reference/binary-inventory.md); this table is the per-binary index header.
 
-| Binary | Path under `neuronxcc/` | Owns (D-R09) | Indexed in |
+| Binary | Path under `neuronxcc/` | Owns | Indexed in |
 |---|---|---|---|
 | `libBIR.so` | `starfish/lib/` | `bir` (371 types) + `pelican` (29) — the leaf IR-core owner | [§1](#1-libbirso--the-bir-core) |
 | `libwalrus.so` | `starfish/lib/` | the backend; `klr` (199), `dap` (201), `birsim::debugger` (39), `neuroncc::debug_info` (producer) | [§2](#2-libwalrusso--the-backend) |
@@ -36,7 +36,7 @@ The compiler's logic is split across the artifacts below. Ownership is from **D-
 | `libBIRParserDumper.so` | `starfish/lib/` | `parserdumper` / `bir_roundtrip` (BIR-JSON round-trip) | [§7](#7-libbirparserdumperso--the-bir-json-round-trip) |
 | `KernelBuilder.so` / `BirCodeGenLoop.so` / `NkiCodegen.so` (Cython) | `nki/…` / `starfish/penguin/targets/codegen/` | the NKI forward builder, the beta3 Penguin→BIR driver, the re-emit printer | [§8](#8-the-cython-codegen-modules) |
 
-> **NOTE —** `libBIR.so` is the **leaf / owner**: its `DT_NEEDED` lists only system/util libraries, and it exports `bir`/`pelican` typeinfos as weak (`V`) symbols. Every other backend binary reaches `bir`/`pelican` by **dynamic link** to `libBIR` (DT_NEEDED + weak-symbol coalescing), not by carrying a static copy — so a `bir::*` typeinfo address in those binaries' `rtti.json` resolves to `libBIR`'s definition at load (**D-R09 §4d-i**). When this index lists a `bir`/`pelican` address it is `libBIR`'s, the definitional one.
+> **NOTE —** `libBIR.so` is the **leaf / owner**: its `DT_NEEDED` lists only system/util libraries, and it exports `bir`/`pelican` typeinfos as weak (`V`) symbols. Every other backend binary reaches `bir`/`pelican` by **dynamic link** to `libBIR` (DT_NEEDED + weak-symbol coalescing), not by carrying a static copy — so a `bir::*` typeinfo address in those binaries' `rtti.json` resolves to `libBIR`'s definition at load. When this index lists a `bir`/`pelican` address it is `libBIR`'s, the definitional one.
 
 ---
 
@@ -176,13 +176,13 @@ The 65 MB backend: ~150 passes, the dependence graph, the three schedulers, the 
 | `DebugInfoWriter::leaveModule(Module&)` | `0x11d5850` | [8.40 debuginfo-writer](../walrus/debuginfo-writer.md) |
 | `writeDebugInfoToDisk(Module&, EngineType, IRLayer)` | `0x11f9b80` | [8.40 debuginfo-writer](../walrus/debuginfo-writer.md) |
 
-> **NOTE —** `DebugInfoWriter` is the **sole producer** of the `neuroncc::debug_info` protobuf (D-R09 §2c). Its six core classes are byte-identical in `libBIR`, `libwalrus`, and `hlo2penguin`, but they cross the frontend↔backend cut by **independent compilation of the same generated `.proto`**, not by a link — `hlo2penguin` links none of the backend `.so`. This is the single cross-cut domain type ([§9](#9-cross-binary-classsymbol-matrix-d-r09) row `neuroncc::debug_info`).
+> **NOTE —** `DebugInfoWriter` is the **sole producer** of the `neuroncc::debug_info` protobuf. Its six core classes are byte-identical in `libBIR`, `libwalrus`, and `hlo2penguin`, but they cross the frontend↔backend cut by **independent compilation of the same generated `.proto`**, not by a link — `hlo2penguin` links none of the backend `.so`. This is the single cross-cut domain type ([§9](#9-cross-binary-classsymbol-matrix) row `neuroncc::debug_info`).
 
 ---
 
 ## 3. libBIRSimulator.so — the functional simulator
 
-The BIR functional simulator (`birsim`), the whole-machine state model, and the DAP debugger half. Owns the **engine** half of the `birsim` namespace (10 disjoint classes: `Memory`, `SyncState`, `TpbEngines`, `NeuronCoresManager`, `PhysicalMemory`, `BaseLogger`) — disjoint (shared=0) from `libwalrus`'s `birsim::debugger` half (D-R09 §2e/§5-C2). Links `libBIR` (dynamic) + `libpwp_sim`. `.text`/`.rodata` VA == file offset.
+The BIR functional simulator (`birsim`), the whole-machine state model, and the DAP debugger half. Owns the **engine** half of the `birsim` namespace (10 disjoint classes: `Memory`, `SyncState`, `TpbEngines`, `NeuronCoresManager`, `PhysicalMemory`, `BaseLogger`) — disjoint (shared=0) from `libwalrus`'s `birsim::debugger` half. Links `libBIR` (dynamic) + `libpwp_sim`. `.text`/`.rodata` VA == file offset.
 
 | Symbol class | Owner note | Page |
 |---|---|---|
@@ -192,13 +192,13 @@ The BIR functional simulator (`birsim`), the whole-machine state model, and the 
 | `birsim::InstVisitor::visitInstCustomOp` (sim-side custom-op) | (undefined `U` in libwalrus; defined here) | [7.39 sim-control-sync-customop](../bir/sim-control-sync-customop.md) |
 | `birsim::debugger` DAP host (in **libwalrus**, not here) | `OWN(39)` libwalrus | [7.41 birsim-dap-debugger](../bir/birsim-dap-debugger.md) |
 
-> **QUIRK —** `birsim` is a **split namespace**. The debugger/driver half (39 classes, `DebuggerCallbacks @ 0x1109430`) lives in `libwalrus`; the engine half (10 classes) lives here. A reimplementer looking for `birsim::Memory` in `libwalrus` will not find it, and vice-versa for `birsim::debugger`. The two share zero typeinfos (D-R09 §5-C2 corrects the earlier "libwalrus-only" framing).
+> **QUIRK —** `birsim` is a **split namespace**. The debugger/driver half (39 classes, `DebuggerCallbacks @ 0x1109430`) lives in `libwalrus`; the engine half (10 classes) lives here. A reimplementer looking for `birsim::Memory` in `libwalrus` will not find it, and vice-versa for `birsim::debugger`. The two halves share zero typeinfos — `birsim` is not a single-binary namespace.
 
 ---
 
 ## 4. hlo-opt — the HLO optimizer
 
-The standalone HLO/MHLO/StableHLO optimizer ELF and its `--passes` registry. **Frame (B):** `.text` file_off = VA − `0x201000`, `.rodata` file_off = VA − `0x200000`. Statically links upstream OpenXLA/MLIR/LLVM (D-R09 §3) — the Neuron-authored passes are a thin layer over that bulk.
+The standalone HLO/MHLO/StableHLO optimizer ELF and its `--passes` registry. **Frame (B):** `.text` file_off = VA − `0x201000`, `.rodata` file_off = VA − `0x200000`. Statically links upstream OpenXLA/MLIR/LLVM — the Neuron-authored passes are a thin layer over that bulk.
 
 ### Collective stream/channel-id family
 
@@ -211,7 +211,7 @@ The standalone HLO/MHLO/StableHLO optimizer ELF and its `--passes` registry. **F
 | `neuron::IsCollective` (masks `0x20000410` / `0x80011`, high rebase −`0x53`) | `0x1f7e010` | [4.4 collective-stream-channel-id](../hlo-opt/collective-stream-channel-id.md) |
 | `ReplicaGroupsEqual` | `0x9163ca0` | [4.4 collective-stream-channel-id](../hlo-opt/collective-stream-channel-id.md) |
 
-> **CORRECTION (audit #820) —** the masks `0x650` / `0x810000000000001` belong to `NextChannelId @ 0x8ab1ac0` and the inlined checker #58, **not** to `IsCollective @ 0x1f7e010`. `IsCollective` uses `0x20000410` / `0x80011` (high band indexed by `op − 0x53`) plus `op == 7`, selecting opcodes `{0x4, 0x7, 0xa, 0x1d, 0x53, 0x57, 0x66}`. The three predicates are separate; their masks must not be cross-applied. (Carried verbatim from [4.4 collective-stream-channel-id](../hlo-opt/collective-stream-channel-id.md).)
+> **GOTCHA — three separate predicates, three separate mask sets.** The masks `0x650` / `0x810000000000001` belong to `NextChannelId @ 0x8ab1ac0` and to the inlined checker #58. `IsCollective @ 0x1f7e010` uses a different pair, `0x20000410` / `0x80011` (high band indexed by `op − 0x53`) plus `op == 7`, selecting opcodes `{0x4, 0x7, 0xa, 0x1d, 0x53, 0x57, 0x66}`. Do not cross-apply the masks between them. See [4.4 collective-stream-channel-id](../hlo-opt/collective-stream-channel-id.md).
 
 ### Pass registry
 
@@ -224,9 +224,9 @@ The standalone HLO/MHLO/StableHLO optimizer ELF and its `--passes` registry. **F
 
 ## 5. hlo2penguin — the MLIR front-half
 
-The standalone MLIR front-half ELF: mhlo/stablehlo → Penguin Python IR. **Frame (B)** (same `−0x201000` / `−0x200000` shift). 44,794 unique typeinfos, of which **~0.5 %** are Neuron-authored — the rest is statically-linked upstream MLIR/XLA/LLVM/oneDNN, with oneDNN **present but dead** on the Trainium path (D-R09 §2g/§4a/§5-C6). Links **none** of the backend `.so` (D-R09 §3-B1).
+The standalone MLIR front-half ELF: mhlo/stablehlo → Penguin Python IR. **Frame (B)** (same `−0x201000` / `−0x200000` shift). 44,794 unique typeinfos, of which **~0.5 %** are Neuron-authored — the rest is statically-linked upstream MLIR/XLA/LLVM/oneDNN, with oneDNN **present but dead** on the Trainium path. Links **none** of the backend `.so`.
 
-| Symbol class | Owner note (D-R09) | Page |
+| Symbol class | Owner note | Page |
 |---|---|---|
 | `hilo` Neuron device model (Mariana/Tonga/Sunda/Cayman cost tables) | `LOCAL(151)` | [4.42 mhlo-to-python-printer-driver](../hlo-opt/mhlo-to-python-printer-driver.md) |
 | `xla::hilo` | `link(84)` upstream | [4.42 mhlo-to-python-printer-driver](../hlo-opt/mhlo-to-python-printer-driver.md) |
@@ -235,13 +235,13 @@ The standalone MLIR front-half ELF: mhlo/stablehlo → Penguin Python IR. **Fram
 | hlo2penguin MLIR pipeline order & entry flow | the pipeline driver | [4.34 hlo2penguin-mlir-pipeline](../hlo-opt/hlo2penguin-mlir-pipeline.md) |
 | `neuroncc::debug_info` (6 protobuf classes) | `dyn(6)` — independent-compile bridge | [8.40 debuginfo-writer](../walrus/debuginfo-writer.md) |
 
-> **NOTE —** `mlir` (10,328), `xla` (4,634), `dnnl` (13,786 substring / 2,100 `_ZTI`), `absl` (1,899), and `llvm` (7,033) typeinfos are **upstream, statically linked** — not a Neuron domain boundary. They are deliberately *not* indexed per-symbol here: a reimplementer wanting `mlir::*` reads upstream MLIR, not this wiki. The oneDNN bulk is dead code on the Trainium path (D-R09 §5-C6).
+> **NOTE —** `mlir` (10,328), `xla` (4,634), `dnnl` (13,786 substring / 2,100 `_ZTI`), `absl` (1,899), and `llvm` (7,033) typeinfos are **upstream, statically linked** — not a Neuron domain boundary. They are deliberately *not* indexed per-symbol here: a reimplementer wanting `mlir::*` reads upstream MLIR, not this wiki. The oneDNN bulk is dead code on the Trainium path.
 
 ---
 
 ## 6. libpwp_sim.so — the PWP simulator
 
-A fully isolated domain (D-R09 §2h/§5-C5): `PWPSim::Simulator` + `PWPSim::AFTable`, 4 types total. `NEEDED` by `libwalrus`/`libBIRSimulator`/`nki_klr_sim` for the numeric activation model, but exposes **no** shared `bir`/`pelican`/`klr` type. `.text`/`.rodata` VA == file offset.
+A fully isolated domain: `PWPSim::Simulator` + `PWPSim::AFTable`, 4 types total. `NEEDED` by `libwalrus`/`libBIRSimulator`/`nki_klr_sim` for the numeric activation model, but exposes **no** shared `bir`/`pelican`/`klr` type. `.text`/`.rodata` VA == file offset.
 
 | Symbol class | Note | Page |
 |---|---|---|
@@ -252,7 +252,7 @@ A fully isolated domain (D-R09 §2h/§5-C5): `PWPSim::Simulator` + `PWPSim::AFTa
 
 ## 7. libBIRParserDumper.so — the BIR-JSON round-trip
 
-`parserdumper` / `bir_roundtrip` — the BIR-JSON read-write round-trip serializers. Links `libBIR` (dynamic). 557 typeinfos. Carries 26/29 of the `pelican` classes and a `bir` subset + its own `bir::IRVisitor<DumperPass>` instantiations (D-R09 §1).
+`parserdumper` / `bir_roundtrip` — the BIR-JSON read-write round-trip serializers. Links `libBIR` (dynamic). 557 typeinfos. Carries 26/29 of the `pelican` classes and a `bir` subset + its own `bir::IRVisitor<DumperPass>` instantiations.
 
 | Symbol class | Note | Page |
 |---|---|---|
@@ -277,9 +277,9 @@ The NKI forward builder, the beta3 Penguin→BIR driver, and the re-emit printer
 
 ---
 
-## 9. Cross-binary class/symbol matrix (D-R09)
+## 9. Cross-binary class/symbol matrix
 
-The ownership matrix from **D-R09 §1** — namespace (row) × binary (col). `OWN` = canonical definer (weak `V` typeinfo); `dyn` = present by dynamic link to the owner (DT_NEEDED + weak coalescing); `LOCAL` = binary-local, not shared; `·` = absent (CONFIRMED zero hits). Numbers in `()` are distinct-type counts measured in that binary's `rtti.json`. This is what disambiguates *which* binary's copy a typeinfo address refers to.
+The ownership matrix — namespace (row) × binary (col). `OWN` = canonical definer (weak `V` typeinfo); `dyn` = present by dynamic link to the owner (DT_NEEDED + weak coalescing); `LOCAL` = binary-local, not shared; `·` = absent, zero hits. Numbers in `()` are distinct-type counts measured in that binary's `rtti.json`. This is what disambiguates *which* binary's copy a typeinfo address refers to.
 
 | Namespace | libBIR | libwalrus | libBIRSim | nki_klr_sim | hlo2penguin |
 |---|---|---|---|---|---|
@@ -298,21 +298,21 @@ The ownership matrix from **D-R09 §1** — namespace (row) × binary (col). `OW
 
 `*` — `neuroncc::debug_info` in `hlo2penguin` is **not** reached by a link (it links no backend `.so`); the 6 classes are the same generated protobuf compiled independently into each binary. The 8 `_ZTI` names are byte-identical across `libBIR ∩ libwalrus ∩ hlo2penguin` — the only frontend↔backend crossing type.
 
-The domain boundaries (D-R09 §3): **frontend ↔ backend is a clean cut** — `hlo2penguin` has `bir=0, pelican=0, klr=0, dap=0, birsim=0` (absolute zero), and the backend `.so` have `xla=0, mlir=0, dnnl=0`. The single exception is the six `neuroncc::debug_info` classes. The `DT_NEEDED` DAG is rooted at `libBIR` (leaf) → `libBIRParserDumper`/`libBIRSimulator` → `libwalrus` (top), with `libpwp_sim` isolated and `hlo2penguin` linking only `{libm, libstdc++, libgcc_s, libc}`.
+The domain boundaries: **frontend ↔ backend is a clean cut** — `hlo2penguin` has `bir=0, pelican=0, klr=0, dap=0, birsim=0` (absolute zero), and the backend `.so` have `xla=0, mlir=0, dnnl=0`. The single exception is the six `neuroncc::debug_info` classes. The `DT_NEEDED` DAG is rooted at `libBIR` (leaf) → `libBIRParserDumper`/`libBIRSimulator` → `libwalrus` (top), with `libpwp_sim` isolated and `hlo2penguin` linking only `{libm, libstdc++, libgcc_s, libc}`.
 
 ---
 
-## 10. Adversarial verification — five highest-traffic symbols
+## 10. Symbol-table spot checks — five highest-traffic symbols
 
-Each was re-read from the binary's own dynamic symbol table (`nm -DC`) and the cited page re-checked for existence. All five resolved exactly.
+Each was read from the binary's own dynamic symbol table (`nm -DC`), and the cited page checked for existence. All five resolved exactly.
 
-| Symbol | Address | Binary | Page exists? | `nm -DC` confirms? | Conf |
+| Symbol | Address | Binary | Page exists? | `nm -DC` entry | Confidence |
 |---|---|---|---|---|---|
-| `getArchModel(string)` | `0x17344c0` | libwalrus | yes — [1.1](../arch/arch-object-model.md) | yes — `T getArchModel(std::__cxx11::basic_string…)` @ `0x17344c0` | CONFIRMED |
-| `KlirToBirCodegen::codegenStmt` (dispatch core) | `0xf33520` | libwalrus | yes — [7.27](../bir/klir-codegen-dispatch.md) | yes — page roster `nm -DC … rg KlirToBirCodegen` = 176 rows; dispatch core `0xf33520`, jpt `0x1de95f8` | CONFIRMED |
-| `NextChannelId(module)` | `0x8ab1ac0` | hlo-opt | yes — [4.4](../hlo-opt/collective-stream-channel-id.md) | STRONG — VA frame (B); mask provenance fixed by audit #820 | STRONG |
-| `visitInstCustomOp` (`CoreV2GenImpl`) | `0x12613c0` | libwalrus | yes — [11.8](../custom-ops/customop-codegen.md) | yes — `T …CoreV2GenImpl::visitInstCustomOp(bir::InstCustomOp&)` @ `0x12613c0` (distinct from `birverifier` `0xfa7bd0`) | CONFIRMED |
-| `setupHeader` (`CoreV4GenImpl`) | `0x143f440` | libwalrus | yes — [8.39](../walrus/opcode-master.md) | yes — `W …CoreV4GenImpl::setupHeader(void*, void*)` @ `0x143f440`; V2 `0x1172120`, V3 `0x1369280` | CONFIRMED |
+| `getArchModel(string)` | `0x17344c0` | libwalrus | yes — [1.1](../arch/arch-object-model.md) | `T getArchModel(std::__cxx11::basic_string…)` @ `0x17344c0` | CERTAIN |
+| `KlirToBirCodegen::codegenStmt` (dispatch core) | `0xf33520` | libwalrus | yes — [7.27](../bir/klir-codegen-dispatch.md) | `nm -DC … rg KlirToBirCodegen` = 176 rows; dispatch core `0xf33520`, jpt `0x1de95f8` | CERTAIN |
+| `NextChannelId(module)` | `0x8ab1ac0` | hlo-opt | yes — [4.4](../hlo-opt/collective-stream-channel-id.md) | VA is in frame (B); see the mask GOTCHA above for which predicate owns which mask | HIGH |
+| `visitInstCustomOp` (`CoreV2GenImpl`) | `0x12613c0` | libwalrus | yes — [11.8](../custom-ops/customop-codegen.md) | `T …CoreV2GenImpl::visitInstCustomOp(bir::InstCustomOp&)` @ `0x12613c0` (distinct from `birverifier` `0xfa7bd0`) | CERTAIN |
+| `setupHeader` (`CoreV4GenImpl`) | `0x143f440` | libwalrus | yes — [8.39](../walrus/opcode-master.md) | `W …CoreV4GenImpl::setupHeader(void*, void*)` @ `0x143f440`; V2 `0x1172120`, V3 `0x1369280` | CERTAIN |
 
 > **NOTE —** `visitInstCustomOp` is the canonical example of why this index is **per binary**: the name appears at `0xfa7bd0` (`birverifier::InstVisitor`, the verifier — [8.41](../walrus/birverifier-per-op.md)), at `0x12613c0` (`CoreV2GenImpl`, the encoder — [11.8](../custom-ops/customop-codegen.md)), and as an undefined `U` (`birsim::InstVisitor`, defined in `libBIRSimulator` — [7.39](../bir/sim-control-sync-customop.md)). A bare "`visitInstCustomOp @ …`" is ambiguous until the binary and the address fix which one.
 
