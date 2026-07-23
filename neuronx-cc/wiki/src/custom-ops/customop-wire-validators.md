@@ -1,6 +1,6 @@
 # CUSTOM_OP Wire Validators and the Scratch / Sync Handshake
 
-> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310; cp310/11/12 are byte-identical). The validators and the encoder live in `neuronxcc/starfish/lib/libwalrus.so` (sha1 `4531c8f2…`, 64,973,024 B; `.dynsym` retained, so `nm -DC` resolves the named symbols); the BIR instruction / sync / memory-location bodies live in `libBIR.so`. For `.text`/`.rodata` the virtual address equals the file offset. Other wheels differ — treat every address as version-pinned. Evidence derives solely from static binary analysis (D-AC03).*
+> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310; cp310/11/12 are byte-identical). The validators and the encoder live in `neuronxcc/starfish/lib/libwalrus.so` (sha1 `4531c8f2…`, 64,973,024 B; `.dynsym` retained, so `nm -DC` resolves the named symbols); the BIR instruction / sync / memory-location bodies live in `libBIR.so`. For `.text`/`.rodata` the virtual address equals the file offset. Other wheels differ — treat every address as version-pinned. Evidence derives solely from static binary analysis.*
 
 ## Abstract
 
@@ -128,7 +128,7 @@ The dbg twin (`0x129ba90`) builds an `inst failed assertion check: '<field>'` st
 | (1) enum / inst-len | shared `is_valid_enum` predicate strings | HIGH |
 | (2) SyncInfo events | shared `has_valid_*` predicate strings | HIGH |
 
-> **NOTE —** the three names are CONFIRMED byte-for-byte in the assert pool: `custom_op_header_scratch_space_val` begins at file offset `0x1dd467e`, immediately preceded by the assert template `…rtion check: '`. The pool packs the names with `'` terminators and reuses prefixes, so a naive string-search snags the next name's head; the per-predicate boundaries above are taken from the `xmmword` loads in the dbg twin's reason-string branches (`xmmword_1DD4670`/`1DD46A0` for the header field strings).
+> **NOTE — reading the three names out of the assert pool.** They are present byte-for-byte: `custom_op_header_scratch_space_val` begins at file offset `0x1dd467e`, immediately preceded by the assert template `…rtion check: '`. The pool packs the names with `'` terminators and reuses prefixes, so a naive string-search snags the next name's head; the per-predicate boundaries above are taken from the `xmmword` loads in the dbg twin's reason-string branches (`xmmword_1DD4670`/`1DD46A0` for the header field strings).
 
 ### The reserved-zero region
 
@@ -141,7 +141,7 @@ custom_op_header_reserved_zero =
 
 Everything in the bundle **except** `{opcode, header-tag, the `[0x04..0x0B]` SyncInfo band, the `[0x0C..0x0F]` count/id block, and the scratch triple `[0x10]`/`[0x18..0x1B]`/`[0x1C]`}` must be zero. This is the classic ISA "no stray bits" integrity check: any set bit in a reserved field means a malformed bundle.
 
-> **CORRECTION (AC03-C1) —** the header reserved-zero is **not** the whole `[0x10..0x3F]` tail. `byte[0x10]`, `dword[0x18..0x1B]`, and `byte[0x1C]` are the scratch tri-field, masked *out* of the reserved check (`0xFFFFFF00` keeps only the hi-3 of each dword; `byte[0x10]`/`byte[0x1C]` are the low bytes). A reimplementer who zero-checks the full tail will reject every header that carries a scratch descriptor.
+> **GOTCHA — the reserved-zero region is not the whole `[0x10..0x3F]` tail.** `byte[0x10]`, `dword[0x18..0x1B]`, and `byte[0x1C]` are the scratch tri-field, masked *out* of the reserved check: `0xFFFFFF00` keeps only the hi-3 bytes of each dword, and `byte[0x10]`/`byte[0x1C]` are low bytes. Zero-checking the full tail rejects every header that carries a scratch descriptor.
 
 ---
 
@@ -182,11 +182,11 @@ In the dbg twin the gate is literally `(v28.m128i_i32[3] & 0xFFFFFF) == 0`, wher
 | (3) `u[0]==0x86` | `is_custom_op_payload_opcode` (`0x1dd46c2`) | CERTAIN |
 | (4) `[0x0C..0x0E]==0` | `custom_op_payload_reserved_zero` (`0x1dd46e2` region) | CERTAIN |
 
-> **CORRECTION (AC03-C2) —** the payload reserved-zero is `[0x0C..0x0E]` (3 bytes), **not** `[0x0C..0x0F]`. `byte[0x0F]` is the constant `0x01` "payload-present / has-AP" marker ([11.5](customop-wire-layout.md)), deliberately excluded from the `0x00FFFFFF` mask. Bytes `[0x10..0x3F]` are the ADDR4 access pattern (tensor base address + per-dimension steps) and are **not** zero-checked — they are live.
+> **GOTCHA — the payload reserved-zero is `[0x0C..0x0E]`, three bytes, not four.** `byte[0x0F]` is the constant `0x01` "payload-present / has-AP" marker ([11.5](customop-wire-layout.md)), deliberately excluded from the `0x00FFFFFF` mask. Bytes `[0x10..0x3F]` are the ADDR4 access pattern (tensor base address + per-dimension steps) — live data, not zero-checked.
 
 > **QUIRK —** the header and payload reserved regions are *complementary*. The header populates `[0x0C..0x0F]` (counts + FnId) and therefore zero-checks the tail; the payload populates the tail (the AP) and therefore zero-checks `[0x0C..0x0E]`. Same opcode/tag/events front-end, mask shifted to whichever bytes each record type leaves untouched. There is **no** second sub-opcode inside the payload body — the payload's identity is entirely `byte[0]==0x86` plus its positional rule (first `0x86` after a `0x85` is the output AP; the rest are args).
 
-> **CORRECTION (AC03-C3) —** `is_valid_custom_op_payload` has **no** standalone symbol in cp310; it is inlined into the per-opcode validity dispatch. The dbg twin at `0x129c610` is the authoritative source for its predicate — it preserves the opcode/reserved checks 1:1 and adds the reason-string build. (The header keeps both forms; the payload non-dbg form exists only as inlined code.)
+> **NOTE — `is_valid_custom_op_payload` has no standalone symbol in cp310.** It is inlined into the per-opcode validity dispatch, so the dbg twin at `0x129c610` is the authoritative source for its predicate: it preserves the opcode/reserved checks 1:1 and adds the reason-string build. The header validator keeps both forms; the payload's non-dbg form exists only as inlined code.
 
 ---
 
@@ -196,7 +196,7 @@ In the dbg twin the gate is literally `(v28.m128i_i32[3] & 0xFFFFFF) == 0`, wher
 
 A tri-part field in the `0x85` header that the validator (predicate 5) treats as a unit: `{byte[0x10], dword[0x18], byte[0x1C]}`. The validator's non-empty test masks `qword[0x10] & 0xFFFFFFFF000000FF` (= `byte[0x10]` + `dword[0x14..0x17]`) `| qword[0x18] & 0xFFFFFFFFFF` (= low 5 bytes of `[0x18]`); if non-empty, all three of `byte[0x10]` / `dword[0x18]` / `byte[0x1C]` must be nonzero. Semantically the field is the wire slot for the SBUF scratch space a custom op reserves on the CPU side; the gate forbids a half-filled `{addr, size, valid-flag}` triple.
 
-> **QUIRK —** in *this* build's `GENERATE_ISACODE` emission, the encoder `CoreV2GenImpl::visitInstCustomOp` (`0x12613c0`) writes `byte[0x10] = 0` (decompile line 827: `*((_BYTE*)v119 + 16) = 0`) and zero-fills `[0x11..0x3F]`. It never populates the scratch triple, so the validator's **all-zero branch is always taken** — the emitted custom-op headers carry no scratch descriptor. The non-zero branch is a validated-for-but-not-emitted wire-format slot for a future/optional reservation. (Byte-store CONFIRMED; "slot reserved but unpopulated by this encoder" STRONG.)
+> **QUIRK —** in *this* build's `GENERATE_ISACODE` emission, the encoder `CoreV2GenImpl::visitInstCustomOp` (`0x12613c0`) writes `byte[0x10] = 0` (decompile line 827: `*((_BYTE*)v119 + 16) = 0`) and zero-fills `[0x11..0x3F]`. It never populates the scratch triple, so the validator's **all-zero branch is always taken** — the emitted custom-op headers carry no scratch descriptor. [INFERRED] The non-zero branch reads as a validated-for-but-not-emitted wire-format slot held for a future or optional reservation; the byte store itself is read directly from the encoder.
 
 ### The SB-scratchpad bookkeeping (IR level)
 
@@ -215,7 +215,7 @@ bool isCCHavingSBScratchPad(Instruction const& I):   // libBIR 0x312700
 
 A custom op "has an SB scratchpad" iff it carries exactly `(n_args + n_outputs + 2)` scratch `MemoryLocation`s. The `+2` mirrors the wire-format `num_payloads = n_args + 2` ([11.5](customop-wire-layout.md): header + output + N args): one SB buffer per wire record. The third list (`@I+0xC8`) is the per-op scratch-buffer set; `bir::MemoryLocation::isCustomOpRelated()` tags each such location as custom-op scratch.
 
-> **NOTE —** the SB scratch is materialized as `MemoryLocation`s (allocated by the SB allocator), **not** as a numeric size in the `0x85` header. The header's `scratch_space_val` slot is the wire encoding of that reservation when the runtime needs an explicit handle; in this build the scratch is conveyed structurally (the extra scratch `MemoryLocation`s) and the header field stays zero. (STRONG — the IR count gate is CONFIRMED in the `0x312700` body; the wire-vs-structural mapping is inference.)
+> **NOTE —** the SB scratch is materialized as `MemoryLocation`s (allocated by the SB allocator), **not** as a numeric size in the `0x85` header. The header's `scratch_space_val` slot is the wire encoding of that reservation when the runtime needs an explicit handle; in this build the scratch is conveyed structurally (the extra scratch `MemoryLocation`s) and the header field stays zero. The IR count gate is read from the `0x312700` body; [INFERRED] the wire-versus-structural mapping.
 
 ### Reserved-zero and the opcode names, recapped
 
@@ -236,7 +236,7 @@ The "payload_opcode" is the same `byte[0]` slot as the header opcode, distinguis
 
 The custom-op host ↔ CPU synchronization is the generic BIR semaphore machinery (`neuronxcc::backend::AllocSemaphores`, the `alloc_semaphores` pass), applied to the `InstCustomOp` like any other instruction. It installs a `Wait` (block until inputs are ready) and an `Update` (signal on completion) into the instruction's SyncInfo; those land in the bundle's `[0x04..0x07]` overlay that `has_valid_neuron_events` checks. The handshake primitive it builds is a **1:1 producer-update → consumer-wait** pairing on one semaphore id.
 
-> **CORRECTION (AC03-C4) —** there is **no** `CUSTOM_OP`-templated sync symbol. The task's `setupSyncWait<CUSTOM_OP_*>` / `setupSyncUpdate<CUSTOM_OP_*>` map onto the generic `sub_1122190`/`sub_1123520` (Wait) and `sub_1123A30` (Update) operating on the custom op's `SyncInfo`. The `<…STRUCT>` is the generic `SyncInfo`/`Wait`/`Update` applied to the custom-op instruction, not a specialized template.
+> **GOTCHA — there is no `CUSTOM_OP`-templated sync symbol.** Anything written as `setupSyncWait<CUSTOM_OP_*>` / `setupSyncUpdate<CUSTOM_OP_*>` maps onto the generic `sub_1122190`/`sub_1123520` (Wait) and `sub_1123A30` (Update) operating on the custom op's `SyncInfo`. It is the generic `SyncInfo`/`Wait`/`Update` machinery applied to a custom-op instruction, not a specialized template instantiation.
 
 ### The SyncInfo object
 
@@ -245,7 +245,7 @@ SyncInfo& getSyncInfo():   // libBIR 0x2d7dd0
     return *(this + 0xD0) + 0x9F0;   // *((_QWORD*)this + 26) + 2544
 ```
 
-`SyncInfo` lives at `(Inst → InstructionImpl @Inst+0xD0) + 0x9F0`. Its layout (CONFIRMED from `addSyncWait` `0x112bdf0` + `sub_1122190`):
+`SyncInfo` lives at `(Inst → InstructionImpl @Inst+0xD0) + 0x9F0`. Its layout, read from `addSyncWait` `0x112bdf0` + `sub_1122190`:
 
 | Offset (from SyncInfo) | Field |
 |---|---|
@@ -311,7 +311,7 @@ assert(getLocalSemaphore(SI.OnUpdate) == semaphore,                       // :17
 
 ### Semaphore id allocation
 
-`allocateSemaphore(bool fromTop)` (`0x1121480`) hands out a fresh HW semaphore id from a finite pool — either the bottom counter (`AllocSemaphores+0x28`, `++`) or the top (`+0x2C`, `--`) — asserting `currSemaphore < currSemaIDFromUpperBound < HwmCore->NumSemaphores` (`alloc_semaphores.cpp:256`; `HwmCore->NumSemaphores` @ `HwmCore+0x34`). The host ↔ CPU handshake semaphores come from the **same** finite HW pool as every other engine sync; the custom-op completion semaphore is one allocated id, written into the header's update event bytes `[0x06..0x07]` and waited-on by the consumer's `[0x04..0x05]`. (STRONG — the bytes are the SyncInfo overlay of §events; the exact id is the `allocateSemaphore` output.)
+`allocateSemaphore(bool fromTop)` (`0x1121480`) hands out a fresh HW semaphore id from a finite pool — either the bottom counter (`AllocSemaphores+0x28`, `++`) or the top (`+0x2C`, `--`) — asserting `currSemaphore < currSemaIDFromUpperBound < HwmCore->NumSemaphores` (`alloc_semaphores.cpp:256`; `HwmCore->NumSemaphores` @ `HwmCore+0x34`). The host ↔ CPU handshake semaphores come from the **same** finite HW pool as every other engine sync; the custom-op completion semaphore is one allocated id, written into the header's update event bytes `[0x06..0x07]` and waited-on by the consumer's `[0x04..0x05]`. Those bytes are the SyncInfo overlay described under events; the concrete id is whatever `allocateSemaphore` returns.
 
 ### Function map
 
@@ -370,27 +370,27 @@ RUN-TIME (the TPB engine + 8 GPSIMD/Xtensa cores):
       observes that semaphore and proceeds.
 ```
 
-> **NOTE —** the handshake in one line: host engine `Wait` (header `[0x04..05]`) ← input-DMA `Update`; GPSIMD-CPU compute; result-DMA `Update` → header `[0x06..07]` → consumer `Wait`. For a multi-core (LNC) custom op the cross-core `Update`s are remote (`targetCore` set) and the VNC link ([8.34](../walrus/vnc-cross-core-link.md)) relinks them to the peer core's concrete semaphore id — the same `Wait`/`Update` primitive, cross-core. The wire fields, sync structs, and validator gates are all CONFIRMED; the `(R3)` runtime launch immediates are Xtensa-side and not in `libwalrus` (INFERRED).
+> **NOTE —** the handshake in one line: host engine `Wait` (header `[0x04..05]`) ← input-DMA `Update`; GPSIMD-CPU compute; result-DMA `Update` → header `[0x06..07]` → consumer `Wait`. For a multi-core (LNC) custom op the cross-core `Update`s are remote (`targetCore` set) and the VNC link ([8.34](../walrus/vnc-cross-core-link.md)) relinks them to the peer core's concrete semaphore id — the same `Wait`/`Update` primitive, cross-core. The wire fields, sync structs, and validator gates are all read from `libwalrus`; [INFERRED] the `(R3)` runtime launch immediates, which are Xtensa-side and absent from this binary.
 
 ---
 
 ## Confidence ledger
 
-| Claim | Evidence | Tag |
+| Claim | Evidence | Confidence |
 |---|---|---|
-| Binary identity (sha1 `4531c8f2…`, 64,973,024 B) | `sha1sum` of the cp310 `libwalrus.so` | CONFIRMED |
-| Header validator full predicate @ `0x129b940` | `objdump -d` + IDA decompile (masks `0xFFFFFF00`, qword-OR, scratch masks) | CONFIRMED |
-| Payload predicate @ `0x129c610` (opcode `0x86`, `dword[0x0C]&0xFFFFFF==0`) | IDA decompile (`v10==-122`, `v28.i32[3]&0xFFFFFF`) | CONFIRMED |
-| Five field-name strings | `.rodata` `0x1dd4640..0x1dd4700` verbatim | CONFIRMED |
-| `has_valid_neuron_events` reads `byte[4]`/`byte[6]` | `objdump` (`movzbl 0x74/0x76(%rsp)`, `is_valid_enum`, `cmp 0xff`) | CONFIRMED |
-| Encoder writes `byte[0x10]=0` | `visitInstCustomOp` decompile line 827 | CONFIRMED |
-| `isCCHavingSBScratchPad` count gate `(n_args+2+n_outputs)==n_scratch` | `libBIR 0x312700` body (kind `0x30`, subkind `{2,3}`) | CONFIRMED |
-| `checkCustomOp`: ≤1 output, SBUF\|HBM, `Arch ∈ {Sunda,Tonga}` | `0xfdbf90` decompile (assert strings) | CONFIRMED |
-| `getSyncInfo` = `*(I+0xD0)+0x9F0`; Wait stride 40, Update stride 32 | `libBIR 0x2d7dd0` + `addSyncWait`/`sub_1122190` | CONFIRMED |
-| `setupSync` body, asserts :171/:172/:207/:214/:256 | `0x1123ec0`/`sub_1122190` decompile (verbatim strings) | CONFIRMED |
-| Scratch tri-field is a future/optional slot, unpopulated this build | byte-store CONFIRMED; semantic role | STRONG |
-| `Arch` enum values Sunda=20 / Tonga=10 | from D-AC03; not located in the enums sidecar | STRONG |
-| `(R3)` runtime launch / window-DMA immediates | Xtensa-side, outside `libwalrus` | INFERRED |
+| Binary identity (sha1 `4531c8f2…`, 64,973,024 B) | `sha1sum` of the cp310 `libwalrus.so` | CERTAIN |
+| Header validator full predicate @ `0x129b940` | `objdump -d` + IDA decompile (masks `0xFFFFFF00`, qword-OR, scratch masks) | CERTAIN |
+| Payload predicate @ `0x129c610` (opcode `0x86`, `dword[0x0C]&0xFFFFFF==0`) | IDA decompile (`v10==-122`, `v28.i32[3]&0xFFFFFF`) | CERTAIN |
+| Five field-name strings | `.rodata` `0x1dd4640..0x1dd4700` verbatim | CERTAIN |
+| `has_valid_neuron_events` reads `byte[4]`/`byte[6]` | `objdump` (`movzbl 0x74/0x76(%rsp)`, `is_valid_enum`, `cmp 0xff`) | CERTAIN |
+| Encoder writes `byte[0x10]=0` | `visitInstCustomOp` decompile line 827 | CERTAIN |
+| `isCCHavingSBScratchPad` count gate `(n_args+2+n_outputs)==n_scratch` | `libBIR 0x312700` body (kind `0x30`, subkind `{2,3}`) | CERTAIN |
+| `checkCustomOp`: ≤1 output, SBUF\|HBM, `Arch ∈ {Sunda,Tonga}` | `0xfdbf90` decompile (assert strings) | CERTAIN |
+| `getSyncInfo` = `*(I+0xD0)+0x9F0`; Wait stride 40, Update stride 32 | `libBIR 0x2d7dd0` + `addSyncWait`/`sub_1122190` | CERTAIN |
+| `setupSync` body, asserts :171/:172/:207/:214/:256 | `0x1123ec0`/`sub_1122190` decompile (verbatim strings) | CERTAIN |
+| Scratch tri-field is a future/optional slot, unpopulated this build | the byte store is exact; the semantic role is read from context | HIGH |
+| `Arch` enum values Sunda=20 / Tonga=10 | not located in the enums sidecar | HIGH |
+| `(R3)` runtime launch / window-DMA immediates | Xtensa-side, outside `libwalrus` | MEDIUM |
 
 > **NOTE —** the `core_v2` validators have `core_v3` and `core_v4` siblings (`is_valid_enum` @ `0x13696f0`/`0x143f910`, `has_valid_neuron_events` @ `0x136e390`/`0x14459b0`) for later hardware generations, plus a `dbg_has_valid_neuron_events_extended` form. This page documents the `core_v2` (Tonga/Sunda) path that the `0x85`/`0x86` custom-op encoder targets; the other generations' validators are structurally parallel but were not traced here.
 

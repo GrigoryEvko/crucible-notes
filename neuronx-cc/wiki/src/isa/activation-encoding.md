@@ -106,7 +106,7 @@ function CoreV2_visitInstActivation(this, inst):              // 0x12596f0
     fwrite(bundle, 1, 0x40, findBin(this, inst))
 ```
 
-> **CORRECTION (ACT-ENC-01) —** earlier notes labelled the second-immediate gate as reading "`bundle[+0x23] accum`". Decompilation of `0x12596f0` (line 563) shows the gate reads `*(bundle+0x23)`, which is the byte **just written as the activation-function code** (line 461, `sub_1203820`), **not** the accumulator command (which lives at `+0x0E`). The `imm1` second-operand path is selected by the *func* code (`func == 4`, or the `±0x80` saturate forms), not by `accum`. This matches the engine's affine/dual-immediate function variants.
+> **GOTCHA — the second-immediate gate reads the *func* code, not the accumulator.** At `0x12596f0` (line 563) the gate reads `*(bundle+0x23)`, which is the byte written moments earlier as the activation-function code (line 461, `sub_1203820`). The accumulator command lives at `+0x0E` and plays no part. So the `imm1` second-operand path is selected by `func == 4` or by the `±0x80` saturate forms — matching the engine's affine/dual-immediate function variants.
 
 ### Field Map — `s3d3_ac_struct` (bundle `v19`)
 
@@ -114,17 +114,17 @@ All rows are clean `*(bundle+N) = …` stores in the GENERATE arm of `0x12596f0`
 
 | Offset | Width | Field (ISA / `d3_ac_`) | Source / encoder | Confidence |
 |---|---|---|---|---|
-| `0x00` | 1 | `opcode` = `0x21` | `setupHeader(this,bundle,&33)`, vtbl+72 | CONFIRMED |
-| `0x0C` | 1 | `imm1` mem-pattern ctrl (s3d3 AP byte) | `sub_12051E0(arg3,&bundle[0x0C])` — only when `func==4`; else `=1` | CONFIRMED |
-| `0x0D` | 1 | `imm0` mem-pattern ctrl (s3d3 AP byte) | `sub_12051E0(getImm0,&bundle[0x0D])` | CONFIRMED |
-| `0x0E` | 1 | `accumulator_cmd` (`EngineAccumulationType` wire) | `sub_12038D0(inst[+0x124])`; default `3` when BIR field `==0` | CONFIRMED |
-| `0x0F` | 1 | `imm0_src` (`0`=mem-ptr, `1`=inline float, `2`=register) | trinary on immediate-pointer kind | CONFIRMED |
-| `0x20` | 1 | `in_dtype` (bits `[3:0]`) ∣ `imm_dtype` (bits `[7:4]`) | `sub_120E650(in.dtype)` ∣ `16·sub_120E650(imm.dtype)` | CONFIRMED |
-| `0x21` | 1 | `out_dtype` | `sub_120E650(output0.dtype@+48)` | CONFIRMED |
-| `0x22` | 1 | `num_active_channels` (`d3_ac_channel_check`) | `in_ap[+0x50]→[+8]`, guarded by `in_ap[+0x58]!=0` | CONFIRMED |
-| `0x23` | 1 | `activation_func` code | `sub_1203820(inst[+0x120])` | CONFIRMED |
-| `0x28` | 4 | `imm0` value / reg-id / SB-PSUM slot (union, by `imm0_src`) | slot resolver / `getValue<float>` / `getRegId` | CONFIRMED |
-| `0x2C` | 4 | `imm1` value (only if `func==4`; else `0`) | `sub_12051E0` imm-resolver on `arg3` | CONFIRMED |
+| `0x00` | 1 | `opcode` = `0x21` | `setupHeader(this,bundle,&33)`, vtbl+72 | CERTAIN |
+| `0x0C` | 1 | `imm1` mem-pattern ctrl (s3d3 AP byte) | `sub_12051E0(arg3,&bundle[0x0C])` — only when `func==4`; else `=1` | CERTAIN |
+| `0x0D` | 1 | `imm0` mem-pattern ctrl (s3d3 AP byte) | `sub_12051E0(getImm0,&bundle[0x0D])` | CERTAIN |
+| `0x0E` | 1 | `accumulator_cmd` (`EngineAccumulationType` wire) | `sub_12038D0(inst[+0x124])`; default `3` when BIR field `==0` | CERTAIN |
+| `0x0F` | 1 | `imm0_src` (`0`=mem-ptr, `1`=inline float, `2`=register) | trinary on immediate-pointer kind | CERTAIN |
+| `0x20` | 1 | `in_dtype` (bits `[3:0]`) ∣ `imm_dtype` (bits `[7:4]`) | `sub_120E650(in.dtype)` ∣ `16·sub_120E650(imm.dtype)` | CERTAIN |
+| `0x21` | 1 | `out_dtype` | `sub_120E650(output0.dtype@+48)` | CERTAIN |
+| `0x22` | 1 | `num_active_channels` (`d3_ac_channel_check`) | `in_ap[+0x50]→[+8]`, guarded by `in_ap[+0x58]!=0` | CERTAIN |
+| `0x23` | 1 | `activation_func` code | `sub_1203820(inst[+0x120])` | CERTAIN |
+| `0x28` | 4 | `imm0` value / reg-id / SB-PSUM slot (union, by `imm0_src`) | slot resolver / `getValue<float>` / `getRegId` | CERTAIN |
+| `0x2C` | 4 | `imm1` value (only if `func==4`; else `0`) | `sub_12051E0` imm-resolver on `arg3` | CERTAIN |
 
 Bytes `+0x01..+0x0B`, `+0x10..+0x1F`, `+0x24..+0x27`, `+0x30..+0x3F` are never touched by the encoder; they stay zero from the `emplace_back` zero-fill and are checked by the `d3_ac_reserved_zero` validator.
 
@@ -142,10 +142,10 @@ The immediate-pointer kind tag (`imm[+0x18].i32` in the decompile) drives `imm0_
 
 | Kind tag | `imm0_src` (`+0x0F`) | `imm0` (`+0x28`) | Guard string | Confidence |
 |---|---|---|---|---|
-| `1` (SB/PSUM ptr) | `0` | SB/PSUM slot dword (`this+76` resolver, slot+32) | "ISA immediate pointer should only be SB/PSUM accesses" | CONFIRMED |
-| `3` (Register AP) | `2` | `Register::getRegId(reg@+232)` | "offset register cannot be applied to register immediate in ISA" | CONFIRMED |
-| `ImmediateValue` | `1` | `getValue<float>()` (written as a 4-byte float) | — | CONFIRMED |
-| other | — | reportError "contains wrong argument type" | — | CONFIRMED |
+| `1` (SB/PSUM ptr) | `0` | SB/PSUM slot dword (`this+76` resolver, slot+32) | "ISA immediate pointer should only be SB/PSUM accesses" | CERTAIN |
+| `3` (Register AP) | `2` | `Register::getRegId(reg@+232)` | "offset register cannot be applied to register immediate in ISA" | CERTAIN |
+| `ImmediateValue` | `1` | `getValue<float>()` (written as a 4-byte float) | — | CERTAIN |
+| other | — | reportError "contains wrong argument type" | — | CERTAIN |
 
 > **GOTCHA —** the `0x21` encoder and the `0x24` accumulator-drain encoder are the *same* C++ method (`0x12596f0`). A reimplementation that maps one BIR `InstActivation` to exactly one wire instruction is wrong: when the instruction carries **two** outputs, the encoder additionally records opcode `0x24` (the fused HW-accumulator drain) — and on `arch ≥ core_v5` (`*((int*)this+150) > 49`) that two-output form is rejected with "ActivationReadAccumulator not supported in core_v5" (`CoreV2GenImpl.cpp:1426`).
 
@@ -198,7 +198,7 @@ function CoreV4_visitInstActivation(this, inst):              // 0x143bbb0
         bundle[0x3C] = 2 * inst[+0x180]                       // normal arm (2*reverse1)
 ```
 
-> **CORRECTION (ACT-ENC-02) —** the gen-4 header word stamped at `+0x00` is `0x1025` (decimal `4133` in the decompile: low byte `0x25` = opcode 37, high byte `0x10` = header), not `0x4133`. Verified directly: `*(uint16*)v25 = 4133` at `0x143bbb0` line 258.
+> **GOTCHA — the gen-4 header word is `0x1025`, and the decompile shows it in decimal.** `*(uint16*)v25 = 4133` at `0x143bbb0` line 258 is the little-endian word `0x1025`: low byte `0x25` = opcode 37, high byte `0x10` = the header length. Reading the decimal `4133` as hex gives the wrong word.
 
 ### Field Map — `s2d2_ac_struct` (bundle `v25`)
 
@@ -206,20 +206,20 @@ All rows are clean `bundle[N] = …` byte stores in the GENERATE arm of `0x143bb
 
 | Offset | Width | Field (`s2d2_ac_struct`) | Source / encoder | Confidence |
 |---|---|---|---|---|
-| `0x00` | 2 | `opcode` word `0x1025` (opcode `0x25` + header `0x10`) | `setupHeader` / `*(uint16*)v25=4133` | CONFIRMED |
-| `0x18` | 1 | `imm1` / arg3 AP byte (`s2d2_ac_ts` op) | `sub_142E370(arg3,&v25[0x18])` | CONFIRMED |
-| `0x19` | 1 | `imm0` / arg1 AP byte | `sub_142E370(arg1,&v25[0x19])` | CONFIRMED |
-| `0x1A` | 1 | `accumulator_cmd` / `reduce_cmd` | `sub_1434C50(sub_142DF40(inst[+0x124]))` | CONFIRMED |
-| `0x1B` | 1 | arg2 AP byte (op variant) | `sub_142E370(arg2,&v25[0x1B])` | CONFIRMED |
-| `0x1C` | 1 | `imm_dtype` (per-arg, **last-wins** = arg3) | `sub_14347C0(arg{1,2,3}.dtype)` ×3 | CONFIRMED |
-| `0x1D` | 1 | `op0` (pre ALU op) | `sub_142E030(inst[+0x150])` | CONFIRMED |
-| `0x1E` | 1 | `op1` (post ALU op) | `sub_142E030(inst[+0x154])` | CONFIRMED |
-| `0x1F` | 1 | `reduce_op` | `sub_142E030(inst[+0x1A8])` | CONFIRMED |
-| `0x20` | 1 | `in_dtype` (arg0) | `sub_14347C0(arg0.dtype@+48)` | CONFIRMED |
-| `0x21` | 1 | `out_dtype` | `sub_14347C0(output0.dtype@+48)` | CONFIRMED |
-| `0x22` | 1 | `num_active_channels` (in then out; **out wins**) | `AP.firstAPPair.num` (`AP[+0x50]→[+8]`) | CONFIRMED |
-| `0x23` | 1 | `activation_func` | `sub_142E2C0(inst[+0x120])` | CONFIRMED |
-| `0x3C` | 1 | saturate / reverse control | `reverse0`(`+0x158`)/`reverse1`(`+0x180`) — see below | CONFIRMED |
+| `0x00` | 2 | `opcode` word `0x1025` (opcode `0x25` + header `0x10`) | `setupHeader` / `*(uint16*)v25=4133` | CERTAIN |
+| `0x18` | 1 | `imm1` / arg3 AP byte (`s2d2_ac_ts` op) | `sub_142E370(arg3,&v25[0x18])` | CERTAIN |
+| `0x19` | 1 | `imm0` / arg1 AP byte | `sub_142E370(arg1,&v25[0x19])` | CERTAIN |
+| `0x1A` | 1 | `accumulator_cmd` / `reduce_cmd` | `sub_1434C50(sub_142DF40(inst[+0x124]))` | CERTAIN |
+| `0x1B` | 1 | arg2 AP byte (op variant) | `sub_142E370(arg2,&v25[0x1B])` | CERTAIN |
+| `0x1C` | 1 | `imm_dtype` (per-arg, **last-wins** = arg3) | `sub_14347C0(arg{1,2,3}.dtype)` ×3 | CERTAIN |
+| `0x1D` | 1 | `op0` (pre ALU op) | `sub_142E030(inst[+0x150])` | CERTAIN |
+| `0x1E` | 1 | `op1` (post ALU op) | `sub_142E030(inst[+0x154])` | CERTAIN |
+| `0x1F` | 1 | `reduce_op` | `sub_142E030(inst[+0x1A8])` | CERTAIN |
+| `0x20` | 1 | `in_dtype` (arg0) | `sub_14347C0(arg0.dtype@+48)` | CERTAIN |
+| `0x21` | 1 | `out_dtype` | `sub_14347C0(output0.dtype@+48)` | CERTAIN |
+| `0x22` | 1 | `num_active_channels` (in then out; **out wins**) | `AP.firstAPPair.num` (`AP[+0x50]→[+8]`) | CERTAIN |
+| `0x23` | 1 | `activation_func` | `sub_142E2C0(inst[+0x120])` | CERTAIN |
+| `0x3C` | 1 | saturate / reverse control | `reverse0`(`+0x158`)/`reverse1`(`+0x180`) — see below | CERTAIN |
 
 In/out `MEM_PATTERN2D` descriptors are placed by two `assignAccess<NEURON_ISA_TPB_MEM_PATTERN2D>` calls (in band low, out band at `+0x30`).
 
@@ -268,8 +268,8 @@ function CoreV2_visitInstLoadActFuncSet(this, inst):          // 0x1250b30
 
 | Offset | Width | Field | Source / encoder | Confidence |
 |---|---|---|---|---|
-| `0x00` | 1 | `opcode` = `0x23` | `setupHeader(this,bundle,&35)` | CONFIRMED |
-| `0x23` | 1 | `act_tbl_sel` (= `act_func_set_id` index) | `sub_124E710(&bundle[0x23], "instr.act_tbl_sel", inst[+0xF0])`, range-checked int→byte | CONFIRMED |
+| `0x00` | 1 | `opcode` = `0x23` | `setupHeader(this,bundle,&35)` | CERTAIN |
+| `0x23` | 1 | `act_tbl_sel` (= `act_func_set_id` index) | `sub_124E710(&bundle[0x23], "instr.act_tbl_sel", inst[+0xF0])`, range-checked int→byte | CERTAIN |
 
 > **NOTE — `+0x23` is one silicon byte with two roles.** `LoadActFuncSet` writes a table-**set index** to `+0x23`; the subsequent `Activation`/`Activation2` reads an activation-function **code** at the same `+0x23`. They are the two roles of the engine's act-func ROM-addressing knob: the load installs which set is resident, the activate selects which function within it. The `act_func_set_id` source `inst+0xF0` and the bundle byte `+0x23` exactly match the [Activation Engine](../arch/activation-engine.md) page's `inst+0xF0 → +0x23` framing. The range-check validators in `.rodata` are `valid_act_tbl_sel` / `zero_act_tbl_sel`.
 
@@ -304,11 +304,11 @@ function CoreV2_visitInstActivationReadAccumulator(this, inst):   // 0x1234f70
 
 | Offset | Width | Field (`d1_rd_struct`) | Source / encoder | Confidence |
 |---|---|---|---|---|
-| `0x00` | 1 | `opcode` = `0x24` | `setupHeader(this,bundle,&36)` | CONFIRMED |
-| `0x1C` | 4 | `dst_element_count` (`read_accumulator_dst_size`) | `getNumElementsPerPartition()` (RUN arm range-checks via `sub_1250E50`) | CONFIRMED |
-| `0x20` | 1 | `dtype` (`read_accumulator_type_check`) | `sub_120E650(output0.dtype@+48)` | CONFIRMED |
-| `0x21` | 1 | `negated` / `reserved_zero` (`read_accumulator_has_zero_negated`) | `= 0` (the twin @`0x125b830` relies on zero-fill) | CONFIRMED |
-| `0x22` | 1 | `num_active_channels` | `out_ap[+0x50]→[+8]` (same accessor as `0x21`/`0x25`) | CONFIRMED |
+| `0x00` | 1 | `opcode` = `0x24` | `setupHeader(this,bundle,&36)` | CERTAIN |
+| `0x1C` | 4 | `dst_element_count` (`read_accumulator_dst_size`) | `getNumElementsPerPartition()` (RUN arm range-checks via `sub_1250E50`) | CERTAIN |
+| `0x20` | 1 | `dtype` (`read_accumulator_type_check`) | `sub_120E650(output0.dtype@+48)` | CERTAIN |
+| `0x21` | 1 | `negated` / `reserved_zero` (`read_accumulator_has_zero_negated`) | `= 0` (the twin @`0x125b830` relies on zero-fill) | CERTAIN |
+| `0x22` | 1 | `num_active_channels` | `out_ap[+0x50]→[+8]` (same accessor as `0x21`/`0x25`) | CERTAIN |
 
 The RUN-ISA arm asserts the one-dimensionality of the drain: "ACTIVATION_READ_ACCUMULATOR doesn't support TensorIndirect AP since ISA only has one dimensional AP", "ScalarEng read accum instr dst element count must be 1", and "ScalarEng read accum dst_mem_pattern.num_elem[0] must be 1" (the twin uses "Scalar Engine read accumulator dst_element_count must be 1" / "… dst_mem_pattern.num_elem[0] must be 1"). The only encode-time delta between the twins is that `0x1234f70` explicitly stores `bundle[0x21]=0` while `0x125b830` relies on zero-fill.
 
@@ -327,7 +327,7 @@ Each BIR enum is remapped to a wire byte through a small `.rodata` table or a `s
 | **V2** (`byte_1DF5760`, `sub_120E650`) | 3 | 2 | 5 | 13 | 14 | 14 | 3 | 15 | 14 | 15 | 5 | 4 | 6 | 7 | 9 | 8 | 10 | 11 | 1 | 12 |
 | **V4** (`byte_1DFBAD0`, `sub_14347C0`) | 3 | 2 | **16** | 13 | 14 | 14 | 3 | 15 | 14 | 15 | 5 | 4 | 6 | 7 | 9 | 8 | 10 | 11 | 1 | 12 |
 
-The only delta is index `2` (V4 = 16 vs V2 = 5) — gen-4 relabelled that dtype. **CONFIRMED** (table bytes read from `.rodata`).
+The only delta is index `2` (V4 = 16 vs V2 = 5) — gen-4 relabelled that dtype. Both tables' bytes are read from `.rodata`.
 
 ### ActivationFunc map
 
@@ -337,7 +337,7 @@ The only delta is index `2` (V4 = 16 vs V2 = 5) — gen-4 relabelled that dtype.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **Wire** | 1 | 30 | 2 | 3 | 4 | 5 | 6 | 7 | 9 | 8 | 29 | 10 | 21 | 19 | 28 | 31 | 23 | 24 | 25 | 26 | 38 | 32 | 22 | 128 | 33 | 129 | 34 | 36 | 37 | 35 |
 
-**CONFIRMED** (both tables read from `.rodata`; identical). Note the wire values `128`/`129` (signed `-128`/`-127`) at indices 23/25 — these are the saturate-form func codes the `0x21` second-immediate gate keys on (`(uint8)(func+0x80) <= 1`).
+Both tables are read from `.rodata` and are identical. Note the wire values `128`/`129` (signed `-128`/`-127`) at indices 23/25 — these are the saturate-form func codes the `0x21` second-immediate gate keys on (`(uint8)(func+0x80) <= 1`).
 
 ### EngineAccumulationType map
 
@@ -345,12 +345,12 @@ The only delta is index `2` (V4 = 16 vs V2 = 5) — gen-4 relabelled that dtype.
 
 | BIR `EngineAccumulationType` | Wire value | Confidence |
 |---|---|---|
-| `0` (Idle) | `0` | CONFIRMED |
-| `1` (ZeroAccumulate) | `1` | CONFIRMED |
-| `3` (LoadAccumulate) | `3` | CONFIRMED |
-| `4` | `2` | CONFIRMED |
-| `5` | `4` | CONFIRMED |
-| `2` (Accumulate) / other | reportError "Invalid enum variant for enum EngineAccumulationType" (unreachable) | CONFIRMED |
+| `0` (Idle) | `0` | CERTAIN |
+| `1` (ZeroAccumulate) | `1` | CERTAIN |
+| `3` (LoadAccumulate) | `3` | CERTAIN |
+| `4` | `2` | CERTAIN |
+| `5` | `4` | CERTAIN |
+| `2` (Accumulate) / other | reportError "Invalid enum variant for enum EngineAccumulationType" (unreachable) | CERTAIN |
 
 At the `0x21` call site, a BIR value of `0` (Idle) is substituted with wire `3` before the map (the GENERATE arm's `acc==0 ? 3 : …`). The `exponential_info` pybind documents the imm1 rule this couples to: under `LoadAccumulate`, `imm1` may be any valid immediate source; under `ZeroAccumulate`/`Idle`/`Accumulate`, `imm1_src` must be `InstructionImmediate` and `imm1` must be `0`.
 
@@ -362,7 +362,7 @@ At the `0x21` call site, a BIR value of `0` (Idle) is substituted with wire `3` 
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | **Out** | 24 | 19 | 20 | 22 | 21 | 26 | 27 | 29 | 25 | 32 | 33 | error (`-56`) |
 
-The notable swaps are `19↔24`, `23↔21`, `28↔29`, `29↔25`. **CONFIRMED** (decompiled `switch`).
+The notable swaps are `19↔24`, `23↔21`, `28↔29`, `29↔25`, all read from the decompiled `switch`.
 
 ---
 
