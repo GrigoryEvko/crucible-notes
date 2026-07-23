@@ -8,7 +8,7 @@ This is the **synthesis page** for [Part 2](../). The preceding eight pages each
 
 The "`NEURON_ISA_TPB` struct family" is **not one fixed struct**. It is a **64-byte (16-dword) instruction bundle** whose 4-byte header word is the *only* universal field, and whose remaining 60 bytes are an **op-specific discriminated union** (`NEURON_ISA_TPB_INST_UNION`). The union **discriminant is the opcode byte** at `raw[0]`. Descriptor *slots* inside the body land at one of **three family-fixed offset sets** (A/B/C), chosen by descriptor width and operand count — never freely per op. Every descriptor slot opens with an `ADDR4` word and follows the 4+4N rule; SRC operands carry the `TENSOR*` wire type, DST operands the byte-identical `MEM_PATTERN*` wire type (the distinction is *role*, not bytes).
 
-The header is the union of the byte-verified facts from all eight sub-pages; the details most often misread across them are collected in §[Points that are easy to get wrong](#points-that-are-easy-to-get-wrong). Each struct and field carries an inline confidence tag. The spine — the 64-byte bundle, the three families, the 8/12/16/20-byte descriptor sizes, the role fork, the dtype enum — is pinned in both directions: encoder writes and decoder reads agree byte-exact, and the `.rodata` size asserts and recovered type names are read directly from `libwalrus.so`.
+The header is the union of the byte-verified facts from all eight sub-pages; the details most often misread across them are collected in §[Points that are easy to get wrong](#points-that-are-easy-to-get-wrong). Each struct and field carries an inline citation to the sub-page that verified it. The spine — the 64-byte bundle, the three families, the 8/12/16/20-byte descriptor sizes, the role fork, the dtype enum — is pinned in both directions: encoder writes and decoder reads agree byte-exact, and the `.rodata` size asserts and recovered type names are read directly from `libwalrus.so`.
 
 ## At a glance — the struct roster
 
@@ -49,9 +49,9 @@ This is the centerpiece. It is self-contained, `gcc -fsyntax-only`-clean, and in
  * The 60-byte body is an op-specific union; the opcode byte @+0 (raw[0]) is the
  * union discriminant. Three descriptor-slot families (A/B/C) cover all compute ops.
  *
- * Confidence: all structs CONFIRMED (encoder writes + decoder reads agree byte-
- * exact; .rodata size asserts + recovered type names read from the binary) unless
- * a field is tagged otherwise inline. */
+ * Encoder writes and decoder reads agree byte-exact; the .rodata size asserts and
+ * the recovered type names are read from the binary. Fields that are not pinned
+ * that way are tagged inline. */
 #ifndef NEURON_ISA_TPB_H
 #define NEURON_ISA_TPB_H
 #include <stdint.h>
@@ -67,8 +67,8 @@ This is the centerpiece. It is self-contained, `gcc -fsyntax-only`-clean, and in
 /* 1.1 NEURON_ISA_TPB_DTYPE — the ON-WIRE dtype tag (NOT the BIR Dtype ordinal).
  *     Ordered by container-size class. The dtype->wire-tag LUT is .rodata
  *     0x1dfbad0 = {03 02 10 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 0a 0b 01 0c}
- *     i.e. wire_tag = byte_1DFBAD0[BIR_Dtype].  [2.6 / D-D04 CONFIRMED — LUT read
- *     this pass.]  Address alignment keys on THIS tag (addr_aligned_dtype, 2.2):
+ *     i.e. wire_tag = byte_1DFBAD0[BIR_Dtype].  [2.6 — LUT read this pass.]
+ *     Address alignment keys on THIS tag (addr_aligned_dtype, 2.2):
  *     {2,3,13,14,15(,16 v4)}=align1, {4,5,6,7}=align2, {8,9,10,11}=align4,
  *     {1,12}=align8. A PSUM *write* requires a 4-byte tag {8,9,10,11}. */
 typedef enum {
@@ -90,21 +90,21 @@ typedef enum {
     ISA_DT_FLOAT4_E2M1_X4 = 16   /* CoreV4-ONLY; packed FP4-x4 (BIR Dtype 2, wire 0x10)*/
 } NEURON_ISA_TPB_DTYPE;
 /* NOTE: the LUT maps BIR Dtype 2 (float4_e2m1fn_x4) -> wire 0x10 (its own MX-era tag
- *       on CoreV4); on CoreV2 the FP4-x4 type does not exist. [2.6 / D-M08 CONFIRMED] */
+ *       on CoreV4); on CoreV2 the FP4-x4 type does not exist. [2.6]                 */
 
-/* 1.2 ADDR4 mode nibble (byte3 & 0x60 = word bits 30:29). [2.2 CONFIRMED]          */
+/* 1.2 ADDR4 mode nibble (byte3 & 0x60 = word bits 30:29). [2.2]                    */
 typedef enum {
     ISA_ADDR_STATIC    = 0x00, /* plain physical address (default, no stamp)         */
     ISA_ADDR_INDIRECT  = 0x20, /* bit29 — gather/index slot (encoder: or [slot+3],0x20)*/
     ISA_ADDR_ACTIVE    = 0x40, /* bit30 — dynamic-AP marker (set UPSTREAM, never by   */
-                               /*         the ADDR4 encoder; CONFIRMED consumer)      */
+                               /*         the ADDR4 encoder; consumer reads it)       */
     ISA_ADDR_MODE_DEAD = 0x60  /* 0b11 — no producer, no consumer (dead)             */
 } NEURON_ISA_ADDR4_MODE;       /* register-mode is bit31 (0x80), ORTHOGONAL to nibble */
 
 /* 1.3 The per-op L3 opcode byte (the union discriminant @raw[0]). The wire WORD is
  *     0x10<<8 | opcode (0x10 = inst_word_len). Representative subset; the full
  *     110-IT x 3-arch table is the opcode-word authority. (* = CoreV4 overrides.)
- *     [2.1 / D-J32 CONFIRMED] */
+ *     [2.1] */
 typedef enum {
     ISA_OP_LOADSTATIONARY     = 0x01, /* matmul weight stage   (Family A, no dst)    */
     ISA_OP_MATMUL             = 0x02, /* dense matmul          (Family A)            */
@@ -139,12 +139,13 @@ typedef enum {
 
 /* 1.4 ALU wire byte (RegisterAlu / TensorTensor / TensorScalar). sub_12039C0:
  *     add=4 sub=5 mult=6 max=8 min=9 ... is_gt=0x13 is_ge=0x14 is_le=0x15
- *     is_lt=0x16 not_eq=0x18 abs=0x19 pow=0x1a mod=0x1b rsqrt=0x1d. [D-M10 STRONG]  */
+ *     is_lt=0x16 not_eq=0x18 abs=0x19 pow=0x1a mod=0x1b rsqrt=0x1d. Recovered from
+ *     that switch, not pinned to a named enum.                                      */
 /* 1.5 Branch comp_op wire byte sub_1203580: {IMM LT..GT = 1..6, REG = 9..14};
- *     comp_op 0 = "always" (unconditional). [D-M10 CONFIRMED]                       */
+ *     comp_op 0 = "always" (unconditional).                                         */
 /* 1.6 Semaphore CMP-OP @+0x20 {0x01 EQ, 0x04 default(wait+dec), 0x05 GE, 0x85 GE-reg};
  *     SUBTYPE @+0x22 {0x13 inc+1, 0x14 dec-1, 0x15 add-imm, 0x17 sub-imm, 0x19 set;
- *     0x11 evt-set -> event bank}. [1.14 CONFIRMED]                                 */
+ *     0x11 evt-set -> event bank}. [1.14]                                           */
 
 /* ============================================================================
  * 2. ACCESS-PATTERN SUB-STRUCTS  (every descriptor opens with an ADDR4)
@@ -172,7 +173,7 @@ typedef uint32_t NEURON_ISA_TPB_ADDR4;   /* packed u32; bitfield helpers below  
  *     ([1,65535]; 0 illegal). Two SEPARATE contiguous arrays (all strides, then
  *     all nums) — NOT interleaved. Spare dims {stride=1,num=1}-filled (0x00010001),
  *     never 0. The PARTITION dim (Pattern[0]=W) folds into ADDR4, not a stride/num.
- *     [2.3/2.4 CONFIRMED — encoder<->decoder byte-exact both ways.]                 */
+ *     [2.3/2.4 — encoder<->decoder byte-exact both ways.]                           */
 typedef struct {                 /* 8 bytes  — rodata "1D must have 8 bytes"         */
     NEURON_ISA_TPB_ADDR4 addr;   /* +0x00                                           */
     int16_t  stride0;            /* +0x04                                           */
@@ -203,7 +204,7 @@ typedef struct {                 /* 20 bytes — "4D must have 20 bytes"        
  *     ("static tensor pattern but has indirect field"), (c) validator role flags
  *     (WR=1/PSUM=1/SBUF=0 for a PSUM dst). The PSUM bank rides ADDR4 hi bits;
  *     accumulate/zero-region/dst-dtype are SIBLING bundle bytes, NOT descriptor
- *     fields. [2.5 CONFIRMED — both asserts read from the binary this pass.]        */
+ *     fields. [2.5 — both asserts read from the binary this pass.]                  */
 typedef NEURON_ISA_TPB_TENSOR2D NEURON_ISA_TPB_MEM_PATTERN2D;
 typedef NEURON_ISA_TPB_TENSOR3D NEURON_ISA_TPB_MEM_PATTERN3D;
 typedef NEURON_ISA_TPB_TENSOR4D NEURON_ISA_TPB_MEM_PATTERN4D;
@@ -215,7 +216,7 @@ typedef NEURON_ISA_TPB_TENSOR4D NEURON_ISA_TPB_MEM_PATTERN4D;
  *     "MX Scale Tensor can only be in SB"). K-extent = NEPP x4 iff BIR Dtype in
  *     {2,8,9}. step-dir in {0x01,0xFF}. scalePart = scaleBasePart % PE_count(128).
  *     The "scale selector" is the encode-time a4=1 fork to vtbl+0x28, NOT a wire
- *     nibble. [2.6 CONFIRMED]                                                       */
+ *     nibble. [2.6]                                                                 */
 typedef struct {                 /* 16 bytes                                        */
     NEURON_ISA_TPB_ADDR4 data;   /* +0x00  packed FP4/FP8-x4 data start addr (a4=0)  */
     NEURON_ISA_TPB_ADDR4 scale;  /* +0x04  E8M0 per-block exponent start addr (a4=1) */
@@ -229,7 +230,7 @@ typedef struct {                 /* 16 bytes                                    
 /* 2.5 The three TENSOR-INDIRECT (gather) descriptors. The FIRST (INDEX) ADDR4
  *     carries bit29 (0x20). The index vector supplies the addressing; on the
  *     indirect branch the static stride/num region is INERT (not stride/num-filled).
- *     [2.7 CONFIRMED — the indirect branch RETURNS without the static fill.]        */
+ *     [2.7 — the indirect branch RETURNS without the static fill.]                  */
 typedef struct {                 /* 16 bytes (MXMEM_PATTERN1D + INDEX pushed front)  */
     NEURON_ISA_TPB_ADDR4 index;  /* +0x00  gather index-vector addr (bit29 set, a4=0)*/
     NEURON_ISA_TPB_ADDR4 data;   /* +0x04  indirectly-addressed FP4/FP8-x4 data (a4=0)*/
@@ -254,7 +255,7 @@ typedef struct {                 /* 20 bytes — non-MX 4-D gather              
 } NEURON_ISA_TPB_INDIRECT20B;     /* same payload, 20-byte; 16-vs-20 by AP free dims */
 
 /* ============================================================================
- * 3. THE COMMON 64-BYTE HEADER  [2.1 CONFIRMED — setupHeader byte-exact this pass]
+ * 3. THE COMMON 64-BYTE HEADER  [2.1 — setupHeader byte-exact this pass]
  * ========================================================================== */
 typedef struct {                 /* the ONLY universal bytes (setupHeader)          */
     uint8_t  opcode;             /* +0x00  L3 opcode (union discriminant)           */
@@ -270,7 +271,7 @@ typedef struct {                 /* the ONLY universal bytes (setupHeader)      
 /* 4.A FAMILY A — "3D 2-slot": src@+0x10 / dst@+0x30, control band @+0x20..+0x2F.
  *     Canonical witness = DENSE MATMUL (opcode 0x02). The +0x20 "third-slot"
  *     position is the CONTROL BAND, not a descriptor. Users: matmul, activation,
- *     TensorScalar, DVE scalar ops. [2.1 §Family A / 2.5 §6 CONFIRMED]             */
+ *     TensorScalar, DVE scalar ops. [2.1 §Family A / 2.5 §6]                       */
 typedef struct {                                     /* 64 bytes total              */
     uint8_t  opcode;            /* +0x00 = 0x02 (matmul)                            */
     uint8_t  inst_word_len;     /* +0x01 = 0x10                                     */
@@ -283,7 +284,7 @@ typedef struct {                                     /* 64 bytes total          
     uint8_t  _ctl22;            /* +0x22                                           */
     uint8_t  dst_dtype_dense;   /* +0x23  DENSE matmul PSUM-DST DTYPE (op 0x02,     */
                                 /*        CoreV2/V3) = perfModeToDstDtype; perf-opt */
-                                /*        byte on LoadStationary. [2.10 CONFIRMED]  */
+                                /*        byte on LoadStationary. [2.10]           */
     uint8_t  row_group;         /* +0x24  PE row-tile group (CoreV2; {1,2,4,8})    */
     uint8_t  col_group;         /* +0x25  PE col-tile group (CoreV2)               */
     uint8_t  wt_base_rows;      /* +0x26  weights base partition / num_active_rows  */
@@ -291,7 +292,7 @@ typedef struct {                                     /* 64 bytes total          
     /* DST DTYPE is per-generation within Family A: DENSE matmul (op 0x02, CoreV2/V3)
      * writes it at +0x23 (perf_opt byte above); MX matmul (op 0x100A, CoreV4) writes
      * it at +0x28. The CoreV4 is_valid_matmul_regular validator reads union+0x28;
-     * the CoreV2 validator reads union+0x23. [2.10 CONFIRMED, binary-checked] */
+     * the CoreV2 validator reads union+0x23. [2.10, both reads binary-checked] */
     uint8_t  dst_dtype_mx;      /* +0x28  MX PSUM-DST DTYPE (op 0x100A); ==6 -> bf16 nc */
     uint8_t  _ctl29[2];         /* +0x29..+0x2A                                    */
     uint8_t  accumulate;        /* +0x2B  {b0 START / b1 STOP / b2 ACCUMULATE}     */
@@ -308,7 +309,7 @@ typedef struct {                                     /* 64 bytes total          
 /* 4.B FAMILY B — "3D 3-slot": dst@+0x10 / in0@+0x20 / in1@+0x30 CONTIGUOUS;
  *     control band @+0x0C..+0x0F BEFORE the slots. Witness = TensorTensor
  *     (opcode 0x41). The three TENSOR3D slots fill +0x10..+0x3F exactly.
- *     [2.1 §Family B / D-J05 CONFIRMED]                                           */
+ *     [2.1 §Family B]                                                            */
 typedef struct {                                     /* 64 bytes total              */
     uint8_t  opcode;            /* +0x00 = 0x41 (0x51 bitvec)                       */
     uint8_t  inst_word_len;     /* +0x01 = 0x10                                     */
@@ -327,7 +328,7 @@ typedef struct {                                     /* 64 bytes total          
 /* 4.C FAMILY C — "4D 2-slot": in@+0x0C / out@+0x2C, control band @+0x20..+0x2B.
  *     Witness = POOL (opcode 0x45) and TensorCopy (0x46). The low 4D slot ends at
  *     +0x20; the high 4D slot starts at +0x2C; the control band sits between.
- *     [2.1 §Family C / D-J03 / D-J06 CONFIRMED]                                   */
+ *     [2.1 §Family C]                                                            */
 typedef struct {                                     /* 64 bytes total              */
     uint8_t  opcode;            /* +0x00 = 0x45 (Pool) / 0x46 (Copy)               */
     uint8_t  inst_word_len;     /* +0x01 = 0x10                                     */
@@ -349,7 +350,7 @@ typedef struct {                                     /* 64 bytes total          
  *   positions accept variable-width descriptors. [2.1 §"mixed-width slots"]        */
 
 /* ============================================================================
- * 5. THE SEMAPHORE / SYNC RECORD (opcode 0xA0; SP engine)  [1.14 CONFIRMED]
+ * 5. THE SEMAPHORE / SYNC RECORD (opcode 0xA0; SP engine)  [1.14]
  * ========================================================================== */
 typedef struct {                                     /* 64 bytes total              */
     uint8_t  opcode;            /* +0x00 = 0xA0 (word 0x10A0)                       */
@@ -369,7 +370,7 @@ typedef struct {                                     /* 64 bytes total          
 /* 256 semaphores/NeuronCore, signed-32 counter, 8-bit idx, arch-stable v2/v3/v4.    */
 
 /* ============================================================================
- * 6. A CONTROL/BRANCH BUNDLE (opcode 0xA9; SP engine)  [D-M10 CONFIRMED]
+ * 6. A CONTROL/BRANCH BUNDLE (opcode 0xA9; SP engine)  [2.20]
  * ========================================================================== */
 typedef struct {                                     /* 64 bytes total              */
     uint8_t  opcode;            /* +0x00 = 0xA9 (CompareAndBranch / Uncond)        */

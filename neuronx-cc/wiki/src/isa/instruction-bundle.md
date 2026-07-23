@@ -277,7 +277,7 @@ The definitive partition for a reimplementer:
 | TensorScalar = Family A (slots `+0x10`/`+0x30`) | CERTAIN | `generateTensorScalarOrPtr` `lea [r14+0x10]`/`[r14+0x30]` |
 | Sync header `+0x04..+0x0B` common-when-present | HIGH | per-op `setupSyncWait`/`Update` calls, not one universal write |
 | Low/high anchor straddling rationale | HIGH | structural inference from 4 agreeing byte-verified families |
-| Exhaustive family membership of all ~68 CoreV2 encoders | INFERRED | 10 disassembled directly; the rest assigned by descriptor-width evidence |
+| Exhaustive family membership of all ~68 CoreV2 encoders | MEDIUM | 10 disassembled directly; the rest assigned by descriptor-width evidence |
 
 ---
 

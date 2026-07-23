@@ -463,11 +463,11 @@ by transcribing each anonymous matcher lambda.)
 | Function | Addr | Size | Role | Confidence |
 |---|---|---|---|---|
 | `SimplifyConcat::Run` | `0x1f68690` | 103 B | 5-way dispatcher over entry comp | CERTAIN |
-| `selectionRemoval` | `0x1f66370` | 1950 B | const-pred select peel | HIGH / MED (predicate) |
-| `additionToConcatenation` | `0x1f66bb0` | 1573 B | padded-sum → concat | HIGH / MED (predicate) |
-| `fuseConcatenations` | `0x1f67270` | 1263 B | nested concat flatten | HIGH / MED (predicate) |
-| `simplifyConcatenatedSum` | `0x1f67800` | 1779 B | `add(pad,pad)` → concat | HIGH / MED (predicate) |
-| `simplifyConcatenatedZeros` | `0x1f67f80` | 1803 B | zero-broadcast concat collapse | HIGH / MED (predicate) |
+| `selectionRemoval` | `0x1f66370` | 1950 B | const-pred select peel | HIGH / MEDIUM (predicate) |
+| `additionToConcatenation` | `0x1f66bb0` | 1573 B | padded-sum → concat | HIGH / MEDIUM (predicate) |
+| `fuseConcatenations` | `0x1f67270` | 1263 B | nested concat flatten | HIGH / MEDIUM (predicate) |
+| `simplifyConcatenatedSum` | `0x1f67800` | 1779 B | `add(pad,pad)` → concat | HIGH / MEDIUM (predicate) |
+| `simplifyConcatenatedZeros` | `0x1f67f80` | 1803 B | zero-broadcast concat collapse | HIGH / MEDIUM (predicate) |
 
 ---
 
@@ -478,22 +478,22 @@ The five strongest claims on this page, re-challenged against the binary:
 1. **Prefix-sum accumulator in `r14`, advanced by `dims[cdim]`.** Re-checked
    `OptimizeSliceOfConcat` disasm: `xor r14d,r14d` @`0x1fd904e`, `add r14,[rbp+var_1D8]`
    @`0x1fd9078`, `cmp [rax+rcx],r14` @`0x1fd90d2`. The accumulator is real and the match compares
-   `starts[cdim]` to it. **CONFIRMED.**
+   `starts[cdim]` to it.
 2. **`concatenate_dimension()` is virtual at vtable slot `+0x50`.** `call qword ptr [rax+0x50]`
-   @`0x1fd8fee` — a virtual call, not a direct field read. **CONFIRMED.**
+   @`0x1fd8fee` — a virtual call, not a direct field read.
 3. **`SimplifyConcat::Run` calls exactly five sub-transforms and ORs their bools, entry comp
    only.** Disasm shows `entry_computation` @`0x1f686a3` then five demangled calls with
-   `or ebx,eax` between each. **CONFIRMED.**
+   `or ebx,eax` between each.
 4. **#108 pipeline = DCE → MoveDusOutOfCall → GroupedDusToConcat → TupleSimplifier → DCE.** All
    five calls demangle exactly in that order (`0x1fd6b70`/`0x1fd6bf3`/`0x1fd6db6`/
-   `0x1fd6dd1`+`0x1fd6e0b`/`0x1fd6e72`). **CONFIRMED.**
+   `0x1fd6dd1`+`0x1fd6e0b`/`0x1fd6e72`).
 5. **The `dynamic-slice` variant shares the `"iterationidx="` needle with `ParseIterationIdx`.**
    Both reference `.rodata 0x26e876` (`OptimizeDynamicSliceOfConcat` @`0x1fda0fc`,
    `ParseIterationIdx` @`0x1fcd544`) and decode via `safe_strto64_base`/`istringstream`.
-   **CONFIRMED** that the needle is shared; the post-parse index composition in the DS variant
-   remains **MED** (no decompiled C).
+   The needle is shared; the post-parse index composition in the DS variant
+   remains **[INFERRED]** (no decompiled C).
 
-Items left **INFERRED/MED** and not upgraded: the concat-`axis` *selection* inside
+Items left **[INFERRED]** and not upgraded: the concat-`axis` *selection* inside
 `GroupedDusToConcat`; the exact `match::` predicates of the five `SimplifyConcat` sub-transforms;
 the full call-hoisting rewrite inside `MoveDusOutOfCall`. None are asserted as fact above.
 

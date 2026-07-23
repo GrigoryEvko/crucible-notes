@@ -135,8 +135,8 @@ Seed the ready set with the topological roots and install per-SU predecessor cou
 
 ```c
 // Scheduler init: ref_count[su] = in_degree(su); ready = {su : preds == 0}
-// names CONFIRMED: init_ref_counts, num_preds, in_degree, enumerate_ready,
-//                  filter_num_preds, filter_readys
+// names in pool: init_ref_counts, num_preds, in_degree, enumerate_ready,
+//                filter_num_preds, filter_readys
 function init_ref_counts(succ, preds):
     for su in all_sus:
         ref_count[su] = in_degree(su)           // == len(preds[su]) == num_preds
@@ -160,7 +160,7 @@ function enumerate_ready(ref_count):
 ### Algorithm
 
 ```c
-// Scheduler priority — names CONFIRMED: priority, priority_map,
+// Scheduler priority — names in pool: priority, priority_map,
 //                       update_priority, bump_preds_priority
 function bump_preds_priority(su, delta):
     // raise the priority of su's predecessors so the producers of a
@@ -190,7 +190,7 @@ The heuristic core. From the current ready set, pick the SU whose scheduling pro
 ### Algorithm
 
 ```c
-// Scheduler.pick_candidate — names CONFIRMED: heuristics, heuristic_func,
+// Scheduler.pick_candidate — names in pool: heuristics, heuristic_func,
 //   pick_candidate, pick_candidate_from, pick_candidate_from_list,
 //   pick_n_candidates, def_bytes, kill_bytes, alloc_size_in_bytes
 function pick_candidate(ready):
@@ -230,7 +230,7 @@ Append the picked SU to the output schedule, decrement its successors' predecess
 ### Algorithm
 
 ```c
-// Scheduler.schedule — the driver — names CONFIRMED: schedule, schedule_stmt,
+// Scheduler.schedule — the driver — names in pool: schedule, schedule_stmt,
 //   schedule_ready_su, release_successors, release_sus, remove_node, all_scheduled
 function schedule(scope):
     succ, preds = build_ddg(scope)               // Phase 1
@@ -284,7 +284,7 @@ MinReg is **the** list scheduler, but it is not the only Penguin-level pass that
 
 ```c
 // AGOrderingAnalysis — greedy feedback-arc-set total ordering of global AGs
-// classes CONFIRMED: AGForcedOrderingEdge, AGRemovableOrderingEdge,
+// classes in pool: AGForcedOrderingEdge, AGRemovableOrderingEdge,
 //   AGGlobalOrderingEdge, GlobalAxesGroupOrderer, PartialToTotalAGOrder
 function analyzeFunction(func):                  // AGOrderingAnalysisPass
     g = build_partial_order_graph(global_ags)    // forced + removable edges
@@ -306,7 +306,7 @@ The edge classes each carry `.cost`, `.is_forced`, and `.priority`, visible as t
 `targets/transforms/SoftwarePipelineCodeGen.py` is a software-pipelining / modulo-scheduling **codegen** pass — it materializes a pipeline from per-statement `stage_id` + `execution_order` annotations that were computed upstream. Verbatim docstrings: *"Creates a new loop axis with extended bounds (ub + num_stages - 1) to accommodate all pipeline stages"*, *"Reorder instructions in the loop body based on execution_order"*, *"execution_orders: List of execution orders for each group (None means keep original position)"*, and the rotating-buffer sizing rule from *"earliest stage where a tensor is defined and the latest stage where it's used"*.
 
 ```c
-// SoftwarePipelineCodeGen — names CONFIRMED: schedule_software_pipeline,
+// SoftwarePipelineCodeGen — names in pool: schedule_software_pipeline,
 //   _create_software_pipeline_schedule, _reorder_instructions
 function schedule_software_pipeline(loop):
     if not _has_valid_stage_annotations(loop):

@@ -113,8 +113,8 @@ GNU build-ids (cp310, 20-byte):
 
 Three tiers, strongest to weakest. This is the precise basis for the book's "cross-version general" claim:
 
-1. **Byte-identical across all three wheels** — `hlo-opt`, `hlo2penguin`, `hlo-neff-wrapper`, `snapshot-unpack`, `xla_infergoldens` (the five large tool ELFs) and `liblogging.so`. A finding read here is exact for cp310/cp311/cp312. **CONFIRMED** by equal SHA-256.
-2. **Same source, per-wheel build stamp** — the rest of `lib/*.so` and the four small `bin/` drivers. Sizes mostly match but SHA-256 / build-id differ, so the logic carries but exact addresses need a per-symbol spot-check on cp311/cp312. **STRONG** (logic-level), addresses **INFERRED** until re-checked.
+1. **Byte-identical across all three wheels** — `hlo-opt`, `hlo2penguin`, `hlo-neff-wrapper`, `snapshot-unpack`, `xla_infergoldens` (the five large tool ELFs) and `liblogging.so`. A finding read here is exact for cp310/cp311/cp312 — the three SHA-256 digests are equal.
+2. **Same source, per-wheel build stamp** — the rest of `lib/*.so` and the four small `bin/` drivers. Sizes mostly match but SHA-256 / build-id differ, so the logic carries while exact addresses stay **[INFERRED]** until a per-symbol spot-check on cp311/cp312.
 3. **Distinct per-ABI artifact** — the Cython `*.cpython-31x-*.so`. Build-id and size differ; no address generality. A cp310 address is cp310-only unless re-extracted. **No cross-version claim.**
 
 > **QUIRK —** the cp312 `libwalrus.so` is the sharpest reminder that tier 2 is not tier 1: it is 4,096 bytes (one page) *smaller* than cp310/cp311, so even backend addresses past that point can shift. Always confirm a `libwalrus.so` address against the cp312 build before quoting it as version-general.

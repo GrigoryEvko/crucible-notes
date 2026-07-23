@@ -112,7 +112,7 @@ The disasm argparse gives the signature directly: `runOnModule(self, cls, cu)`, 
 
 ```c
 // _319 runOnModule(self, cls, cu)                  BirCodeGenLoop.py:4010
-// CONFIRMED name loads (program order): {cls, cu, subgraph_functions, runOnFunction}
+// Name loads read in program order: {cls, cu, subgraph_functions, runOnFunction}
 PyObject *runOnModule(self, cls, cu) {
     results = PyList_New(0);
     for (f in cu.subgraph_functions) {              // the ONLY attr read off `cu`
@@ -131,7 +131,7 @@ PyObject *runOnModule(self, cls, cu) {
 
 ```c
 // _321 runOnFunction(self, cls, cu)                BirCodeGenLoop.py:4015
-// CONFIRMED name loads (program order):
+// Name loads read in program order:
 //   {cls, cu, run_with_exception_handling, num_dynamic_instances,
 //    dump_tensorizer_bir_json, curModule, toJson, json, dumps, value,
 //    NumpyJsonEncoder, indent, __enter__, __exit__, dump, print_info}

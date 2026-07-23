@@ -45,7 +45,7 @@ The cross-core alias lives directly on `bir::MemoryLocation` as an embedded `boo
 The recovered struct layout (from the set/get bodies and the `allocate_no_check` argument harvest below):
 
 ```c
-struct bir_MemoryLocation {              // partial; offsets CONFIRMED from libBIR disasm
+struct bir_MemoryLocation {              // partial; offsets read from libBIR disasm
     // ...
     void  *memoryType;     // +0xD8  -> int kind   (getMemoryType reads *(+0xD8))
     void  *addressSpace;   // +0xF0  -> int space  (Local/Shared/Debug)

@@ -159,13 +159,13 @@ Re-tagging an axis is done through `convert_axis_type` / `as_axis_type` and the 
 ```c
 function as_shard_axis(self):           // AffineAxis
     if self.is_sequential or self.is_shard:
-        fatal("Cannot parallelize sequential/shard axis!")   // CONFIRMED diag string
+        fatal("Cannot parallelize sequential/shard axis!")   // verbatim diag string
     self.type = AxisType.Shard
     return self
 
 function as_interleave_axis(self):       // AffineAxis
     if self.is_sequential:
-        fatal("Cannot interleave sequential axis!")          // CONFIRMED diag string
+        fatal("Cannot interleave sequential axis!")          // verbatim diag string
     self.type = AxisType.Interleave
 ```
 

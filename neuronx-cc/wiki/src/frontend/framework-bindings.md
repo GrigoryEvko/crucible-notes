@@ -88,7 +88,7 @@ nki.jit(func=None, mode="auto", **kwargs)            ── compile.so, jit @ 0x
 
 ```c
 // compute_mode  (neuronxcc.nki.compile.compute_mode)
-// Refs CONFIRMED: jax, get_backend, platform, neuron, Array, ArrayImpl, Tracer,
+// Refs in binary: jax, get_backend, platform, neuron, Array, ArrayImpl, Tracer,
 //                 JAXKernel, torch, PyTorchXLAKernel, BaremetalKernel, _native_mode_map
 function compute_mode(args, kwargs, mode):
     if mode != "auto":
@@ -217,7 +217,7 @@ This is the *single point* where the framework escapes into the framework-agnost
 
 ```c
 // generate_operand_output_aliases(inputs, outputs)
-// Refs CONFIRMED: findAliasTensor, hasAliasedTensor, get_alias_output_index
+// Refs in binary: findAliasTensor, hasAliasedTensor, get_alias_output_index
 function generate_operand_output_aliases(inputs, outputs):
     aliases = []
     for out in outputs:
@@ -248,7 +248,7 @@ This is the centerpiece of the whole binding. `encode_backend_config` builds a P
 
 ```c
 // FrameworkKernel.encode_backend_config(...)  @ 0x296d0
-// Refs CONFIRMED: json, dumps, base64, b64encode, encode, decode,
+// Refs in binary: json, dumps, base64, b64encode, encode, decode,
 //                 serialize_dims, serialize_ir_string, KERNEL_VERSION
 function encode_backend_config(...):
     cfg = {
@@ -267,7 +267,7 @@ function encode_backend_config(...):
         "kernel_return":                kernel_return,
         "result_is_sequence":           result_is_sequence,
     }
-    return base64.b64encode(json.dumps(cfg).encode()).decode()  // CONFIRMED b64encode + json.dumps
+    return base64.b64encode(json.dumps(cfg).encode()).decode()  // b64encode + json.dumps refs in binary
 ```
 
 ### The config-key set
@@ -290,7 +290,7 @@ The two bridges are nearly identical: each implements the three `FrameworkKernel
 
 ```c
 // nki_call_eval(...)  — the ABSTRACT-EVAL rule (def_abstract_eval)
-// Refs CONFIRMED: dump_config, trace, return_types, ShapedArray, jnp
+// Refs in binary: dump_config, trace, return_types, ShapedArray, jnp
 function nki_call_eval(*avals, kernel):
     cfg = kernel.dump_config(...)              // trace to learn output return_types
     return [ShapedArray(rt.shape, rt.dtype)    // jax avals; NO real compute
@@ -298,12 +298,12 @@ function nki_call_eval(*avals, kernel):
     // wrapped in JaxTraceResult (hashable: __hash__) so JAX caches the lowering
 
 // nki_call_lowering_rule(ctx, *args)  — the MLIR LOWERING rule
-// Refs CONFIRMED: avals_in, avals_out, aval_to_ir_type, custom_call,
+// Refs in binary: avals_in, avals_out, aval_to_ir_type, custom_call,
 //                 dump_config, encode, has_collectives, operand_output_aliases
 function nki_call_lowering_rule(ctx, *args):
     cfg = kernel.dump_config(...)              // (cached via JaxTraceResult)
     return stablehlo.custom_call(
-        call_target_name = "AwsNeuronCustomNativeKernel",   // CONFIRMED literal
+        call_target_name = "AwsNeuronCustomNativeKernel",   // verbatim literal
         operands         = args,
         result_types     = [aval_to_ir_type(a) for a in ctx.avals_out],
         backend_config   = cfg.dumped_config,               // base64 JSON, §encode
@@ -336,7 +336,7 @@ The verbatim HLO shape this produces (from the `FrameworkKernel` docstring) is:
 
 ```c
 // PyTorchXLAKernel.__call__ → call_impl
-// Refs CONFIRMED: AwsNeuronNkiKernel, CustomCall, build_xla_type, scribe,
+// Refs in binary: AwsNeuronNkiKernel, CustomCall, build_xla_type, scribe,
 //                 dumped_config, output_operand_aliasing, OutputOperandAliasing,
 //                 excluded_output_tensors, xla_data_pb2
 function call_impl(boundargs):
@@ -345,7 +345,7 @@ function call_impl(boundargs):
     result_xla_types = [build_xla_type(o) for o in outputs]   // neuron dtype+shape → XLA Shape
 
     return scribe.CustomCall(
-        custom_call_target = "AwsNeuronNkiKernel",     // CONFIRMED literal (≠ JAX's target!)
+        custom_call_target = "AwsNeuronNkiKernel",     // verbatim literal (≠ JAX's target!)
         operands           = operands,
         shape              = result_xla_types,
         opaque             = cfg.dumped_config,         // base64 JSON backend_config
