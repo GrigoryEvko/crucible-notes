@@ -55,7 +55,7 @@ For reimplementation, the contract is:
 The instruction is built through the `NamedObjectContainer<BasicBlock,Instruction>::insertElement<InstDynamicForLoop>` template (the standard BIR element-insertion path). The construction allocates `operator new(0x150)`, runs the `bir::Instruction` base constructor on the sub-object at `+0x88` with opcode literal **106**, installs the primary vtable at `+0x00` and the Instruction-base vtable at `+0x88`, and seeds a default field at `+0x38` with `0x3F800000` (float `1.0f`).
 
 ```c
-// InstDynamicForLoop construction (insertElement<InstDynamicForLoop>)   [STRONG]
+// InstDynamicForLoop construction (insertElement<InstDynamicForLoop>)
 InstDynamicForLoop* make_dynamic_for_loop(Function* fn, ...):
     self = operator new(0x150)                  // 336 bytes
     *(float*)(self + 0x38) = 1.0f               // 0x3F800000 default field
@@ -106,7 +106,7 @@ Both `LoopAxis` (static) and `DynamicForLoopAxis` share the `lo`/`hi`/`stride` Q
 ### Algorithm
 
 ```c
-// bir::LoopAxis::getTripcount()  — STATIC axis                        [STRONG]
+// bir::LoopAxis::getTripcount()  — STATIC axis
 long LoopAxis::getTripcount():
     stride = this->stride                       // integer field
     assert(stride != 0)                         // "Division by zero"
@@ -116,7 +116,7 @@ long LoopAxis::getTripcount():
     return 0
 // bir::LoopAxis::hasRuntimeValue() : return 0
 
-// bir::DynamicForLoopAxis::getTripcount()    : return 0     // NO static count   [STRONG]
+// bir::DynamicForLoopAxis::getTripcount()    : return 0     // NO static count
 // bir::DynamicForLoopAxis::hasRuntimeValue() : return 1     // count is runtime
 ```
 
@@ -137,7 +137,7 @@ The verifier guarantees that a dynamic loop is *shaped* the only way the simulat
 `birverifier::InstVisitor::enterInstDynamicForLoop` simply forwards to `visitInstDynamicForLoop`, which runs the base `visitInstruction` checks on the embedded Instruction (`inst + 0x88`), then reads the axis at `+0x148` and walks an assertion chain over its three QAE.
 
 ```c
-// birverifier::InstVisitor::visitInstDynamicForLoop(InstDynamicForLoop& inst)   [STRONG]
+// birverifier::InstVisitor::visitInstDynamicForLoop(InstDynamicForLoop& inst)
 void visitInstDynamicForLoop(inst):
     visitInstruction(inst + 0x88)               // base Instruction checks
     axis = *(DynamicForLoopAxis**)(inst + 0x148)
@@ -169,7 +169,7 @@ The "back-edge assertion" at the instruction level is exactly `(5)+(7)+(8)`: the
 While walking the BIR to build the symbolic dynamic control-flow graph, this collector maintains a nesting-depth counter at `collector + 8`:
 
 ```c
-// DynamicCFGBasicBlockCollectorSymbolic                              [STRONG]
+// DynamicCFGBasicBlockCollectorSymbolic
 enterInstDynamicForLoop(self):  ++*(i32*)(self + 8)   // entering a dynamic loop
 leaveInstDynamicForLoop(self):  --*(i32*)(self + 8)   // leaving it
 ```
@@ -181,7 +181,7 @@ Body blocks collected while depth `> 0` are marked as living inside a dynamic lo
 The function-wide check lives in `neuronxcc::backend::CFG::validateTopology`. It walks the CFG's predecessor/successor structure and back-edge `MapVector`, and on a violated topology constraint raises a nested `NeuronAssertion<neuronxcc::backend::ErrorCode>` tagged with the literal string `"backEdgeAssertCondition"`.
 
 ```c
-// CFG::validateTopology — back-edge branch  (verbatim shape)         [CONFIRMED]
+// CFG::validateTopology — back-edge branch  (verbatim shape)
 if (back-edge topology constraint violated):
     msg  = lookup_cause(...) / lookup_resolution(...)   // RESOLUTION_CONTACT_SUPPORT
     tag  = "backEdgeAssertCondition"
@@ -206,7 +206,7 @@ The simulator (`libBIRSimulator.so`) is the one consumer that runs the loop for 
 The simulator's instruction visitor fast-paths both loop opcodes at the very top of `IRVisitor<birsim::InstVisitor>::visit`, *before* the 110-entry jump table:
 
 ```c
-// IRVisitor<birsim::InstVisitor>::visit(Instruction* inst)           [STRONG]
+// IRVisitor<birsim::InstVisitor>::visit(Instruction* inst)
 op = *(i32*)(inst + 0x58)                        // opcode in the Instruction base
 if (op == 105) tailcall visitLoop(inst)          // 0x69 — STATIC loop
 if (op == 106) tailcall visitDynamicForLoop(inst)// 0x6A — DYNAMIC loop   <--
@@ -219,7 +219,7 @@ else           switch (op) { /* 110-case jump table, base 0x6D */ }
 ### The trip-count read — `evaluateUpperBoundExpr`
 
 ```c
-// birsim::InstVisitor::evaluateUpperBoundExpr(InstDynamicForLoop& inst)   [STRONG]
+// birsim::InstVisitor::evaluateUpperBoundExpr(InstDynamicForLoop& inst)
 long evaluateUpperBoundExpr(inst):
     ubExpr = *(Expr**)(*(void**)(inst + 0x148) + 0x88)   // axis->ub underlying expr
     affine = cast<pelican::AffineExpr>(ubExpr)           // require expr-kind == 17
@@ -239,7 +239,7 @@ The returned upper bound is `const_offset + coeff * RegState::read(<runtime regi
 ### The iteration driver — `visitDynamicForLoop`
 
 ```c
-// birsim::InstVisitor::visitDynamicForLoop(InstDynamicForLoop& inst)   [STRONG]
+// birsim::InstVisitor::visitDynamicForLoop(InstDynamicForLoop& inst)
 void visitDynamicForLoop(inst):
     enterInstDynamicForLoop(inst)                  // set instruction cursor
     axis = *(DynamicForLoopAxis**)(inst + 0x148)   // DenseMap key for induction binding

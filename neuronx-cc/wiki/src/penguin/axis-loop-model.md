@@ -83,10 +83,10 @@ Beyond these, `Axis.so`'s string pool carries a set of role-query and mapping he
 
 ```c
 class AffineAxis(Axis):       // ir/Axis.py
-    iv          // induction variable — an AffineIV / AffineIdx (CONFIRMED getter)
-    lb          // lower bound — an affine Expr  (CONFIRMED getter)
-    ub          // upper bound — an affine Expr  (CONFIRMED getter)
-    stride      // step          (CONFIRMED getter)
+    iv          // induction variable — an AffineIV / AffineIdx
+    lb          // lower bound — an affine Expr
+    ub          // upper bound — an affine Expr
+    stride      // step
     name        // the loop variable name string
     tripcount   // (ub - lb + stride - 1) // stride  — the static iteration count
 ```
@@ -223,7 +223,7 @@ Two role-adjacent methods — `require_predicate` and `used_by_predicate` — co
 ```c
 class AxisHandle:                  // ir/Axis.py
     axis            // the referenced Axis
-    coef            // integer coefficient  (CONFIRMED getter)
+    coef            // integer coefficient
     def __call__(self): ...        // materialize the (coef · iv) term
     def release(self): ...         // drop one use of the axis
     def release_list(self): ...    // drop a list of uses

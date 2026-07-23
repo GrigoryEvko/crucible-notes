@@ -98,7 +98,7 @@ The logical module extends the lattice with `MASK` and `PREDICATE` so that alrea
 //   `__pyx_k_MASK` and `__pyx_n_s_PREDICATE` are real constants in this module's pool
 enum TypeCategory { OTHER, SCALAR, TILE_INDEX, MASK, PREDICATE, TENSOR };  // ints INFERRED
 
-// get_type_category  (CONFIRMED — decompiled isinstance chain, in this order)
+// get_type_category  — decompiled isinstance chain, in this order
 TypeCategory get_type_category(PyObject *x) {
     if (isinstance(x, scalar))      return SCALAR;
     if (isinstance(x, tensor))      return TENSOR;
@@ -181,14 +181,14 @@ PyObject *handler(self, a, b) {
 `make_binary_method(op)` wraps a handler into a real `method(self, b)` that re-runs the dispatch on the bound `self`. `make_commutative_binary_method(op)` additionally pulls in `operator.itemgetter` (the `itemgetter` string is in the pool) to order the operand pair by category, so `a OP b` and `b OP a` route identically. The two decorators install them:
 
 ```c
-// synthesize_equality_comparisons(cls)   (CONFIRMED class decorator)
+// synthesize_equality_comparisons(cls)   (class decorator)
 for ((name, op, numpy_op) in [('eq', operator.eq, np.equal),
                               ('ne', operator.ne, np.not_equal)]) {
     handler = make_equality_operation(op, name, numpy_op);
     setattr(cls, "__" + name + "__", make_binary_method(handler));   // __eq__, __ne__
 }
 
-// synthesize_ordered_comparisons(cls)    (CONFIRMED class decorator)
+// synthesize_ordered_comparisons(cls)    (class decorator)
 for ((name, op, numpy_op, pred_op) in
         [('lt', operator.lt, np.less,          pred_lt),
          ('le', operator.le, np.less_equal,    pred_le),
@@ -210,20 +210,20 @@ The logical module is where heterogeneous operands are *unified*. `p & q`, `p | 
 ### 4.1 Promotion helpers
 
 ```c
-// promote_other_to_predicate(a)   (CONFIRMED body)
+// promote_other_to_predicate(a)
 //   bool / number  ->  a constant predicate
 PyObject *promote_other_to_predicate(PyObject *a) {
     if (!PyObject_IsTrue(a)) return AlwaysFalsePredicate();   // falsey -> ⊥
     return AlwaysTruePredicate();                              // truthy -> ⊤
 }
 
-// promote_to_logical_type(value, highest_category)   (CONFIRMED body)
+// promote_to_logical_type(value, highest_category)
 PyObject *promote_to_logical_type(PyObject *value, TypeCategory highest_category) {
     if (get_type_category(value) == TENSOR)
         raise(...);                                  // tensors are not promotable here
     promoter = PROMOTION_MAP[highest_category];      // CONFIRMED: PyObject_GetItem(PROMOTION_MAP, …)
     return promoter(value);                          // promote_to_mask / promote_to_predicate
-    // failure path emits "Cannot promote from <…> to <…>"   (CONFIRMED .rodata "Cannot promote from ")
+    // failure path emits "Cannot promote from <…> to <…>"   (.rodata "Cannot promote from ")
 }
 ```
 
@@ -272,7 +272,7 @@ PyObject *handler(self, a) {
 ### 4.4 The decorator
 
 ```c
-// synthesize_logical_operations(cls)   (CONFIRMED class decorator)
+// synthesize_logical_operations(cls)   (class decorator)
 for ((name, op, numpy_op) in [('and', operator.and_, np.logical_and),
                               ('or',  operator.or_,  np.logical_or)]) {
     handler = make_logical_operation(op, name, numpy_op);
@@ -312,7 +312,7 @@ class NkiTypeSystem {                       // decorated by all three synthesize
             (op(a, b)
              for (op, (a, b)) in zip(ops, zip(operands[:-1], operands[1:]))));
         //   operands[:-1] / operands[1:] = pairwise; the genexpr applies each
-        //   comparison op to consecutive operand pairs (CONFIRMED: slices, zip, genexpr)
+        //   comparison op to consecutive operand pairs (slices, zip, genexpr)
     }
 
     // ---- n-ary logical reductions (consume the synthesized logical_and/_or) ----

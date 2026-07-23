@@ -78,7 +78,7 @@ A callee whose `inspect.getmodule(func).__name__` (split on `"."`, see `call` ga
 
 ```c
 // dont_trace(func=None)              module function, wrapper @ 0x1ea60
-//   dont_trace_attr = "__nki_dont_trace__"   (CONFIRMED interned constant)
+//   dont_trace_attr = "__nki_dont_trace__"   (interned constant)
 //   docstring: "Decorator to mark a function as not being traced by NKI."
 decorator dont_trace(func=None):
     def wrapper(func_):

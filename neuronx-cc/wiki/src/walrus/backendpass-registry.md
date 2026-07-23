@@ -48,7 +48,7 @@ The vector overload at `0x1736d40` is **the** entry point the pipeline invokes f
 The dispatch is visible in the disassembly of the vector overload — the entry loads the object's vptr and calls the slot at `vt+0x10`:
 
 ```c
-// neuronxcc::backend::BackendPass::run(vector<unique_ptr<bir::Module>>&)  @0x1736d40  [CONFIRMED]
+// neuronxcc::backend::BackendPass::run(vector<unique_ptr<bir::Module>>&)  @0x1736d40
 //   %r15 = `this` (the pass);  %rdx = &modules vector
 //   1736d70:  mov    (%r15),%rax        // %rax = vptr (load the pass's vtable)
 //   1736d73:  mov    (%rbx),%rdx        // %rdx = &modules[0] (first bir::Module)
@@ -199,7 +199,7 @@ typeinfo for register_generator_unroll__::{lambda(PassOptions const&)#1}        
 The `_M_invoke` body is the canonical proof of which class a name builds: it allocates with `operator new` and calls the class ctor (or `make_unique<Class>`), then installs that class's vtable. For `unroll`, the body at `0xb46400` reads:
 
 ```c
-// _M_invoke for register_generator_unroll__  @0xb46400  [CONFIRMED]
+// _M_invoke for register_generator_unroll__  @0xb46400
 //   b46414:  call  5fb160 <_Znwm@plt>                                  // operator new(sizeof(Unroll))
 //   b46422:  call  612430 <neuronxcc::backend::Unroll::Unroll(PassOptions const&)@plt>   // ctor
 unique_ptr<BackendPass> unroll_factory(PassOptions const& opts) {

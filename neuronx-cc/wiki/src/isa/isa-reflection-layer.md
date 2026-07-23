@@ -304,7 +304,7 @@ Python: `Activation(NeuronInst)`, `MatMul : MatMulOpBase : NeuronInst`. C++ (ver
 Annotated pseudocode naming the **real** recovered symbols. The framework half (Layers 1–4) is read from the shipped `.so`; the brewer template is INFERRED from its uniform output, since `brewer.py` does not ship.
 
 ```python
-# ── LAYER 4: declare one opcode as a @datamodel (CONFIRMED: instruction_info.so) ──
+# ── LAYER 4: declare one opcode as a @datamodel (instruction_info.so) ──
 @datamodel                                  # datamodel.so: installs validated_init, model_dump, …
 class ISAInstructionInfo:                   # docstring "An ISA Instruction description for public API"
     api_name:        str  = Field(metadata=no_space_non_empty)   # specifications.so preset: ^[^\s]+$
@@ -331,11 +331,11 @@ def _build_schema(type_hint):               # datamodel.so
 #       emit serialize:  result[p.arch_isa_name or p.name] = _emit(self._<p.name>)
 #                        # _emit: x.serialize() if model/opcode/operand; <Enum>2string if enum;
 #                        #        number-wrap if scalar; 'none' if Optional unset
-#   ⇒ Python <Op>.toJson  AND  C++ bir::Inst<Op>::toJson  — SAME key set (§4.2 CONFIRMED)
+#   ⇒ Python <Op>.toJson  AND  C++ bir::Inst<Op>::toJson  — SAME key set (§4.2)
 ```
 
 ```cpp
-// ── RUNTIME: the 64-byte bundle is opaque to Python; validated in C++ (CONFIRMED) ──
+// ── RUNTIME: the 64-byte bundle is opaque to Python; validated in C++ ──
 // neuron_isa_tpb_pybind.so — NeuronInstruction wraps NEURON_ISA_TPB_INST_UNION (64 B)
 struct NeuronInstruction {                  // py::class_ "NeuronInstruction"
     std::string                 name;       // .name  = opcode mnemonic
