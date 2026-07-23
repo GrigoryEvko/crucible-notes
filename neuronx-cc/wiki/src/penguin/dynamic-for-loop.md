@@ -38,7 +38,7 @@ For reimplementation, the contract is:
 > `visitDynamicForLoop`, `validateTopology` — is disassembled, not merely declared via an
 > import. Where an address is given in a statically-linked driver's frame (`nki_klr_sim`,
 > `coloring_allocator_with_loop`), the same body is independently present in the originating
-> `.so`. The addresses are CONFIRMED — the same stance as the sibling backend pages
+> `.so`. The addresses therefore hold in both frames — the same stance as the sibling backend pages
 > ([Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [Backend Dependence-Distance](backend-dependence-distance.md),
 > [DGE Level Selection](dge-level-dynamic-dma.md), [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md)).
 
@@ -75,7 +75,7 @@ InstDynamicForLoop* make_dynamic_for_loop(Function* fn, ...):
 
 `InstDynamicForLoop::setAxis(name, QuasiAffineExpr lb, QuasiAffineExpr ub, QuasiAffineExpr stride)` allocates the single axis: `operator new(0xC8)`, runs the `BirLoopAxis` base constructor with axis-kind tag `6`, installs the `BirLoopAxis` then `DynamicForLoopAxis` vtables, sets the two override flags, stores the parent back-pointer, and copy-constructs the three `QuasiAffineExpr` into `+0x68/+0x88/+0xA8`. The finished axis is stored into the parent at `+0x148`.
 
-> **QUIRK —** the *signature* of `setAxis` is itself the static-vs-dynamic tell. `bir::InstLoop::setAxis(string, long, long, long)` takes three **integer** bounds (CONFIRMED: the mangled thunk in `nki_klr_sim` is `...EElll`). `bir::InstDynamicForLoop::setAxis(string, QuasiAffineExpr, QuasiAffineExpr, QuasiAffineExpr)` takes three **affine expressions**. A static loop's bounds are compile-time integers; a dynamic loop's bounds are expression trees that may reference a runtime value.
+> **QUIRK —** the *signature* of `setAxis` is itself the static-vs-dynamic tell. `bir::InstLoop::setAxis(string, long, long, long)` takes three **integer** bounds — the mangled thunk in `nki_klr_sim` ends `...EElll`. `bir::InstDynamicForLoop::setAxis(string, QuasiAffineExpr, QuasiAffineExpr, QuasiAffineExpr)` takes three **affine expressions**. A static loop's bounds are compile-time integers; a dynamic loop's bounds are expression trees that may reference a runtime value.
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
@@ -89,7 +89,7 @@ InstDynamicForLoop* make_dynamic_for_loop(Function* fn, ...):
 | `ub` | `+0x88` | `QuasiAffineExpr` (32 B) | **upper bound = trip count expr** |
 | `stride` | `+0xA8` | `QuasiAffineExpr` (32 B) | step |
 
-> **CORRECTION (D-Z03 §index) —** the backing report's 5-line index opens by calling `InstDynamicForLoop` "BIR opcode 6". That is the *axis-kind tag* passed to the `BirLoopAxis` base constructor (`setAxis` passes `6`), **not** the instruction opcode. The instruction opcode is **106** (`IT106`) — confirmed by the `Instruction::Instruction(..., 106, ...)` literal in the constructor and the simulator's `cmp 0x6A` dispatch. Sections A–F of the same report carry the correct value 106 throughout; only the one-line summary conflates the two. Do not drive a reimplementation off "6".
+> **GOTCHA — `6` is the axis-kind tag, not the opcode.** `setAxis` passes `6` to the `BirLoopAxis` base constructor, which makes it easy to mistake for `InstDynamicForLoop`'s instruction opcode. The opcode is **106** (`IT106`), fixed by the `Instruction::Instruction(..., 106, ...)` literal in the constructor and by the simulator's `cmp 0x6A` dispatch. Do not drive a reimplementation off `6`.
 
 ### findAxis
 
@@ -274,17 +274,17 @@ All four `Hwm` latency overrides for `InstDynamicForLoop` are not-implemented st
 
 | Function | Symbol | Behavior | Confidence |
 |---|---|---|---|
-| `getLatency` | `_ZNK3bir3Hwm10getLatencyERKNS_18InstDynamicForLoopE` | `__assert_fail "not implemented"` | STRONG |
-| `getLatencyExec` | `_ZNK3bir3Hwm14getLatencyExecERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | STRONG |
-| `getLatencyReadInit` | `_ZNK3bir3Hwm18getLatencyReadInitERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | STRONG |
-| `getLatencyWriteDrain` | `_ZNK3bir3Hwm20getLatencyWriteDrainERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | STRONG |
+| `getLatency` | `_ZNK3bir3Hwm10getLatencyERKNS_18InstDynamicForLoopE` | `__assert_fail "not implemented"` | HIGH |
+| `getLatencyExec` | `_ZNK3bir3Hwm14getLatencyExecERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | HIGH |
+| `getLatencyReadInit` | `_ZNK3bir3Hwm18getLatencyReadInitERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | HIGH |
+| `getLatencyWriteDrain` | `_ZNK3bir3Hwm20getLatencyWriteDrainERKNS_18InstDynamicForLoopENS_10EngineTypeE` | `__assert_fail "not implemented"` | HIGH |
 
-> **NOTE —** all four mangled symbols are CONFIRMED present and their bodies are in the
-> corpus: each `Hwm::getLatency*(InstDynamicForLoop)` overload ships a decompiled/disassembled
-> sidecar (e.g. `getLatency` and `getLatencyReadInit` in the libBIR-core `libBIRParserDumper.so`
-> at `0x1e4fb0` / `0x1e4d78`), and the statically-linked `nki_klr_sim` carries the same bodies
-> in its own VA frame (`getLatency @0x99e608`, …). The stub bodies (`__assert_fail
-> "not implemented"`, `Hwm.cpp` line refs) are therefore CONFIRMED, not merely declared.
+> **NOTE —** all four mangled symbols are present with real bodies, not just declarations.
+> Each `Hwm::getLatency*(InstDynamicForLoop)` overload ships a decompiled and disassembled
+> sidecar — `getLatency` and `getLatencyReadInit` sit in the libBIR-core `libBIRParserDumper.so`
+> at `0x1e4fb0` / `0x1e4d78` — and the statically-linked `nki_klr_sim` carries the same bodies
+> in its own VA frame (`getLatency @0x99e608`, …). The stub bodies, with their `__assert_fail
+> "not implemented"` and `Hwm.cpp` line refs, are readable in both.
 > A reimplementer should treat the dynamic loop as having no intrinsic latency and cost it by
 > its body.
 

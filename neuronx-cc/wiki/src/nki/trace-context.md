@@ -127,7 +127,7 @@ result call(self, func, *args, **kwargs):
         return func(*args, **kwargs);
 
     // ---- Gate 3: a nested traced kernel -> recurse ----
-    if isinstance(func, TraceKernel):             // the .TraceKernel import (D-P20)
+    if isinstance(func, TraceKernel):             // the .TraceKernel import
         return func.<trace_entry>(*args, **kwargs);
 
     // ---- Gate 4: library module gate -> concrete; else inline+trace ----
@@ -143,12 +143,12 @@ result call(self, func, *args, **kwargs):
     //   has_nki_data(args) = any(is_nki_data(a) for a in args)
     //   (TraceContext.call.<locals>.genexpr + .<locals>.has_nki_data closures)
     if (not has_nki_data(args)) and is_nki_data(result):
-        assert False,                                  // plain `assert`, see CORRECTION below
+        assert False,                                  // a plain `assert` — see the note below
             "function without nki data as input should not return nki data";
     return result;
 ```
 
-> **CORRECTION (W6.1.1-RC) —** the return-consistency violation raises a *plain Python `AssertionError`*, not an `opts`-routed diagnostic. In the `call` body (`…12TraceContext_10call @ 0x2b380`) the emission is `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_function_without_nki_data_as_inp, 0, 0)` — i.e. the source line is a bare `assert <cond>, "function without nki data as input should not return nki data"`. It is therefore subject to `python -O` stripping like any other assertion, and is *not* a `CompileOpts`/`self.opts` error object. (The only `self.opts` access on this path builds the `inline_function` call args, not the error.)
+> **GOTCHA — the return-consistency violation is a bare `assert`, not a compiler diagnostic.** In the `call` body (`…12TraceContext_10call @ 0x2b380`) the emission is `_Pyx_Raise(_pyx_builtin_AssertionError, __pyx_kp_u_function_without_nki_data_as_inp, 0, 0)`, i.e. the source line is `assert <cond>, "function without nki data as input should not return nki data"`. It is stripped by `python -O` like any other assertion and never reaches the `CompileOpts` error path — the only `self.opts` access here builds the `inline_function` call args.
 
 The two nested closures are real and compiled separately:
 
@@ -216,7 +216,7 @@ bool eval_if_cnd(self, cnd):
 - A `while` loop whose condition is concrete is **unrolled** by the trace (each concrete iteration emits its body once), exactly like `static_range` — see [range semantics](range-loop-semantics.md).
 - A data-dependent loop or branch must instead be expressed with dedicated tensor/predicate ops (masking, `select`, predicated stores), not Python control flow.
 
-> **CORRECTION (W11-CF) —** the backing report names the rejection symbol `err_dynamic_control_flow_not_sup`. That is the truncated Cython `__pyx_n_s_` identifier; the *full interned string* in the module string table is `err_dynamic_control_flow_not_supported`. Cite the complete name when reasoning about the error catalog.
+> **NOTE — the rejection symbol reads truncated in the disassembly.** The Cython `__pyx_n_s_` identifier appears as `err_dynamic_control_flow_not_sup`, but the full interned string in the module string table is `err_dynamic_control_flow_not_supported`. Cite the complete name when reasoning about the error catalog.
 
 > **GOTCHA —** the rejection key is **the type of the condition value**, not whether the variable "looks dynamic." A [`DynamicScalar`](type-system.md) comparison such as `nl.program_id(0) < 4` does not return a Python `bool`; `__lt__` returns a `ScalarPredicate` (see the type-system page). So `if nl.program_id(0) < 4:` is rejected *because the comparison already produced a `ScalarPredicate`*, which `eval_if_cnd` then refuses. A reimplementation that overloads comparison to return `bool` would silently admit broken kernels.
 
@@ -280,7 +280,7 @@ new_ctx(opts) ──installs──▶ TraceContext.global_ctx ◀── nki_ctx(
 
 `trace_kernel` (`0x1c630`) uses `global_ctx` and delegates the statement-by-statement walk to `trace_kernel_impl` (`0x23910`, a generator). The scope helpers mutate the chain: `new_function_scope(name, stack_frame)` (`0x1d780`) pushes a `FunctionScope`; `cur_function_scope` (`0x1f450`) reads it; `finalize` (`0x1d240`) and `finalize_kernel` (`0x16fb0`) tear down. After teardown, `global_ctx` is `None`, so any stray `nl.*` op correctly raises `err_nki_api_outside_of_nki_kernel` — the same string the [`nki_ctx`](nki-ctx-scopes.md) guard checks.
 
-> **NOTE —** `global_ctx` is a *single mutable class attribute*, not thread-local on `TraceContext` itself. The thread-locality lives in the [`nki_ctx`](nki-ctx-scopes.md) accessor layer (whose docstring is explicitly "the (thread local) global context of IR construction during NKI tracing"). One trace is in flight per interpreter at a time; the report notes a `main_interpreter_id` static guard enforcing single-interpreter loading (INFERRED — the guard's exact mechanism was not individually traced).
+> **NOTE —** `global_ctx` is a *single mutable class attribute*, not thread-local on `TraceContext` itself. The thread-locality lives in the [`nki_ctx`](nki-ctx-scopes.md) accessor layer (whose docstring is explicitly "the (thread local) global context of IR construction during NKI tracing"). One trace is in flight per interpreter at a time; a `main_interpreter_id` static guard enforces single-interpreter loading, though the guard's exact mechanism is INFERRED rather than traced.
 
 ### Return handling
 
@@ -329,21 +329,19 @@ void transfer_return_value_to_caller(self, rv):
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims on this page, each re-challenged against the binary:
+Each of this page's central claims is anchored in the module's own symbol stream.
 
-1. **The `.call` dispatch order is `nki_func` → `__nki_dont_trace__` → `TraceKernel` → exclude-modules → inline.** Re-checked: the `__pyx_n_s_`/`__pyx_n_u_` symbol stream in the `call` body file (`…12TraceContext_10call_…0x2b380`) appears *in that exact textual order*: `nki_func`, `sema`, `NKIFunc`, `dont_trace_attr`, `TraceKernel`, `inline_function`, `inspect`, `isfunction`, `isbuiltin`, `module`, `exclude_modules`, then `genexpr`/`is_nki_data`/`has_nki_data`/`function_without_nki_data_as_inp`. **CONFIRMED.**
+- **The `.call` dispatch order** — `nki_func` → `__nki_dont_trace__` → `TraceKernel` → exclude-modules → inline — matches the textual order of `__pyx_n_s_` / `__pyx_n_u_` symbols in the `call` body file (`…12TraceContext_10call_…0x2b380`): `nki_func`, `sema`, `NKIFunc`, `dont_trace_attr`, `TraceKernel`, `inline_function`, `inspect`, `isfunction`, `isbuiltin`, `module`, `exclude_modules`, then `genexpr` / `is_nki_data` / `has_nki_data` / `function_without_nki_data_as_inp`.
+- **Data-dependent branches are rejected for being `nki_tensor` / `ScalarPredicate`.** The `eval_if_cnd` body (`…26eval_if_cn_…0x28070`) carries `cnd`, `nki_tensor`, `ScalarPredicate`, `if_cnd_generator`, `err_dynamic_control_flow_not_sup`, and `sema` — the type test and the raise both.
+- **`_exclude_modules` is exactly four entries.** The staticmethod body (`…1_exclude_modules_…0x193f0`) carries `neuronxcc_nki`, `neuronxcc_starfish_penguin`, `numpy`, `math`, and nothing else.
+- **`is_nki_data(v)` is `isinstance(v, (nki_tensor, mask))`.** Its body (`…3is_nki_data_…0x16be0`) references `v`, `nki_tensor`, and `mask` only; `mask` resolves to the `EQTileMask` family per the string table.
+- **A top-level kernel cannot return a value.** The string `"Returning value from top level nki kernel is not supported"` is in the module string table, alongside `add_kernel_return_values` / `return_from_function` / `kernel_return` referenced by `transfer_return_value_to_caller` (`0x19740`).
 
-2. **Data-dependent branches are rejected for being `nki_tensor`/`ScalarPredicate`.** Re-checked the `eval_if_cnd` body (`…26eval_if_cn_…0x28070`): symbols `cnd`, `nki_tensor`, `ScalarPredicate`, `if_cnd_generator`, `err_dynamic_control_flow_not_sup`, `sema` — confirming the type test and the raise. **CONFIRMED.** Issued an in-place CORRECTION on the truncated error name (full string `err_dynamic_control_flow_not_supported`, verified in the string table).
+### Limits of this reading
 
-3. **`_exclude_modules` is exactly `(neuronxcc.nki, neuronxcc.starfish.penguin, numpy, math)`.** Re-checked the staticmethod body (`…1_exclude_modules_…0x193f0`): symbols `neuronxcc_nki`, `neuronxcc_starfish_penguin`, `numpy`, `math` — four entries, no more. **CONFIRMED.**
-
-4. **`is_nki_data(v)` is `isinstance(v, (nki_tensor, mask))`.** Re-checked the body (`…3is_nki_data_…0x16be0`): symbols `v`, `nki_tensor`, `mask` only. **CONFIRMED.** (`mask` resolves to the `EQTileMask` family per the string table.)
-
-5. **A top-level kernel cannot return a value.** Re-checked: the string `"Returning value from top level nki kernel is not supported"` is present in the module string table, alongside `add_kernel_return_values`/`return_from_function`/`kernel_return` referenced by `transfer_return_value_to_caller` (`0x19740`). **CONFIRMED.**
-
-Items left at INFERRED and *not* upgraded: the `main_interpreter_id` single-interpreter guard mechanism (the static was not individually traced — it did not appear in the grepped string table for this module), and the precise internal of `inline_function` (it is a `call`-internal branch, not a separately exported method). Nothing on this page asserts a fabricated address, default, or field meaning.
+Two items remain **INFERRED**. The `main_interpreter_id` single-interpreter guard mechanism was not individually traced — the static does not appear in this module's string table at all. And the internals of `inline_function` are unread: it is a branch inside `call`, not a separately exported method.
 
 ---
 
@@ -355,7 +353,7 @@ Items left at INFERRED and *not* upgraded: the `main_interpreter_id` single-inte
 | `iterators` (`iterators.so`) | `static_range` unrolls (like a concrete `while`), `affine_range`/`sequential_range` defer to a loop axis — the loop counterpart of `eval_if_cnd` |
 | `programming_model` (`programming_model.so`) | `program_id`/`num_programs` produce the `ProgramId` scalars whose comparisons are `ScalarPredicate`s `eval_if_cnd` rejects |
 | `scalars` (`scalars.so`) | `DynamicScalar`/`ProgramId`/`LoopVar` — the symbolic values `is_nki_data` and `eval_if_cnd` classify |
-| `TraceKernel` (D-P20) | the kernel entry; `call` gate 3 recurses into nested `TraceKernel` instances |
+| `TraceKernel` | the kernel entry; `call` gate 3 recurses into nested `TraceKernel` instances |
 
 ## Cross-References
 

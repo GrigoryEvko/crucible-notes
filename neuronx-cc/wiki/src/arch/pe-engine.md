@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **Weight cache** | `WeightTileState` `std::_Rb_tree` keyed on `pair<u8,u8>` (row,col group); CoreV2 `this+704`, CoreV3 `this+840` |
 | **Phase opcodes** | dense `1` LoadStationary + `2` MatMul; sparse `6` LoadTags + `1` + `7`; MX `0x1009` LdWeightMx + `0x100A` MatmultMx |
 | **Perf-mode enum** | `MatmultPerfMode` @ `libBIR 0x400be0` — `{0 None, 1 DoubleRow, 2 DoubleColumn, 3 DoublePixel, 4 DoubleRowSwInterleave}`; field at `InstMatmultBase+0x2D0` |
-| **Accumulate flag** | bundle `+0x2B`: bit0 START (zero), bit1 STOP (drain), bit2 ACCUMULATE (add) — set upstream by H31 `legalize_mm_accumulation_groups` |
+| **Accumulate flag** | bundle `+0x2B`: bit0 START (zero), bit1 STOP (drain), bit2 ACCUMULATE (add) — set upstream by `legalize_mm_accumulation_groups` |
 | **Accumulator** | fp32 PSUM, always (operands widened to fp32 before the MAC); `PSUMLegalization::widen_psum` |
 | **Reference model** | `birsim::InstVisitor::visitInstMatmult` @ `0x3fd74b0`; `matmultImpl<InstMatmult>` @ `0x2883a0` |
 
@@ -48,19 +48,19 @@ This is the same "load weights, then push activations" contract as a TPU MXU. Th
 
 ### Operand Roles
 
-Three operands, bound **positionally** by `getArgument`/`getOutput` on the dense path (CONFIRMED, J01 operand binding):
+Three operands, bound **positionally** by `getArgument`/`getOutput` on the dense path:
 
 | Role | What it is | Argument | Bundle slot (MatMul) | Confidence |
 |---|---|---|---|---|
-| **Stationary** (weights) | latched into the 128×128 array | `getArgument(1)` | *none* — implicit, already latched | CONFIRMED |
-| **Moving** (ifmap) | streamed through the array | `getArgument(0)` | `+0x10` (SB-resident AP) | CONFIRMED |
-| **PSUM** (dst) | fp32 accumulator output | `getOutput(0)` | `+0x30` (PSUM AP) | CONFIRMED |
+| **Stationary** (weights) | latched into the 128×128 array | `getArgument(1)` | *none* — implicit, already latched | CERTAIN |
+| **Moving** (ifmap) | streamed through the array | `getArgument(0)` | `+0x10` (SB-resident AP) | CERTAIN |
+| **PSUM** (dst) | fp32 accumulator output | `getOutput(0)` | `+0x30` (PSUM AP) | CERTAIN |
 
 > **QUIRK — the stationary weights have no operand slot in the MatMul bundle.** They were loaded by the preceding `LoadStationary` and physically reside in the array's latches; the `MatMul` bundle carries only the moving ifmap and the PSUM destination, plus the weights' *dtype*, base-partition, and tile-group (so the array knows which quadrant the latched tile occupies). A reimplementer who tries to find a weights address in the compute bundle will not find one — the data dependence is carried by hardware state, and the compiler must therefore never reorder a `MatMul` ahead of its `LoadStationary` (the cache logic below enforces this).
 
 ### Partition Geometry
 
-The 128 partitions are the **contraction axis `K`** (array rows); the 128 columns are the **output `N`**. The partition axis is `Pattern[0]` — the outermost dimension of an access pattern — and is special: it is **never** emitted as a `{step, num}` loop word. Instead it folds into the start-address as a base-partition term (`SB: part<<18`, `PSUM: part<<15`), and the free-dimension loop iterates `Pattern[1..3]` only (CONFIRMED, J23 partition rule). The contraction extent per partition is `getNumElementsPerPartition`.
+The 128 partitions are the **contraction axis `K`** (array rows); the 128 columns are the **output `N`**. The partition axis is `Pattern[0]` — the outermost dimension of an access pattern — and is special: it is **never** emitted as a `{step, num}` loop word. Instead it folds into the start-address as a base-partition term (`SB: part<<18`, `PSUM: part<<15`), and the free-dimension loop iterates `Pattern[1..3]` only. The contraction extent per partition is `getNumElementsPerPartition`.
 
 The array is tiled as **four 32-partition quadrants per axis** (`quadrant = partition >> 5`). A matmul's *tile group* is a bitmask telling the array which quadrant(s) the tile occupies — the same `{1,2,4,8}` quadrant LUT for all three generations (see [The PE Tile-Group Model](#the-pe-tile-group-model)).
 
@@ -90,19 +90,19 @@ function visitInstMatmult(InstMatmult &I):
         cache_insert(group, ...)                  // _Rb_tree _M_get_insert_hint_unique_pos
 ```
 
-> **GOTCHA — the fp32 matmul is a two-pass sequence, and the simulator does not model it as such.** The encoder lowers a `float32` matmul to `LoadWeights → MatMul(START) → LoadWeights → MatMul(STOP) → invalidateWeightTileCache` (CONFIRMED — the four call sites and the tail `jmp invalidateWeightTileCache` at `0x126bf5e`). The two emitted `MatMul`s split the calc flags so pass 1 zeroes the bank and pass 2 drains it. This is the hardware's way of doing a full-precision fp32 product on a bf16-native array (a two-FMA decomposition); the cache is force-invalidated so the second weight load is never elided. The **reference model**, however, treats `float32r` (Dtype 17) as a single-pass *reduced-precision* operand round (`sub_2A4750` round/truncate, then one fp32 Eigen product) — it does **not** simulate a hi/low FMA correction. A reimplementer of the *encoder* must emit two passes; a reimplementer of the *simulator* models one rounded pass. Do not assume the two agree numerically on the low bits.
+> **GOTCHA — the fp32 matmul is a two-pass sequence, and the simulator does not model it as such.** The encoder lowers a `float32` matmul to `LoadWeights → MatMul(START) → LoadWeights → MatMul(STOP) → invalidateWeightTileCache` — the four call sites plus the tail `jmp invalidateWeightTileCache` at `0x126bf5e`. The two emitted `MatMul`s split the calc flags so pass 1 zeroes the bank and pass 2 drains it. This is the hardware's way of doing a full-precision fp32 product on a bf16-native array (a two-FMA decomposition); the cache is force-invalidated so the second weight load is never elided. The **reference model**, however, treats `float32r` (Dtype 17) as a single-pass *reduced-precision* operand round (`sub_2A4750` round/truncate, then one fp32 Eigen product) — it does **not** simulate a hi/low FMA correction. A reimplementer of the *encoder* must emit two passes; a reimplementer of the *simulator* models one rounded pass. Do not assume the two agree numerically on the low bits.
 
 ### The WeightTileState Cache
 
-The dense orchestrator holds a `std::map<pair<u8,u8>, WeightTileState>` — backed by a `std::_Rb_tree` (CONFIRMED from the demangled `_Rb_tree<…WeightTileState…>::_M_get_insert_hint_unique_pos` call at `0x126c098`) — at `this+704` (CoreV2) / `this+840` (CoreV3). The key is the `(rowGroup, colGroup)` tile-group byte pair.
+The dense orchestrator holds a `std::map<pair<u8,u8>, WeightTileState>` — backed by a `std::_Rb_tree`, per the demangled `_Rb_tree<…WeightTileState…>::_M_get_insert_hint_unique_pos` call at `0x126c098` — at `this+704` (CoreV2) / `this+840` (CoreV3). The key is the `(rowGroup, colGroup)` tile-group byte pair.
 
 | Cache aspect | Behavior | Confidence |
 |---|---|---|
-| **Key** | `pair<u8,u8>` = `(rowGroup, colGroup)` of the stationary tile | CONFIRMED (`_Rb_tree` type) |
-| **Match conditions** | same group **and** same weights AP **and** same calc/perf signature **and** no intervening writer to the weights memory | STRONG |
-| **HIT** | skip `LoadStationary`, emit `MatMul` only — "weights still warm in the array" | CONFIRMED |
-| **MISS / tiling change** | `hasTilingConfigChanged` → emit **both** `LoadStationary` + `MatMul`, then insert | CONFIRMED |
-| **Invalidation** | `invalidateWeightTileCache` on fp32 (always) and on tiling reconfiguration | CONFIRMED |
+| **Key** | `pair<u8,u8>` = `(rowGroup, colGroup)` of the stationary tile | CERTAIN (`_Rb_tree` type) |
+| **Match conditions** | same group **and** same weights AP **and** same calc/perf signature **and** no intervening writer to the weights memory | HIGH |
+| **HIT** | skip `LoadStationary`, emit `MatMul` only — "weights still warm in the array" | CERTAIN |
+| **MISS / tiling change** | `hasTilingConfigChanged` → emit **both** `LoadStationary` + `MatMul`, then insert | CERTAIN |
+| **Invalidation** | `invalidateWeightTileCache` on fp32 (always) and on tiling reconfiguration | CERTAIN |
 
 This cache is the compiler-visible face of weight-stationary reuse: when a model multiplies many activation tiles against the **same** weight tile (the common case — one weight matrix, a stream of token tiles), the encoder loads the weights *once* and emits a run of bare `MatMul`s. A reimplementer who emits a `LoadStationary` before every `MatMul` produces correct but ~2× slower code; the cache is a throughput optimization, not a correctness requirement.
 
@@ -112,15 +112,15 @@ This cache is the compiler-visible face of weight-stationary reuse: when a model
 
 ### Purpose
 
-When the element width is narrower than the array's native cell width, an axis of the array can be **packed 2:1** to raise utilization — two logical elements share one systolic pass. `MatmultPerfMode` (CONFIRMED, `libBIR 0x400be0`, with a byte-exact `MatmultPerfMode2string` switch and an inverse `string2MatmultPerfMode`) selects which axis is folded. The field rides the IR node at `InstMatmultBase+0x2D0` (wire JSON key `"perf_mode"`).
+When the element width is narrower than the array's native cell width, an axis of the array can be **packed 2:1** to raise utilization — two logical elements share one systolic pass. `MatmultPerfMode` (`libBIR 0x400be0`, with a byte-exact `MatmultPerfMode2string` switch and an inverse `string2MatmultPerfMode`) selects which axis is folded. The field rides the IR node at `InstMatmultBase+0x2D0` (wire JSON key `"perf_mode"`).
 
 | Value | Name | Folds 2:1 | Confidence |
 |---|---|---|---|
-| `0` | `None` | nothing — standard 1-pass matmul (baseline) | CONFIRMED |
-| `1` | `DoubleRow` | two **contraction rows** (partitions / `K`) per pass → ~2× on `K` | CONFIRMED name; STRONG behavior |
-| `2` | `DoubleColumn` | two **output columns** (PSUM cols) per pass → ~2× on `N` | CONFIRMED name; INFERRED wire bytes |
-| `3` | `DoublePixel` | two **free-axis pixels** (moving-fmap elements) per pass → ~2× free | CONFIRMED name; INFERRED wire bytes |
-| `4` | `DoubleRowSwInterleave` | `DoubleRow` with SW-interleaved row pairs (when the AP stride cannot satisfy the HW even-pairing) | CONFIRMED name; STRONG behavior |
+| `0` | `None` | nothing — standard 1-pass matmul (baseline) | CERTAIN |
+| `1` | `DoubleRow` | two **contraction rows** (partitions / `K`) per pass → ~2× on `K` | CERTAIN name; HIGH behavior |
+| `2` | `DoubleColumn` | two **output columns** (PSUM cols) per pass → ~2× on `N` | CERTAIN name; MEDIUM wire bytes |
+| `3` | `DoublePixel` | two **free-axis pixels** (moving-fmap elements) per pass → ~2× free | CERTAIN name; MEDIUM wire bytes |
+| `4` | `DoubleRowSwInterleave` | `DoubleRow` with SW-interleaved row pairs (when the AP stride cannot satisfy the HW even-pairing) | CERTAIN name; HIGH behavior |
 
 The enum names are read directly from the `MatmultPerfMode2string` jump table (`aNone`/`aDoublerow`/`aDoublecolumn`/`aDoublepixel`/`aDoublerowswinterleave` at `0x400c00..0x400c60`, default `"Unknown MatmultPerfMode"`).
 
@@ -141,7 +141,7 @@ assert out.partitions * scale == weights.elemsPerPartition   // K-fold consisten
 //   K-rows are physically interleaved into one systolic pass.
 ```
 
-> **NOTE — gen2 and gen3 express DoubleRow differently.** CoreV2 (`generateMatMul` @ `0x1248650`) halves the access-pattern counts directly (`num >>= 1`). CoreV3 (`generateMatMul` @ `0x13643d0`) instead performs an **AP dimension-swap** and forces the first free dim to 2, sharing the `DoubleRowSwInterleave` (value 4) path with `DoubleRow`. The *wire bytes* differ; the *silicon effect* — two contraction rows per pass — is the same. The reference model confirms the K-fold: for `perf ∈ {1, 4}` it doubles the contraction extent (`Ki *= 2; Pi *= 2`) before the Eigen product (CONFIRMED, `matmultImpl` perf branch).
+> **NOTE — gen2 and gen3 express DoubleRow differently.** CoreV2 (`generateMatMul` @ `0x1248650`) halves the access-pattern counts directly (`num >>= 1`). CoreV3 (`generateMatMul` @ `0x13643d0`) instead performs an **AP dimension-swap** and forces the first free dim to 2, sharing the `DoubleRowSwInterleave` (value 4) path with `DoubleRow`. The *wire bytes* differ; the *silicon effect* — two contraction rows per pass — is the same. The reference model confirms the K-fold: for `perf ∈ {1, 4}` it doubles the contraction extent (`Ki *= 2; Pi *= 2`) before the Eigen product, in the `matmultImpl` perf branch.
 
 > **GOTCHA — `DoubleColumn` and `DoublePixel` have no byte-proven encoding.** Their selector values are validated (the `sub_1203630` perf-format validator throws on out-of-range), but no encoder in this build was observed emitting their *distinct* bundle bytes — only `None` and `DoubleRow` are exercised on the paths that reach silicon. Their `+0x21`/`+0x23` perf bytes are **INFERRED** to ride the same fields as `DoubleRow`. A reimplementer targeting only the modes the compiler actually emits can treat `{None, DoubleRow, DoubleRowSwInterleave}` as the live set and re-derive `DoubleColumn`/`DoublePixel` if needed.
 
@@ -151,7 +151,7 @@ assert out.partitions * scale == weights.elemsPerPartition   // K-fold consisten
 
 ### Purpose
 
-A real matmul almost never fits one array pass: the contraction `K` exceeds 128, or one logical matmul is tiled into many array-sized sub-matmuls. These are reduced into **one PSUM bank** by an **accumulation group** — a sequence of matmuls whose partial sums add. The group is formed and flagged by the H31 pass `legalize_mm_accumulation_groups` (order 94); the encoder merely *reads* the flags it set.
+A real matmul almost never fits one array pass: the contraction `K` exceeds 128, or one logical matmul is tiled into many array-sized sub-matmuls. These are reduced into **one PSUM bank** by an **accumulation group** — a sequence of matmuls whose partial sums add. The group is formed and flagged by the pass `legalize_mm_accumulation_groups` (registry order 94); the encoder merely *reads* the flags it set.
 
 ```text
    matmul[0]  →  START      : zero the PSUM bank, then write   (head of the K-reduction)
@@ -164,7 +164,7 @@ This maps cleanly onto the familiar "accumulator initialize / accumulate / read-
 
 ### The Flag Byte
 
-The triad is a **3-bit field at bundle `+0x2B`** (byte 43), built by OR-ing bits as the decoded `getCalcStart`/`getCalcStop`/`getCalcAccu` booleans come back true. RE-VERIFIED at the binary:
+The triad is a **3-bit field at bundle `+0x2B`** (byte 43), built by OR-ing bits as the decoded `getCalcStart`/`getCalcStop`/`getCalcAccu` booleans come back true:
 
 | Bit | Value | Calc flag | Meaning | Evidence |
 |---|---|---|---|---|
@@ -181,11 +181,11 @@ if I.getCalcStop()  && ...:                  bundle[0x2B] |= 2   // STOP
 if I.getCalcAccu():                          bundle[0x2B] |= 4   // ACCUMULATE
 ```
 
-> **QUIRK — gen3 arch-gates the accumulate byte; gen2 does not.** `CoreV3GenImpl::generateMatMulAccumulateFlag` @ `0x1428630` opens with `cmp [module+0xAC], 0x28; jg …` — if the module's arch level (`+0xAC` = 172) is **greater than 40** it returns *without touching* `+0x2B` (the accumulate byte is omitted entirely). CoreV2 has no such gate — it always writes the byte. A reimplementer who unconditionally writes the calc byte for every architecture will produce wrong instructions on the gen3 arch-40+ path, where the accumulate window is managed differently (the H31 explicit-memset path; see below).
+> **QUIRK — gen3 arch-gates the accumulate byte; gen2 does not.** `CoreV3GenImpl::generateMatMulAccumulateFlag` @ `0x1428630` opens with `cmp [module+0xAC], 0x28; jg …` — if the module's arch level (`+0xAC` = 172) is **greater than 40** it returns *without touching* `+0x2B` (the accumulate byte is omitted entirely). CoreV2 has no such gate — it always writes the byte. A reimplementer who unconditionally writes the calc byte for every architecture will produce wrong instructions on the gen3 arch-40+ path, where the accumulate window is managed differently, through the explicit-memset path described below.
 
 ### The fp32 PSUM Accumulator
 
-The accumulator is **fp32 in PSUM regardless of input dtype**. The reference model widens *every* operand to float before the multiply-accumulate (CONFIRMED, `matmultImpl`):
+The accumulator is **fp32 in PSUM regardless of input dtype**. The reference model widens *every* operand to float before the multiply-accumulate, in `matmultImpl`:
 
 ```c
 cast_to(ifmapObj,   Dtype 16 /*fp32*/)   // bir::CastToNewDType @ 0x28db30
@@ -211,7 +211,7 @@ Memory.writeAccumulate(dstAP, result, startReset, I, accInto)
 // the += path (runAP @ 0x298390) is taken iff writer isa<InstMatmultBase> && dst.isPSUM
 ```
 
-> **GOTCHA — PSUM accumulation does not span banks.** The simulator carries the guard string `do not support psum multibank`; the H31 legalizer keeps each accumulation group's zero-region inside one pow2-aligned bank range and clusters overlapping groups (`find_overlapped_psum_zero_region_groups` @ `0x16dee50`) so a single START cannot mis-serve two interleaved chains. A reimplementer must legalize an accumulation group to fit one PSUM bank before mapping it onto the array.
+> **GOTCHA — PSUM accumulation does not span banks.** The simulator carries the guard string `do not support psum multibank`; the accumulation-group legalizer keeps each group's zero-region inside one pow2-aligned bank range and clusters overlapping groups (`find_overlapped_psum_zero_region_groups` @ `0x16dee50`) so a single START cannot mis-serve two interleaved chains. A reimplementer must legalize an accumulation group to fit one PSUM bank before mapping it onto the array.
 
 ---
 
@@ -231,7 +231,7 @@ function visitInstMatmultMx(InstMatmultMx &I):
     // NO WeightTileState cache. NO fp32 two-pass. NO perf-mode branch. Always both.
 ```
 
-> **QUIRK — MX always emits both bundles; there is nothing to cache.** Unlike the dense orchestrator's branchy ~700-instruction body, `visitInstMatmultMx` is a 15-line `call generateLdweightMx; jmp generateMatmultMx` (CONFIRMED — full body re-disassembled). MX matmul is always a single full-tile compute (no column tiling, no transpose, no START/STOP chaining across passes), so there is no reuse window to cache and no two-pass to split. A reimplementer should not add a weight cache to the MX path — it would be dead code.
+> **QUIRK — MX always emits both bundles; there is nothing to cache.** Unlike the dense orchestrator's branchy ~700-instruction body, `visitInstMatmultMx` is a 15-line `call generateLdweightMx; jmp generateMatmultMx` — that is the entire body. MX matmul is always a single full-tile compute (no column tiling, no transpose, no START/STOP chaining across passes), so there is no reuse window to cache and no two-pass to split. A reimplementer should not add a weight cache to the MX path — it would be dead code.
 
 ### Operand Binding and the Paired Scale
 
@@ -239,14 +239,14 @@ MX uses **six** access patterns, with the two E8M0 scale streams **split across 
 
 | Bundle | Operand | Argument | Carries | Confidence |
 |---|---|---|---|---|
-| `LdWeightMx` | weights ×4 DATA | `arg1` | weight data | CONFIRMED |
-| `LdWeightMx` | weights E8M0 SCALE | `arg3` | stationary scale | CONFIRMED |
-| `MatmultMx` | moving ×4 DATA | `arg0` | ifmap data | CONFIRMED |
-| `MatmultMx` | weights (K-rows) | `arg1` | active-partition count only | CONFIRMED |
-| `MatmultMx` | ifmap E8M0 SCALE | `arg2` | moving scale | CONFIRMED |
-| `MatmultMx` | PSUM dst | `out0` | fp32 accumulator | CONFIRMED |
+| `LdWeightMx` | weights ×4 DATA | `arg1` | weight data | CERTAIN |
+| `LdWeightMx` | weights E8M0 SCALE | `arg3` | stationary scale | CERTAIN |
+| `MatmultMx` | moving ×4 DATA | `arg0` | ifmap data | CERTAIN |
+| `MatmultMx` | weights (K-rows) | `arg1` | active-partition count only | CERTAIN |
+| `MatmultMx` | ifmap E8M0 SCALE | `arg2` | moving scale | CERTAIN |
+| `MatmultMx` | PSUM dst | `out0` | fp32 accumulator | CERTAIN |
 
-> **QUIRK — each PE input carries its own block-scale, bound as a *second address inside one descriptor*.** Where the dense path uses a `TENSOR3D` access pattern with a single start address, the MX inputs use an `MXMEM_PATTERN1D` descriptor that holds **two** ADDR4 addresses — the data and its E8M0 scale — as a pair (`assignAccessForMX` @ `0x150e2f0`: `assignStartAddr<ADDR4>(scaleFlag=0)` for data, `(scaleFlag=1)` for scale). This dual-address descriptor is the structural MX divergence; the PSUM destination, by contrast, stays a plain 3D pattern at `+0x30`. The descriptor's **logical K is ×4-unpacked**: `if (dt==2 || (unsigned)(dt-8)<=1) K *= 4` (CONFIRMED — `cmp edx,2; sub edx,8; shl eax,2; mov [rcx+8],ax` @ `0x150e603`), so a 128-partition tile spans up to `128×4 = 512` logical contraction elements.
+> **QUIRK — each PE input carries its own block-scale, bound as a *second address inside one descriptor*.** Where the dense path uses a `TENSOR3D` access pattern with a single start address, the MX inputs use an `MXMEM_PATTERN1D` descriptor that holds **two** ADDR4 addresses — the data and its E8M0 scale — as a pair (`assignAccessForMX` @ `0x150e2f0`: `assignStartAddr<ADDR4>(scaleFlag=0)` for data, `(scaleFlag=1)` for scale). This dual-address descriptor is the structural MX divergence; the PSUM destination, by contrast, stays a plain 3D pattern at `+0x30`. The descriptor's **logical K is ×4-unpacked**: `if (dt==2 || (unsigned)(dt-8)<=1) K *= 4` (`cmp edx,2; sub edx,8; shl eax,2; mov [rcx+8],ax` @ `0x150e603`), so a 128-partition tile spans up to `128×4 = 512` logical contraction elements.
 
 ### The MX Accumulate Byte
 
@@ -260,7 +260,7 @@ bundle[0x2D] = 0x0F                    // COL group FORCED full — mov byte [r1
 // checkAccumulationFlag @ 0x150db50 validates the byte ∈ {0,1,2,3,4,6}
 ```
 
-> **NOTE — same bit contract, different provenance.** The MX accumulate byte uses the identical `{bit0 START, bit1 STOP, bit2 ACCUMULATE}` semantics, but it is packed upstream by H31 and copied verbatim — no `getCalcStart/Stop/Accu` recompute, and **no arch-gate** (MX lives at exactly arch level 40, where the byte is always meaningful). MX also forces the column group to full (`0x0F`) because, per the verifier, the MX column is **never tiled** (`col_tile_pos ∈ {-1,0}`, `col_tile_size ∈ {-1,128}`).
+> **NOTE — same bit contract, different provenance.** The MX accumulate byte uses the identical `{bit0 START, bit1 STOP, bit2 ACCUMULATE}` semantics, but it is packed upstream by the accumulation-group legalizer and copied verbatim — no `getCalcStart/Stop/Accu` recompute, and **no arch-gate** (MX lives at exactly arch level 40, where the byte is always meaningful). MX also forces the column group to full (`0x0F`) because, per the verifier, the MX column is **never tiled** (`col_tile_pos ∈ {-1,0}`, `col_tile_size ∈ {-1,128}`).
 
 ---
 
@@ -310,13 +310,17 @@ else:           return 15                        // whole axis
 | Operand descriptor | `TENSOR3D` (single addr) | `TENSOR3D` | `MXMEM_PATTERN1D` (data + E8M0 scale) |
 | fp4 dtype wiretag | `0x05` | `0x05` | `0x10` |
 
-The single dtype-LUT delta across generations is index 2 (fp4 `e2m1_x4`): the CoreV2/CoreV3 table `byte_1DF5760` maps it to `0x05` (colliding with `uint16`), while the CoreV4 MX table `byte_1DFBAD0` gives it its own MX-era tag `0x10`. All other 19 entries are identical (CONFIRMED — both 20-byte LUTs dumped from rodata).
+The single dtype-LUT delta across generations is index 2 (fp4 `e2m1_x4`): the CoreV2/CoreV3 table `byte_1DF5760` maps it to `0x05` (colliding with `uint16`), while the CoreV4 MX table `byte_1DFBAD0` gives it its own MX-era tag `0x10`. All other 19 entries are identical; both 20-byte LUTs were dumped from rodata.
 
-## Gaps and Confidence
+## Limits of this reading
 
-- **`DoubleColumn` / `DoublePixel` distinct wire encoding — INFERRED.** Only `None` and `DoubleRow` are byte-proven in any encoder reached in this build; the other modes' selectors are validated but their distinct bundle bytes are inferred to share the `DoubleRow` fields.
-- **fp32 two-pass numerics — STRONG (encoder) / divergent (simulator).** The encoder's two-pass emission is CONFIRMED; the reference model treats `float32r` as a single rounded pass and does not corroborate a hi/low FMA split.
-- **MX indirect (`MXINDIRECT16B`) gather descriptor — not field-walked.** The static `MXMEM_PATTERN1D` path is CONFIRMED; the gather variant (`assignIndirectPatternForMX` @ `0x150de90`, reached only for `TensorIndirect` MX data) was not field-walked here.
+Three things this page describes are not settled by the binaries.
+
+The **distinct wire encoding for `DoubleColumn` and `DoublePixel`** is **INFERRED**. Only `None` and `DoubleRow` are byte-proven in any encoder reached in this build; the other modes' selectors are validated, but their bundle bytes are assumed to share the `DoubleRow` fields.
+
+The **fp32 two-pass numerics** are asserted by the encoder and contradicted by the reference model. The encoder's two-pass emission is plainly visible; the simulator treats `float32r` as a single rounded pass and offers no corroboration of a hi/low FMA split.
+
+The **MX indirect gather descriptor** (`MXINDIRECT16B`) was not field-walked. The static `MXMEM_PATTERN1D` path is fully read; the gather variant at `assignIndirectPatternForMX` @ `0x150de90`, reached only for `TensorIndirect` MX data, is not.
 
 ## Cross-References
 

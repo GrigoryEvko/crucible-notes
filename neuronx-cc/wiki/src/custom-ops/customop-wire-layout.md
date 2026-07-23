@@ -1,6 +1,6 @@
 # CUSTOM_OP Wire Byte-Layout
 
-> *All symbols, addresses, and byte offsets on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel; cp310/11/12 share an identical `libwalrus.so` `.text`, with a fixed per-build address delta). The encoder, validators, and bounded field-setters all live in `libwalrus.so` (file offset == VA; PT_LOAD 1:1). The BIR node `bir::InstCustomOp` and the `ModuleArtifactInfo` registry live in `libBIR.so` (linked into `libwalrus.so`). Evidence anchor: **D-Q08** (mined from the `CoreV2GenImpl::visitInstCustomOp` body and the `core_v2` custom-op validators). Treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
+> *All symbols, addresses, and byte offsets on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel; cp310/11/12 share an identical `libwalrus.so` `.text`, with a fixed per-build address delta). The encoder, validators, and bounded field-setters all live in `libwalrus.so` (file offset == VA; PT_LOAD 1:1). The BIR node `bir::InstCustomOp` and the `ModuleArtifactInfo` registry live in `libBIR.so` (linked into `libwalrus.so`). Everything here is mined from the `CoreV2GenImpl::visitInstCustomOp` body and the `core_v2` custom-op validators. Treat every address as version-pinned. See [Build & Version Provenance](../reference/versions.md).*
 
 ## Abstract
 
@@ -28,7 +28,7 @@ For reimplementation, the contract is:
 | **Payload validator** | `core_v2::dbg_is_valid_custom_op_payload` @ `0x129c610` |
 | **Arch gate** | `birverifier::checkCustomOp` @ `0xfdbf90` — Sunda(20) ∨ Tonga(10) only |
 | **Kernel identity** | `CustomOpFunctionId` (u8) → `ModuleArtifactInfo` lib/function side-table |
-| **Evidence** | D-Q08 (`visitInstCustomOp` body + `core_v2` validators) |
+| **Evidence** | the `visitInstCustomOp` body + the `core_v2` validators |
 
 > **NOTE — There is exactly one encoder.** `nm -DC` finds no `CoreV3`/`CoreV4` override of `visitInstCustomOp`; the gen3/gen4 backends inherit the `CoreV2` base path verbatim. Custom-op encoding is arch-shared. (The op is *gated* to Sunda/Tonga arch by a separate verifier, but the wire bytes are produced by the single CoreV2 emitter.)
 
@@ -85,7 +85,7 @@ void visitInstCustomOp(InstCustomOp &inst) {
 }
 ```
 
-> **GOTCHA — the kernel name and `.so` are NOT on the wire.** The ISA stream is name-free. The header carries only the numeric `CustomOpFunctionId` (byte `+0x0E`); the human-readable kernel/library name and the `libbuiltincustomop_cpu{0..7}.stripped.so` (or user `.so`) reference are registered separately into `bir::ModuleArtifactInfo` (`addCustomOpLibFile` / `addCustomOpFunction` / `allocateCustomOpFunctionId`), serialized into the NEFF metadata, and resolved by the runtime loader against the FunctionId. The FunctionId↔(libfile, function) binding is the subject of [11.7 FindCustomOpData Staging & FunctionId Binding](findcustomopdata-staging.md). STRONG (D-Q08 — the `registerCustomOp`-tagged registration path and the `inst+0x110/+0xF0/+0x130/…` string reads).
+> **GOTCHA — the kernel name and `.so` are NOT on the wire.** The ISA stream is name-free. The header carries only the numeric `CustomOpFunctionId` (byte `+0x0E`); the human-readable kernel/library name and the `libbuiltincustomop_cpu{0..7}.stripped.so` (or user `.so`) reference are registered separately into `bir::ModuleArtifactInfo` (`addCustomOpLibFile` / `addCustomOpFunction` / `allocateCustomOpFunctionId`), serialized into the NEFF metadata, and resolved by the runtime loader against the FunctionId. The FunctionId↔(libfile, function) binding is the subject of [11.7 FindCustomOpData Staging & FunctionId Binding](findcustomopdata-staging.md); here it is read from the `registerCustomOp`-tagged registration path and the `inst+0x110/+0xF0/+0x130/…` string reads.
 
 ---
 
@@ -95,21 +95,21 @@ The header is the only word that carries the op's *shape*. Its custom-op-specifi
 
 | off | Sz | field | value | source / store | Conf |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | **opcode** = `0x85` (133) | const | `setupHeader`; `LOBYTE(hdr[0]) = -123` | CONFIRMED |
-| `+0x01` | 1 | `inst_word_len` = `0x10` | const | `setupHeader` `a2[1]=16` → word `0x1085` | CONFIRMED |
-| `+0x02` | 2 | reserved = `0` | const | `setupHeader` / `pxor`-zero | CONFIRMED |
-| `+0x04` | 8 | header-init band (engine / sync / neuron-events) | per-inst | `customop_header_init` (`sub_122ED00`) | STRONG |
-| `+0x0C` | 2 | **`num_payloads`** (u16) = `N + 2` | computed | `set_u16(hdr+0x0C, …)` `sub_123CA60` `"instr.num_payloads"`; dest `lea [r13+0Ch]` @0x1262f75 | CONFIRMED |
-| `+0x0E` | 1 | **`CustomOpFunctionId`** (u8) | registry | `allocateCustomOpFunctionId()` → `hdr[14]` | CONFIRMED |
-| `+0x0F` | 1 | **`num_arguments`** (u8) = `N` | arg count | `set_u8(hdr+15, …)` `sub_1247BF0` `"instr.num_arguments"` | CONFIRMED |
-| `+0x10` | 1 | reserved = `0` | const | explicit `hdr[16] = 0` | CONFIRMED |
-| `+0x11..+0x3F` | 47 | reserved = `0` | const | `pxor`-zero (no store) | INFERRED |
+| `+0x00` | 1 | **opcode** = `0x85` (133) | const | `setupHeader`; `LOBYTE(hdr[0]) = -123` | CERTAIN |
+| `+0x01` | 1 | `inst_word_len` = `0x10` | const | `setupHeader` `a2[1]=16` → word `0x1085` | CERTAIN |
+| `+0x02` | 2 | reserved = `0` | const | `setupHeader` / `pxor`-zero | CERTAIN |
+| `+0x04` | 8 | header-init band (engine / sync / neuron-events) | per-inst | `customop_header_init` (`sub_122ED00`) | HIGH |
+| `+0x0C` | 2 | **`num_payloads`** (u16) = `N + 2` | computed | `set_u16(hdr+0x0C, …)` `sub_123CA60` `"instr.num_payloads"`; dest `lea [r13+0Ch]` @0x1262f75 | CERTAIN |
+| `+0x0E` | 1 | **`CustomOpFunctionId`** (u8) | registry | `allocateCustomOpFunctionId()` → `hdr[14]` | CERTAIN |
+| `+0x0F` | 1 | **`num_arguments`** (u8) = `N` | arg count | `set_u8(hdr+15, …)` `sub_1247BF0` `"instr.num_arguments"` | CERTAIN |
+| `+0x10` | 1 | reserved = `0` | const | explicit `hdr[16] = 0` | CERTAIN |
+| `+0x11..+0x3F` | 47 | reserved = `0` | const | `pxor`-zero (no store) | MEDIUM |
 
 ### 2.1 The contiguous `+0x0C..+0x10` count-band
 
-> **NOTE — `num_payloads`, `FunctionId`, and `num_arguments` form a contiguous count-band at `+0x0C..+0x10`, clear of the header-init band.** Every other TPB instruction treats `+0x04..+0x0B` as a generic 8-byte `SyncInfo` / header overlay; the custom-op header leaves that band intact and writes its three count/id fields immediately after it. The bounded u16 setter `sub_123CA60` stamps `num_payloads` at `hdr+0x0C` (dest `lea rdi,[r13+0Ch]`, machine bytes `49 8d 7d 0c` @0x1262f75), then `CustomOpFunctionId` at `+0x0E` and the bounded u8 setter at `+0x0F` (`lea rdi,[r13+0Fh]`, `49 8d 7d 0f` @0x1262fbe) follow in order. Because `+0x0C` is past `+0x0B`, none of these fields overwrites the init band — a reimplementer runs the shared header init, then stamps the count-band, with no ordering hazard between them. CONFIRMED — `sub_123CA60` is the `utils.h:292` bounded setter (width `0x10`, raises if `value != (u16)value`) and its target is `hdr+0x0C`; the field-name string `"instr.num_payloads"` is verbatim `.rodata`.
+> **NOTE — `num_payloads`, `FunctionId`, and `num_arguments` form a contiguous count-band at `+0x0C..+0x10`, clear of the header-init band.** Every other TPB instruction treats `+0x04..+0x0B` as a generic 8-byte `SyncInfo` / header overlay; the custom-op header leaves that band intact and writes its three count/id fields immediately after it. The bounded u16 setter `sub_123CA60` stamps `num_payloads` at `hdr+0x0C` (dest `lea rdi,[r13+0Ch]`, machine bytes `49 8d 7d 0c` @0x1262f75), then `CustomOpFunctionId` at `+0x0E` and the bounded u8 setter at `+0x0F` (`lea rdi,[r13+0Fh]`, `49 8d 7d 0f` @0x1262fbe) follow in order. Because `+0x0C` is past `+0x0B`, none of these fields overwrites the init band — a reimplementer runs the shared header init, then stamps the count-band, with no ordering hazard between them. `sub_123CA60` is the `utils.h:292` bounded setter (width `0x10`, raising if `value != (u16)value`) and its target is `hdr+0x0C`; the field-name string `"instr.num_payloads"` is verbatim `.rodata`.
 
-> **CORRECTION (D-Q08) — `num_payloads` is at `+0x0C`, not `+0x06`.** An earlier draft of this page placed `num_payloads` at header `+0x06`. That was a decompiler-misread: Hex-Rays renders the store as `sub_123CA60((_WORD*)hdr + 6, "instr.num_payloads", …)`, and `hdr` is typed `_WORD*` (u16), so `+ 6` is **u16-pointer arithmetic = 6 × 2 = +0x0C bytes**, not a `+6`-byte offset. The byte-proven truth is `+0x0C`: the setter's destination is `lea rdi,[r13+0Ch]` (machine bytes `49 8d 7d 0c`) at 0x1262f75 in the encoder body (`visitInstCustomOp` @0x12613c0), with the COLLECT scratch arm at 0x1263201 stamping the same `[…+0Ch]`. The cross-check that proves it: the sibling field `num_arguments` is stored via a genuine `_BYTE*` `+ 15` → `lea [r13+0Fh]` → byte `+0x0F` — by the sibling u8 setter `sub_1247BF0` (call @0x1262fcf), *different pointer type and width* from the u16 `sub_123CA60` (`num_payloads`, @0x1262f86), which is exactly what flipped only `num_payloads`. The sibling [2.22 Collective/GPSIMD/CustomOp Encoding](../isa/collective-customop-encoding.md) §10 map (which placed `num_payloads` at `+0x0C`) is **CORRECT**; this page now agrees with it.
+> **GOTCHA — the decompiler makes `num_payloads` look like `+0x06`.** Hex-Rays renders the store as `sub_123CA60((_WORD*)hdr + 6, "instr.num_payloads", …)`, and because `hdr` is typed `_WORD*` (u16), that `+ 6` is u16-pointer arithmetic: 6 × 2 = **+0x0C bytes**, not a `+6`-byte offset. The disassembly settles it — the setter's destination is `lea rdi,[r13+0Ch]` (machine bytes `49 8d 7d 0c`) at `0x1262f75` in `visitInstCustomOp` @`0x12613c0`, and the COLLECT scratch arm at `0x1263201` stamps the same `[…+0Ch]`. The sibling field is the control: `num_arguments` goes through a genuine `_BYTE*` `+ 15` → `lea [r13+0Fh]` → byte `+0x0F`, via the u8 setter `sub_1247BF0` (call @`0x1262fcf`) rather than the u16 `sub_123CA60` (@`0x1262f86`). Different pointer type, different width — which is why only `num_payloads` reads misleadingly.
 
 ### 2.2 The `num_payloads = N + 2` arithmetic — what the `+2` is
 
@@ -128,9 +128,9 @@ The cleanest decomposition consistent with the chain (§1) and the emitter's `N 
 - `+1` for the **output** access pattern (payload 0, always emitted even for a single-output op).
 - `+1` for the **header** word itself — `num_payloads` is the *total chunk count* of the instruction (header + all payloads), so a downstream chunk-reader advances exactly `num_payloads` 64-byte words to reach the next instruction.
 
-> **NOTE — the `else 1` branch.** When `N == 0` (a custom op with no input arguments), the emitter sets `num_payloads = 1`, not `0 + 2 = 2`. This is the degenerate "header-only-ish" count for the no-argument case (the chunk-walker still needs a non-zero advance). The `(#args + 2) if args present, else 1` rule is read directly from the emitter; the exact semantics of the zero-argument / scalar-fill path (whether an output payload is still emitted when `N==0`) is the one OPEN edge in D-Q08 — treat `num_payloads = N + 2` as the rule for the common `N ≥ 1` case and `1` for `N = 0`. CONFIRMED (the `N+2` / `1` values); INFERRED (the precise per-chunk decomposition of the `+2`, since the runtime chunk-walker is not in `libwalrus`).
+> **NOTE — the `else 1` branch.** When `N == 0` (a custom op with no input arguments), the emitter sets `num_payloads = 1`, not `0 + 2 = 2`. This is the degenerate "header-only-ish" count for the no-argument case (the chunk-walker still needs a non-zero advance). The `(#args + 2) if args present, else 1` rule is read directly from the emitter; the exact semantics of the zero-argument / scalar-fill path — whether an output payload is still emitted when `N == 0` — remains open. Treat `num_payloads = N + 2` as the rule for the common `N ≥ 1` case and `1` for `N = 0`. The `N+2` and `1` values are read from the emitter; the precise per-chunk decomposition of the `+2` is **INFERRED**, since the runtime chunk-walker is not in `libwalrus`.
 
-> **GOTCHA — `num_arguments` counts inputs only; the output is separate.** `num_arguments` (byte `+0x0F`) = the length of the `InstCustomOp` argument list (inputs). The single output is *not* counted in `num_arguments` — it rides payload 0. So a 3-input / 1-output op has `num_arguments = 3` and `num_payloads = 5` (3 inputs + 1 output + 1 header). A reimplementer must keep the two counters distinct: `num_arguments = N`, `num_payloads = N + 2`. CONFIRMED — the emitter counts arguments (`inst+0xA0..+0xA8` list) and the single output separately; the `"Custom ops cannot have more than 1 output"` legality check (`.rodata`) confirms the at-most-one-output invariant.
+> **GOTCHA — `num_arguments` counts inputs only; the output is separate.** `num_arguments` (byte `+0x0F`) = the length of the `InstCustomOp` argument list (inputs). The single output is *not* counted in `num_arguments` — it rides payload 0. So a 3-input / 1-output op has `num_arguments = 3` and `num_payloads = 5` (3 inputs + 1 output + 1 header). A reimplementer must keep the two counters distinct: `num_arguments = N`, `num_payloads = N + 2`. The emitter counts arguments (the `inst+0xA0..+0xA8` list) and the single output separately, and the `"Custom ops cannot have more than 1 output"` legality string in `.rodata` pins the at-most-one-output invariant.
 
 ---
 
@@ -140,16 +140,16 @@ Each payload is a near-empty bundle carrying a **present-flag** and **one** acce
 
 | off | Sz | field | value | source / store | Conf |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | **opcode** = `0x86` (134) | const | `setupHeader`; `LOBYTE(pl[0]) = -122` | CONFIRMED |
-| `+0x01` | 1 | `inst_word_len` = `0x10` | const | `setupHeader` `a2[1]=16` → word `0x1086` | CONFIRMED |
-| `+0x02` | 2 | reserved = `0` | const | `setupHeader` / `pxor`-zero | CONFIRMED |
-| `+0x04` | 8 | header-init band | per-inst | shared header overlay | STRONG |
-| `+0x0F` | 1 | **present flag** = `1` | const | explicit `pl[0x0F] = 1` | CONFIRMED |
-| `+0x10` | 48 | **access-pattern descriptor** (ADDR4-rooted) | operand AP | `encode_access_pattern(pl+0x10, …)` `sub_1210900` | CONFIRMED (store); STRONG (AP internals) |
+| `+0x00` | 1 | **opcode** = `0x86` (134) | const | `setupHeader`; `LOBYTE(pl[0]) = -122` | CERTAIN |
+| `+0x01` | 1 | `inst_word_len` = `0x10` | const | `setupHeader` `a2[1]=16` → word `0x1086` | CERTAIN |
+| `+0x02` | 2 | reserved = `0` | const | `setupHeader` / `pxor`-zero | CERTAIN |
+| `+0x04` | 8 | header-init band | per-inst | shared header overlay | HIGH |
+| `+0x0F` | 1 | **present flag** = `1` | const | explicit `pl[0x0F] = 1` | CERTAIN |
+| `+0x10` | 48 | **access-pattern descriptor** (ADDR4-rooted) | operand AP | `encode_access_pattern(pl+0x10, …)` `sub_1210900` | CERTAIN (store); HIGH (AP internals) |
 
 ### 3.1 The present flag
 
-The byte at `+0x0F` is stamped to `1` on every payload. It marks the payload slot as occupied — the consumer treats `+0x0F == 1` as "this `0x86` word carries a valid AP". The payload validator `dbg_is_valid_custom_op_payload` (`0x129c610`) branches on `byte0 == 0x86` and validates the descriptor/event fields; the present flag is the per-payload occupancy marker. CONFIRMED — the `pl[0x0F] = 1` store is in the emit path of every payload arm.
+The byte at `+0x0F` is stamped to `1` on every payload. It marks the payload slot as occupied — the consumer treats `+0x0F == 1` as "this `0x86` word carries a valid AP". The payload validator `dbg_is_valid_custom_op_payload` (`0x129c610`) branches on `byte0 == 0x86` and validates the descriptor/event fields; the present flag is the per-payload occupancy marker. The `pl[0x0F] = 1` store sits in the emit path of every payload arm.
 
 > **NOTE — the present flag occupies the *same byte offset* (`+0x0F`) that the header uses for `num_arguments`.** This is not a collision: they are different opcodes (`0x85` vs `0x86`) with independent field meanings at `+0x0F`. In the header, `+0x0F` = `num_arguments` (u8 count); in the payload, `+0x0F` = present flag (`1`). A decoder dispatches on `byte[0]` first, then interprets `+0x0F` per-opcode.
 
@@ -167,9 +167,9 @@ encode_access_pattern(&payload[0x10], operand_AP);
 /*  payload[0x14..]     = TENSORnD loop words (per-dim num/step; see 2.3)     */
 ```
 
-> **GOTCHA — a custom-op operand AP cannot be a `TensorIndirect` (gather) AP.** The emitter raises `"Hardware Restriction: CUSTOM_OP instruction cannot have TensorIndirect AP"` (`.rodata`). So the ADDR4 word at `+0x10` is always a static or register-mode address (mode nibble `0b00` or RM=1) — never the indirect-gather mode (`0x20`). All operands must additionally be located in SBUF or HBM (`"All args to a customop must be located in SBUF or HBM"`, `"All of a customop's outputs must be located in SBUF or HBM"`). CONFIRMED — the three legality strings are verbatim in the emitter's `.rodata`.
+> **GOTCHA — a custom-op operand AP cannot be a `TensorIndirect` (gather) AP.** The emitter raises `"Hardware Restriction: CUSTOM_OP instruction cannot have TensorIndirect AP"` (`.rodata`). So the ADDR4 word at `+0x10` is always a static or register-mode address (mode nibble `0b00` or RM=1) — never the indirect-gather mode (`0x20`). All operands must additionally be located in SBUF or HBM (`"All args to a customop must be located in SBUF or HBM"`, `"All of a customop's outputs must be located in SBUF or HBM"`). All three legality strings are verbatim in the emitter's `.rodata`.
 
-> **NOTE — the AP descriptor internals are out of scope here.** The 48-byte AP layout (ADDR4 + the `TENSORnD` loop words, the per-dtype alignment, the SBUF/PSUM region split) is the subject of [2.2 ADDR4](../isa/addr4.md) and [2.3 Tensor Descriptors](../isa/tensor-descriptors.md). This page pins only that the payload's AP starts at `+0x10` and is ADDR4-rooted; the per-field bit map of the AP itself is deferred to those pages. D-Q08 leaves the per-field AP descriptor of `sub_1210900` OPEN (the AP-per-payload structure and the output-first ordering are confirmed; the internal offsets of the descriptor are the AP pages' subject).
+> **NOTE — the AP descriptor internals are out of scope here.** The 48-byte AP layout (ADDR4 + the `TENSORnD` loop words, the per-dtype alignment, the SBUF/PSUM region split) is the subject of [2.2 ADDR4](../isa/addr4.md) and [2.3 Tensor Descriptors](../isa/tensor-descriptors.md). This page pins only that the payload's AP starts at `+0x10` and is ADDR4-rooted; the per-field bit map of the AP itself is deferred to those pages. The AP-per-payload structure and the output-first ordering are settled here; the internal offsets written by `sub_1210900` are not, and belong to the AP pages.
 
 ---
 
@@ -245,13 +245,13 @@ bool dbg_is_valid_custom_op_payload(word) {
 
 | Checker | Address | Asserts | Conf |
 |---|---|---|---|
-| `is_valid_custom_op_header` | `0x129b940` | `byte0==0x85`, `byte1==0x10`, `LOWORD==0x1085`, valid events | CONFIRMED |
-| `dbg_is_valid_custom_op_header` | `0x129ba90` | mirror (debug build) | CONFIRMED |
-| `dbg_is_valid_custom_op_payload` | `0x129c610` | `byte0==0x86`, descriptor/events | CONFIRMED |
+| `is_valid_custom_op_header` | `0x129b940` | `byte0==0x85`, `byte1==0x10`, `LOWORD==0x1085`, valid events | CERTAIN |
+| `dbg_is_valid_custom_op_header` | `0x129ba90` | mirror (debug build) | CERTAIN |
+| `dbg_is_valid_custom_op_payload` | `0x129c610` | `byte0==0x86`, descriptor/events | CERTAIN |
 
 These wire-validators — the full set, the codegen-mode plumbing, and the `RUN_ISA_CHECKS` vs `GENERATE_ISACODE` vs `COLLECT_OPCODES` three-way switch — are the subject of [11.6 Custom-Op Wire Validators](customop-wire-validators.md). This page documents only the two custom-op-specific checkers and the byte assertions they pin.
 
-> **NOTE — three codegen modes, one encoder.** `visitInstCustomOp` switches on the codegen mode (`gen+0x270`): **GENERATE_ISACODE** (mode 1) emplaces the `array<u8,64>`, stamps, encodes, and `fwrite`s `0x40` bytes to the engine `.bin`; **RUN_ISA_CHECKS** (mode 2) encodes on scratch and runs the validators with no `fwrite`; **COLLECT_OPCODES** (mode 0) inserts the opcode int (`133` header / `134` payload) into the per-instruction opcode set and bumps a `map<u32,u32>` histogram. Any other mode raises `"Wrong CodeGenMode. It must be one of GENERATE_ISACODE, RUN_ISA_CHECKS, or COLLECT_OPCODES"`. The byte stamps are identical across GENERATE and RUN_ISA_CHECKS — the validator checks the same bytes the generator writes. CONFIRMED (D-Q08).
+> **NOTE — three codegen modes, one encoder.** `visitInstCustomOp` switches on the codegen mode (`gen+0x270`): **GENERATE_ISACODE** (mode 1) emplaces the `array<u8,64>`, stamps, encodes, and `fwrite`s `0x40` bytes to the engine `.bin`; **RUN_ISA_CHECKS** (mode 2) encodes on scratch and runs the validators with no `fwrite`; **COLLECT_OPCODES** (mode 0) inserts the opcode int (`133` header / `134` payload) into the per-instruction opcode set and bumps a `map<u32,u32>` histogram. Any other mode raises `"Wrong CodeGenMode. It must be one of GENERATE_ISACODE, RUN_ISA_CHECKS, or COLLECT_OPCODES"`. The byte stamps are identical across GENERATE and RUN_ISA_CHECKS — the validator checks the same bytes the generator writes.
 
 ---
 
@@ -261,28 +261,28 @@ The encoder raises (`reportError`) on these conditions, all verbatim `.rodata` i
 
 | Constraint | Error string | Conf |
 |---|---|---|
-| At most one output | `"Custom ops cannot have more than 1 output"` | CONFIRMED |
-| Inputs in SBUF/HBM | `"All args to a customop must be located in SBUF or HBM"` | CONFIRMED |
-| Outputs in SBUF/HBM | `"All of a customop's outputs must be located in SBUF or HBM"` | CONFIRMED |
-| No gather AP | `"Hardware Restriction: CUSTOM_OP instruction cannot have TensorIndirect AP"` | CONFIRMED |
-| ≤ 254 unique functions | `"Number of unique custom op functions cannot exceed "` (cap `0xFE` = 254) | CONFIRMED |
-| Arch is Sunda/Tonga | `"Arch == ArchLevel::Sunda \|\| Arch == ArchLevel::Tonga"` (`checkCustomOp @0xfdbf90`) | CONFIRMED |
+| At most one output | `"Custom ops cannot have more than 1 output"` | CERTAIN |
+| Inputs in SBUF/HBM | `"All args to a customop must be located in SBUF or HBM"` | CERTAIN |
+| Outputs in SBUF/HBM | `"All of a customop's outputs must be located in SBUF or HBM"` | CERTAIN |
+| No gather AP | `"Hardware Restriction: CUSTOM_OP instruction cannot have TensorIndirect AP"` | CERTAIN |
+| ≤ 254 unique functions | `"Number of unique custom op functions cannot exceed "` (cap `0xFE` = 254) | CERTAIN |
+| Arch is Sunda/Tonga | `"Arch == ArchLevel::Sunda \|\| Arch == ArchLevel::Tonga"` (`checkCustomOp @0xfdbf90`) | CERTAIN |
 
-> **GOTCHA — `CustomOpFunctionId` is a u8, capped at 254 unique functions (`0xFF` = unset).** `allocateCustomOpFunctionId()` hands out a dense `uint32` id that is truncated to a byte at the wire; the `ModuleArtifactInfo` function-count guard (`+456`) raises `"Number of unique custom op functions cannot exceed "` once the unique-function count would exceed `0xFE` (254). The id is a single byte (`hdr+0x0E`) with `0xFF` reserved as the "unset" sentinel, so a NEFF can reference at most 254 distinct custom-op functions. The id-to-(libfile, function-name) map is NEFF metadata, resolved by the runtime — the wire only carries the byte. CONFIRMED — the u8 width of `hdr[0x0E]` and the `0xFE` count guard pin the 254 usable-id ceiling.
+> **GOTCHA — `CustomOpFunctionId` is a u8, capped at 254 unique functions (`0xFF` = unset).** `allocateCustomOpFunctionId()` hands out a dense `uint32` id that is truncated to a byte at the wire; the `ModuleArtifactInfo` function-count guard (`+456`) raises `"Number of unique custom op functions cannot exceed "` once the unique-function count would exceed `0xFE` (254). The id is a single byte (`hdr+0x0E`) with `0xFF` reserved as the "unset" sentinel, so a NEFF can reference at most 254 distinct custom-op functions. The id-to-(libfile, function-name) map is NEFF metadata, resolved by the runtime — the wire only carries the byte. The u8 width of `hdr[0x0E]` together with the `0xFE` count guard is what pins the 254 usable-id ceiling; note that the `.rodata` literal is a bare prefix with no number compiled into it, so the cap is not readable from the string.
 >
-> **CORRECTION (#826 reconciliation) — the cap is `0xFE` = 254, not 255, and the error string carries no baked "255".** An earlier draft of this page stated a 255 cap and quoted `"…cannot exceed 255"`. The `.rodata` literal is the prefix `"Number of unique custom op functions cannot exceed "` with no number compiled in, and the guard is `0xFE` (254 usable ids, `0xFF` = unset). This now agrees with [11.7](findcustomopdata-staging.md), [11.10](customop-full-chain.md) §4B, and the upstream [6.5.8](../nki/neuroncodegen-builtin-customop.md) emitter analysis.
-
 > **GOTCHA — the GPSIMD here is the Xtensa CPU cluster, NOT the Pool-alias "GPSIMD" mover.** The `0x85`/`0x86` pair dispatches a kernel onto the programmable 8-core Xtensa GPSIMD CPU array ([11.1 The GPSIMD CPUs: 8-core Xtensa ELF Layout](gpsimd-xtensa-layout.md)). That is a different subsystem from the `InstGPSIMDSB2SB` (`0xBF`) Pool-alias cross-core SBUF↔SBUF mover documented in [2.22 §5](../isa/collective-customop-encoding.md) and [1.13 GPSIMD Engine](../arch/gpsimd-engine.md). The three-way "GPSIMD" name collision is resolved in full on the [1.13](../arch/gpsimd-engine.md) page; the custom-op pair on this page is the Xtensa-cluster dispatch, and SORT (and arbitrary user NKI kernels) are its canonical occupants ([11.2 Bitonic SORT/TOPK](bitonic-sort-topk.md)).
 
 ---
 
-## 7. Confidence ledger
+## 7. Evidence summary
 
-- **CONFIRMED** (byte-store / opcode / validator disassembled in the `visitInstCustomOp` body and the `core_v2` checkers): both opcodes (`0x85`=133 / `0x86`=134, from `LOBYTE = -123 / -122`, COLLECT records 133/134, validators `v12==-123 / v10==-122`); the `0x1085`/`0x1086` 16-bit words (`setupHeader a2[1]=16`, validator `LOWORD=4229`); `num_payloads` u16 @ `+0x0C` (`sub_123CA60`, dest `lea [r13+0Ch]` `49 8d 7d 0c` @0x1262f75, `"instr.num_payloads"`); `CustomOpFunctionId` u8 @ `+0x0E`; `num_arguments` u8 @ `+0x0F` (`sub_1247BF0`, dest `lea [r13+0Fh]` `49 8d 7d 0f` @0x1262fbe, `"instr.num_arguments"`); the `hdr[0x10]=0` store; the payload present flag `=1` @ `+0x0F`; the AP-per-payload structure (output via `getOutput`, args via `getArgument`, encoded by `sub_1210900` @ `+0x10`); the `num_payloads = N+2 | 1` rule; all six legality strings + the 254-function u8 cap (`0xFE` guard, `0xFF` unset); the Sunda/Tonga arch gate.
-- **STRONG**: the `+0x04..+0x0B` header-init band sub-layout (shared overlay written by `sub_122ED00`, not re-decoded here); the AP descriptor being ADDR4-rooted (cross-referenced to [2.2 ADDR4](../isa/addr4.md), not independently store-pinned in this body); the FunctionId↔registry binding path (`registerCustomOp` tag + string reads, the subject of 11.7).
-- **INFERRED / DEFER**: the precise per-chunk decomposition of the `+2` (header vs output vs the runtime chunk-walker's advance semantics, since the walker is not in `libwalrus`); the `N == 0` zero-argument edge (`num_payloads = 1`); the 48-byte AP descriptor internals written by `sub_1210900` ([2.2 ADDR4](../isa/addr4.md), [2.3 Tensor Descriptors](../isa/tensor-descriptors.md)); the `+0x0C..+0x0D` init-band byte meanings.
+**Read directly** — every byte store, opcode, and validator below is disassembled in the `visitInstCustomOp` body or the `core_v2` checkers: both opcodes (`0x85`=133 / `0x86`=134, from `LOBYTE = -123 / -122`, COLLECT records 133/134, validators `v12==-123 / v10==-122`); the `0x1085`/`0x1086` 16-bit words (`setupHeader a2[1]=16`, validator `LOWORD=4229`); `num_payloads` u16 @ `+0x0C` (`sub_123CA60`, dest `lea [r13+0Ch]` `49 8d 7d 0c` @0x1262f75, `"instr.num_payloads"`); `CustomOpFunctionId` u8 @ `+0x0E`; `num_arguments` u8 @ `+0x0F` (`sub_1247BF0`, dest `lea [r13+0Fh]` `49 8d 7d 0f` @0x1262fbe, `"instr.num_arguments"`); the `hdr[0x10]=0` store; the payload present flag `=1` @ `+0x0F`; the AP-per-payload structure (output via `getOutput`, args via `getArgument`, encoded by `sub_1210900` @ `+0x10`); the `num_payloads = N+2 | 1` rule; all six legality strings + the 254-function u8 cap (`0xFE` guard, `0xFF` unset); the Sunda/Tonga arch gate.
+**Reconstructed rather than store-pinned**: the `+0x04..+0x0B` header-init band sub-layout (shared overlay written by `sub_122ED00`, not re-decoded here); the AP descriptor being ADDR4-rooted (cross-referenced to [2.2 ADDR4](../isa/addr4.md), not independently store-pinned in this body); the FunctionId↔registry binding path (`registerCustomOp` tag + string reads, the subject of 11.7).
+### Limits of this reading
 
-The encoder body is authoritative for every offset cited. No SPECULATIVE claims.
+**INFERRED, or deferred to another page**: the precise per-chunk decomposition of the `+2` (header vs output vs the runtime chunk-walker's advance semantics, since the walker is not in `libwalrus`); the `N == 0` zero-argument edge (`num_payloads = 1`); the 48-byte AP descriptor internals written by `sub_1210900` ([2.2 ADDR4](../isa/addr4.md), [2.3 Tensor Descriptors](../isa/tensor-descriptors.md)); the `+0x0C..+0x0D` init-band byte meanings.
+
+The encoder body is authoritative for every offset cited above.
 
 ## Cross-References
 
