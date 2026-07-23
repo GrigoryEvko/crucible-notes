@@ -8,29 +8,29 @@ This is the **synthesis page** for [Part 2](../). The preceding eight pages each
 
 The "`NEURON_ISA_TPB` struct family" is **not one fixed struct**. It is a **64-byte (16-dword) instruction bundle** whose 4-byte header word is the *only* universal field, and whose remaining 60 bytes are an **op-specific discriminated union** (`NEURON_ISA_TPB_INST_UNION`). The union **discriminant is the opcode byte** at `raw[0]`. Descriptor *slots* inside the body land at one of **three family-fixed offset sets** (A/B/C), chosen by descriptor width and operand count — never freely per op. Every descriptor slot opens with an `ADDR4` word and follows the 4+4N rule; SRC operands carry the `TENSOR*` wire type, DST operands the byte-identical `MEM_PATTERN*` wire type (the distinction is *role*, not bytes).
 
-The header is the union of the byte-verified facts from all eight sub-pages. Where it differs from an earlier sub-page reading, the disagreement is reconciled in §[Reconciled disagreements](#reconciled-disagreements) and tagged with an in-place CORRECTION. Each struct and field carries an inline confidence tag; the spine — the 64-byte bundle, the three families, the 8/12/16/20-byte descriptor sizes, the role fork, the dtype enum — is CONFIRMED (encoder writes and decoder reads agree byte-exact, and the `.rodata` size asserts + the recovered type names are read directly from `libwalrus.so` this pass).
+The header is the union of the byte-verified facts from all eight sub-pages; the details most often misread across them are collected in §[Points that are easy to get wrong](#points-that-are-easy-to-get-wrong). Each struct and field carries an inline confidence tag. The spine — the 64-byte bundle, the three families, the 8/12/16/20-byte descriptor sizes, the role fork, the dtype enum — is pinned in both directions: encoder writes and decoder reads agree byte-exact, and the `.rodata` size asserts and recovered type names are read directly from `libwalrus.so`.
 
 ## At a glance — the struct roster
 
 | Struct | Size | Role | Source page | Conf |
 |---|---|---|---|---|
-| `NEURON_ISA_TPB_ADDR4` | 4 B (`u32`) | start-address word, opens every descriptor slot | [2.2](addr4.md) | CONFIRMED |
-| `NEURON_ISA_TPB_TENSOR1D` | 8 B | 1-free-dim SRC pattern (`4+4·1`) | [2.3](tensor-descriptors.md) | CONFIRMED |
-| `NEURON_ISA_TPB_TENSOR2D` | 12 B | 2-free-dim SRC pattern (`4+4·2`) | [2.3](tensor-descriptors.md) | CONFIRMED |
-| `NEURON_ISA_TPB_TENSOR3D` | 16 B | 3-free-dim SRC pattern — the workhorse | [2.3](tensor-descriptors.md) | CONFIRMED |
-| `NEURON_ISA_TPB_TENSOR4D` | 20 B | 4-free-dim SRC spill (`4+4·4`) | [2.4](tensor4d-mempattern4d.md) | CONFIRMED |
-| `NEURON_ISA_TPB_MEM_PATTERN2D/3D/4D` | 12/16/20 B | DST byte-twins of `TENSOR2/3/4D` | [2.5](mempattern-2d-3d.md) | CONFIRMED |
-| `NEURON_ISA_TPB_MXMEM_PATTERN1D` | 16 B | MX data+E8M0-scale dual-ADDR4 (CoreV4-only; 12 written) | [2.6](mxmem-pattern1d.md) | CONFIRMED |
-| `NEURON_ISA_TPB_MXINDIRECT16B` | 16 B | MX gather (index+data+scale ADDR4) | [2.7](indirect-descriptors.md) | CONFIRMED |
-| `NEURON_ISA_TPB_INDIRECT16B` | 16 B | non-MX 3-D gather (index+data+num) | [2.7](indirect-descriptors.md) | CONFIRMED |
-| `NEURON_ISA_TPB_INDIRECT20B` | 20 B | non-MX 4-D gather | [2.7](indirect-descriptors.md) | CONFIRMED |
-| `NEURON_ISA_TPB_HEADER` | 4 B | universal `{opcode, 0x10, 0, 0}` header word | [2.1](instruction-bundle.md) | CONFIRMED |
-| `…_BUNDLE_MATMUL` (Family A) | 64 B | src `+0x10` / dst `+0x30`, control band `+0x20..+0x2F` | [2.1](instruction-bundle.md) | CONFIRMED |
-| `…_BUNDLE_TENSORTENSOR` (Family B) | 64 B | dst `+0x10` / in0 `+0x20` / in1 `+0x30`, band `+0x0C..+0x0F` | [2.1](instruction-bundle.md) | CONFIRMED |
-| `…_BUNDLE_POOLCOPY` (Family C) | 64 B | in `+0x0C` / out `+0x2C`, control band `+0x20..+0x2B` | [2.1](instruction-bundle.md) | CONFIRMED |
-| `…_SEMAPHORE` | 64 B | SP sync record (opcode `0xA0`) | [1.14](../arch/execution-sync-model.md) | CONFIRMED |
-| `…_BUNDLE_BRANCH` | 64 B | SP branch record (opcode `0xA9`) | [2.1](instruction-bundle.md) | CONFIRMED |
-| `NEURON_ISA_TPB_INST_UNION` | 64 B | the discriminated bundle (all of the above) | — | CONFIRMED |
+| `NEURON_ISA_TPB_ADDR4` | 4 B (`u32`) | start-address word, opens every descriptor slot | [2.2](addr4.md) | CERTAIN |
+| `NEURON_ISA_TPB_TENSOR1D` | 8 B | 1-free-dim SRC pattern (`4+4·1`) | [2.3](tensor-descriptors.md) | CERTAIN |
+| `NEURON_ISA_TPB_TENSOR2D` | 12 B | 2-free-dim SRC pattern (`4+4·2`) | [2.3](tensor-descriptors.md) | CERTAIN |
+| `NEURON_ISA_TPB_TENSOR3D` | 16 B | 3-free-dim SRC pattern — the workhorse | [2.3](tensor-descriptors.md) | CERTAIN |
+| `NEURON_ISA_TPB_TENSOR4D` | 20 B | 4-free-dim SRC spill (`4+4·4`) | [2.4](tensor4d-mempattern4d.md) | CERTAIN |
+| `NEURON_ISA_TPB_MEM_PATTERN2D/3D/4D` | 12/16/20 B | DST byte-twins of `TENSOR2/3/4D` | [2.5](mempattern-2d-3d.md) | CERTAIN |
+| `NEURON_ISA_TPB_MXMEM_PATTERN1D` | 16 B | MX data+E8M0-scale dual-ADDR4 (CoreV4-only; 12 written) | [2.6](mxmem-pattern1d.md) | CERTAIN |
+| `NEURON_ISA_TPB_MXINDIRECT16B` | 16 B | MX gather (index+data+scale ADDR4) | [2.7](indirect-descriptors.md) | CERTAIN |
+| `NEURON_ISA_TPB_INDIRECT16B` | 16 B | non-MX 3-D gather (index+data+num) | [2.7](indirect-descriptors.md) | CERTAIN |
+| `NEURON_ISA_TPB_INDIRECT20B` | 20 B | non-MX 4-D gather | [2.7](indirect-descriptors.md) | CERTAIN |
+| `NEURON_ISA_TPB_HEADER` | 4 B | universal `{opcode, 0x10, 0, 0}` header word | [2.1](instruction-bundle.md) | CERTAIN |
+| `…_BUNDLE_MATMUL` (Family A) | 64 B | src `+0x10` / dst `+0x30`, control band `+0x20..+0x2F` | [2.1](instruction-bundle.md) | CERTAIN |
+| `…_BUNDLE_TENSORTENSOR` (Family B) | 64 B | dst `+0x10` / in0 `+0x20` / in1 `+0x30`, band `+0x0C..+0x0F` | [2.1](instruction-bundle.md) | CERTAIN |
+| `…_BUNDLE_POOLCOPY` (Family C) | 64 B | in `+0x0C` / out `+0x2C`, control band `+0x20..+0x2B` | [2.1](instruction-bundle.md) | CERTAIN |
+| `…_SEMAPHORE` | 64 B | SP sync record (opcode `0xA0`) | [1.14](../arch/execution-sync-model.md) | CERTAIN |
+| `…_BUNDLE_BRANCH` | 64 B | SP branch record (opcode `0xA9`) | [2.1](instruction-bundle.md) | CERTAIN |
+| `NEURON_ISA_TPB_INST_UNION` | 64 B | the discriminated bundle (all of the above) | — | CERTAIN |
 
 The four `.rodata` size asserts that pin the descriptor sizes are read directly from the binary this pass: `"ISA mem pattern 1D must have 8 bytes to encode"` / `2D … 12` / `3D … 16` / `4D … 20` — `slot_size(N) = 4 + 4N`. The struct **type names** above are likewise read from the live `nm -DC` symbol table (`NEURON_ISA_TPB_TENSOR1D … TENSOR4D`, `MEM_PATTERN2D/3D/4D`, `MXMEM_PATTERN1D`, `MXINDIRECT16B`, `INDIRECT16B/20B`, `ADDR4`, `DTYPE` — all present).
 
@@ -423,9 +423,9 @@ _Static_assert(sizeof(NEURON_ISA_TPB_INDIRECT20B)    == 20, "INDIRECT20B = 20 by
 
 The C structs above use natural alignment, which (because every field is byte / 2-byte / 4-byte and every offset is hand-checked) reproduces the wire layout **without implicit padding** for `TENSOR1-4D`, `MXMEM_PATTERN1D`, the indirect descriptors, and the family bundles. Two facts make this safe: (1) the `int16_t stride[]` / `uint16_t num[]` arrays are naturally 2-byte aligned and contiguous, exactly matching the encoder's `step@+4+2i` / `num@+(4+2N)+2i` stores; (2) the family-bundle bodies are explicit `uint8_t` arrays at the spill points, so no compiler ever inserts padding inside them. The emitter `memset`-zeroes all 64 bytes before field-filling, so any byte the C struct leaves implicit is a hard zero on the wire — *packed == wire*. For a strict ABI-portable build (where a compiler might over-align an aggregate), wrap each struct in `#pragma pack(push,1)` / `#pragma pack(pop)`; the wire format has no padding, so the packed form is byte-identical.
 
-> **GOTCHA — `SRC = TENSOR*`, `DST = MEM_PATTERN*` is a role, not a layout.** The `MEM_PATTERN2D/3D/4D` types are `typedef`s of the `TENSOR2D/3D/4D` types — byte-for-byte identical. The fork is expressed in the binary in three non-byte places: the wire-struct **type name**, the dispatcher **assert** (`"ISA mem pattern is union but is missing field"` for DST vs `"static tensor pattern but has indirect field"` for SRC — both strings read from `libwalrus.so` this pass), and the validator **role flags** (`WR=1/PSUM=1/SBUF=0` for a PSUM dst). A reimplementer encodes both spellings identically; the type name only routes the operand to the read-role or write-role validator and tells the verifier which union member is present. [2.5 CONFIRMED]
+> **GOTCHA — `SRC = TENSOR*`, `DST = MEM_PATTERN*` is a role, not a layout.** The `MEM_PATTERN2D/3D/4D` types are `typedef`s of the `TENSOR2D/3D/4D` types — byte-for-byte identical. The fork is expressed in the binary in three non-byte places: the wire-struct **type name**, the dispatcher **assert** (`"ISA mem pattern is union but is missing field"` for DST vs `"static tensor pattern but has indirect field"` for SRC — both strings read from `libwalrus.so`), and the validator **role flags** (`WR=1/PSUM=1/SBUF=0` for a PSUM dst). A reimplementer encodes both spellings identically; the type name only routes the operand to the read-role or write-role validator and tells the verifier which union member is present. [2.5]
 
-> **QUIRK — there is no descriptor at bundle byte `+0x48`.** Earlier per-op field maps recurringly cite a `+0x48`. That is the *vtable* offset through which `setupHeader` is reached (`call [rax+0x48]`, slot 9, since `0x48/8 = 9`) — a **code** offset, not a bundle byte. The narrowest descriptor that could sit at bundle `+0x48` is a `TENSOR3D` (16 B), which would span `+0x48..+0x57` and overflow the 64-byte bundle (`0x58 > 0x40`). The "slots at `+16/+32/+48`" phrasing describes **Family B only** (`0x10/0x20/0x30`); it is not the universal layout. [2.1 §CORRECTION CONFIRMED]
+> **GOTCHA — the `+0x48` you keep seeing is a vtable offset, not a bundle byte.** `setupHeader` is reached through `call [rax+0x48]` — slot 9, since `0x48/8 = 9` — so `+0x48` is a *code* offset. No descriptor sits at bundle byte `+0x48`: the narrowest candidate, a 16-byte `TENSOR3D`, would span `+0x48..+0x57` and overflow the 64-byte bundle. The "slots at `+16/+32/+48`" phrasing describes **Family B only** (`0x10/0x20/0x30`) and is not the universal layout.
 
 ---
 
@@ -450,10 +450,10 @@ The union discriminant is the opcode byte at `raw[0]`. The L2 validator dispatch
 | Gather (`0x68`) | C | out `@+0x2C`; indirect index/data slot | `+0x20..+0x2B` | [2.7](indirect-descriptors.md) |
 | BNStats (`0x61`/`0x82`) | C mixed | in `4D@+0x0C` / out `2D@+0x30` | `+0x20..+0x2B` | [2.4](tensor4d-mempattern4d.md) |
 | EventSemaphore (`0xA0`) | sync | predicate `@+0x04`, wait/act `@+0x20..+0x28` | — | [1.14](../arch/execution-sync-model.md) |
-| CompareAndBranch (`0xA9`) | ctrl | comp `@+0x0C`, regs `@+0x20/+0x21`, PC `@+0x30` | — | [D-M10] |
+| CompareAndBranch (`0xA9`) | ctrl | comp `@+0x0C`, regs `@+0x20/+0x21`, PC `@+0x30` | — | [2.20](sp-sync-encoding.md) |
 | DMA DIRECT2D (`0xD4`) | D | `ADDR8` src `@+0x10` / dst `@+0x28` (distinct) | — | [2.1 §NOTE] |
 
-> **NOTE —** the family membership of the byte-verified ops above is CONFIRMED; the family of the remaining ~90 ops in the [110-IT opcode table](../walrus/opcode-master.md) is assigned by descriptor-width evidence in their per-engine pages (STRONG for the tail). The op→family rule itself — *width + operand count picks the slot offsets, the control band fills the gap* — is CONFIRMED across all four byte-verified families.
+> **NOTE —** the family membership of the byte-verified ops above is pinned directly. For the remaining ~90 ops in the [110-IT opcode table](../walrus/opcode-master.md), family is assigned from descriptor-width evidence in their per-engine pages. The op→family rule itself — *width plus operand count picks the slot offsets, and the control band fills the gap* — holds across all four byte-verified families.
 
 ---
 
@@ -476,73 +476,69 @@ INST_UNION (64 B)
                  or MXINDIRECT16B (a self-promotion inside the same slot leaf).
 ```
 
-The 64 bytes are emitted as `std::array<u8,64>`: `emplace_back`, `memset`-zero, stamp the 4-byte header via `setupHeader` (vtable slot 9), field-fill the body, then `fwrite(bundle, 1, 0x40, …)`. `setupHeader` is byte-identical across CoreV2 (`0x1172120`), CoreV3 (`0x1369280`), CoreV4 (`0x143f440`); the six-instruction body `movzx eax,[rdx]; mov byte[rsi+1],0x10; mov[rsi],al; xor eax,eax; mov word[rsi+2],ax; ret` is byte-confirmed (`0f b6 02 c6 46 01 10 88 06 31 c0 66 89 46 02 c3`) directly from `libwalrus.so` this pass. [2.1 CONFIRMED]
+The 64 bytes are emitted as `std::array<u8,64>`: `emplace_back`, `memset`-zero, stamp the 4-byte header via `setupHeader` (vtable slot 9), field-fill the body, then `fwrite(bundle, 1, 0x40, …)`. `setupHeader` is byte-identical across CoreV2 (`0x1172120`), CoreV3 (`0x1369280`), CoreV4 (`0x143f440`); the six-instruction body `movzx eax,[rdx]; mov byte[rsi+1],0x10; mov[rsi],al; xor eax,eax; mov word[rsi+2],ax; ret` reads `0f b6 02 c6 46 01 10 88 06 31 c0 66 89 46 02 c3` in `libwalrus.so`. [2.1]
 
 ---
 
-## Reconciled disagreements
+## Points that are easy to get wrong
 
-The header is the union of all eight sub-pages' byte-verified facts. The residual cross-page disagreements are resolved here; each was already fixed in place on the owning page, and the header adopts the corrected reading.
+Seven details in this area are routinely misread, usually because a plausible-looking alternative offset or type exists nearby. Each is settled below, with the page that owns the full derivation.
 
-| ID | Reconciliation | Owning page |
+| ID | The fact | Owning page |
 |---|---|---|
-| R-1 | **TensorScalar slots = `+0x10`/`+0x30` (Family A)**, NOT a "`+0x28` packing." The header places TS input `@+0x10` and output `@+0x30`, identical to matmul/activation. TS's control-band offsets (`+0x20/+0x21` dtype, `+0x24/+0x25` ALU, `+0x26` reverse) are retained. | [2.1 §CORRECTION](instruction-bundle.md) |
-| R-2 | **`mem2d_valid`/`mem3d_valid` take the `MEM_PATTERN` (DST/general) type**, not "plain-tensor SRC." The header types `TENSORnD` and `MEM_PATTERNnD` as byte-identical `typedef`s — the type label is a routing hint, not a layout difference. | [2.5 §2.1](mempattern-2d-3d.md) |
-| R-3 | **`MXMEM_PATTERN1D` TYPE = 16 bytes, 12 written, `+0xC..+0xF` reserved.** The header reserves all 16. (Earlier "12-byte MX" counted only the meaningful bytes.) | [2.6 §NOTE](mxmem-pattern1d.md) |
-| R-4 | **`INDIRECT16B`'s indirect branch does NOT fill the `TENSOR3D` static region.** Bytes `+0xA..+0xF` are inert (`_inert[]`); `num@+8 = getNumIndirectIndices` (vtbl `+0x90`), NO ×4. | [2.7 §CORRECTION](indirect-descriptors.md) |
-| R-5 | **No descriptor at bundle byte `+0x48`** (= `setupHeader` vtable slot). The three-contiguous-slot premise is **Family B only**. | [2.1 §CORRECTION](instruction-bundle.md) |
-| R-6 | **PSUM bank in ADDR4 hi bits; `accumulate@+0x2B`, `zero-region@+0x2F`, dst-dtype are bundle control-band bytes, NOT descriptor fields.** The matmul struct places them in the control band; the dst slot stays a plain `MEM_PATTERN3D`. The **dst-dtype offset is per-generation within Family A**: dense matmul (op `0x02`, CoreV2/V3) at `+0x23`, MX matmul (op `0x100A`, CoreV4) at `+0x28` — see R-7. | [2.5 §4](mempattern-2d-3d.md) |
-| R-7 | **Dense-matmul dst-dtype is `+0x23`, NOT `+0x28`.** The CoreV2 dense encoder `generateMatMul` writes the PSUM-dst dtype at `+0x23` (`mov [r15+0x23],al @0x1248882`, binary-checked this pass — no `+0x28` store exists in the dense encoder), and the CoreV2 validator reads it at `union+0x23` (`[rsp+0xe3]`). The `+0x28` reading is the **CoreV4 MX** struct: `generateMatmultMx` writes dst-dtype at `+0x28` (`@0x143eded`) and `core_v4::is_valid_matmul_regular` reads `union+0x28` (`[rsp+0x158]`, compared `==6` for the bf16 `nc` path). `+0x23` (dense) and `+0x28` (MX) are **per-generation, not a contradiction**; an earlier capstone reading that placed the dense dst-dtype at `+0x28` conflated the two struct generations. | [2.10 §Matmul CORRECTION](pe-matmul-encoding.md) |
+| R-1 | **TensorScalar slots are `+0x10` (input) and `+0x30` (output) — Family A**, identical to matmul and activation. There is no "`+0x28` packing" and no `+0x28..+0x3F` descriptor region. TS's control-band offsets (`+0x20/+0x21` dtype, `+0x24/+0x25` ALU, `+0x26` reverse) sit in the gap between them. | [2.1](instruction-bundle.md) |
+| R-2 | **`mem2d_valid`/`mem3d_valid` take the `MEM_PATTERN` (DST/general) type**, not a plain-tensor SRC. `TENSORnD` and `MEM_PATTERNnD` are byte-identical `typedef`s — the type label is a routing hint, not a layout difference. | [2.5 §2.1](mempattern-2d-3d.md) |
+| R-3 | **`MXMEM_PATTERN1D` is a 16-byte type of which 12 bytes are written**; `+0xC..+0xF` are reserved. Counting only the meaningful bytes gives 12 and is wrong for sizing. | [2.6](mxmem-pattern1d.md) |
+| R-4 | **`INDIRECT16B`'s indirect branch does not fill the `TENSOR3D` static region.** Bytes `+0xA..+0xF` are inert (`_inert[]`), and `num@+8 = getNumIndirectIndices` (vtbl `+0x90`) with **no** ×4 scaling. | [2.7](indirect-descriptors.md) |
+| R-5 | **No descriptor sits at bundle byte `+0x48`** — that number is a `setupHeader` vtable slot, not a bundle offset. The three-contiguous-slot layout is **Family B only**. | [2.1](instruction-bundle.md) |
+| R-6 | **PSUM bank rides in the ADDR4 high bits, and `accumulate@+0x2B`, `zero-region@+0x2F`, and dst-dtype are bundle control-band bytes, not descriptor fields.** The dst slot itself stays a plain `MEM_PATTERN3D`. The dst-dtype offset is per-generation within Family A: dense matmul (op `0x02`, CoreV2/V3) at `+0x23`, MX matmul (op `0x100A`, CoreV4) at `+0x28` — see R-7. | [2.5 §4](mempattern-2d-3d.md) |
+| R-7 | **Dense-matmul dst-dtype is `+0x23`; `+0x28` belongs to the MX struct.** The CoreV2 dense encoder `generateMatMul` (`0x1248650`) writes it at `+0x23` (`mov [r15+0x23],al` @ `0x1248882`) and never touches `+0x28`, which stays pxor-zero; the CoreV2 validator `core_v2::is_valid_matmul_regular` (`0x12de340`) reads `union+0x23` (`[rsp+0xe3]`). `generateMatmultMx` (`0x143ebd0`) writes dst-dtype at `+0x28` (@ `0x143eded`) and `core_v4::is_valid_matmul_regular` (`0x14b5c60`) reads `union+0x28` (`[rsp+0x158]`, compared `==6` for the bf16 `nc` path). The two offsets are per-generation, not a contradiction. | [2.10](pe-matmul-encoding.md) |
 
-> **CORRECTION (this page, R-1 adopted) —** the header's Family-A definition supersedes any earlier table that placed TensorScalar descriptors at `+0x28..+0x3F`. The slot offsets are `+0x10` (input) and `+0x30` (output), byte-verified at `generateTensorScalarOrPtr` (`lea [r14+0x10]` / `[r14+0x30]`). No new disagreement is introduced by this synthesis; every field traces to a CONFIRMED sub-page fact or a fresh binary check made this pass.
-
-> **CORRECTION (this page, R-7) — the dense-matmul dst-dtype byte is `+0x23`, not `+0x28`.** Earlier `NEURON_ISA_TPB_BUNDLE_MATMUL` revisions (and the at-a-glance op→family table) placed the dense-matmul PSUM-dst dtype at `+0x28`. Re-disassembly of `CoreV2GenImpl::generateMatMul @0x1248650` this pass shows the dense encoder writes dst-dtype at `+0x23` (`mov [r15+0x23],al @0x1248882`) and never writes `+0x28` (the byte stays pxor-zero); `core_v2::is_valid_matmul_regular @0x12de340` reads it at `union+0x23` (`movzx ...,[rsp+0xe3]`). The `+0x28` offset belongs to the **CoreV4 MX** struct (`generateMatmultMx @0x143ebd0` writes `+0x28`; `core_v4::is_valid_matmul_regular @0x14b5c60` reads `union+0x28`, `==6` → bf16 `nc`). The two offsets are per-generation within Family A. The `BUNDLE_MATMUL` struct above now carries `dst_dtype_dense@+0x23` and a separate `dst_dtype_mx@+0x28`; the `==6`→bf16-`nc` semantics apply to whichever offset the generation uses. [2.10 / 2.5 CONFIRMED, binary-checked.]
+The `BUNDLE_MATMUL` struct above therefore carries both `dst_dtype_dense@+0x23` and `dst_dtype_mx@+0x28`; the `==6` → bf16-`nc` semantics apply to whichever offset the generation in question uses.
 
 ---
 
-## Adversarial self-verification — the five strongest claims
+## What pins the five strongest claims
 
-1. **The `INST_UNION` is 64 B with `raw[0]` (opcode) as discriminant.** *Challenge*: could the length ever be non-16, breaking the fixed size? *Re-derive*: `setupHeader` writes `byte[1] = 0x10` as a hardcoded immediate (`c6 46 01 10` — `mov byte[rsi+1],0x10`) with zero data dependence, confirmed byte-exact at `0x1172120` this pass; the emit skeleton `memset`s 64 and `fwrite`s `0x40`. **Holds — CONFIRMED.**
-2. **The three bundle-family slot offsets (A `0x10/0x30`, B `0x10/0x20/0x30`, C `0x0C/0x2C`).** *Challenge*: are these per-op or family-fixed? *Re-derive*: the witnesses are `lea [base+OFF]` immediately before `assignAccess<…>` — `generateMatMul` (`+0x10`/`+0x30`), `visitInstTensorTensor` (`+0x10`/`+0x20`/`+0x30`), `visitInstTensorCopy` (`+0x0C`/`+0x2C`), each cited in [2.1](instruction-bundle.md). The control band fills the one-descriptor gap each family leaves. **Holds — CONFIRMED.**
-3. **Descriptor sizes 8/12/16/20.** *Challenge*: could a size be off by the partition word? *Re-derive*: the four `.rodata` asserts `"ISA mem pattern {1,2,3,4}D must have {8,12,16,20} bytes to encode"` are read directly from `libwalrus.so` this pass; `slot_size(N) = 4 + 4N` exactly. The partition dim folds into ADDR4 and is *not* a stride/num word. **Holds — CONFIRMED.**
-4. **The op→family map.** *Challenge*: does matmul's dst really ride at `+0x30` as a `MEM_PATTERN3D`? *Re-derive*: `core_v4::is_valid_matmul_regular` decodes `[rsp+0x160] = union+0x30` as the PSUM-dst slot and `union+0x28` as its dtype byte (this is the **MX/CoreV4** struct), validated by `mm_dst_mem3d_valid_nc_v4` (symbol present at `0x1447fe0`, confirmed in dynsym this pass). The **dense** CoreV2 path instead carries the dst-dtype at `union+0x23` (`generateMatMul` write `@0x1248882`; `core_v2::is_valid_matmul_regular` read `[rsp+0xe3]`) — the per-generation split of R-7, re-disassembled this pass. The accumulate/zero-region siblings at `+0x2B`/`+0x2F` are control-band, not descriptor, bytes. **Holds — CONFIRMED.**
-5. **The enum ordinals.** *Challenge*: is the dtype wire-tag table right, and is `ISA_ADDR_INDIRECT = 0x20`? *Re-derive*: the dtype→wire-tag LUT at `.rodata 0x1dfbad0` reads `03 02 10 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 0a 0b 01 0c` this pass — index 2 → `0x10` (FP4-x4), index 6 → `0x03` (E8M0), 8/9 → `0x0E`/`0x0F`; the alignment classes follow. The ADDR4 mode nibble `{0x00,0x20,0x40,0x60}` is the `& 0x60` consumer plus the `or [slot+3],0x20` encoder stamp ([2.2](addr4.md)). **Holds — CONFIRMED.**
+1. **The `INST_UNION` is 64 B with `raw[0]` (opcode) as discriminant.** The length can never be non-16: `setupHeader` writes `byte[1] = 0x10` as a hardcoded immediate (`c6 46 01 10` — `mov byte[rsi+1],0x10`) with zero data dependence, byte-exact at `0x1172120`, and the emit skeleton `memset`s 64 and `fwrite`s `0x40`.
+2. **The three bundle-family slot offsets (A `0x10/0x30`, B `0x10/0x20/0x30`, C `0x0C/0x2C`).** These are family-fixed, not per-op. The witnesses are `lea [base+OFF]` immediately before `assignAccess<…>` — `generateMatMul` (`+0x10`/`+0x30`), `visitInstTensorTensor` (`+0x10`/`+0x20`/`+0x30`), `visitInstTensorCopy` (`+0x0C`/`+0x2C`), each cited in [2.1](instruction-bundle.md). The control band fills the one-descriptor gap each family leaves.
+3. **Descriptor sizes 8/12/16/20.** No size is off by a partition word: the four `.rodata` asserts `"ISA mem pattern {1,2,3,4}D must have {8,12,16,20} bytes to encode"` are read directly from `libwalrus.so`, giving `slot_size(N) = 4 + 4N` exactly. The partition dim folds into ADDR4 and is *not* a stride/num word.
+4. **The op→family map.** Matmul's dst does ride at `+0x30` as a `MEM_PATTERN3D`: `core_v4::is_valid_matmul_regular` decodes `[rsp+0x160] = union+0x30` as the PSUM-dst slot and `union+0x28` as its dtype byte (this is the **MX/CoreV4** struct), validated by `mm_dst_mem3d_valid_nc_v4` (symbol at `0x1447fe0` in the dynsym). The **dense** CoreV2 path instead carries the dst-dtype at `union+0x23` (`generateMatMul` write @ `0x1248882`; `core_v2::is_valid_matmul_regular` read `[rsp+0xe3]`) — the per-generation split of R-7. The accumulate/zero-region siblings at `+0x2B`/`+0x2F` are control-band bytes, not descriptor fields.
+5. **The enum ordinals.** The dtype wire-tag table and `ISA_ADDR_INDIRECT = 0x20` both hold. The dtype→wire-tag LUT at `.rodata 0x1dfbad0` reads `03 02 10 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 0a 0b 01 0c` — index 2 → `0x10` (FP4-x4), index 6 → `0x03` (E8M0), 8/9 → `0x0E`/`0x0F`, and the alignment classes follow. The ADDR4 mode nibble `{0x00,0x20,0x40,0x60}` comes from the `& 0x60` consumer plus the `or [slot+3],0x20` encoder stamp ([2.2](addr4.md)).
 
 ---
 
-## Confidence ledger + gaps
+## What is pinned, and the gaps
 
-**CONFIRMED** (consolidated from the eight byte-verified sub-pages + fresh binary checks this pass):
+Pinned byte-exact, consolidated from the eight sub-pages and direct binary reads:
 
-- the 64-byte header word `{opcode,0x10,0,0}`; `inst_word_len` always `0x10`; `setupHeader` byte-exact across V2/V3/V4 (`0x1172120` read this pass).
+- the 64-byte header word `{opcode,0x10,0,0}`; `inst_word_len` always `0x10`; `setupHeader` byte-exact across V2/V3/V4 (`0x1172120`).
 - `ADDR4` 32-bit bitfield (29-bit addr, region `25..28`, mode nibble, register bit31). [2.2]
-- `TENSOR1/2/3/4D` + `MEM_PATTERN2/3/4D` = `4+4N`, separate stride/num arrays, `{1,1}` fill, no on-wire dim count, sizes 8/12/16/20 (the four `.rodata` asserts read this pass). [2.3/2.4/2.5]
-- `MXMEM_PATTERN1D` 16-byte (12 written), data+scale ADDR4, x4-K, step-dir, scalePart; CoreV4-only; "MX Scale Tensor can only be in SB" assert read this pass. [2.6]
+- `TENSOR1/2/3/4D` + `MEM_PATTERN2/3/4D` = `4+4N`, separate stride/num arrays, `{1,1}` fill, no on-wire dim count, sizes 8/12/16/20 (the four `.rodata` asserts). [2.3/2.4/2.5]
+- `MXMEM_PATTERN1D` 16-byte (12 written), data+scale ADDR4, x4-K, step-dir, scalePart; CoreV4-only; the "MX Scale Tensor can only be in SB" assert. [2.6]
 - the three indirect descriptors (bit29 marker, num source, 16/20-byte). [2.7]
 - the three slot-offset families (A `0x10/0x30`, B `0x10/0x20/0x30`, C `0x0C/0x2C`). [2.1]
 - the matmul control band (`in-dtype@+0x20`, dst-dtype `@+0x23` dense / `@+0x28` MX, `accumulate@+0x2B`, `zero-region@+0x2F`, row/col group). [2.5/2.10]
 - the TensorTensor (B) control band `@+0x0C..+0x0F`; the Pool/Copy (C) band `@+0x20..+0x2B`. [2.1]
 - the 64-byte semaphore record + embedded-events predicate `@+0x04`. [1.14]
-- the control/branch bundle (`comp_op@+0x0C`, regs `@+0x20/+0x21`, PC `@+0x30`). [D-M10]
+- the control/branch bundle (`comp_op@+0x0C`, regs `@+0x20/+0x21`, PC `@+0x30`).
 - the op→family→slot-type map for all byte-verified ops. [2.8]
-- the dtype wire-tag enum + alignment (LUT `0x1dfbad0` read this pass). [D-D04]
-- the recovered struct/field type names (all `NEURON_ISA_TPB_*` present in `nm -DC` this pass).
+- the dtype wire-tag enum and alignment (LUT `0x1dfbad0`).
+- the recovered struct/field type names — every `NEURON_ISA_TPB_*` is present in `nm -DC`.
 
-**STRONG:**
+Argued rather than byte-walked:
 
-- family membership of the ops not individually disassembled (assigned by descriptor-width evidence in their per-engine pages).
-- the low/high-anchor-straddles-control-band geometric rationale. [2.1 §STRONG]
-- CoreV3 byte-identity of the families (vtable-reuse argument). [2.3]
+- family membership of the ops not individually disassembled, assigned by descriptor-width evidence in their per-engine pages.
+- the geometric rationale by which the low and high anchors straddle the control band. [2.1]
+- CoreV3 byte-identity of the families, which rests on the vtable-reuse argument. [2.3]
 
-**INFERRED:**
-
-- the exact per-op meaning of every control-band byte for the un-disassembled Family-A/C ops (only the witnessed ops — matmul, activation, TS, TT, Pool, Copy, BNStats — are byte-pinned).
+[INFERRED]: the exact per-op meaning of every control-band byte for the un-disassembled Family-A/C ops. Only the witnessed ops — matmul, activation, TS, TT, Pool, Copy, BNStats — are byte-pinned.
 
 **GAPS:**
 
-- **G1** — no compiled-`.neff` byte fixture was diffed in any source pass; the header is encoder-write + decoder-read derived (byte-exact both ways), not a captured wire dump.
+- **G1** — no compiled-`.neff` byte fixture has been diffed against this header; it is derived from encoder writes and decoder reads (byte-exact both ways), not from a captured wire dump.
 - **G2** — the natural-alignment vs `#pragma pack(1)` choice is noted in §[A note on packing]; the wire has no padding, so packed == wire, but a portable build should pack explicitly.
-- **G3 (SPECULATIVE)** — a fully generic tagged union spelling out every one of the ~110 op bodies is out of scope; the header gives the three families + sync + branch + MX, which structurally cover the whole compute/control/sync surface.
+- **G3** [SPECULATIVE] — a fully generic tagged union spelling out every one of the ~110 op bodies is out of scope; the header gives the three families + sync + branch + MX, which structurally cover the whole compute/control/sync surface.
 
 ---
 

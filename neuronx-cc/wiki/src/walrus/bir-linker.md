@@ -40,7 +40,7 @@ For reimplementation, the contract is:
 | **Pass factory / registrar** | `make_unique<BirLinker>(PassOptions const&)` @ `0x15f89e0`; registrar block @ `0x3e04d40` |
 | **Merged Module size** | `0x310` bytes (784) — `_Znwm(0x310)` in `run`, matches `lnc_splitter`'s `tc_new(784)` |
 
-The class exports **45 `T` methods** plus the weak destructor pair `~BirLinker()` @ `0x15faed0` / `0x15fb280`; all names are recovered from `nm -DC libwalrus.so | rg 'BirLinker::'`. **[CONFIRMED — `.dynsym` name map + per-body disasm.]**
+The class exports **45 `T` methods** plus the weak destructor pair `~BirLinker()` @ `0x15faed0` / `0x15fb280`; all names are recovered from `nm -DC libwalrus.so | rg 'BirLinker::'`.
 
 ---
 
@@ -67,9 +67,9 @@ The class exports **45 `T` methods** plus the weak destructor pair `~BirLinker()
   L42  neff_packager (NeffPackager → NEFF; J-strand)
 ```
 
-**Why L1.** The linker can do its job *cheaply* only because everything below it is already resolved. The per-core modules arrive fully scheduled with local addresses colored; crucially, `sync_shared_allocations` (83) has already followed each `RemoteLocalTarget` back to the producing core's now-allocated mloc and **copied the physical address** onto the remote view. So `bir_linker` never re-allocates — it needs only *name/alias* unification (§4–§5), *queue/semaphore/barrier* unification (§6–§7), and *call-graph* wiring (§3). Conversely the passes below it (DMA lowering, semaphore alloc, the post-link register allocator at L33, `vnc_link`, codegen) must run **once** on the single merged module: a register allocator that saw only one core's stream, or a codegen that emitted one NEFF per core, would be wrong. The merge has to happen exactly here. **[CONFIRMED via the `sub_805870` pass-order disasm and the §9 cross-refs to the allocator wiring.]**
+**Why L1.** The linker can do its job *cheaply* only because everything below it is already resolved. The per-core modules arrive fully scheduled with local addresses colored; crucially, `sync_shared_allocations` (83) has already followed each `RemoteLocalTarget` back to the producing core's now-allocated mloc and **copied the physical address** onto the remote view. So `bir_linker` never re-allocates — it needs only *name/alias* unification (§4–§5), *queue/semaphore/barrier* unification (§6–§7), and *call-graph* wiring (§3). Conversely the passes below it (DMA lowering, semaphore alloc, the post-link register allocator at L33, `vnc_link`, codegen) must run **once** on the single merged module: a register allocator that saw only one core's stream, or a codegen that emitted one NEFF per core, would be wrong. The merge has to happen exactly here.
 
-`bir_linker` is registered as a **core-parallel** pass through `BackendPassManager::addCoreParallelPassWithName<BirLinker, bool&, string&>` (factory `_M_invoke` @ `0x858a70`, manager @ `0x81b340`); the instance is built by `make_unique<BirLinker>(PassOptions const&)` @ `0x15f89e0`, and the global registrar block at `0x3e04d40` (lambda `_M_invoke` @ `0x15f8f10`) sets the pass-name string. **[STRONG — registrar block + factory thunks present in `.dynsym`/disasm.]**
+`bir_linker` is registered as a **core-parallel** pass through `BackendPassManager::addCoreParallelPassWithName<BirLinker, bool&, string&>` (factory `_M_invoke` @ `0x858a70`, manager @ `0x81b340`); the instance is built by `make_unique<BirLinker>(PassOptions const&)` @ `0x15f89e0`, and the global registrar block at `0x3e04d40` (lambda `_M_invoke` @ `0x15f8f10`) sets the pass-name string.
 
 ---
 
@@ -78,7 +78,7 @@ The class exports **45 `T` methods** plus the weak destructor pair `~BirLinker()
 The disasm `0x15f5070..0x15f6770` performs the link as an ordered sequence (logging and string formatting elided):
 
 ```c
-// BirLinker::run(vector<unique_ptr<bir::Module>>& modules) @ 0x15f5070  [CONFIRMED]
+// BirLinker::run(vector<unique_ptr<bir::Module>>& modules) @ 0x15f5070
 // returns the single merged Module.
 
 // (1) name the linked module
@@ -128,9 +128,9 @@ PostLinkMmtReport(*main, logger);                     // @plt 0x60c800
 // (13) destroy the per-core modules; return `main`.
 ```
 
-The **new-Module construction** is the structural pin of the whole pass: step (6) allocates a `0x310`-byte block (`mov edi,310h` / `bf 10 03 00 00` @ `0x15f5495`, then `_tc_new`, tcmalloc's `operator new` alias), runs the `Module(name)` constructor over it (`call @0x15f54a8`), and stores the pointer on the pass object at `[rax+138h]` (`@0x15f54ad`). Nothing in `run` re-uses an input module as the merged module — the inputs are *copied into* `main` (§3) and then destroyed in step (13). `0x310 == 784` is the same `sizeof(bir::Module)` the `lnc_splitter` page pins from its `tc_new(784)` / `operator delete[](…, 0x310u)` ([8.30](lnc-splitter.md)). **[CONFIRMED — `_Znwm(0x310)` + `Module::Module` call in the `run` body; size cross-checks the splitter.]**
+The **new-Module construction** is the structural pin of the whole pass: step (6) allocates a `0x310`-byte block (`mov edi,310h` / `bf 10 03 00 00` @ `0x15f5495`, then `_tc_new`, tcmalloc's `operator new` alias), runs the `Module(name)` constructor over it (`call @0x15f54a8`), and stores the pointer on the pass object at `[rax+138h]` (`@0x15f54ad`). Nothing in `run` re-uses an input module as the merged module — the inputs are *copied into* `main` (§3) and then destroyed in step (13). `0x310 == 784` is the same `sizeof(bir::Module)` the `lnc_splitter` page pins from its `tc_new(784)` / `operator delete[](…, 0x310u)` ([8.30](lnc-splitter.md)).
 
-`run(Module&)` @ `0x15c6ed0` is the **single-module thunk**: it wraps the one module in a 1-element sequence and tail-calls the same internal helpers (`0x15c6f50` / `0x15c7260`), so the **lnc==1** path reuses the merge machinery with no special-casing — a one-core program still gets a `sgLnk` module, a dispatcher with a single `call_def_0_instance_0`, and a (trivial) unified namespace. **[CONFIRMED — wrapper body tail-calls the shared helpers.]**
+`run(Module&)` @ `0x15c6ed0` is the **single-module thunk**: it wraps the one module in a 1-element sequence and tail-calls the same internal helpers (`0x15c6f50` / `0x15c7260`), so the **lnc==1** path reuses the merge machinery with no special-casing — a one-core program still gets a `sgLnk` module, a dispatcher with a single `call_def_0_instance_0`, and a (trivial) unified namespace.
 
 ---
 
@@ -139,7 +139,7 @@ The **new-Module construction** is the structural pin of the whole pass: step (6
 `runCallGraph` is the merge engine. Its disasm `0x15f21c0..0x15f30d0` issues this ordered chain:
 
 ```c
-// BirLinker::runCallGraph(vector<unique_ptr<bir::Module>>& modules) @ 0x15f21c0  [CONFIRMED]
+// BirLinker::runCallGraph(vector<unique_ptr<bir::Module>>& modules) @ 0x15f21c0
 
 setupLinkDir(modules);                       // (a) artifact dir (§8)
 initCallGraphModule(modules);                // (b) @0x15d3cd0 — seed merged Module +
@@ -175,7 +175,7 @@ backend::renumberCoreBarriers(*main);        // (k) @0x1089250  (§7)
 PostLinkMmtReport(...);                      // (l)
 ```
 
-**Merge model (CONFIRMED).** The linked program is **one `bir::Module`** =
+**Merge model.** The linked program is **one `bir::Module`** =
 `{ dispatcher Function (a top-level BB of `InstCall`) }` ∪ `{ one Function per NeuronCoreId, each = a clone of that core's module body }`.
 There is **no flat instruction interleave** — the cores stay as separately-callable functions, and the dispatcher block calls them in order. This is the exact inverse of `lnc_splitter`'s clone-and-concretize: the splitter took one body and produced `N` per-core bodies by binding the shard symbol; the linker takes the `N` per-core bodies and folds them back under one caller, with the cross-core names re-unified.
 
@@ -184,7 +184,7 @@ There is **no flat instruction interleave** — the cores stay as separately-cal
 The dispatcher block is built one `InstCall` at a time:
 
 ```c
-// BirLinker::addFnCall(BasicBlock& dispatcher, int coreId, int idx) @ 0x15d95e0  [CONFIRMED]
+// BirLinker::addFnCall(BasicBlock& dispatcher, int coreId, int idx) @ 0x15d95e0
 
 // 1. bounds-check the per-core function table at 0x120/0x128(container) and load the callee
 //    Function* at table[idx]: offset (idx + 0xf0f0f0f0f0f0f0f1)*8 + 0x50
@@ -212,15 +212,15 @@ dispatcher:
     call_def_<N-1>_instance_0 →  Function nc<N-1>
 ```
 
-Each `InstCall` invokes the corresponding core's function. The `instance_<idx>` token allows more than one instance of a module definition; the `"TMC Case#1"` / `sgDir` tokens are adjacent `.rodata` of the same naming family. **[CONFIRMED — `insertElement<InstCall>` call + the `call_def_`/`instance_` rodata; callee written at `+0xf0`.]**
+Each `InstCall` invokes the corresponding core's function. The `instance_<idx>` token allows more than one instance of a module definition; the `"TMC Case#1"` / `sgDir` tokens are adjacent `.rodata` of the same naming family.
 
-> **The dispatch is static, not data-dependent.** The dispatcher block lists *all* cores' calls; runtime core selection is not a branch on a core-id register inside this block — each `InstCall` already carries the concrete callee, and the per-core function it targets was already concretized to that `NeuronCoreId` by `lnc_splitter`. The "dispatch to the right core" happens because the NEFF packager (J-strand) tags each callee function's instruction stream into the per-core NEFF section keyed by the `NeuronCoreId` the function carries, and the runtime fires each core's section on its own core. The dispatcher block is the *structural* manifest of "which functions exist and in what order," not a runtime switch. **[STRONG for the structural reading; the per-core NEFF section tagging is J33–J36 scope, NAMED only — INFERRED here.]**
+> **The dispatch is static, not data-dependent.** The dispatcher block lists *all* cores' calls; runtime core selection is not a branch on a core-id register inside this block — each `InstCall` already carries the concrete callee, and the per-core function it targets was already concretized to that `NeuronCoreId` by `lnc_splitter`. The "dispatch to the right core" happens because the NEFF packager (J-strand) tags each callee function's instruction stream into the per-core NEFF section keyed by the `NeuronCoreId` the function carries, and the runtime fires each core's section on its own core. The dispatcher block is the *structural* manifest of "which functions exist and in what order," not a runtime switch. The structural reading is solid; the per-core NEFF section tagging is [INFERRED] here and owned by the packager pages.
 
 ---
 
 ## 4. Cross-core symbol / address resolution
 
-This is the structural counterpart to `sync_shared_allocations` (D-H24). Two cooperating mechanisms turn `N` cores' *separate names* for a shared buffer into *one* merged memory location.
+This is the structural counterpart to `sync_shared_allocations`. Two cooperating mechanisms turn `N` cores' *separate names* for a shared buffer into *one* merged memory location.
 
 ### 4a. Alloc resolution via `inpMap` / `outMap` (`copyAllocs2Inst` @ `0x15ce1a0`)
 
@@ -235,7 +235,7 @@ The `copyAllocs2Inst` body's `.rodata` (`0x1c8776a..0x1c8782c`) spells the algor
 ```
 
 ```c
-// copyAllocs2Inst(Module, name, inpMap, outMap, memMap, mlocDM, …) @ 0x15ce1a0  [CONFIRMED]
+// copyAllocs2Inst(Module, name, inpMap, outMap, memMap, mlocDM, …) @ 0x15ce1a0
 // inpMap, outMap : unordered_map<string,string>  (subgraph-local name → unified main name)
 // memMap         : unordered_map<string,string>  (record of newly-minted unified names)
 // mlocDM         : llvm::DenseMap<MemoryLocation const*, MemoryLocation*>  (pointer remap)
@@ -254,7 +254,7 @@ for (string mlocName : inst.referencedMlocNames()) {
 }
 ```
 
-So an **input** name on the consumer core that matches the producer core's **output** (carried in `inpMap`) is rewritten to the producer's unified name; symmetrically for outputs via `outMap`. Unmapped names get a fresh main-module mloc recorded in `memMap` and the parallel `DenseMap` (consumed by `copyInstrs2BB`, §4b, to remap the actual pointers in cloned instructions). **[CONFIRMED — full string set + the `createFromJson`/`getMemoryLocationByName` calls.]**
+So an **input** name on the consumer core that matches the producer core's **output** (carried in `inpMap`) is rewritten to the producer's unified name; symmetrically for outputs via `outMap`. Unmapped names get a fresh main-module mloc recorded in `memMap` and the parallel `DenseMap` (consumed by `copyInstrs2BB`, §4b, to remap the actual pointers in cloned instructions).
 
 ### The remote_local_target identity (`copyAllocs2Func` @ `0x15e5500`)
 
@@ -267,16 +267,16 @@ So an **input** name on the consumer core that matches the producer core's **out
   (@0x1c80618) "Output . has incorrect AllocedFunc: . instead of . SB Input .isLocal"
 ```
 
-An mloc carrying a `RemoteLocalTarget` — an `optional<pair<remote_mloc_name, remote_ncId>>` minted by `lnc_splitter`'s bracketing collective-lowering passes (`LowerLocalCollectives::createRemoteAP`, D-H03/D-H23) and set via `bir::MemoryLocation::setRemoteLocalTarget` — is followed back to the producing core's allocation. The crucial fact: **`sync_shared_allocations` (order 83, *before* `bir_linker`) already copied the producing core's physical address/bank/partition onto the remote view**, so the "remote" name and the "local" name now denote the *same physical DRAM cell*. `copyAllocs2Inst` therefore safely collapses them to one main-module mloc (the `"maps to memset"` detection handles the no-real-backing case).
+An mloc carrying a `RemoteLocalTarget` — an `optional<pair<remote_mloc_name, remote_ncId>>` minted by `lnc_splitter`'s bracketing collective-lowering passes (`LowerLocalCollectives::createRemoteAP`) and set via `bir::MemoryLocation::setRemoteLocalTarget` — is followed back to the producing core's allocation. The crucial fact: **`sync_shared_allocations` (order 83, *before* `bir_linker`) already copied the producing core's physical address/bank/partition onto the remote view**, so the "remote" name and the "local" name now denote the *same physical DRAM cell*. `copyAllocs2Inst` therefore safely collapses them to one main-module mloc (the `"maps to memset"` detection handles the no-real-backing case).
 
-> **The division of labor (STRONG).** `bir_linker` does the **name-level** unification; `sync_shared_allocations` did the **address-level** identity. Together: every core's name for a shared buffer resolves to one mloc with one physical address. The `copyAllocs` vs `copyAllocs2` vs `copyAllocs2Func`/`copyAllocs2Inst` split is module-set passes vs per-function/per-instruction resolvers reached from `copyModulesAsFunctions` — the `inpMap/outMap → memMap` collapse is fully evidenced only in `copyAllocs2Inst` rodata. **[STRONG for the H24-pairing interpretation; the `RemoteLocalTarget` struct shape is cross-ref, not re-disassembled here — INFERRED.]**
+> **The division of labor.** `bir_linker` does the **name-level** unification; `sync_shared_allocations` did the **address-level** identity. Together: every core's name for a shared buffer resolves to one mloc with one physical address. The `copyAllocs` vs `copyAllocs2` vs `copyAllocs2Func`/`copyAllocs2Inst` split is module-set passes vs per-function/per-instruction resolvers reached from `copyModulesAsFunctions` — the `inpMap/outMap → memMap` collapse is fully evidenced only in `copyAllocs2Inst` rodata. The `RemoteLocalTarget` struct shape is taken from the cross-referenced page rather than re-disassembled here [INFERRED].
 
 ### 4b. Pointer remap on instruction clone (`copyInstrs2BB` @ `0x15f07a0`)
 
 `copyInstrs2BB` clones each instruction with `Instruction::fullClone(name, BB, b)` (`@plt 0x6293f0`), then rewrites all of its references through the DenseMaps:
 
 ```c
-// copyInstrs2BB(Function src, Function& dst, mlocDM, regDM, instDM, i) @ 0x15f07a0  [CONFIRMED]
+// copyInstrs2BB(Function src, Function& dst, mlocDM, regDM, instDM, i) @ 0x15f07a0
 for (Instruction& old : src.instructions()) {
     Instruction* nw = old.fullClone(name, dstBB, b);                  // @plt 0x6293f0
     updatePhysicalAccessPattern(old.pap, nw->pap, mlocDM, regDM, b);  // @0x15f0610  (below)
@@ -286,14 +286,14 @@ for (Instruction& old : src.instructions()) {
     instDM[&old] = nw;                                                // for copyDeps
 }
 
-// updatePhysicalAccessPattern(oldPAP, newPAP&, mlocDM, regDM, b) @ 0x15f0610  [CONFIRMED]
+// updatePhysicalAccessPattern(oldPAP, newPAP&, mlocDM, regDM, b) @ 0x15f0610
 newPAP.setLocation(mlocDM[oldPAP.storageBase()], b, b);  // @plt 0x5e9cd0 — point at remapped StorageBase
 newPAP.forEachDynamicExpr([&](QuasiAffineExpr& e){       // @plt 0x5f8aa0
     e.rewriteRegisterOperands(regDM);                     //   dynamic affine reg operands → regDM
 });
 ```
 
-The cloned instruction in the linked module therefore references the **unified** mlocs/regs/queues and the already-resolved physical addresses — so the downstream post-link allocator and codegen see one self-consistent program. `io2Spill` converts dangling IO arguments (a per-core input that is now an internal handoff) into spill slots on copy. **[CONFIRMED — `fullClone` + `setLocation` + `forEachDynamicExpr` + `getQueueByName` in the bodies.]**
+The cloned instruction in the linked module therefore references the **unified** mlocs/regs/queues and the already-resolved physical addresses — so the downstream post-link allocator and codegen see one self-consistent program. `io2Spill` converts dangling IO arguments (a per-core input that is now an internal handoff) into spill slots on copy.
 
 ---
 
@@ -306,18 +306,17 @@ The cloned instruction in the linked module therefore references the **unified**
 - **`fpassInsertReturns`** (`0x15d89a0`) appends at the end of each copied core function an `InstReturn` (`NamedObjectContainer::insertElement<InstReturn>` @plt `0x607560`, name `"return_…"`) **and** a completion `InstCoreBarrier` (`insertElement<InstCoreBarrier>` @plt `0x61bf40`, name `"cb_return_…"`; rodata @`0x1c87a28` `"cb_return_.I-SQI-.call_def_._instance_"`). Each per-core function thus **returns to the dispatcher** and emits a barrier that makes the merged call graph synchronizable.
 - **`fpassInsertSwitchQueueInstances`** (`0x15d9080`) inserts `InstSwitchQueueInstance` (name `"I-SQI-…"`, rodata @`0x1c87a33`) at validated points (`BasicBlock::checkInsertionPointValid` @plt `0x603af0`) — switching the active DMA-queue instance per call site so the unified queue pool (§6) is driven correctly.
 
-**[CONFIRMED — both `insertElement` specializations + the `cb_return_`/`I-SQI-` rodata.]**
 
 ### 5b. `buildMainMemlocs` (`0x15d0ad0`)
 
-Builds the linked function's `MemoryLocationSet`s: `MemoryLocationSet::createFromJson` (@plt `0x623690`, from the netlist json), `FunctionArgumentMap::setMapping(set*, set*)` (@plt `0x5f83f0`, binding linked-function args to the per-core sets), `renameDebugTensor` (@plt `0x5fa8d0`), and `Function::getMemoryLocationSetByName` (@plt `0x613f00`). Rodata @`0x1c87876` (`"buildMainMemlocs . out[.ModuleDef[. instId . instOutName .insItr"`) shows it iterating `ModuleDef`s and per-instance outputs, creating the canonical main-module mloc per cross-core tensor. **[CONFIRMED.]**
+Builds the linked function's `MemoryLocationSet`s: `MemoryLocationSet::createFromJson` (@plt `0x623690`, from the netlist json), `FunctionArgumentMap::setMapping(set*, set*)` (@plt `0x5f83f0`, binding linked-function args to the per-core sets), `renameDebugTensor` (@plt `0x5fa8d0`), and `Function::getMemoryLocationSetByName` (@plt `0x613f00`). Rodata @`0x1c87876` (`"buildMainMemlocs . out[.ModuleDef[. instId . instOutName .insItr"`) shows it iterating `ModuleDef`s and per-instance outputs, creating the canonical main-module mloc per cross-core tensor.
 
 ### 5c. `buildMainAliases` (`0x15cd370`) — the cross-core symbol alias step
 
 Rodata @`0x1c87720`: `"Aliases.No aliases defined.Alias: out . kin . outLocSet . inpLocSet .must.copyAllocs2Inst .!inpMap.empty().!outMap.empty()"`.
 
 ```c
-// buildMainAliases() @ 0x15cd370  [CONFIRMED]
+// buildMainAliases() @ 0x15cd370
 for (alias : definedAliases) {
     MemoryLocationSet* outSet = alias.producerOut;   // producer core's output set
     MemoryLocationSet* inpSet = alias.consumerIn;    // consumer core's input set
@@ -326,15 +325,15 @@ for (alias : definedAliases) {
 }
 ```
 
-For each defined alias it pairs the producer core's output `MemoryLocationSet` with the consumer core's input set, builds an `AliasPtr(MemoryLocation*, AliasKind)`, and calls `MemoryLocation::addAlias` — so the consumer's input name **aliases** the producer's allocated output. This is the BIR-level realization of `lnc_splitter`'s `RemoteLocalTarget`s: the cross-core data hand-off is expressed as an alias on one unified mloc. **[CONFIRMED — `AliasPtr`/`addAlias` calls + the alias rodata.]**
+For each defined alias it pairs the producer core's output `MemoryLocationSet` with the consumer core's input set, builds an `AliasPtr(MemoryLocation*, AliasKind)`, and calls `MemoryLocation::addAlias` — so the consumer's input name **aliases** the producer's allocated output. This is the BIR-level realization of `lnc_splitter`'s `RemoteLocalTarget`s: the cross-core data hand-off is expressed as an alias on one unified mloc.
 
 ### 5d. `fixOutputKind` (`0x15eb680`) — don't export internal handoffs as NEFF outputs
 
-Rodata @`0x1c87cf2`: `"Intermediate Output .Num remaining outs2Erase .sg(\d+).(nc[0-9]+)/sg[0-9]+./sgLnk"`. An output that was *external* on a per-core subgraph but is actually only consumed by another core is **demoted** from `ExternalOutput` to an internal/intermediate kind; outputs with no real reader are **erased**. `hasRealReaders` (`0x15eb560`) drives this via `ConvertReaderWriter<AccessPattern>` (@plt `0x601690`) + `AccessPattern::classof` to find non-DMA-copy readers. This stops cross-core intermediates from leaking out as NEFF outputs. The path tokens `(nc[0-9]+)/sg[0-9]+` confirm the per-core artifact layout `nc<coreId>/sg<subgraphId>`, linked into `sgLnk`. **[CONFIRMED.]**
+Rodata @`0x1c87cf2`: `"Intermediate Output .Num remaining outs2Erase .sg(\d+).(nc[0-9]+)/sg[0-9]+./sgLnk"`. An output that was *external* on a per-core subgraph but is actually only consumed by another core is **demoted** from `ExternalOutput` to an internal/intermediate kind; outputs with no real reader are **erased**. `hasRealReaders` (`0x15eb560`) drives this via `ConvertReaderWriter<AccessPattern>` (@plt `0x601690`) + `AccessPattern::classof` to find non-DMA-copy readers. This stops cross-core intermediates from leaking out as NEFF outputs. The path tokens `(nc[0-9]+)/sg[0-9]+` confirm the per-core artifact layout `nc<coreId>/sg<subgraphId>`, linked into `sgLnk`.
 
 ### 5e. Tensor-map unification
 
-`buildMainTensorMap` (`0x15ee350`) / `copyTensorMap` (`0x15d9b30`) / `verifyTensorMap` (`0x15dbf90`) / `tryUpdateTensorMapFile` (`0x15c91f0`) merge each per-core tensor-map (fields `layer_name` / `sim_format` / `sim_shape` / `tf_file` / `sbuf_compatible`, rodata @`0x1c801ee`) into one unified tensor-map, validate it, and write `tensor-map.json` into the link dir (rodata @`0x1c77380` `"Tensor map file.tensor-map"`). This is the I/O-binding table the NEFF packager (J-strand) and the runtime use to map host tensors to the linked program's inputs/outputs. **[CONFIRMED.]**
+`buildMainTensorMap` (`0x15ee350`) / `copyTensorMap` (`0x15d9b30`) / `verifyTensorMap` (`0x15dbf90`) / `tryUpdateTensorMapFile` (`0x15c91f0`) merge each per-core tensor-map (fields `layer_name` / `sim_format` / `sim_shape` / `tf_file` / `sbuf_compatible`, rodata @`0x1c801ee`) into one unified tensor-map, validate it, and write `tensor-map.json` into the link dir (rodata @`0x1c77380` `"Tensor map file.tensor-map"`). This is the I/O-binding table the NEFF packager (J-strand) and the runtime use to map host tensors to the linked program's inputs/outputs.
 
 ---
 
@@ -350,7 +349,7 @@ The `initQueues` rodata (`0x1c87696..0x1c876fa`) spells the merge:
 ```
 
 ```c
-// initQueues(Function* mainFunc, vector<unique_ptr<Module>>& modules) @ 0x15cadc0  [CONFIRMED]
+// initQueues(Function* mainFunc, vector<unique_ptr<Module>>& modules) @ 0x15cadc0
 for (Module& core : modules) {
     for (DMAQueue& q : core.queues()) {
         Queue* uq = mainModule.addQueue(q.name, q.type);   // call @0x15cb2f0 — "copying queue from module <defId>"
@@ -364,7 +363,7 @@ for (Module& core : modules) {
 // addBasicBlock @plt 0x600a40 materializes the queue-driver block(s)
 ```
 
-Each per-core module's DMA queues merge into the linked module via `bir::Module::addQueue(name, DMAQueue::Type)` (the single `addQueue` call in the body, `@0x15cb2f0`); matching queue-instances fold into the existing unified queue when present, or create a new `dmaQ`; semaphore counts are accounted across the merge so the linked program has **one consistent queue/semaphore namespace** across cores. The downstream `alloc_semaphores` pass (L21–22) then assigns concrete semaphore IDs over this unified pool — which is exactly why the merge must precede it. The `"copying queue "` (@`0x1c87696`), `"initQueues: adding new qInst "` (@`0x1c876bb`), `" getNumSemaphores "` (@`0x1c876fa`), and `"initQueues copied "` (@`0x1c8770d`) strings are the in-body log tokens for these steps — `getNumSemaphores` appears as a log token, consistent with semaphore-count accounting rather than a standalone method call. **[CONFIRMED — single `addQueue` call @ `0x15cb2f0` + the four `initQueues` rodata strings, all referenced in-body.]**
+Each per-core module's DMA queues merge into the linked module via `bir::Module::addQueue(name, DMAQueue::Type)` (the single `addQueue` call in the body, `@0x15cb2f0`); matching queue-instances fold into the existing unified queue when present, or create a new `dmaQ`; semaphore counts are accounted across the merge so the linked program has **one consistent queue/semaphore namespace** across cores. The downstream `alloc_semaphores` pass (L21–22) then assigns concrete semaphore IDs over this unified pool — which is exactly why the merge must precede it. The `"copying queue "` (@`0x1c87696`), `"initQueues: adding new qInst "` (@`0x1c876bb`), `" getNumSemaphores "` (@`0x1c876fa`), and `"initQueues copied "` (@`0x1c8770d`) strings are the in-body log tokens for these steps — `getNumSemaphores` appears as a log token, consistent with semaphore-count accounting rather than a standalone method call.
 
 ---
 
@@ -373,7 +372,7 @@ Each per-core module's DMA queues merge into the linked module via `bir::Module:
 After merging `N` cores — each of which numbered its own barriers `0..k` *locally* — two cores would collide on barrier IDs. A single monotonic pass over the merged module fixes that. The function is a leaf loop with **no backend callees**:
 
 ```c
-// neuronxcc::backend::renumberCoreBarriers(bir::Module& m) @ 0x1089250  [CONFIRMED]
+// neuronxcc::backend::renumberCoreBarriers(bir::Module& m) @ 0x1089250
 uint32_t ctr = 0;                                  // running global ID (in %ebp)
 for (Function* f = m.begin /*+0x0*/; f != m.end /*+0x8*/; f = f->next) {
     for (Instruction* in = f->bbHead /*-0x90*/; in; in = in->next /*0x8(node)*/) {
@@ -387,14 +386,14 @@ for (Function* f = m.begin /*+0x0*/; f != m.end /*+0x8*/; f = f->next) {
 }
 ```
 
-Opcode **`0x57` (= 87) is `bir::InstCoreBarrier`** — confirmed by the `dyn_cast<bir::InstCoreBarrier>` assert string @`0x1d35f58` (`"… [with To = bir::InstCoreBarrier; From = bir::Instruction]"`) referenced inside this body. For each barrier whose `+0x130` flag is set (sentinel `0xff` = unset), the running counter is written into the ID field at `+0x110` and the flag cleared. The result: globally-unique `CoreBarrier` IDs across the whole linked program. **[CONFIRMED for the opcode test + loop structure; the precise `+0x110`/`+0x130` field offsets are read from this loop only, not cross-checked against an independent `InstCoreBarrier` layout dump (`klr::CoreBarrier_ser` @`0xf475b0` would confirm) — INFERRED.]**
+Opcode **`0x57` (= 87) is `bir::InstCoreBarrier`** — confirmed by the `dyn_cast<bir::InstCoreBarrier>` assert string @`0x1d35f58` (`"… [with To = bir::InstCoreBarrier; From = bir::Instruction]"`) referenced inside this body. For each barrier whose `+0x130` flag is set (sentinel `0xff` = unset), the running counter is written into the ID field at `+0x110` and the flag cleared. The result: globally-unique `CoreBarrier` IDs across the whole linked program. The opcode test and loop structure are exact; the `+0x110` / `+0x130` field offsets are read from this loop alone and are [INFERRED] — an independent `InstCoreBarrier` layout dump (`klr::CoreBarrier_ser` @ `0xf475b0`) would settle them.
 
 Two companions live in the same translation unit:
 
 - `orderCoreBarriersAndCollectives(BasicBlock&)` (`0x1089370`) — orders `InstCoreBarrier` and collective instructions within a block (the `GPSIMDSB2SB`/`CoreBarrier` sequencing introduced by `lower_local_collectives`), keeping the merged stream's barrier/collective order legal.
 - `renumberCoreBarriers(vector<unique_ptr<Module>>&, ulong)` (`0x10906e0`) — a **pre-merge** vector overload (renumber across the still-separate per-core modules, with a base-offset arg).
 
-`addBarrier(vec<Instruction*>, vec<Instruction*>)` (`0x15ca280`) is a distinct wiring helper: for two instruction sets it calls `bir::Instruction::addDependency(Instruction*, EdgeKind, bool)` (@plt `0x5eff00`), adding dependency edges from the first set to the second — the link-time cross-core fence wiring, separate from the ID renumber. **[CONFIRMED — `addDependency` call.]**
+`addBarrier(vec<Instruction*>, vec<Instruction*>)` (`0x15ca280`) is a distinct wiring helper: for two instruction sets it calls `bir::Instruction::addDependency(Instruction*, EdgeKind, bool)` (@plt `0x5eff00`), adding dependency edges from the first set to the second — the link-time cross-core fence wiring, separate from the ID renumber.
 
 ---
 
@@ -403,7 +402,7 @@ Two companions live in the same translation unit:
 `bir_linker` does **not** emit machine code (codegen is L40, downstream). What it assembles is the **link directory** of per-core on-disk artifacts that codegen + the NEFF packager will consume. `setupLinkDir` orchestrates:
 
 ```c
-// BirLinker::setupLinkDir(vector<unique_ptr<Module>>& modules) @ 0x15d8590  [CONFIRMED]
+// BirLinker::setupLinkDir(vector<unique_ptr<Module>>& modules) @ 0x15d8590
 createLinkDir();                 // @0x15c7910  mkdir "<name>/sgLnk"
 symlinkFiles(src, dst, pred);    // @0x15d5630  generic predicate-filtered symlink
 symlinkNpyFiles(names);          // @0x15d5a70  weight/const .npy tensors
@@ -423,7 +422,7 @@ The link directory model:
                ← plus the unified tensor-map.json (§5e)
 ```
 
-Each per-core subgraph lives under `nc<coreId>/sg<subgraphId>` (the regex token from §5d); its constant tensors, debug info, and custom-op binaries are **symlinked** into the single `sgLnk` dir (CPU-node host files are **copied**), so the merged module's functions resolve their external file references in one place. The per-core "code section" identity is preserved *structurally*: each core remains its own `bir::Function` tagged with its `NeuronCoreId`, and codegen later emits per-engine 64 B TPB bundles per function. The NEFF packager (J-strand) then tags each per-core function's instruction stream into the NEFF's per-core sections using the `NeuronCoreId` carried on the function. The exact NEFF/kelf section tagging is **Part 12** (planned `formats/`, NEFF / `__kelf` / `sgLnk` packaging) and J33–J36 scope — **NAMED only here, INFERRED**. **[CONFIRMED for the symlink/copy orchestration + the `sgLnk` dir; NEFF section tagging INFERRED.]**
+Each per-core subgraph lives under `nc<coreId>/sg<subgraphId>` (the regex token from §5d); its constant tensors, debug info, and custom-op binaries are **symlinked** into the single `sgLnk` dir (CPU-node host files are **copied**), so the merged module's functions resolve their external file references in one place. The per-core "code section" identity is preserved *structurally*: each core remains its own `bir::Function` tagged with its `NeuronCoreId`, and codegen later emits per-engine 64 B TPB bundles per function. The NEFF packager (J-strand) then tags each per-core function's instruction stream into the NEFF's per-core sections using the `NeuronCoreId` carried on the function. The symlink/copy orchestration and the `sgLnk` directory are pinned here; the exact NEFF/kelf section tagging is [INFERRED], named only, and belongs to the planned NEFF / `__kelf` / `sgLnk` packaging page.
 
 ---
 
@@ -432,13 +431,13 @@ Each per-core subgraph lives under `nc<coreId>/sg<subgraphId>` (the regex token 
 ```text
   lnc_splitter (8.30)  concretizeModule @0x16d3bf0
     clone ONE Module per core; set ModuleAttribute key 2 = NeuronCoreId; per-core renames;
-    LowerLocalCollectives mints RemoteLocalTargets (vnc_remote_addr_map / remote_target_name).   [CONFIRMED]
+    LowerLocalCollectives mints RemoteLocalTargets (vnc_remote_addr_map / remote_target_name). 
         │  per-core compilation: alloc, schedule, codegen-prep (main pipeline)
         ▼
   extend_shared_lifetimes (81) cross-core barriers preserve shared lifetimes;
   coloring_allocator_dram_shared (82) colors shared DRAM;
   sync_shared_allocations (83) follows each RemoteLocalTarget back to the producing core's
-    NOW-allocated mloc and COPIES the physical address  →  ADDRESS identity across cores.        [CONFIRMED]
+    NOW-allocated mloc and COPIES the physical address  →  ADDRESS identity across cores.      
         │
         ▼
   bir_linker (L1, THIS PAGE)  merge the N finished per-core Modules into ONE Module:
@@ -450,7 +449,7 @@ Each per-core subgraph lives under `nc<coreId>/sg<subgraphId>` (the regex token 
     DMA queues + semaphores merged (initQueues §6);
     CoreBarrier IDs globally renumbered (renumberCoreBarriers §7);
     per-core npy/debug/custom-op artifacts symlinked into <name>/sgLnk (setupLinkDir §8);
-    unified tensor-map written.                                                                  [CONFIRMED]
+    unified tensor-map written.                                                                
         │  post-link REG alloc (L33), vnc_link (L34-35), codegen (L40) — whole-program
         ▼
   NeffPackager (L42): packages codegen output + linked tensor-map + per-core sections
@@ -463,10 +462,10 @@ The **inverse relationship** is the cleanest way to hold both passes in mind: `l
 
 ## 10. Caveats & confidence ledger
 
-- **`dry_run` (`0x15edd50`)** shares the `"missing input '…'"` diagnostic (@`0x1c87d44`) with the real `run`; it is the no-mutate feasibility/cost probe (loop-fusion / dep-edge accounting strings present) used before committing the link. It does not construct the merged module. **[STRONG.]**
-- **`InstCoreBarrier` field offsets (`+0x110` ID, `+0x130` flag)** are read from the renumber loop only; not cross-checked against an independent `InstCoreBarrier` layout dump (`klr::CoreBarrier_ser` @`0xf475b0` would confirm). **[INFERRED.]**
-- **`copyAllocs` vs `copyAllocs2` vs `copyAllocs2Func`/`copyAllocs2Inst` division of labor** — module-set passes vs per-function/per-instruction resolvers — is inferred from call structure + naming; the `inpMap/outMap → memMap` collapse is fully evidenced only in `copyAllocs2Inst` rodata. **[INFERRED for the split; the collapse itself is CONFIRMED.]**
-- **The runtime dispatch semantics** of the dispatcher block (static manifest vs per-core NEFF-section firing) rest on the J-strand NeffPackager, NAMED only here. **[INFERRED.]**
-- The `RemoteLocalTarget` struct shape (`optional<pair<name, ncId>>`) is cross-ref to D-H03/D-H24, not re-disassembled on this page. **[INFERRED.]**
+- **`dry_run` (`0x15edd50`)** shares the `"missing input '…'"` diagnostic (@`0x1c87d44`) with the real `run`; it is the no-mutate feasibility/cost probe (loop-fusion / dep-edge accounting strings present) used before committing the link. It does not construct the merged module.
+- **`InstCoreBarrier` field offsets (`+0x110` ID, `+0x130` flag)** are read from the renumber loop only; not cross-checked against an independent `InstCoreBarrier` layout dump (`klr::CoreBarrier_ser` @`0xf475b0` would confirm). [INFERRED]
+- **`copyAllocs` vs `copyAllocs2` vs `copyAllocs2Func`/`copyAllocs2Inst` division of labor** — module-set passes vs per-function/per-instruction resolvers — is inferred from call structure + naming; the `inpMap/outMap → memMap` collapse is directly evidenced in `copyAllocs2Inst` rodata, but the split itself is [INFERRED].
+- **The runtime dispatch semantics** of the dispatcher block (static manifest vs per-core NEFF-section firing) rest on the NEFF packager, named only here. [INFERRED]
+- The `RemoteLocalTarget` struct shape (`optional<pair<name, ncId>>`) is taken from the cross-referenced splitter page, not re-disassembled here. [INFERRED]
 
-**Re-verify ceiling.** The new-merged-Module model (§2.6, `_Znwm(0x310)` + `Module::Module`), the call-dispatcher BB (§3.1, `insertElement<InstCall>` + `call_def_` rodata), the queue unification (§6, `addQueue` + rodata), and the barrier renumber's opcode test (§7, `cmp … 0x57` + `InstCoreBarrier` assert string) are all CONFIRMED at the disasm+rodata level. The internal field offsets inside `InstCoreBarrier`/`InstCall`, and the runtime NEFF-section dispatch, are the honest INFERRED ceiling.
+**Verification ceiling.** The new-merged-Module model (§2.6, `_Znwm(0x310)` + `Module::Module`), the call-dispatcher BB (§3.1, `insertElement<InstCall>` + `call_def_` rodata), the queue unification (§6, `addQueue` + rodata), and the barrier renumber's opcode test (§7, `cmp … 0x57` + the `InstCoreBarrier` assert string) all rest on disasm and rodata reads. The internal field offsets inside `InstCoreBarrier` / `InstCall`, and the runtime NEFF-section dispatch, are the ceiling: both are [INFERRED].

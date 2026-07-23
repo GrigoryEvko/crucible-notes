@@ -1,6 +1,6 @@
 # Codegen Helpers & the NKI-Kernel Provision Mechanisms
 
-> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 are address-twins). Three binaries carry this material. The shared codegen helpers and the lowering driver live in `neuronxcc/starfish/lib/libwalrus.so` (the Strand-I backend object — full dynamic symbol table). The three kernel-carrier node classes (`bir::InstBIRKernel` / `InstNKIKernel` / `InstNKIKLIRKernel`), their ctors, JSON serializers and enum tables live in `neuronxcc/starfish/lib/libBIR.so` (the defining library). The helper **bodies** were also read from `neuronxcc/.../bin/nki_klr_sim` (libwalrus statically linked; identical source, distinct addresses — `getActBiasTensor` = `sub_4F4BB0` there, `getIdentityMatrix` = `sub_506900`). For `.text`/`.rodata` in all three, virtual address equals file offset. Every claim is tagged CONFIRMED (read directly off these binaries) / STRONG (multi-evidence) / INFERRED / SPECULATIVE. Other wheels differ — treat every address as version-pinned.*
+> *Version pin: `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp311/cp312 are address-twins). Three binaries carry this material. The shared codegen helpers and the lowering driver live in `neuronxcc/starfish/lib/libwalrus.so` (the Strand-I backend object — full dynamic symbol table). The three kernel-carrier node classes (`bir::InstBIRKernel` / `InstNKIKernel` / `InstNKIKLIRKernel`), their ctors, JSON serializers and enum tables live in `neuronxcc/starfish/lib/libBIR.so` (the defining library). The helper **bodies** were also read from `neuronxcc/.../bin/nki_klr_sim` (libwalrus statically linked; identical source, distinct addresses — `getActBiasTensor` = `sub_4F4BB0` there, `getIdentityMatrix` = `sub_506900`). For `.text`/`.rodata` in all three, virtual address equals file offset. Claims that are not directly pinned to these binaries are marked [INFERRED] inline; the tables carry a confidence column. Other wheels differ — treat every address as version-pinned.*
 
 ## Abstract
 
@@ -44,7 +44,7 @@ The three helpers below are called from inside the KLR walk ([7.21](klir-codegen
 
 `InstActivation` (the BIR activation op) always has a bias operand. When the source NKI activation supplies no explicit bias, the codegen must still hand the builder *something*. `getActBiasTensor` is that something: a per-partition column of fp32 zeros.
 
-It is called from **exactly one** site — `codegenNcActivate` (`sub_4F6B90` in the sim) — and that call sits on the cold branch taken only when the klr activation node carries no explicit bias (the explicit-bias case feeds the bias directly into `addActivation`'s `std::variant<float, bir::InstArg>` operand). [CONFIRMED — sole external xref to `sub_4F4BB0`]
+It is called from **exactly one** site — `codegenNcActivate` (`sub_4F6B90` in the sim) — and that call sits on the cold branch taken only when the klr activation node carries no explicit bias (the explicit-bias case feeds the bias directly into `addActivation`'s `std::variant<float, bir::InstArg>` operand). That is the sole external xref to `sub_4F4BB0`.
 
 ```c
 // getActBiasTensor(KlirToBirCodegen* this)  — sub_4F4BB0 @0x4f4bb0 (sim) / 0xf16bc0 (libwalrus)
@@ -68,9 +68,11 @@ bir::MemoryLocation* getActBiasTensor(KlirToBirCodegen* this) {
 }
 ```
 
-**Decisive fact — the bias dtype is hard-wired float32, independent of the activation data dtype.** The `addSBTensor` Dtype argument is the literal immediate `0x10` (BIR Dtype 16 = float32). This is the binary-level confirmation of the "bias/scale must be fp32" rule: the zero bias is *always* fp32, and the subsequent `getDtype` read only sizes the memset cell — it does not track the data dtype. [CONFIRMED — disasm `0x4f4c19: mov r8d, 10h` feeds `addSBTensor`'s Dtype slot, immediately preceding the `bir::InstBuilder::addSBTensor` call at `0x4f4c2f`; verified against the `nki_klr_sim` disasm this session]
+**Decisive fact — the bias dtype is hard-wired float32, independent of the activation data dtype.** The `addSBTensor` Dtype argument is the literal immediate `0x10` (BIR Dtype 16 = float32). This is the binary-level grounding of the "bias/scale must be fp32" rule: the zero bias is *always* fp32, and the subsequent `getDtype` read only sizes the memset cell — it does not track the data dtype.
 
-The shape is `(nPartitions, 1)` — one fp32 zero per partition (a per-partition scalar bias column). The partition extent is `this+0x14C`, the arch partition count (INFERRED 128 for the Trainium PE array — STRONG, given the 128×128 identity below and the standard PE-array geometry). The cache is a `boost::optional<MemoryLocation*>` (engaged-flag `+288`, payload `+296`); three `boost::bad_optional_access` guards wrap every read. [CONFIRMED shape args; partition source STRONG]
+*Anchor: `0x4f4c19` `mov r8d, 10h` feeds `addSBTensor`'s Dtype slot, immediately preceding the `bir::InstBuilder::addSBTensor` call at `0x4f4c2f`.*
+
+The shape is `(nPartitions, 1)` — one fp32 zero per partition (a per-partition scalar bias column). The partition extent is read from `this+0x14C`, the arch partition count; that count is 128 for the Trainium PE array [INFERRED], consistent with the 128×128 identity below and the standard PE-array geometry. The cache is a `boost::optional<MemoryLocation*>` (engaged-flag `+288`, payload `+296`); three `boost::bad_optional_access` guards wrap every read.
 
 ### `getIdentityMatrix` — the per-dtype transpose stationary
 
@@ -98,15 +100,17 @@ bir::MemoryLocation* getIdentityMatrix(KlirToBirCodegen* this, bir::Dtype dt) {
 }
 ```
 
-The realized operation is `out[p,e] = (p==e) ? 1.0f : 0` — `memset(0)` zeros the off-diagonal, the affine-select stamps `0x3F800000` (= 1.0f) onto the diagonal selected by a `(1,128)`-strided mask. [CONFIRMED — disasm `0x506d98: mov dword ptr [rbx+194h], 3F800000h`; the `"=IDAffineSelect(mask,fill=1)"` inst name, the `"Emitting dynamic Identity matrix generation code…"` and `"getIdentityMatrix"` LEAs at `0x506ac4`/`0x506b10`, and the `addMemset` call at `0x506c29` were all read off the `sub_506900` disasm this session. The exact `p==e` mask predicate is INFERRED from the `(1,128)` mask AP + the inst name; the mask AP was not unrolled.]
+The realized operation is `out[p,e] = (p==e) ? 1.0f : 0` — `memset(0)` zeros the off-diagonal, the affine-select stamps `0x3F800000` (= 1.0f) onto the diagonal selected by a `(1,128)`-strided mask. The `p==e` predicate itself is [INFERRED] from the `(1,128)` mask AP and the instruction name — the mask AP was not unrolled.
 
-> **NOTE — the fill offset is `+0x194` (404), not `+0x180`.** The 1.0f write lands at the affine-select instruction's `+0x194` slot and the kind discriminator `19` at `+0x190`. These are the affine-select op's own fields, not the identity tensor's; the identity tensor itself is plain (memset + one selective fill). [CONFIRMED — `mov dword ptr [rbx+194h]`]
+*Anchors: `0x506d98` `mov dword ptr [rbx+194h], 3F800000h`; the `"=IDAffineSelect(mask,fill=1)"` and perf-warning string LEAs at `0x506ac4` / `0x506b10`; the `addMemset` call at `0x506c29`.*
 
-One identity per dtype is built at most once per function, then pushed onto the codegen's identity-matrix vector at `this+0x130` for the late `legalizeIdentityMatrices` address-fixup pass. Source locations: `klir_to_bir_codegen.cpp:1575` (memset) / `:1579` (affine-select). [CONFIRMED]
+> **NOTE — the fill offset is `+0x194` (404), not `+0x180`.** The 1.0f write lands at the affine-select instruction's `+0x194` slot and the kind discriminator `19` at `+0x190`. These are the affine-select op's own fields, not the identity tensor's; the identity tensor itself is plain (memset plus one selective fill).
+
+One identity per dtype is built at most once per function, then pushed onto the codegen's identity-matrix vector at `this+0x130` for the late `legalizeIdentityMatrices` address-fixup pass. Source locations: `klir_to_bir_codegen.cpp:1575` (memset) / `:1579` (affine-select).
 
 ### `getBankId` — codegen-time bank resolution
 
-`getBankId(shared_ptr<klr::TensorName>, uint, uint)` resolves a PSUM (or SBUF) **bank id** for a klr tensor operand at tensor-creation time; the two trailing uints are bank/partition hints from the klr AP. The resolved id is passed as the `long bankId` argument of `InstBuilder::addPSUMTensor(string const&, uint, uint, uint, long bankId, bir::Dtype)` — note `addSBTensor` has no bank argument; only PSUM tensors carry one. [STRONG — signature from the libwalrus roster; the body is a libwalrus-internal accessor with no string/assert hook in the sim, so it inlines without a decompilable stub]
+`getBankId(shared_ptr<klr::TensorName>, uint, uint)` resolves a PSUM (or SBUF) **bank id** for a klr tensor operand at tensor-creation time; the two trailing uints are bank/partition hints from the klr AP. The resolved id is passed as the `long bankId` argument of `InstBuilder::addPSUMTensor(string const&, uint, uint, uint, long bankId, bir::Dtype)` — note `addSBTensor` has no bank argument; only PSUM tensors carry one. The signature comes from the libwalrus roster; the body is a libwalrus-internal accessor with no string or assert hook in the sim, so it inlines without leaving a decompilable stub.
 
 > **GOTCHA — there are two `getBankId`s.** They are different functions with opposite roles:
 >
@@ -115,9 +119,9 @@ One identity per dtype is built at most once per function, then pushed onto the 
 > | `KlirToBirCodegen::getBankId` | `0xf14ac0` | **assigns/derives** the bank id during codegen (this one) |
 > | `bir::MemoryLocation::getBankId` | `0x3fda5a8` (libBIR; PLT thunk `0x44dcd0` in sim) | pure **accessor** returning the stored bank id at `MemoryLocation+0x210` (+528), set by `setBankId @0x32dc40` |
 >
-> The codegen one *writes* the placement; the accessor one *reads* it back. PSUM uses `+528` for the bank; SBUF uses `+536` for the base partition. `toString` renders `abs(bankId)` for `type == PSUM`. [CONFIRMED cross-ref]
+> The codegen one *writes* the placement; the accessor one *reads* it back. PSUM uses `+528` for the bank; SBUF uses `+536` for the base partition. `toString` renders `abs(bankId)` for `type == PSUM`.
 
-The bank id `getBankId` assigns is only the **initial/hint** bank. The final physical bank is fixed much later: `LegalizeMatmulAccumulationGroups` groups matmuls by same bank, computes the bank span, and a single accumulate-group's zero-region caps at **8 banks** (a power-of-2 window `k ≤ 3`; a 16-bank window is uncoverable → the group is rejected with *"accumulation group is too large for SB"* and spilled to SBUF + column-tiled re-reduce). So `getBankId` provides the codegen-time placement; the PSUM coloring allocator and address-rotation pass fix the physical bank. [STRONG]
+The bank id `getBankId` assigns is only the **initial/hint** bank. The final physical bank is fixed much later: `LegalizeMatmulAccumulationGroups` groups matmuls by same bank, computes the bank span, and a single accumulate-group's zero-region caps at **8 banks** (a power-of-2 window `k ≤ 3`; a 16-bank window is uncoverable → the group is rejected with *"accumulation group is too large for SB"* and spilled to SBUF + column-tiled re-reduce). So `getBankId` provides the codegen-time placement; the PSUM coloring allocator and address-rotation pass fix the physical bank.
 
 ### Per-arch limits the helpers read
 
@@ -134,13 +138,13 @@ uint getPsumMaxBankId(KlirToBirCodegen* this) {           // @0xf14430
 }
 ```
 
-[CONFIRMED — both disasm-read in the helper reports.] The **numeric** per-arch constants that fill `this+0x154`/`+0x158`/`+0x14C` come from the `libwalrus` `ArchModel` (`core_vN_bir.cpp`); the per-generation PSUM-bank-count and SBUF-byte values are documented from the geometry singletons in [SBUF / PSUM Bank Geometry](../arch/sbuf-psum-geometry.md). What is established structurally here: a 4 MiB on-chip PSUM window, ≥8 PSUM banks, an 8-bank max accumulate-group, and 128 partitions. [CONFIRMED structural bounds; numeric per-gen values are the ArchModel's, documented separately]
+The **numeric** per-arch constants that fill `this+0x154`/`+0x158`/`+0x14C` come from the `libwalrus` `ArchModel` (`core_vN_bir.cpp`); the per-generation PSUM-bank-count and SBUF-byte values are documented from the geometry singletons in [SBUF / PSUM Bank Geometry](../arch/sbuf-psum-geometry.md). What these two accessors establish structurally is the shape of the budget: a 4 MiB on-chip PSUM window, at least 8 PSUM banks, an 8-bank ceiling on an accumulate-group, and 128 partitions.
 
 ---
 
 ## Part 2 — The two kernel-provision mechanisms
 
-`TranslateNKIASTToBIR::run` ([7.21](klir-codegen-dispatch.md) covers the dispatch; see also [Part 8 translate-nki](../walrus/) when published) walks every basic block of every function, finds each `bir::InstNKIKLIRKernel` (`InstructionType == 56`) placeholder, and calls `lowerKernelInst(node, BB)` on it. After the block scan it removes the placeholders (collect-then-remove, to avoid iterator invalidation). The node-find is an exact integer compare `*(u32*)(ins+0x50) == 56` (`0x38`) — only IT56 triggers lowering. [CONFIRMED — `run @0xf0dbc0`]
+`TranslateNKIASTToBIR::run` ([7.21](klir-codegen-dispatch.md) covers the dispatch; see also [Part 8 translate-nki](../walrus/) when published) walks every basic block of every function, finds each `bir::InstNKIKLIRKernel` (`InstructionType == 56`) placeholder, and calls `lowerKernelInst(node, BB)` on it. After the block scan it removes the placeholders (collect-then-remove, to avoid iterator invalidation). The node-find is an exact integer compare `*(u32*)(ins+0x50) == 56` (`0x38`) — only IT56 triggers lowering.
 
 `lowerKernelInst @0xf0b610` is the **two-way split** on the carrier's format field.
 
@@ -151,7 +155,7 @@ uint getPsumMaxBankId(KlirToBirCodegen* this) {           // @0xf14430
 > | `TranslateNKIASTToBIR::lowerKernelInst(InstNKIKLIRKernel&, BasicBlock&)` | `0xf0b610` | **IT56** carriers (this page) |
 > | `InlineNKIKernel::lowerKernelInst(InstNKIKernel&, BasicBlock&, json&)` | `0xefddc0` | already-lowered **IT55** call-sites (a *later* pass) |
 >
-> They belong to different classes and different passes. Do not conflate them; this page's target is `0xf0b610`. [CONFIRMED via `nm -DC`; both decompiled bodies present in the corpus this session]
+> They belong to different classes and different passes. Do not conflate them; this page's target is `0xf0b610`.
 
 ### The discriminator — one string field
 
@@ -170,9 +174,7 @@ So the discriminator is the `"kernel_format"` `std::string` at **`InstNKIKLIRKer
 - `== "bir"` ⇒ **Mechanism B** (pre-compiled BIR-JSON; `lowerFromBirJson`; returns `bool`)
 - `!= "bir"` ⇒ **Mechanism A** (KLR-compiled AST; `KlirToBirCodegen` codegen<Op> expansion; returns `1`)
 
-[CONFIRMED — the `std::string::compare()` followed by the `lowerFromBirJson` call, the `addNKIFunction` / `codegenLncKernel` path, and the `getIsAllocated` gate were all read off the real `lowerKernelInst @0xf0b610` decompile this session.]
-
-> **QUIRK — the callee sets are disjoint, which proves the mechanisms are independent.** `lowerFromBirJson` calls *neither* `klr::*` deserializers *nor* `addNKIFunction` *nor* any `KlirToBirCodegen` method *nor* `setMapping`; the KLR path calls *neither* nlohmann *nor* `createFromJson` *nor* `getNeuronCoreId` *nor* `createMappingFromNames`. The two callee sets are disjoint in exactly the places that matter — the cleanest possible confirmation of two genuinely independent provision mechanisms sharing only the convergence shape. [CONFIRMED — callgraph.json]
+> **QUIRK — the callee sets are disjoint, which is what makes the mechanisms independent.** `lowerFromBirJson` calls *neither* `klr::*` deserializers *nor* `addNKIFunction` *nor* any `KlirToBirCodegen` method *nor* `setMapping`; the KLR path calls *neither* nlohmann *nor* `createFromJson` *nor* `getNeuronCoreId` *nor* `createMappingFromNames`. The two callee sets are disjoint in exactly the places that matter: two genuinely separate provision mechanisms that share only their convergence shape.
 
 ### Mechanism A — `lowerKernelInst` (serialized KLR-AST → codegen)
 
@@ -217,9 +219,9 @@ lowerKLIRToNKI(node, *F, cg.name, inMap, outMap, cg);   // <<< mint the IT55 cal
 return 1;
 ```
 
-The body production is *genuine per-op codegen*: `codegenLncKernel → codegenStmt → codegenOperator → codegen<Op>` (the ~141 hooks of [7.21](klir-codegen-dispatch.md)). The emitted BIR instructions are inserted into `F`'s basic blocks **inside** `codegenLncKernel` — *not* into the caller block. Operand re-binding is **manual**: `lowerKernelInst` walks the node's formal in/out lists, looks each formal name up in `F`, and pairs it with the caller's actual `MemoryLocationSet` via `setMapping` per pair. [CONFIRMED — decompile lines 1368–1539; the `" input cannot be found "` / `" output cannot be found "` throw strings]
+The body production is *genuine per-op codegen*: `codegenLncKernel → codegenStmt → codegenOperator → codegen<Op>` (the ~141 hooks of [7.21](klir-codegen-dispatch.md)). The emitted BIR instructions are inserted into `F`'s basic blocks **inside** `codegenLncKernel` — *not* into the caller block. Operand re-binding is **manual**: `lowerKernelInst` walks the node's formal in/out lists, looks each formal name up in `F`, and pairs it with the caller's actual `MemoryLocationSet` via `setMapping` per pair. A miss on either side raises `" input cannot be found "` / `" output cannot be found "`.
 
-The KLR file is pre-*allocated*: the `cpp:1670` assert `codegen.getIsAllocated()` guards that the NKI front-end already ran the allocator (SBUF/PSUM addresses assigned in the KLR). `TranslateNKIASTToBIR` therefore consumes *already-allocated* kernels. [CONFIRMED]
+The KLR file is pre-*allocated*: the `cpp:1670` assert `codegen.getIsAllocated()` guards that the NKI front-end already ran the allocator (SBUF/PSUM addresses assigned in the KLR). `TranslateNKIASTToBIR` therefore consumes *already-allocated* kernels.
 
 ### `lowerKLIRToNKI` — the shared IT55 emitter (Mechanism A tail)
 
@@ -249,9 +251,9 @@ call[+0x150] = swizzle(am partition descriptor);       // arch / psum partition 
 return Instruction::createKernelScratchpadBuffers<InstNKIKernel>(call);   // tail-jump: reserve scratch
 ```
 
-The scratchpad budget comes from the **codegen object** (`getSbufMaxBytes` / `getPsumMaxBankId` / `getIsAllocated`) — `lowerKLIRToNKI` never re-scans `F`'s allocs. This is the structural reason the codegen is passed `const&`. The arg-maps are **deep-copied into the call node** (the `SmallVector` of the `llvm::MapVector<MemoryLocationSet*, MemoryLocationSet*>` is bit-copied to `call+0xF8`/`+0x120`), so the IT55 call *permanently carries* the formal↔actual mapping — the data a later inliner needs to rebind operands. [CONFIRMED — disasm transcribed; offsets settled at `+0xF8`/`+0x120` (see correction note below)]
+The scratchpad budget comes from the **codegen object** (`getSbufMaxBytes` / `getPsumMaxBankId` / `getIsAllocated`) — `lowerKLIRToNKI` never re-scans `F`'s allocs. This is the structural reason the codegen is passed `const&`. The arg-maps are **deep-copied into the call node** (the `SmallVector` of the `llvm::MapVector<MemoryLocationSet*, MemoryLocationSet*>` is bit-copied to `call+0xF8`/`+0x120`), so the IT55 call *permanently carries* the formal↔actual mapping — the data a later inliner needs to rebind operands.
 
-> **CORRECTION — `lowerKLIRToNKI` is called *directly*, not only via PLT.** An earlier reading held it "reached only through its PLT stub `0x5f60f0`." The callgraph shows exactly one caller, a *direct* call: `lowerKernelInst` (decompile line 1541). The PLT thunk `0x5f60f0` is just the cross-section trampoline. [CONFIRMED — callgraph + decompile]
+`lowerKLIRToNKI` has exactly one caller, and the call is direct: the tail of `lowerKernelInst`. A PLT thunk for it also exists at `0x5f60f0`, but that is only the cross-section trampoline, not the live edge.
 
 ### Mechanism B — `lowerFromBirJson` (pre-compiled BIR-JSON)
 
@@ -299,10 +301,10 @@ return true;
 
 The two differences from Mechanism A that matter:
 
-1. **Operand re-binding is by name in one shot.** `createMappingFromNames(map<string,string>, callerFn, F)` builds the whole `FunctionArgumentMap` from a name correspondence — the source `map<string,string>` being exactly the carrier's `func_args`/`func_outs` (`InstNKIKLIRKernel+0x178`/`+0x1A8`). Mechanism A builds the same `MapVector` manually, per pair. [CONFIRMED]
-2. **The budget comes from a re-scan**, not a codegen. With no `KlirToBirCodegen` object to ask, `lowerFromBirJson` walks `F.allocs()` itself to find the SBUF high-water and PSUM usage. [CONFIRMED]
+1. **Operand re-binding is by name in one shot.** `createMappingFromNames(map<string,string>, callerFn, F)` builds the whole `FunctionArgumentMap` from a name correspondence — the source `map<string,string>` being exactly the carrier's `func_args`/`func_outs` (`InstNKIKLIRKernel+0x178`/`+0x1A8`). Mechanism A builds the same `MapVector` manually, per pair.
+2. **The budget comes from a re-scan**, not a codegen. With no `KlirToBirCodegen` object to ask, `lowerFromBirJson` walks `F.allocs()` itself to find the SBUF high-water and PSUM usage.
 
-> **QUIRK — the LNC-sharding gate is unique to Mechanism B.** A BIR-JSON `"functions"` array holds *one function per logical neuron core*; the entry chosen is `fns[NeuronCoreId]`. If `coreId ≥ array length`, the kernel was "compiled for fewer LNC than the current core" and is **skipped** for this core (`return false`, the node simply materialises no function on this core — `run` still removes the placeholder). If `coreId` is unset but more than one function is present, it errors. Mechanism A has no such gate: a serialized KLR binary is already per-core. [CONFIRMED]
+> **QUIRK — the LNC-sharding gate is unique to Mechanism B.** A BIR-JSON `"functions"` array holds *one function per logical neuron core*; the entry chosen is `fns[NeuronCoreId]`. If `coreId ≥ array length`, the kernel was "compiled for fewer LNC than the current core" and is **skipped** for this core (`return false`, the node simply materialises no function on this core — `run` still removes the placeholder). If `coreId` is unset but more than one function is present, it errors. Mechanism A has no such gate: a serialized KLR binary is already per-core.
 
 ### The two mechanisms side by side
 
@@ -320,7 +322,7 @@ The two differences from Mechanism A that matter:
 | `KernelSource` tag (`+0x160`) | `1 = Beta2` | `2 = Beta3` |
 | Returns | `1` (always) | `true` / `false` (LNC-skip) |
 
-**Convergence (identical for both):** a new NKI `bir::Function` (kind 2) holding the full BIR body, plus a `bir::InstNKIKernel(IT55)` call-site (`call+0xF0 → F`) with the node's caller-side `AccessPattern` operands cloned and a scratchpad sized from the SBUF/PSUM budget. The IT56 placeholder is then removed by `run`. [CONFIRMED — both produce the same downstream artifact, differing only in *how* the body arrives.]
+**Convergence (identical for both):** a new NKI `bir::Function` (kind 2) holding the full BIR body, plus a `bir::InstNKIKernel(IT55)` call-site (`call+0xF0 → F`) with the node's caller-side `AccessPattern` operands cloned and a scratchpad sized from the SBUF/PSUM budget. The IT56 placeholder is then removed by `run`. Both paths produce the same downstream artifact, differing only in *how* the body arrives.
 
 ---
 
@@ -334,7 +336,7 @@ The three kernel opcodes form a **lowering triple, not three peers**. All three 
 | `InstNKIKernel` | 55 | `0x40a490` | post-lowering **call-site** (user `@nki.jit`) | minted by `lowerKLIRToNKI`/`lowerFromBirJson`; later inlined |
 | `InstBIRKernel` | 54 | `0x409ee0` | **library** kernel (pre-compiled BIR) | `InlineBIRKernel` / `BIRKernelWrapper` — *not* this pass |
 
-The IT literals are passed directly to the `Instruction` base ctor as the 4th argument; verified in the ctor bodies this session: `bir::Instruction::Instruction(a1, a2, a3, 54, …)` (InstBIRKernel), `…, 55, …` (InstNKIKernel), `…, 56, …` (InstNKIKLIRKernel). [CONFIRMED — read off the `0x409ee0`/`0x40a490`/`0x40a500` decompiled bodies]
+The IT literals are passed directly to the `Instruction` base ctor as the 4th argument — `bir::Instruction::Instruction(a1, a2, a3, 54, …)` for `InstBIRKernel`, `…, 55, …` for `InstNKIKernel`, `…, 56, …` for `InstNKIKLIRKernel` — in the bodies at `0x409ee0` / `0x40a490` / `0x40a500`.
 
 ### What each path resolves
 
@@ -349,11 +351,13 @@ The IT literals are passed directly to the `Instruction` base ctor as the 4th ar
 //   Mechanism B (lowerFromBirJson)  writes +0x160 = 2 = Beta3   (already-BIR carrier origin)
 ```
 
-The `+0x160` field is `bir::KernelSource`, settled by `InstNKIKernel::readFieldsFromJson` reading the key `"kernel_source_val"` via `bir::from_json(…, bir::KernelSource&)`. [CONFIRMED — `KernelSource2string @0x401c10` body contains `"Beta2"` and the `"Unknown KernelSource"` FATAL (brewer.py), read this session; the `Beta2`/`Beta3` ↔ KLR/BIR-JSON mapping is the byte-verified `+0x160 = 1` vs `= 2` write.]
+The `+0x160` field is `bir::KernelSource`, settled by `InstNKIKernel::readFieldsFromJson` reading the key `"kernel_source_val"` via `bir::from_json(…, bir::KernelSource&)`. The `Beta2` / `Beta3` ↔ KLR / BIR-JSON correspondence is exactly the `+0x160 = 1` vs `= 2` write in the two emitters.
 
-> **GOTCHA — IT55's serializer is asymmetric (lossy).** `InstNKIKernel::toJson @0x43a4f0` emits `func`/`func_args`/`func_outs`, but `readFieldsFromJson @0x430410` reads **only** `sb_buf_shape`/`psum_buf_shape`/`kernel_source_val`/`address_rotation_scope_val` — it does *not* read back `func`/`func_args`/`func_outs`. A reloaded IT55 would have a null `getFunc()`. This is why IT55 is internal-only: it exists transiently between `TranslateNKIASTToBIR` (which mints it) and the inliner (which expands and removes it), never persisted-then-reloaded as the operative carrier. It is also why IT55/IT56 `sameInst` is `__assert_fail "Not Implemented"` (no CSE/dedup), whereas IT54 has a real structural `sameInst @0x2f66a0`. [CONFIRMED — ctor + serializer offsets `+0xF0`/`+0xF8`/`+0x120` are the libBIR-defining truth]
+*Anchor: `KernelSource2string @0x401c10` holds the `"Beta2"` literal and the `"Unknown KernelSource"` FATAL.*
 
-**`IT54` is *not* touched by this pass.** `InstBIRKernel` is a library kernel that arrives *already* as BIR (the `_private_kernels.<leaf>.so` body, spliced in by name). It is expanded by a different pass entirely — `InlineBIRKernel::run @0xd86510` via `BIRKernelWrapper::createInstance` — with no JSON round-trip and no KLR walk. It carries `kernel_name` + `srcs_shape`/`dsts_shape` + an opaque `kernel_attrs` json + the fusion options (`auto_cast`, `quant_kernel`, `norm_type`, `is_causal`, `lnc_size`, …), but **no version triplet** (the `ulib_to_ucode_version`/`ulib_to_isa_version` triplet belongs to `InstCustomOp(IT53)`, not here). It is listed in the table above only to complete the triple. [CONFIRMED]
+> **GOTCHA — IT55's serializer is asymmetric (lossy).** `InstNKIKernel::toJson @0x43a4f0` emits `func`/`func_args`/`func_outs`, but `readFieldsFromJson @0x430410` reads **only** `sb_buf_shape`/`psum_buf_shape`/`kernel_source_val`/`address_rotation_scope_val` — it does *not* read back `func`/`func_args`/`func_outs`. A reloaded IT55 would have a null `getFunc()`. This is why IT55 is internal-only: it exists transiently between `TranslateNKIASTToBIR` (which mints it) and the inliner (which expands and removes it), never persisted-then-reloaded as the operative carrier. It is also why IT55/IT56 `sameInst` is `__assert_fail "Not Implemented"` (no CSE/dedup), whereas IT54 has a real structural `sameInst @0x2f66a0`. The `+0xF0`/`+0xF8`/`+0x120` offsets come from libBIR, the defining library.
+
+**`IT54` is *not* touched by this pass.** `InstBIRKernel` is a library kernel that arrives *already* as BIR (the `_private_kernels.<leaf>.so` body, spliced in by name). It is expanded by a different pass entirely — `InlineBIRKernel::run @0xd86510` via `BIRKernelWrapper::createInstance` — with no JSON round-trip and no KLR walk. It carries `kernel_name` + `srcs_shape`/`dsts_shape` + an opaque `kernel_attrs` json + the fusion options (`auto_cast`, `quant_kernel`, `norm_type`, `is_causal`, `lnc_size`, …), but **no version triplet** (the `ulib_to_ucode_version`/`ulib_to_isa_version` triplet belongs to `InstCustomOp(IT53)`, not here). It is listed in the table above only to complete the triple.
 
 ### The carrier → instructions resolution, in one diagram
 
@@ -387,24 +391,24 @@ Inlined BIR body (the leaf opcodes) in the caller.
 
 | Symbol | Address | Binary | Role | Conf |
 |---|---|---|---|---|
-| `KlirToBirCodegen::getActBiasTensor` | `0xf16bc0` / `sub_4F4BB0 @0x4f4bb0` | libwalrus / sim | cached fp32 zero-bias builder | CONFIRMED |
-| `KlirToBirCodegen::getIdentityMatrix` | `0xf28910` / `sub_506900 @0x506900` | libwalrus / sim | per-dtype 128×128 identity | CONFIRMED |
-| `KlirToBirCodegen::getBankId` | `0xf14ac0` | libwalrus | codegen-time bank-id resolve | STRONG |
-| `bir::MemoryLocation::getBankId` | `0x3fda5a8` | libBIR | bank-id accessor (`+528`) | CONFIRMED |
-| `KlirToBirCodegen::getSbufMaxBytes` | `0xf14420` | libwalrus | `*(u32*)(this+0x118)` | CONFIRMED |
-| `KlirToBirCodegen::getPsumMaxBankId` | `0xf14430` | libwalrus | `(total-1)/divisor` | CONFIRMED |
-| `TranslateNKIASTToBIR::run` | `0xf0dbc0` | libwalrus | module walk; finds IT56; removes it | CONFIRMED |
-| `TranslateNKIASTToBIR::lowerKernelInst` | `0xf0b610` | libwalrus | per-node A/B dispatch; Mechanism A | CONFIRMED |
-| `TranslateNKIASTToBIR::lowerFromBirJson` | `0xf0a160` | libwalrus | Mechanism B (BIR-JSON) | CONFIRMED |
-| `TranslateNKIASTToBIR::lowerKLIRToNKI` | `0xf09c40` | libwalrus | shared IT55 emitter (A tail) | CONFIRMED |
-| `TranslateNKIASTToBIR::copyConstFileToArtifact` | `0xf08980` | libwalrus | localize `TensorClass::Const(6)` files | CONFIRMED |
-| `backend::checkVersionMatch` | `0xf07570` | libwalrus | KLR version gate ("1.0.0") | CONFIRMED |
-| `KlirToBirCodegen::codegenLncKernel` | `0xf34140` | libwalrus | the KLR-AST walk ([7.21](klir-codegen-dispatch.md)) | CONFIRMED |
-| `InlineNKIKernel::lowerKernelInst` | `0xefddc0` | libwalrus | **different** pass — operates on IT55 | CONFIRMED |
-| `bir::InstBIRKernel::InstBIRKernel` | `0x409ee0` | libBIR | IT54 ctor (literal `54`) | CONFIRMED |
-| `bir::InstNKIKernel::InstNKIKernel` | `0x40a490` | libBIR | IT55 ctor (literal `55`) | CONFIRMED |
-| `bir::InstNKIKLIRKernel::InstNKIKLIRKernel` | `0x40a500` | libBIR | IT56 ctor (literal `56`) | CONFIRMED |
-| `bir::KernelSource2string` | `0x401c10` | libBIR | `{Beta1=0,Beta2=1,Beta3=2}` | CONFIRMED |
+| `KlirToBirCodegen::getActBiasTensor` | `0xf16bc0` / `sub_4F4BB0 @0x4f4bb0` | libwalrus / sim | cached fp32 zero-bias builder | CERTAIN |
+| `KlirToBirCodegen::getIdentityMatrix` | `0xf28910` / `sub_506900 @0x506900` | libwalrus / sim | per-dtype 128×128 identity | CERTAIN |
+| `KlirToBirCodegen::getBankId` | `0xf14ac0` | libwalrus | codegen-time bank-id resolve | HIGH |
+| `bir::MemoryLocation::getBankId` | `0x3fda5a8` | libBIR | bank-id accessor (`+528`) | CERTAIN |
+| `KlirToBirCodegen::getSbufMaxBytes` | `0xf14420` | libwalrus | `*(u32*)(this+0x118)` | CERTAIN |
+| `KlirToBirCodegen::getPsumMaxBankId` | `0xf14430` | libwalrus | `(total-1)/divisor` | CERTAIN |
+| `TranslateNKIASTToBIR::run` | `0xf0dbc0` | libwalrus | module walk; finds IT56; removes it | CERTAIN |
+| `TranslateNKIASTToBIR::lowerKernelInst` | `0xf0b610` | libwalrus | per-node A/B dispatch; Mechanism A | CERTAIN |
+| `TranslateNKIASTToBIR::lowerFromBirJson` | `0xf0a160` | libwalrus | Mechanism B (BIR-JSON) | CERTAIN |
+| `TranslateNKIASTToBIR::lowerKLIRToNKI` | `0xf09c40` | libwalrus | shared IT55 emitter (A tail) | CERTAIN |
+| `TranslateNKIASTToBIR::copyConstFileToArtifact` | `0xf08980` | libwalrus | localize `TensorClass::Const(6)` files | CERTAIN |
+| `backend::checkVersionMatch` | `0xf07570` | libwalrus | KLR version gate ("1.0.0") | CERTAIN |
+| `KlirToBirCodegen::codegenLncKernel` | `0xf34140` | libwalrus | the KLR-AST walk ([7.21](klir-codegen-dispatch.md)) | CERTAIN |
+| `InlineNKIKernel::lowerKernelInst` | `0xefddc0` | libwalrus | **different** pass — operates on IT55 | CERTAIN |
+| `bir::InstBIRKernel::InstBIRKernel` | `0x409ee0` | libBIR | IT54 ctor (literal `54`) | CERTAIN |
+| `bir::InstNKIKernel::InstNKIKernel` | `0x40a490` | libBIR | IT55 ctor (literal `55`) | CERTAIN |
+| `bir::InstNKIKLIRKernel::InstNKIKLIRKernel` | `0x40a500` | libBIR | IT56 ctor (literal `56`) | CERTAIN |
+| `bir::KernelSource2string` | `0x401c10` | libBIR | `{Beta1=0,Beta2=1,Beta3=2}` | CERTAIN |
 
 ## Diagnostic strings
 
@@ -430,15 +434,16 @@ From the helpers:
 
 ## Adversarial self-verification ceiling
 
-The five strongest claims were re-checked against the binary this session:
+Four of the five principal claims on this page rest on directly decompiled bodies:
 
-- **Two provision mechanisms / disjoint callees** — CONFIRMED. The `lowerKernelInst @0xf0b610` decompile shows the `std::string::compare` → `lowerFromBirJson` split, the `addNKIFunction` + `codegenLncKernel` KLR body, and the `getIsAllocated` gate; the callgraph confirms the disjoint callee sets.
-- **IT54/55/56 carrier resolution** — CONFIRMED at the ctor-literal level (`Instruction(…, 54/55/56, …)` read off `0x409ee0`/`0x40a490`/`0x40a500`). The `KernelSource Beta2`/`Beta3` provenance split is CONFIRMED (`KernelSource2string @0x401c10` body + the byte-verified `+0x160 = 1`/`= 2` writes).
-- **The helpers' behavior** — CONFIRMED. `getActBiasTensor`'s float32 immediate (`mov r8d, 10h` into `addSBTensor`) and `getIdentityMatrix`'s diagonal fill (`mov dword ptr [rbx+194h], 3F800000h`) + the `IDAffineSelect`/perf-warning strings were read directly off the `nki_klr_sim` disasm.
-- **`getBankId`** — STRONG, not CONFIRMED at body level. The codegen-side `getBankId @0xf14ac0` has no decompilable stub in the sim (it inlines / is a libwalrus-internal accessor with no string hook); its signature, role and `addPSUMTensor(…, long bankId, …)` consumption are STRONG from the roster + the accessor (`0x3fda5a8`) cross-ref. The accessor split itself is CONFIRMED.
-- **The `TranslateNKIASTToBIR` driver** — CONFIRMED. The `run @0xf0dbc0` IT56-find compare, the per-node lowering, and the collect-then-remove epilogue are decompiled.
+- **Two provision mechanisms with disjoint callees.** The `lowerKernelInst @0xf0b610` body shows the `std::string::compare` → `lowerFromBirJson` split, the `addNKIFunction` + `codegenLncKernel` KLR body, and the `getIsAllocated` gate; the callgraph gives the disjoint callee sets.
+- **IT54/55/56 carrier resolution**, at the ctor-literal level — `Instruction(…, 54/55/56, …)` at `0x409ee0` / `0x40a490` / `0x40a500`, plus the `KernelSource2string @0x401c10` body and the `+0x160 = 1` / `= 2` writes that split `Beta2` from `Beta3`.
+- **The helpers' behavior.** `getActBiasTensor`'s float32 immediate (`mov r8d, 10h` into `addSBTensor`), `getIdentityMatrix`'s diagonal fill (`mov dword ptr [rbx+194h], 3F800000h`), and the `IDAffineSelect` / perf-warning strings all read off the `nki_klr_sim` disasm.
+- **The `TranslateNKIASTToBIR` driver** — the `run @0xf0dbc0` IT56-find compare, the per-node lowering, and the collect-then-remove epilogue.
 
-Residual gaps (honest ceiling): the **klr-binary wire format** (`KLRFile_des`/`Contents_des` byte layout beyond hdr word 12 / content tag 4) is named only, not transcribed — a dedicated KLR-format task owns it. The exact `ArchModel` field the `+0x150` pshufd decodes is STRONG by the verifier read order, not byte-named. The `p==e` identity mask predicate is INFERRED from the `(1,128)` mask AP + the inst name (the mask was not unrolled). The `getBankId` body is the single STRONG-not-CONFIRMED claim on this page.
+The fifth, `getBankId`, is the one claim on this page not pinned at body level. The codegen-side `getBankId @0xf14ac0` has no decompilable stub in the sim: it inlines, being a libwalrus-internal accessor with no string hook. Its signature, role, and `addPSUMTensor(…, long bankId, …)` consumption come from the symbol roster plus the accessor cross-ref at `0x3fda5a8`; the codegen/accessor split itself is solid.
+
+Three further gaps are worth naming. The **klr-binary wire format** (`KLRFile_des` / `Contents_des` byte layout beyond hdr word 12 and content tag 4) is named here, not transcribed — a dedicated KLR-format page owns it. The exact `ArchModel` field the `+0x150` pshufd decodes is deduced from the verifier's read order rather than byte-named. And the `p==e` identity mask predicate is [INFERRED] from the `(1,128)` mask AP and the instruction name, since the mask AP was not unrolled.
 
 ## Cross-references
 

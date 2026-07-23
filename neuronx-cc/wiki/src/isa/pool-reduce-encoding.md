@@ -16,7 +16,7 @@ Five `CoreV2GenImpl::visitInst*` bodies are covered, producing six distinct wire
 
 Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, fully `pxor`/`movups`-zeroed (so any byte the encoder does not write is a hard `0x00`), header-stamped by `setupHeader`, field-filled, validated by the ISA checker, and `fwrite(buf, 1, 0x40, bin)`-ed ([2.1 the bundle](instruction-bundle.md), Family C). The three fields at the *head* of the control band — in-dtype `+0x20`, out-dtype `+0x21`, lane `+0x22` — are shared by the whole leg; the per-opcode fields `+0x23..+0x2F` diverge and are mapped one section per op below.
 
-The bar for this page: a reader can encode any Pool / TensorReduce / Reciprocal / Iota / pool-buffer-load instruction by hand, knowing for each control byte its offset, width, semantic, value source, the pybind assert string that *names* it, and the disassembly store-site that pins it. Every field row carries a confidence tag (CONFIRMED = exact store/cmp disassembled byte-exact; STRONG = validator / LUT / pybind-roster xref; INFERRED = zero-init implied, no direct store; SPECULATIVE). Bit positions are pinned against literal store constants in the disassembly, never inferred. Where a byte has no recovered name, it is tagged INFERRED/reserved — no field name is fabricated.
+The bar for this page: a reader can encode any Pool / TensorReduce / Reciprocal / Iota / pool-buffer-load instruction by hand, knowing for each control byte its offset, width, semantic, value source, the pybind assert string that *names* it, and the disassembly store-site that pins it. Every field row carries a confidence cell: CERTAIN means the exact store or compare is disassembled byte-exact, HIGH means a validator / LUT / pybind-roster cross-reference backs it, MEDIUM means zero-init is implied with no direct store. Bit positions are pinned against literal store constants in the disassembly, never inferred. Where a byte has no recovered name, its row says so rather than inventing one.
 
 ## At a glance
 
@@ -39,7 +39,7 @@ The whole family shares one bundle skeleton: bytes `+0x00..+0x03` are the header
  byte +0x02..+0x03  reserved = 0x0000
 ```
 
-The 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian. The opcode reaches `setupHeader` as a 1-byte seed placed in a stack scratch slot (`movb $op,-0xNN(%rbp)`) just before the call. CONFIRMED for every op by its seed store and validator `cmp` (below).
+The 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian. The opcode reaches `setupHeader` as a 1-byte seed placed in a stack scratch slot (`movb $op,-0xNN(%rbp)`) just before the call. Every op's seed store and validator `cmp` appear below.
 
 > **NOTE — `inst_word_len = 0x10` is hard-pinned for the whole TPB compute ISA.** Sixteen dwords is exactly 64 bytes; this is why every `visitInst*` emplaces a `std::array<uchar,64>` and `fwrite`s `0x40`.
 
@@ -60,7 +60,7 @@ Every body runs the same cycle; the `CodeGenMode` at `*(this+156)` selects the s
 
 > **GOTCHA — every body has a near-duplicate field-store block.** The mode-2 stack-scratch block mirrors the mode-1 bundle block field-for-field. Do not double-count it as a second emitted bundle. (Reciprocal in particular has *two* `movb $0x48` seeds — GENERATE at `-0xb1(%rbp)` and RUN_ISA_CHECKS at `-0x70(%rbp)` — but emits exactly one bundle.)
 
-### Shared field-build helpers (CONFIRMED — addresses re-resolved this task)
+### Shared field-build helpers
 
 | Helper | Address | Role | Output → |
 |---|---|---|---|
@@ -68,7 +68,7 @@ Every body runs the same cycle; the `CodeGenMode` at `*(this+156)` selects the s
 | `sub_12039C0` | `@0x12039C0` | `CoreV2Convert::convert(AluOpType) → ISA ALU_OP` byte; `0..18` identity, comparison family reorders (`19→24,20→19,21→20,23→21,28→29,29→25`); a `jmp *%rax` jump-table (a `0x19`=25 default-case arm is visible) | TR reduce-op `+0x24` |
 | `sub_120EAB0` | `@0x120EAB0` | `AxisListType → ISA axis` byte `= (a1>3 ? assert : a1+2)`: `X(0)→2, XY(1)→3, XYZ(2)→4, XYZW(3)→5` | TR axis `+0x25` |
 
-CONFIRMED: `sub_120EAB0` shows `cmp $0x3,%edi` then `add $0x2,%eax` at `0x120eac5`/`0x120ead4`; `sub_12039C0` ends in `add %rdx,%rax ; jmp *%rax` at `0x12039ec`.
+*Anchors: `sub_120EAB0` does `cmp $0x3,%edi` then `add $0x2,%eax` at `0x120eac5` / `0x120ead4`; `sub_12039C0` ends in `add %rdx,%rax ; jmp *%rax` at `0x12039ec`.*
 
 ---
 
@@ -78,9 +78,9 @@ The control band sits between the source descriptor (`+0x0C`/`+0x10`) and the de
 
 | Off | W | Field | Value source | Tag |
 |---|---|---|---|---|
-| `+0x20` | 1 | IN dtype wire-tag | `sub_120E650(in.Dtype@+0x30)` | CONFIRMED |
-| `+0x21` | 1 | OUT dtype wire-tag | `sub_120E650(out.Dtype@+0x30)` | CONFIRMED |
-| `+0x22` | 1 | LANE / partition count | `in.Pattern[0].num` (= `*(*(AP+0x50)+8)`) | CONFIRMED |
+| `+0x20` | 1 | IN dtype wire-tag | `sub_120E650(in.Dtype@+0x30)` | CERTAIN |
+| `+0x21` | 1 | OUT dtype wire-tag | `sub_120E650(out.Dtype@+0x30)` | CERTAIN |
+| `+0x22` | 1 | LANE / partition count | `in.Pattern[0].num` (= `*(*(AP+0x50)+8)`) | CERTAIN |
 
 Iota is the exception: it has **no** in-dtype, so `+0x20` is reserved-zero and `+0x21` carries the *output* dtype (see §4). Every body guards `in.Pattern.size@+0x58 != 0` (`test ; je <assert>` → `"idx < size()"` — a zero-dim AP is illegal).
 
@@ -107,19 +107,19 @@ The pooling reduction. BIR field `InstPool.func @+0xF0 = PoolFunctionType {0=Max
 
 | Off | W | Field | pybind (`s4d4_pl`/`d4_pl`) | Value | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x45` | `s_s4d4_pl_opcode` | 69 | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CONFIRMED |
-| `+0x0C` | * | src AP (T4D) | `valid_s4d4_pl_ap` | — | CONFIRMED |
-| `+0x20` | 1 | in_dtype | `d4_pl_dtype_check` (in arm) | `NEURON_ISA_TPB_DTYPE` | CONFIRMED |
-| `+0x21` | 1 | out_dtype | `d4_pl_dtype_check` (out arm) | `NEURON_ISA_TPB_DTYPE` | CONFIRMED |
-| `+0x22` | 1 | lane / part cnt | `valid_subdim` | `in0.Pattern[0].num` | CONFIRMED |
-| `+0x24` | 1 | pool func | `valid_pooltype` | Max→`1`, Avg→`2` | CONFIRMED |
-| `+0x25` | 1 | mode / subdim | `valid_subdim` | `3` (const) | CONFIRMED |
-| `+0x28` | 4 | pool_scale (f32) | `"pool_scale must be …"` | `1.0f` / `1.0f / N` | CONFIRMED |
-| `+0x2C` | * | dst AP (T4D) | `valid_s4d4_pl_ap` | — | CONFIRMED |
-| `+0x23`,`+0x26`,`+0x27`,`+0x29..+0x2B`,`+0x2D..+0x2F` | — | reserved-zero | `d4_pl_reserved_z` | `0` | INFERRED |
+| `+0x00` | 1 | opcode = `0x45` | `s_s4d4_pl_opcode` | 69 | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CERTAIN |
+| `+0x0C` | * | src AP (T4D) | `valid_s4d4_pl_ap` | — | CERTAIN |
+| `+0x20` | 1 | in_dtype | `d4_pl_dtype_check` (in arm) | `NEURON_ISA_TPB_DTYPE` | CERTAIN |
+| `+0x21` | 1 | out_dtype | `d4_pl_dtype_check` (out arm) | `NEURON_ISA_TPB_DTYPE` | CERTAIN |
+| `+0x22` | 1 | lane / part cnt | `valid_subdim` | `in0.Pattern[0].num` | CERTAIN |
+| `+0x24` | 1 | pool func | `valid_pooltype` | Max→`1`, Avg→`2` | CERTAIN |
+| `+0x25` | 1 | mode / subdim | `valid_subdim` | `3` (const) | CERTAIN |
+| `+0x28` | 4 | pool_scale (f32) | `"pool_scale must be …"` | `1.0f` / `1.0f / N` | CERTAIN |
+| `+0x2C` | * | dst AP (T4D) | `valid_s4d4_pl_ap` | — | CERTAIN |
+| `+0x23`,`+0x26`,`+0x27`,`+0x29..+0x2B`,`+0x2D..+0x2F` | — | reserved-zero | `d4_pl_reserved_z` | `0` | MEDIUM |
 
-> **CORRECTION — `func@+0x24` carries a `+1` shift.** BIR `PoolFunctionType {Max=0,Avg=1}` maps to **wire `{Max→1, Avg→2}`** — wire `0` is reserved/invalid. The validator `dbg_is_valid_s4d4_pl @0x1318b90` pins the opcode with `cmp $0x45,%al @0x1318d66` (CONFIRMED). An unimplemented func reports `"has unimplemented Pooling type"` but still emits.
+> **GOTCHA — `func@+0x24` is the BIR enum plus one.** BIR `PoolFunctionType {Max=0, Avg=1}` goes on the wire as `{Max→1, Avg→2}`; wire `0` is reserved and invalid. Writing the BIR ordinal straight through produces an invalid bundle. The validator `dbg_is_valid_s4d4_pl @0x1318b90` pins the opcode with `cmp $0x45,%al` @ `0x1318d66`. An unimplemented func reports `"has unimplemented Pooling type"` but still emits.
 >
 > **GUARD (Avg only):** the Avg arm asserts `in0.size()==5` (it must have the two window dims) and rejects `"POOL with Average Function doesn't support TensorIndirect AP as src AP"`.
 
@@ -134,7 +134,7 @@ The pooling reduction. BIR field `InstPool.func @+0xF0 = PoolFunctionType {0=Max
 
 > **NOTE — different reduce-op channels.** TR carries the *full* `AluOp→ALU_OP` wire byte at `+0x24` (via `sub_12039C0`) **plus** the axis byte at `+0x25` **plus** a negate at `+0x23`. CR carries a *separate* 6-entry inline reduce-cmd at `+0x23`, a cross-lane *flag* at `+0x24`, and the average mean-fold at `+0x28` — **no** axis byte, **no** negate. `bir::ReduceCmdType {Idle/Reset/Reduce/ResetReduce}` is dormant (no Instruction consumer); the live reduce command is this inline CR switch.
 
-**Opcode selection (CONFIRMED disasm):**
+**Opcode selection:**
 
 ```asm
 1238470:  sub  $0x7d,%r13d              ; TR opcode 125 (bitvec-int)
@@ -173,23 +173,23 @@ The **CR reduce-cmd** at `+0x23` is a 6-entry switch on the BIR ALU op (NOT the 
 | Off | W | Field | pybind | Value | Tag |
 |---|---|---|---|---|---|
 | **TR** | | | | | |
-| `+0x00` | 1 | opcode | `s_transpose_tensor_reduce_opcode` | 124/125 | CONFIRMED |
-| `+0x20` | 1 | in_dtype | `tensor_reduce_in_dt` / `deduce_bf16_in_dt` | ISA_DTYPE | CONFIRMED |
-| `+0x21` | 1 | out_dtype | `d4_tr_…dtype` | ISA_DTYPE | CONFIRMED |
-| `+0x22` | 1 | lane | `transpose_src_element_count` | `in.Pattern[0].num` | CONFIRMED |
-| `+0x23` | 1 | negate | (negate field) | `inst.negate@+0x120` | CONFIRMED |
-| `+0x24` | 1 | reduce_op | `tensor_reduce_valid_alu_op` | `sub_12039C0(AluOp)` | CONFIRMED |
-| `+0x25` | 1 | axis | `valid_reduce_n` | `axis+2` | CONFIRMED |
-| `+0x26..+0x2F` | — | reserved-zero | `d4_tr_reserved_z` | `0` | INFERRED |
+| `+0x00` | 1 | opcode | `s_transpose_tensor_reduce_opcode` | 124/125 | CERTAIN |
+| `+0x20` | 1 | in_dtype | `tensor_reduce_in_dt` / `deduce_bf16_in_dt` | ISA_DTYPE | CERTAIN |
+| `+0x21` | 1 | out_dtype | `d4_tr_…dtype` | ISA_DTYPE | CERTAIN |
+| `+0x22` | 1 | lane | `transpose_src_element_count` | `in.Pattern[0].num` | CERTAIN |
+| `+0x23` | 1 | negate | (negate field) | `inst.negate@+0x120` | CERTAIN |
+| `+0x24` | 1 | reduce_op | `tensor_reduce_valid_alu_op` | `sub_12039C0(AluOp)` | CERTAIN |
+| `+0x25` | 1 | axis | `valid_reduce_n` | `axis+2` | CERTAIN |
+| `+0x26..+0x2F` | — | reserved-zero | `d4_tr_reserved_z` | `0` | MEDIUM |
 | **CR** | | | | | |
-| `+0x00` | 1 | opcode | `s_cross_lane_reduce_opcode` | 66/82/131/132 | CONFIRMED |
-| `+0x20` | 1 | in_dtype | `d4_cr_…` (in arm) | ISA_DTYPE | CONFIRMED |
-| `+0x21` | 1 | out_dtype | `d4_cr_…` (out arm) | ISA_DTYPE | CONFIRMED |
-| `+0x22` | 1 | lane | `valid_axis_dst_element_cnt` | `in.Pattern[0].num` | CONFIRMED |
-| `+0x23` | 1 | reduce_cmd | `valid_reduce_op_for_opcode` | `{0..5}` (6-entry) | CONFIRMED |
-| `+0x24` | 1 | cross_lane flag | `valid_reduce_axis` | `C→1, XYZWC→0` | CONFIRMED |
-| `+0x28` | 4 | mean 1/N (f32) | (mean) | `1.0f/N` (avg only) | CONFIRMED |
-| `+0x25..+0x27`,`+0x29..+0x2F` | — | reserved-zero | `d4_cr_reserved_z` | `0` | INFERRED |
+| `+0x00` | 1 | opcode | `s_cross_lane_reduce_opcode` | 66/82/131/132 | CERTAIN |
+| `+0x20` | 1 | in_dtype | `d4_cr_…` (in arm) | ISA_DTYPE | CERTAIN |
+| `+0x21` | 1 | out_dtype | `d4_cr_…` (out arm) | ISA_DTYPE | CERTAIN |
+| `+0x22` | 1 | lane | `valid_axis_dst_element_cnt` | `in.Pattern[0].num` | CERTAIN |
+| `+0x23` | 1 | reduce_cmd | `valid_reduce_op_for_opcode` | `{0..5}` (6-entry) | CERTAIN |
+| `+0x24` | 1 | cross_lane flag | `valid_reduce_axis` | `C→1, XYZWC→0` | CERTAIN |
+| `+0x28` | 4 | mean 1/N (f32) | (mean) | `1.0f/N` (avg only) | CERTAIN |
+| `+0x25..+0x27`,`+0x29..+0x2F` | — | reserved-zero | `d4_cr_reserved_z` | `0` | MEDIUM |
 
 > **GOTCHA — CR has no negate.** `"Cross-lane-reduce cannot perform negate"`. CR also rejects TensorIndirect AP: `"TODO: support CROSS_LANE_REDUCE with TensorIndirect AP once ISA supports it"`.
 
@@ -209,17 +209,17 @@ The `1/x` op — the leanest Family-C bundle. It needs no per-instruction parame
 
 | Off | W | Field | pybind | Value | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x48` | `s_reciprocal_opcode` | 72 | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CONFIRMED |
-| `+0x0C` | * | src AP (T4D) | (valid ap) | — | CONFIRMED |
-| `+0x20` | 1 | in_dtype | (reciprocal dtype) | ISA_DTYPE | CONFIRMED |
-| `+0x21` | 1 | out_dtype | (reciprocal dtype) | ISA_DTYPE | CONFIRMED |
-| `+0x22` | 1 | lane | (num-elem) | `in.Pattern[0].num` | CONFIRMED |
-| `+0x25` | 1 | mode | (subdim/mode) | `0` (const) | CONFIRMED |
-| `+0x2C` | * | dst AP (T4D) | (valid ap) | — | CONFIRMED |
-| `+0x23`,`+0x24`,`+0x26..+0x2F` | — | reserved-zero | (reserved_z) | `0` | INFERRED |
+| `+0x00` | 1 | opcode = `0x48` | `s_reciprocal_opcode` | 72 | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CERTAIN |
+| `+0x0C` | * | src AP (T4D) | (valid ap) | — | CERTAIN |
+| `+0x20` | 1 | in_dtype | (reciprocal dtype) | ISA_DTYPE | CERTAIN |
+| `+0x21` | 1 | out_dtype | (reciprocal dtype) | ISA_DTYPE | CERTAIN |
+| `+0x22` | 1 | lane | (num-elem) | `in.Pattern[0].num` | CERTAIN |
+| `+0x25` | 1 | mode | (subdim/mode) | `0` (const) | CERTAIN |
+| `+0x2C` | * | dst AP (T4D) | (valid ap) | — | CERTAIN |
+| `+0x23`,`+0x24`,`+0x26..+0x2F` | — | reserved-zero | (reserved_z) | `0` | MEDIUM |
 
-> **CORRECTION — Reciprocal opcode is `0x48` (72), NOT `0x7E`.** `0x7E` is Iota (§4). Grounded three ways: the GENERATE seed `movb $0x48,-0xb1(%rbp) @0x1239bb6`, the validator `dbg_is_valid_reciprocal @0x1321830` with `cmp $0x48,%r8b @0x1321990`, and the Iota validator using `cmp $0x7e,%r14b` for its own opcode.
+> **GOTCHA — Reciprocal is `0x48` (72); `0x7E` belongs to Iota.** Three independent anchors pin it: the GENERATE seed `movb $0x48,-0xb1(%rbp)` @ `0x1239bb6`, the validator `dbg_is_valid_reciprocal @0x1321830` comparing `cmp $0x48,%r8b` @ `0x1321990`, and the Iota validator comparing `cmp $0x7e,%r14b` for its own opcode (§4).
 >
 > **QUIRK — the `+0x25` byte is shared by Pool and Reciprocal but carries a different constant:** Pool writes `3`, Reciprocal writes `0`. There is **no** func byte at `+0x24`, no scale at `+0x28`, no negate/axis on Reciprocal.
 
@@ -229,7 +229,7 @@ The `1/x` op — the leanest Family-C bundle. It needs no per-instruction parame
 
 Iota synthesises a counting pattern — it has **no data input**. Three consequences shape its encoding:
 
-- there is **no in-dtype store at `+0x20`** (the body contains zero `mov %al,0x20(%r13)` stores — CONFIRMED by exhaustive grep over `0x123d4a0..0x123e510`);
+- there is **no in-dtype store at `+0x20`** (the body over `0x123d4a0`–`0x123e510` contains no `mov %al,0x20(%r13)` store at all);
 - the **source access-pattern band `+0x10..+0x1E` is built manually** as a degenerate descriptor — unit sentinels plus the output geometry's dim counts, all `u16`;
 - only **one** `assignAccess<TENSOR4D>` runs (the OUTPUT, → `+0x2C`).
 
@@ -249,14 +249,14 @@ The remaining `+0x12`/`+0x14`/`+0x16` and `+0x1A`/`+0x1C`/`+0x1E` `u16` writes c
 
 | Off | W | Field | pybind | Value | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x7E` | `s_iota_opcode` | 126 | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CONFIRMED |
-| `+0x10..+0x1E` | 2× | src pattern band | `iota_same_src_dst_count` | unit + dim sentinels | CONFIRMED |
-| `+0x21` | 1 | out_dtype | (iota dtype) | ISA_DTYPE | CONFIRMED |
-| `+0x22` | 1 | lane | (num-elem) | `out.Pattern[0].num` | CONFIRMED |
-| `+0x24` | 4 | iota_pattern | (iota value/step) | `inst+0x168` (u32) | CONFIRMED |
-| `+0x2C` | * | dst AP (T4D) | (valid ap) | — | CONFIRMED |
-| `+0x20`,`+0x23`,`+0x25..+0x2B`,`+0x2D..+0x2F` | — | reserved-zero | `d4_iota_reserved_z` | `0` | INFERRED |
+| `+0x00` | 1 | opcode = `0x7E` | `s_iota_opcode` | 126 | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CERTAIN |
+| `+0x10..+0x1E` | 2× | src pattern band | `iota_same_src_dst_count` | unit + dim sentinels | CERTAIN |
+| `+0x21` | 1 | out_dtype | (iota dtype) | ISA_DTYPE | CERTAIN |
+| `+0x22` | 1 | lane | (num-elem) | `out.Pattern[0].num` | CERTAIN |
+| `+0x24` | 4 | iota_pattern | (iota value/step) | `inst+0x168` (u32) | CERTAIN |
+| `+0x2C` | * | dst AP (T4D) | (valid ap) | — | CERTAIN |
+| `+0x20`,`+0x23`,`+0x25..+0x2B`,`+0x2D..+0x2F` | — | reserved-zero | `d4_iota_reserved_z` | `0` | MEDIUM |
 
 > **QUIRK — `+0x20` is reserved-zero on Iota.** It is the only Family-C op where `+0x20` is *not* the in-dtype: Iota has no ifmap, and `d4_iota_reserved_z` asserts `+0x20` is `0`. The output dtype rides `+0x21` exactly as the other ops do. The `iota_same_src_dst_count` predicate cross-checks that the manual `+0x10..+0x1E` src band's counts equal the dst counts.
 
@@ -288,31 +288,31 @@ GEN: bundle #1 (reg_load `0x68`) base `%r14`; bundle #2 (pool_buffer_load `0x67`
 
 | Off | W | Field | pybind | Value | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x67` | `s_pool_buffer_load_opcode` | 103 | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CONFIRMED |
-| `+0x0C` | * | src AP (T4D) | (valid ap) | — | CONFIRMED |
-| `+0x18` | 2 | src dim count | (`s4_pb` subdim) | out geometry | CONFIRMED |
-| `+0x20` | 1 | dtype | `gload_valid_dtype` | ISA_DTYPE (range-guarded `cmp $0x13`) | CONFIRMED |
-| `+0x22` | 1 | lane | `valid_pool_buffer_load_element_cnt` | `in.Pattern[0].num` | CONFIRMED |
-| `+0x28` | 4 | element-count | `valid_pool_buffer_load_element_count` | load span | CONFIRMED |
-| `+0x2C` | 4 | vector-depth / mask | `gload_vector_depth` | `0x1FF` (const) | CONFIRMED |
-| `+0x21`,`+0x23..+0x27`,`+0x29..+0x2B`,`+0x2D..+0x2F` | — | reserved-zero | `s4_pb_reserved_zero` | `0` | INFERRED |
+| `+0x00` | 1 | opcode = `0x67` | `s_pool_buffer_load_opcode` | 103 | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | (setupHeader) | 16 | CERTAIN |
+| `+0x0C` | * | src AP (T4D) | (valid ap) | — | CERTAIN |
+| `+0x18` | 2 | src dim count | (`s4_pb` subdim) | out geometry | CERTAIN |
+| `+0x20` | 1 | dtype | `gload_valid_dtype` | ISA_DTYPE (range-guarded `cmp $0x13`) | CERTAIN |
+| `+0x22` | 1 | lane | `valid_pool_buffer_load_element_cnt` | `in.Pattern[0].num` | CERTAIN |
+| `+0x28` | 4 | element-count | `valid_pool_buffer_load_element_count` | load span | CERTAIN |
+| `+0x2C` | 4 | vector-depth / mask | `gload_vector_depth` | `0x1FF` (const) | CERTAIN |
+| `+0x21`,`+0x23..+0x27`,`+0x29..+0x2B`,`+0x2D..+0x2F` | — | reserved-zero | `s4_pb_reserved_zero` | `0` | MEDIUM |
 
 **reg_load (opcode `0x68`):**
 
 | Off | W | Field | pybind | Value | Tag |
 |---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x68` | `s_reg_load_opcode` | 104 | CONFIRMED |
-| `+0x20` | 1 | in_dtype | `gload_valid_dtype` | ISA_DTYPE | CONFIRMED |
-| `+0x21` | 1 | out_dtype | `gload_valid_dtype` | ISA_DTYPE | CONFIRMED |
-| `+0x22` | 1 | lane | (num-elem) | `in.Pattern[0].num` | CONFIRMED |
-| `+0x24` | 2 | active-channels | `gload_active_channels` | u16 | CONFIRMED |
-| `+0x28` | 4 | reg_load param | `rl_reserved_zero` / param | `0` | CONFIRMED |
-| reserved | — | reserved-zero | `rl_reserved_zero` | `0` | INFERRED |
+| `+0x00` | 1 | opcode = `0x68` | `s_reg_load_opcode` | 104 | CERTAIN |
+| `+0x20` | 1 | in_dtype | `gload_valid_dtype` | ISA_DTYPE | CERTAIN |
+| `+0x21` | 1 | out_dtype | `gload_valid_dtype` | ISA_DTYPE | CERTAIN |
+| `+0x22` | 1 | lane | (num-elem) | `in.Pattern[0].num` | CERTAIN |
+| `+0x24` | 2 | active-channels | `gload_active_channels` | u16 | CERTAIN |
+| `+0x28` | 4 | reg_load param | `rl_reserved_zero` / param | `0` | CERTAIN |
+| reserved | — | reserved-zero | `rl_reserved_zero` | `0` | MEDIUM |
 
 > **GOTCHA — no `+0x21` out-dtype on the pool_buffer_load bundle.** It is a one-sided load *into* the pool buffer; only the single load dtype at `+0x20` is meaningful (and the validator range-guards it with `cmp $0x13` on the BIR dtype). The reg_load half *does* carry both `+0x20`/`+0x21`.
 >
-> **CORRECTION — `0x67` is the GATHER lowering, not a standalone "pool-buffer-load" visitor.** It is emitted by `visitInstGather @0x12532e0`, co-issued with `reg_load 0x68` — not by `visitInstTensorLoad`. The `+0x24`/`+0x2C` `u16`/`u32` split (active-channels vs vector-depth) is named from the `gload_*` roster; the exact slot order within those near-`+0x24`/`+0x2C` fields is INFERRED.
+> **GOTCHA — `0x67` is the Gather lowering, not a standalone "pool-buffer-load" visitor.** It is emitted by `visitInstGather @0x12532e0`, co-issued with `reg_load 0x68`, and never by `visitInstTensorLoad`. The `+0x24`/`+0x2C` `u16`/`u32` split (active-channels vs vector-depth) is named from the `gload_*` roster; the slot order within those two fields is [INFERRED].
 
 ---
 
@@ -327,9 +327,9 @@ GEN: bundle #1 (reg_load `0x68`) base `%r14`; bundle #2 (pool_buffer_load `0x67`
 
 ---
 
-## Confidence ledger
+## What pins each claim
 
-**CONFIRMED** (direct store/cmp disassembled byte-exact this task):
+Byte-exact, from a directly disassembled store or compare:
 
 - Opcodes pinned by validator `cmp`: Pool `0x45` (`@0x1318d66`), Reciprocal `0x48` (`@0x1321990`), Iota `0x7E` (`@0x12a03a8`), pool_buffer_load `0x67` (`@0x130069b`); TR `124`/`125` (seeds `@0x1238470`/`@0x1238738`), CR transpose `131`/`132` (seeds `@0x123845c`/`@0x1238724`).
 - Pool field stores `+0x20`/`+0x21`/`+0x22`/`+0x24`/`+0x25`/`+0x28` (byte-exact addresses, both Max and Avg arms).
@@ -339,9 +339,9 @@ GEN: bundle #1 (reg_load `0x68`) base `%r14`; bundle #2 (pool_buffer_load `0x67`
 - Gather → `{reg_load 0x68 + pool_buffer_load 0x67}` pair; pool_buffer_load `{+0x18 srcdim, +0x20 dtype, +0x22 lane, +0x28 elem-count, +0x2c 0x1FF}`; reg_load `{+0x20/+0x21 dtype, +0x22 lane, +0x24 u16, +0x28 param=0}`.
 - Shared helpers re-resolved: `sub_120E650` dtype, `sub_12039C0` AluOp (`jmp *%rax` jump-table), `sub_120EAB0` axis+2 (`cmp $0x3`/`add $0x2`).
 
-**STRONG** (validator / pybind xref): wire struct tags `S4D4_PL` / `S4D4_TR` / `S4D4_CR` / `S4_PB` from the `dbg_is_valid_*` symbol names; the pybind field-name → offset joins (`s_*_opcode`, `d4_*_dtype_check`, `valid_pooltype`, `valid_subdim`, `pool_scale`, `valid_pool_buffer_load_element_count`, the `*_reserved_z` predicates) are name-matched from the packed predicate-name tables, high confidence per-op.
+Backed by a validator or pybind cross-reference rather than a store: wire struct tags `S4D4_PL` / `S4D4_TR` / `S4D4_CR` / `S4_PB` from the `dbg_is_valid_*` symbol names; the pybind field-name → offset joins (`s_*_opcode`, `d4_*_dtype_check`, `valid_pooltype`, `valid_subdim`, `pool_scale`, `valid_pool_buffer_load_element_count`, the `*_reserved_z` predicates) are name-matched from the packed predicate-name tables.
 
-**INFERRED** (zero-init only, asserted zero by `*_reserved_z`): all reserved-zero pad bytes per section (covered by the `movups`-xmm0 bulk init; the `d4_*_reserved_z` / `s4_pb_reserved_zero` predicates assert them `0`). Iota `inst+0x120` (`==4` axis/pattern-type) and `inst+0x188` (guard byte) semantic labels are inferred from the guard branches; the value/step at `inst+0x168` is CONFIRMED as the `+0x24` source by the direct `mov`.
+[INFERRED] from zero-init alone: all reserved-zero pad bytes per section, covered by the `movups`-xmm0 bulk init and asserted zero by the `d4_*_reserved_z` / `s4_pb_reserved_zero` predicates. The Iota `inst+0x120` (`==4` axis/pattern-type) and `inst+0x188` (guard byte) *semantic labels* are also read off the guard branches rather than stated anywhere; the value/step at `inst+0x168` is not inferred — a direct `mov` pins it as the `+0x24` source.
 
 **OPEN / cross-ref:** exact sub-bit field widths *within* the `S4D4`/`S4_PB` sync-command regions and the `TENSORxD` descriptor interior (handled by `assignAccess`/`setupSync*`, N-strand common code — see [2.4 TENSOR4D / MEM_PATTERN4D](tensor4d-mempattern4d.md)); the reg_load `+0x24` u16 vs `+0x2C` split slot order.
 

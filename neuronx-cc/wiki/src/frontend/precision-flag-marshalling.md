@@ -63,7 +63,7 @@ A reimplementer needs to reproduce exactly two things: the *front* (two parsers 
 
 Owner: `CompileCommand.__init__` (`__pyx_pw_…_14CompileCommand_1__init` @ `0x36290`). These three flags set namespace attributes; nothing in `__init__` interprets them — that is `buildPipeline`'s job (§4).
 
-### 2.1 `--auto-cast` (operator scope) — default `none` [CONFIRMED]
+### 2.1 `--auto-cast` (operator scope) — default `none`
 
 ```c
 // CompileCommand.__init__, add_argument('--auto-cast', ...)
@@ -79,7 +79,7 @@ parser.add_argument(
 
 Binary anchors: the default is the disassembled pair `mov rdx, __pyx_n_u_none` (`0x39a7b`) / `mov rsi, __pyx_n_s_default` (`0x39a82`), i.e. `default="none"`. The help string is present verbatim in `.rodata` (`"Automatically cast FP32 operators to a lower-precision type for increased performance."`).
 
-### 2.2 `--auto-cast-type` (target dtype) — default `bf16` [CONFIRMED]
+### 2.2 `--auto-cast-type` (target dtype) — default `bf16`
 
 ```c
 parser.add_argument(
@@ -98,7 +98,7 @@ Binary anchor for the default: `mov rdx, __pyx_n_u_bf16` (`0x39f0d`) immediately
 
 > **NOTE — `tf32` and `fp8_e4m3` are *user* spellings that never reach the numeric layer unchanged.** They are aliases rewritten to the canonical `fp32r` / `fp8e4` in §4.1. The four dtypes the cast actually sees are `bf16 | fp16 | fp32r | fp8e4`.
 
-### 2.3 `--fast-math` (legacy multi-token bag) — default `[]` [CONFIRMED]
+### 2.3 `--fast-math` (legacy multi-token bag) — default `[]`
 
 `--fast-math` is the O-style legacy surface: `nargs='+'`, an empty-list default, and a 16-token choice set that mixes `fp32-cast-*` spellings (an alternate way to spell the same scope/dtype pair) with `fast-relayout-*` spellings (the transpose-engine dtype, a *separate* axis — see [HLO → Native / NKI Kernel Lowering](../hlo-opt/hlo-to-native-kernel-lowering.md)).
 
@@ -131,22 +131,22 @@ All 16 tokens were confirmed as exact `.rodata` strings in `CompileCommand.so` (
 
 Owner: the `Frontend` **Job**, `RegisterArgs` (`__pyx_pw_…_8Frontend_13RegisterArgs` @ `0x17ae0`). `kind=ArgKind.INTERNAL`, so it is hidden from `--help`. Crucially the registration dict carries **no `default=`** (it has only `kind`, `choices`, `help`) — at this layer the `argparse` default is `None`; the *effective* default mode (`matmult`) is what the help text documents as the behaviour the pipeline selects, not a literal on this flag.
 
-### 3.1 The 10-mode choice list [CONFIRMED]
+### 3.1 The 10-mode choice list
 
 `PyList_New(10)` at `0x19340..0x193cd` (items at `rax+0x00..rax+0x48`); all ten verified as interned strings in `Frontend.so`:
 
 | # | mode token | scope of cast | target dtype | transpose dtype | confidence |
 |---|---|---|---|---|---|
-| 0 | `all` | all fp32 ops | BF16 | BF16 | CONFIRMED |
-| 1 | `matmult` *(effective default)* | matmult-engine fp32 | BF16 | **FP16** | CONFIRMED |
-| 2 | `matmult-fp16` | matmult + transpose | FP16 | FP16 | CONFIRMED |
-| 3 | `matmult-bf16` | matmult + transpose | BF16 | BF16 | CONFIRMED |
-| 4 | `matmult-fp32r` | matmult + transpose | FP32r (tf32) | FP32r | STRONG |
-| 5 | `matmult-fp8e4` | matmult + transpose (fp) | FP8E4 | FP8E4 | CONFIRMED |
-| 6 | `experimental-all-fp16` | all fp32 ops | FP16 | FP16 | CONFIRMED |
-| 7 | `all-fp32r` | all fp32 ops | FP32r (tf32) | FP32r | CONFIRMED |
-| 8 | `all-fp8e4` | all floating ops | FP8E4 | FP8E4 | CONFIRMED |
-| 9 | `none` | (none) | unchanged | unchanged | CONFIRMED |
+| 0 | `all` | all fp32 ops | BF16 | BF16 | CERTAIN |
+| 1 | `matmult` *(effective default)* | matmult-engine fp32 | BF16 | **FP16** | CERTAIN |
+| 2 | `matmult-fp16` | matmult + transpose | FP16 | FP16 | CERTAIN |
+| 3 | `matmult-bf16` | matmult + transpose | BF16 | BF16 | CERTAIN |
+| 4 | `matmult-fp32r` | matmult + transpose | FP32r (tf32) | FP32r | HIGH |
+| 5 | `matmult-fp8e4` | matmult + transpose (fp) | FP8E4 | FP8E4 | CERTAIN |
+| 6 | `experimental-all-fp16` | all fp32 ops | FP16 | FP16 | CERTAIN |
+| 7 | `all-fp32r` | all fp32 ops | FP32r (tf32) | FP32r | CERTAIN |
+| 8 | `all-fp8e4` | all floating ops | FP8E4 | FP8E4 | CERTAIN |
+| 9 | `none` | (none) | unchanged | unchanged | CERTAIN |
 
 The semantics column is reconstructed from the `--fp32-cast` help blob embedded verbatim in `Frontend.so` `.rodata`. The blob (binary-exact, *including* its two typos — `opertors`, `Matmtul`) reads:
 
@@ -165,13 +165,13 @@ all-fp32r: cast all the fp32 operators to fp32r;
 all-fp8e4: cast all the floating point operators to fp8e4;
 ```
 
-> **CORRECTION — `matmult-fp32r` and `none` are *accepted choices* but are not separately described in the help blob.** `matmult-fp32r` is present in `choices` (index 4) yet the blob jumps from `matmult-fp8e4` to `experimental-all-fp16`; its dtype (FP32r) is inferred by parallel with the `matmult-*` family [STRONG]. `none` is index 9 and mirrors the user-facing doc line `fp32-cast-none: No casting is performed` (in `CompileCommand.so` `.rodata`) [STRONG]. Do not assume the help blob is the full mode set — the `choices` list is.
+> **GOTCHA — the help blob is not the full mode set; the `choices` list is.** Two accepted modes have no line in the blob. `matmult-fp32r` sits at index 4, but the text jumps straight from `matmult-fp8e4` to `experimental-all-fp16`; its FP32r dtype is [INFERRED] by parallel with the rest of the `matmult-*` family. `none` is index 9, mirrored by the user-facing doc line `fp32-cast-none: No casting is performed` in `CompileCommand.so` `.rodata`.
 
 > **QUIRK — only `matmult` (index 1) splits the transpose dtype from the op dtype.** Every other mode uses the same dtype for matmult and matmult-based transpose. `matmult` alone is `(matmult, bf16)` *with transpose forced to fp16* — the one special-case in the table, and the reason the doc calls it the accuracy-preserving default.
 
-### 3.2 The internal flag is forwarded, never read as an attribute [CONFIRMED]
+### 3.2 The internal flag is forwarded, never read as an attribute
 
-In `Frontend.so` the literal `"--fp32-cast"` (`__pyx_kp_u_fp32_cast`) is referenced only by string-pool init, the const-tuple packer `pyx_pymod_exec_Frontend` (building `__pyx_tuple__40 = ('--fp32-cast',)`), and the `RegisterArgs` `add_argument` call. There is **no** `__pyx_n_s_fp32_cast` interned *attribute* name — the Job never executes `args.fp32_cast`. The parsed value rides inside the args namespace / tensorizer-options bundle and is forwarded wholesale to `HLOToTensorizer`. (The flag is registered adjacent to `--internal-hlo2tensorizer-options` / `--tensorizer-options`, the bundle it joins.) [CONFIRMED absence of attr-read; STRONG that forwarding is via the option bundle.]
+In `Frontend.so` the literal `"--fp32-cast"` (`__pyx_kp_u_fp32_cast`) is referenced only by string-pool init, the const-tuple packer `pyx_pymod_exec_Frontend` (building `__pyx_tuple__40 = ('--fp32-cast',)`), and the `RegisterArgs` `add_argument` call. There is **no** `__pyx_n_s_fp32_cast` interned *attribute* name — the Job never executes `args.fp32_cast`. The parsed value rides inside the args namespace / tensorizer-options bundle and is forwarded wholesale to `HLOToTensorizer`. (The flag is registered adjacent to `--internal-hlo2tensorizer-options` / `--tensorizer-options`, the bundle it joins.) The absence of an attribute read is exact; that the forwarding happens via the option bundle is read from that adjacency.
 
 ---
 
@@ -179,7 +179,7 @@ In `Frontend.so` the literal `"--fp32-cast"` (`__pyx_kp_u_fp32_cast`) is referen
 
 `buildPipeline` (`__pyx_pw_…_14CompileCommand_9buildPipeline` @ `0x619d0`, generator-bodies at `0x28ea0`/`0x292c0`) is where the user pair becomes the canonical pair and is then re-encoded into the compact token. Both halves were read from the decompiled body; line references below are decompiled-output lines of that function.
 
-### 4.1 Canonicalization — four rewrites [CONFIRMED]
+### 4.1 Canonicalization — four rewrites
 
 ```c
 // buildPipeline, self == v43 == the parsed args/config object.
@@ -211,7 +211,7 @@ Net effect:
 
 After §4.1 the canonical pair is guaranteed to be `auto_cast ∈ {none, matmult, all}` and `auto_cast_type ∈ {bf16, fp16, fp32r, fp8e4}` — exactly the knobs the Penguin `AutoCastFP32` pass consumes ([9.5](../numerics/autocast-fp32.md)).
 
-### 4.2 Reverse-marshal — `(scope, dtype) → "fp32-cast-<scope>-<dtype>"` [CONFIRMED]
+### 4.2 Reverse-marshal — `(scope, dtype) → "fp32-cast-<scope>-<dtype>"`
 
 This is the centerpiece. `buildPipeline` rebuilds the compact token from the two canonical attrs and appends it to the forwarded option list. The decompiled body builds a 4-element join array `v36[0..3]` and calls `_Pyx_PyUnicode_Join` with `count=4`:
 
@@ -231,7 +231,7 @@ Binary anchors: the `"fp32-cast-"` prefix literal exists in `CompileCommand.so` 
 
 > **NOTE — the join is unconditional re-encoding, not a lookup table.** There is no `(scope,dtype) -> mode-name` dictionary. `buildPipeline` does not map `(matmult, bf16)` to the *literal* `matmult-bf16` choice; it *string-concatenates* `fp32-cast-` + `matmult` + `-` + `bf16` = `fp32-cast-matmult-bf16`. The compact internal `--fp32-cast matmult-bf16` and the forwarded `fp32-cast-matmult-bf16` token differ only by the `fp32-cast-` prefix, and both decode to the same canonical pair downstream.
 
-### 4.3 Mode ↔ `(scope, dtype)` decomposition table [STRONG]
+### 4.3 Mode ↔ `(scope, dtype)` decomposition table
 
 The compact `--fp32-cast {mode}` is the single-string encoding of the same pair. Reconstructed from the help text (§3.1), the `--auto-cast`/`--auto-cast-type` choice sets, and the §4.1/§4.2 round-trip:
 
@@ -248,7 +248,7 @@ The compact `--fp32-cast {mode}` is the single-string encoding of the same pair.
 | `all-fp8e4` | `(all, fp8e4)` | `fp32-cast-all-fp8e4` |
 | `none` | `(none, —)` | *(no casting; `'none'` pushed to `fast_math`)* |
 
-> **CORRECTION — the user-facing doc block has a copy/paste typo, not a real behaviour.** The `CompileCommand.so` doc line reads `fp32-cast-all-fp8e4: Cast all FP32 operations to FP32r to achieve speed up versus FP32.` — it says "FP32r" while the token is `fp8e4`. The token (`all-fp8e4` ⇒ `(all, fp8e4)`) is authoritative; the prose is a duplicated `fp32r` line. Trust the token, not the sentence.
+> **GOTCHA — the shipped help text for `all-fp8e4` names the wrong dtype.** The `CompileCommand.so` doc line reads `fp32-cast-all-fp8e4: Cast all FP32 operations to FP32r to achieve speed up versus FP32.` — "FP32r" where the token says `fp8e4`. It is a duplicated `fp32r` line; the token decomposes to `(all, fp8e4)`. Trust the token, not the sentence.
 
 ---
 
@@ -262,7 +262,7 @@ Three booleans live in `Frontend.RegisterArgs`. All three use the custom `Enable
 | `--enable-saturate-infinity` | PUBLIC | **False** | `enable_saturate_infinity` | `_Py_FalseStruct` @ `0x1999b` / `n_s_default` @ `0x199a2` |
 | `--enable-internal-native-int64` | INTERNAL | **False** | `enable_internal_native_int64` | `_Py_FalseStruct` @ `0x19836` / `n_s_default` @ `0x1983d` |
 
-### 5.1 `--enable-mixed-precision-accumulation` — default True [CONFIRMED]
+### 5.1 `--enable-mixed-precision-accumulation` — default True
 
 ```text
 help = "Always use full precision of the accelerator ALU when we do accumulation,
@@ -271,18 +271,18 @@ help = "Always use full precision of the accelerator ALU when we do accumulation
 
 Semantics: default **on**. When enabled (the default), accumulation inputs are not downcast — the ALU accumulates in full precision; `--disable-mixed-precision-accumulation` turns it off. No in-module consumer in `Frontend.so`; the value rides the args namespace into the tensorizer/codegen (its codegen effect is traced in the native-kernel lowering chapter, [HLO → Native / NKI Kernel Lowering](../hlo-opt/hlo-to-native-kernel-lowering.md)).
 
-### 5.2 `--enable-saturate-infinity` — default False [CONFIRMED def; bool→cfg bridge INFERRED]
+### 5.2 `--enable-saturate-infinity` — default False
 
 ```text
 help = "Saturate Inf/-Inf values to MAX_/MIN_FLOAT before operations that could
         produce NaN values for Inf/-Inf inputs on the target architecture"
 ```
 
-The CLI flag is CONFIRMED (PUBLIC, default False, parsed in the Python Frontend), but the path to the native `FP8ConversionConfig.lo` saturate bit (the bit the native cast reads; the precision-policy page §9.4 is documented in Part 9, pending) is **not** a verbatim string token: `Frontend.so` references `enable_saturate_infinity` only in the string pool and `RegisterArgs` (no `runXLAFrontend` attribute read), and no cp310 Python module reads `args.enable_saturate_infinity`. The bool reaches the native cast through the **serialized args/compiler-config object**, not a recognizable option keyword. [INFERRED bridge.]
+The CLI flag itself is pinned: PUBLIC, default False, parsed in the Python Frontend. The path from there to the native `FP8ConversionConfig.lo` saturate bit — the bit the native cast reads; the precision-policy page §9.4 is documented in Part 9, pending — is **not** a verbatim string token. `Frontend.so` references `enable_saturate_infinity` only in the string pool and `RegisterArgs`, with no `runXLAFrontend` attribute read, and no cp310 Python module reads `args.enable_saturate_infinity`. The bool therefore reaches the native cast through the **serialized args/compiler-config object** rather than a recognizable option keyword [INFERRED].
 
 > **NOTE — the CLI default (False) and the per-cast primitive default (saturate-ON) are different layers, and are consistent.** The native FP8 conversion primitive defaults to saturate-ON at the byte level; the CLI flag is an *additional* front-end gate that, when set, requests Inf/-Inf clamping at the *operation* level (pre-op clamp to MAX/MIN_FLOAT) — a broader behaviour than the per-cast config bit. `default(False)` at the CLI therefore does not contradict `saturate-ON` at the byte-cast primitive; they gate different things.
 
-### 5.3 `--enable-internal-native-int64` → tensorizer token [CONFIRMED]
+### 5.3 `--enable-internal-native-int64` → tensorizer token
 
 This is the one boolean with a *visible* in-module forward. The INTERNAL flag is translated, in `runXLAFrontend` (`0x1c3e0`), into the tensorizer-option token `enable-native-int64`:
 
@@ -306,7 +306,7 @@ The PUBLIC-facing `--enable-native-int64` / `enable-native-int64` is **not** a r
 
 ## 6. Other Precision / Rounding Controls
 
-### 6.1 `--fast-math fast-relayout-*` — transpose-engine dtype [CONFIRMED strings]
+### 6.1 `--fast-math fast-relayout-*` — transpose-engine dtype
 
 The five `fast-relayout` tokens (choices 11–15 of `--fast-math`, §2.3) control the dtype of the *matmult-based tensor transpose* ("relayout"), a separate axis from the op-cast dtype. Help text (`CompileCommand.so` `.rodata`, verbatim):
 
@@ -320,19 +320,19 @@ The five `fast-relayout` tokens (choices 11–15 of `--fast-math`, §2.3) contro
 
 `Frontend.so` carries its own `fast-relayout-fp32r` / `fast-relayout-fp8e4` tokens (adjacent registration, same meaning).
 
-### 6.2 `tf32` / `fp32r` (TensorFloat-32) [CONFIRMED]
+### 6.2 `tf32` / `fp32r` (TensorFloat-32)
 
 `tf32` is purely the *user* spelling on the `--auto-cast-type` / `fp32-cast` axis (doc line `tf32: TensorFloat-32`); it is canonicalized to `fp32r` in `buildPipeline` (§4.1). `fp32r` is the internal dtype token consumed by `AutoCastFP32` and the `matmult-fp32r` / `all-fp32r` modes — reduced-mantissa FP32 (à la NVIDIA TF32) used by the Tensor Engine for speed with better precision than BF16/FP16. There is **no** separate `--tf32` boolean; tf32/fp32r is only ever a dtype value.
 
-### 6.3 `--experimental-unsafe-fp8e4m3fn-as-fp8e4m3` [CONFIRMED def]
+### 6.3 `--experimental-unsafe-fp8e4m3fn-as-fp8e4m3`
 
-Owner: `CompileCommand.so` (not `Frontend.so`). Public form `--experimental-unsafe-fp8e4m3fn-as-fp8e4m3` plus internal alias `--internal-experimental-unsafe-fp8e4m3fn-as-fp8e4m3`; dest `internal_experimental_unsafe_fp8e4m3fn_as_fp8e4m3`; help `"Convert fp8e4m3fn types to fp8e4m3"`. Semantics: an **unsafe** reinterpretation of fp8e4m3fn (finite-only, NaN at `0x7f`) tensors as plain fp8e4m3, changing the NaN/Inf encoding contract. Directly relevant to the FP8 cast path (e4m3fn saturate-to-max `0x7e` vs e4m3 NaN at `0x7f`). [CONFIRMED def — flag + help string present; action/default not separately disassembled.]
+Owner: `CompileCommand.so` (not `Frontend.so`). Public form `--experimental-unsafe-fp8e4m3fn-as-fp8e4m3` plus internal alias `--internal-experimental-unsafe-fp8e4m3fn-as-fp8e4m3`; dest `internal_experimental_unsafe_fp8e4m3fn_as_fp8e4m3`; help `"Convert fp8e4m3fn types to fp8e4m3"`. Semantics: an **unsafe** reinterpretation of fp8e4m3fn (finite-only, NaN at `0x7f`) tensors as plain fp8e4m3, changing the NaN/Inf encoding contract. Directly relevant to the FP8 cast path (e4m3fn saturate-to-max `0x7e` vs e4m3 NaN at `0x7f`). The flag and its help string are present in the binary; its action and default were not separately disassembled.
 
-### 6.4 `--disable-inline-cast` — NOT PRESENT [CONFIRMED absence]
+### 6.4 `--disable-inline-cast` — not present
 
 Negative grep across **every** `driver/` module: the strings `--disable-inline-cast`, `inline-cast`, and `inline_cast` do not exist in `CompileCommand.so`, `Frontend.so`, or any other module under `neuronxcc/driver/`. This flag does **not** exist in `neuronx_cc` 2.24.5133.0. The closest real levers are `no-fast-relayout` (forces lossless transpose) and `fp32-cast-none` / `--auto-cast none` (no casting at all).
 
-> **CORRECTION — do not document an `--disable-inline-cast` knob.** It was a candidate name in the task brief, but the binary has no such string. The cast SCOPE is controlled entirely by the `fp32-cast` mode / `auto_cast` scope axis; there is no per-cast "inline" toggle.
+> **NOTE — there is no per-cast "inline" toggle.** Cast scope is controlled entirely by the `fp32-cast` mode / `auto_cast` axis. If you have seen `--disable-inline-cast` named anywhere, it is not a flag this compiler accepts.
 
 ---
 
@@ -364,17 +364,17 @@ The same value would be produced by the single internal token `--fp32-cast matmu
 
 | Claim | Evidence | Confidence |
 |---|---|---|
-| `--fp32-cast` 10-mode enum | all 10 strings in `Frontend.so`; `PyList_New(10)` @ `0x19340`; help blob verbatim (with typos) | CONFIRMED |
-| `--auto-cast` default `none` | `__pyx_n_u_none` → `n_s_default` @ `0x39a82` | CONFIRMED |
-| `--auto-cast-type` default `bf16` | `__pyx_n_u_bf16` → `n_s_default` @ `0x39f0d`, `PyDict_SetItem` @ `0x39f1e` | CONFIRMED |
-| canonicalize `tf32→fp32r`, `fp8_e4m3→fp8e4`, `all+tf32→matmult` | `_Pyx_PyUnicode_Equals`/`SetAttr` @ dec.6597/6630/6656/6715/6770/6801 | CONFIRMED |
-| reverse-marshal `"fp32-cast-<s>-<t>"` | 4-arg `_Pyx_PyUnicode_Join` + `Append`, prefix literal `fp32-cast-` in `.rodata` | CONFIRMED |
-| 3 boolean defaults `True/False/False` | `_Py_True/False_Struct` @ `0x1956d`/`0x199a2`/`0x1983d` | CONFIRMED |
-| `enable-native-int64` forward in `runXLAFrontend` | `getattr enable_internal_native_int64` + `IsTrue` + `append` @ dec.2492/2576 | CONFIRMED |
-| `enable-native-int64` shares bytes with `--enable-native-int64` | single byte-occurrence @ `0x280d2` inside buffer @ `0x280d0` | CONFIRMED |
-| `--disable-inline-cast` absent | negative grep across all `driver/` modules | CONFIRMED |
-| `matmult-fp32r` dtype = FP32r | parallel with `matmult-*` family; not in help blob | STRONG |
-| `--enable-saturate-infinity` → native `FP8ConversionConfig.lo` | no string token; reaches cast via serialized config | INFERRED |
+| `--fp32-cast` 10-mode enum | all 10 strings in `Frontend.so`; `PyList_New(10)` @ `0x19340`; help blob verbatim (with typos) | CERTAIN |
+| `--auto-cast` default `none` | `__pyx_n_u_none` → `n_s_default` @ `0x39a82` | CERTAIN |
+| `--auto-cast-type` default `bf16` | `__pyx_n_u_bf16` → `n_s_default` @ `0x39f0d`, `PyDict_SetItem` @ `0x39f1e` | CERTAIN |
+| canonicalize `tf32→fp32r`, `fp8_e4m3→fp8e4`, `all+tf32→matmult` | `_Pyx_PyUnicode_Equals`/`SetAttr` @ dec.6597/6630/6656/6715/6770/6801 | CERTAIN |
+| reverse-marshal `"fp32-cast-<s>-<t>"` | 4-arg `_Pyx_PyUnicode_Join` + `Append`, prefix literal `fp32-cast-` in `.rodata` | CERTAIN |
+| 3 boolean defaults `True/False/False` | `_Py_True/False_Struct` @ `0x1956d`/`0x199a2`/`0x1983d` | CERTAIN |
+| `enable-native-int64` forward in `runXLAFrontend` | `getattr enable_internal_native_int64` + `IsTrue` + `append` @ dec.2492/2576 | CERTAIN |
+| `enable-native-int64` shares bytes with `--enable-native-int64` | single byte-occurrence @ `0x280d2` inside buffer @ `0x280d0` | CERTAIN |
+| `--disable-inline-cast` absent | negative grep across all `driver/` modules | CERTAIN |
+| `matmult-fp32r` dtype = FP32r | parallel with `matmult-*` family; not in help blob | HIGH |
+| `--enable-saturate-infinity` → native `FP8ConversionConfig.lo` | no string token; reaches cast via serialized config | MEDIUM |
 
 ---
 

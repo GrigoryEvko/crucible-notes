@@ -16,7 +16,7 @@ This page recovers the per-op numeric/state model for each family. It builds on 
 | **Collective** | 48–50 | `visitInstCollectiveCompute / Send / Recv` | full N-rank registry fold; `AllReduce` `×N` in multi-worker |
 | **DMA** | 19/22/23/32, 67–72, 107 | `visitInstDMACopy …` | AP→AP `memcpy`; descriptor list = re-dispatch |
 
-A shared invariant ties all five families together and a reimplementer must honor it: **every input `MemoryObject` is widened to fp32 (`cast_to(dt=16)`) before any arithmetic.** BN moments, collective reductions, DVE value comparisons, and DMA-CCE folds are *all* single-precision regardless of the stored dtype (bf16/fp16/fp8 inputs are widened first; there is no fp64 path anywhere). The simulator therefore provides a faithful fp32-accumulating reference but cannot expose fp32-rounding divergences from a hypothetical fp64 golden. [CONFIRMED — cast call in every family body; see the per-family sections.]
+A shared invariant ties all five families together and a reimplementer must honor it: **every input `MemoryObject` is widened to fp32 (`cast_to(dt=16)`) before any arithmetic.** BN moments, collective reductions, DVE value comparisons, and DMA-CCE folds are *all* single-precision regardless of the stored dtype (bf16/fp16/fp8 inputs are widened first; there is no fp64 path anywhere). The simulator therefore provides a faithful fp32-accumulating reference but cannot expose fp32-rounding divergences from a hypothetical fp64 golden. The widening cast appears in every family body; see the per-family sections.
 
 ---
 
@@ -38,7 +38,9 @@ The statistics travel as packed fixed-stride fp32 records in SBUF. The represent
 - **BNStatsAggregate input** = K·6 elt/partition (K Welford triple-pairs to merge); output = 2 elt/partition `(mean, variance)`, where variance is the **population** variance Σdev²/N.
 - **BNGradients output** = 3 elt/partition = three reduction sums (the gradient coefficients).
 
-The count-step constant `1.0f` lives once at rodata `0x5f02c4` (`= 0x3f800000`), reused by `BNStats` (Welford count++) and `BNStatsAggregate`. [CONFIRMED — `xxd -s 0x5f02c4 -l 4` = `00 00 80 3f`.] The `BNStats` prologue anchors the VA: `xxd -s 0x1df7b0` = `41 57 31 d2 31 c9 41 56 …` (`push r15; xor edx; xor ecx; push r14; …`). [CONFIRMED this pass.]
+The count-step constant `1.0f` lives once at rodata `0x5f02c4` (`= 0x3f800000`), reused by `BNStats` (Welford count++) and `BNStatsAggregate`.
+
+*Anchors: `0x5f02c4` = `00 00 80 3f` (the shared `1.0f`); `BNStats` prologue @ `0x1df7b0` = `41 57 31 d2 31 c9 41 56 …` (`push r15; xor edx; xor ecx; push r14`).*
 
 ### 1.1 BNStats (IT 34) — 2-way interleaved Welford
 
@@ -62,7 +64,9 @@ for (i = 0; i < N; ++i) {                      // alternate lane A / B per eleme
 }
 ```
 
-> **QUIRK — the two lanes share one running count `n`.** The shared `n` (xmm5) increments once per *pair* (when lane B is processed), so when lane A processes its k-th element `n` equals what lane B sees for its k-th — `n ≈ pair_index`. The per-lane *output* counts `ceil/floor(N/2)` are what `BNStatsAggregate` uses as final merge weights; the running `n` is only the Welford weight. [CONFIRMED — disasm `0x1df9b7`–`0x1dfa06`, count `addss 1.0f` @ `0x1df947`/`0x1df9ac`.] The transpose path is the same 32×32 tile-swap idiom as `StreamTranspose` (out-index `(p&0x1F | e&~0x1F) + N*((p&~0x1F) | e&0x1F)`), letting BNStats reduce over the partition axis instead of the free axis; `N==1` is a plain copy. [transpose math CONFIRMED; non-multiple-of-32 edges unfuzzed.]
+> **QUIRK — the two lanes share one running count `n`.** The shared `n` (xmm5) increments once per *pair* (when lane B is processed), so when lane A processes its k-th element `n` equals what lane B sees for its k-th — `n ≈ pair_index`. The per-lane *output* counts `ceil/floor(N/2)` are what `BNStatsAggregate` uses as final merge weights; the running `n` is only the Welford weight. The transpose path is the same 32×32 tile-swap idiom as `StreamTranspose` (out-index `(p&0x1F | e&~0x1F) + N*((p&~0x1F) | e&0x1F)`), letting BNStats reduce over the partition axis instead of the free axis; `N==1` is a plain copy. The transpose index math is pinned; behaviour at non-multiple-of-32 edges is untested.
+
+*Anchors: Welford loop `0x1df9b7`–`0x1dfa06`; count `addss 1.0f` @ `0x1df947` / `0x1df9ac`.*
 
 ### 1.2 BNStatsAggregate (IT 35) — Chan parallel-variance merge
 
@@ -84,7 +88,7 @@ out[0] = mean_acc;
 out[1] = var_acc;     // POPULATION variance  Sigma(x-mean)^2 / N_total  (biased / ML-style)
 ```
 
-> **GOTCHA — Stats and Aggregate are a matched raw/normalized pair.** `BNStats` emits *raw* `M2` (Σdev²); `BNStatsAggregate`'s running accumulator stores a *normalized* variance (Σdev²/N). Each merge step therefore un-normalizes the running variance (`·n_acc`), adds the raw `M2_t`, and re-normalizes (`·r`); the Chan cross term carries the extra `·r` (`·r²` total) for the same reason. The final `out[1]` is the **population** variance (÷N, not N−1) — there is **no epsilon and no rsqrt here**: `invstd = 1/√(var+eps)` is a precomputed *input* to `BNGradients` (the `Varfactor` operand), materialized by a separate Reciprocal/Activation kernel. [CONFIRMED.]
+> **GOTCHA — Stats and Aggregate are a matched raw/normalized pair.** `BNStats` emits *raw* `M2` (Σdev²); `BNStatsAggregate`'s running accumulator stores a *normalized* variance (Σdev²/N). Each merge step therefore un-normalizes the running variance (`·n_acc`), adds the raw `M2_t`, and re-normalizes (`·r`); the Chan cross term carries the extra `·r` (`·r²` total) for the same reason. The final `out[1]` is the **population** variance (÷N, not N−1) — there is **no epsilon and no rsqrt here**: `invstd = 1/√(var+eps)` is a precomputed *input* to `BNGradients` (the `Varfactor` operand), materialized by a separate Reciprocal/Activation kernel.
 
 ### 1.3 BNGradients (IT 36) — backward reduction
 
@@ -100,7 +104,9 @@ for (i = 0; i < NEPP; ++i) {            // decompiled l.137-142
 }
 ```
 
-The three emitted sums are exactly the per-channel coefficients the backprop apply kernels consume (`vf` is the inverse-stddev scale). These are plain fp32 Σ — no Welford, no Kahan; the `(x−m)` centering reduces cancellation but the sums are naive adds. [CONFIRMED — asserts `0x1297/0x129A/0x129C/0x12C4/0x12C5`.]
+The three emitted sums are exactly the per-channel coefficients the backprop apply kernels consume (`vf` is the inverse-stddev scale). These are plain fp32 Σ — no Welford, no Kahan; the `(x−m)` centering reduces cancellation but the sums are naive adds.
+
+*Anchors: the three accumulate sites and their guards at decompiled lines `0x1297`, `0x129A`, `0x129C`, `0x12C4`, `0x12C5`.*
 
 ### 1.4 BNBackprop (IT 37) and BNBackprop2 (IT 38) — the dx apply
 
@@ -112,7 +118,7 @@ dx[i] = ( dy[i]*total_elements  -  ( (x[i] - m)*Bc + A ) ) * scale;
 // total_elements = *(float*)(Inst+0xF0)  (JSON "total_elements", float scalar = N)
 ```
 
-This is the standard fused BN backward `dx = (γ·invstd/N)·(N·dy − Σdy − (x−μ)·invstd²·Σ(x−μ)dy)`, regrouped so `{scale = γ·invstd/N, A = Σdy, Bc = invstd²·Σ(x−μ)dy}`. [arithmetic CONFIRMED; the γ/invstd factoring of the 3 opaque coefficients is HIGH/INFERRED — the simulator only sees fp32 coefficients, the precise fold is set by the walrus codegen.] The variant difference:
+This is the standard fused BN backward `dx = (γ·invstd/N)·(N·dy − Σdy − (x−μ)·invstd²·Σ(x−μ)dy)`, regrouped so `{scale = γ·invstd/N, A = Σdy, Bc = invstd²·Σ(x−μ)dy}`. The arithmetic is exact as written; the γ/invstd factoring of the three opaque coefficients is [INFERRED] — the simulator only ever sees three fp32 scalars, and the precise fold is chosen by the walrus codegen. The variant difference:
 
 | | BNBackprop (37) | BNBackprop2 (38) |
 |---|---|---|
@@ -122,13 +128,13 @@ This is the standard fused BN backward `dx = (γ·invstd/N)·(N·dy − Σdy −
 | sim assert | `ABC AP == 3 elt/part` | `A AP==1 AND Bc AP==2 elt/part` |
 | dx formula | identical | identical |
 
-So v2 is the *split-tensor* form — it separates the scalar `scale` from the per-channel `(A, Bc)` pair so codegen can produce them on independent engines. It is **not** a with/without-affine split and not a two-pass split; it is purely an operand-layout variant of the same single-pass dx apply, invisible to the numerics. [same math CONFIRMED; the "split for separate engines" rationale HIGH/INFERRED.]
+So v2 is the *split-tensor* form — it separates the scalar `scale` from the per-channel `(A, Bc)` pair so codegen can produce them on independent engines. It is **not** a with/without-affine split and not a two-pass split; it is purely an operand-layout variant of the same single-pass dx apply, invisible to the numerics. The "split so codegen can use separate engines" rationale is [INFERRED] from the operand shapes; the math is identical either way.
 
 ---
 
 ## 2. RNG family (IT 58–60, 97–100) — three generation regimes
 
-The simulator implements **two independent RNG generations plus a host-side MT19937-64 seed engine** — *not* the single XORWOW that an earlier survey guessed. The generations are partitioned by opcode and by an `EngineType` discriminator.
+The simulator implements **two independent RNG generations plus a host-side MT19937-64 seed engine**, partitioned by opcode and by an `EngineType` discriminator. XORWOW is only one of them — it is the gen-2 engine, and it does not cover the gen-1 opcodes at all.
 
 | Function | Addr | Role |
 |---|---|---|
@@ -158,10 +164,10 @@ else if (algorithm == 0) /* LFSR   */ goto lfsr;        // block 0x1d6cdf
 else throw runtime_error("Supported PRNGs are LFSR/PCG32/PHILOX_1: ");  // @0x5aaa40
 ```
 
-Each per-partition state is 6×uint32 (24 bytes) in `MemoryType RNGSTATE (0x40)`. **PCG32** is the canonical PCG-XSH-RR 64/32 with the default constants — both verified as `movabs` immediates in the disasm:
+Each per-partition state is 6×uint32 (24 bytes) in `MemoryType RNGSTATE (0x40)`. **PCG32** is the canonical PCG-XSH-RR 64/32 with the default constants, both of which appear as `movabs` immediates:
 
 ```c
-// PCG-XSH-RR 64/32 (constants CONFIRMED at 0x1d71b4 / 0x1d71be)
+// PCG-XSH-RR 64/32 (constants at 0x1d71b4 / 0x1d71be)
 uint64_t oldstate = state;
 state = oldstate*0x5851F42D4C957F2DULL + 0x14057B7EF767814FULL;   // MUL, INC
 uint32_t xorshifted = (uint32_t)(((oldstate >> 18) ^ oldstate) >> 27);
@@ -169,9 +175,9 @@ uint32_t rot        = (uint32_t)(oldstate >> 59);
 output = (xorshifted >> rot) | (xorshifted << ((-rot) & 31));     // rotr32, `ror eax,cl`
 ```
 
-[CONFIRMED — `objdump` `0x1d71b4`: `movabs $0x5851f42d4c957f2d,%r14`; `0x1d71be`: `movabs $0x14057b7ef767814f,%r15`; shifts 18/59/27 + `ror eax,cl` @ `0x1d7203`–`0x1d7215`.]
+*Anchors: `0x1d71b4` `movabs $0x5851f42d4c957f2d,%r14`; `0x1d71be` `movabs $0x14057b7ef767814f,%r15`; shifts 18/59/27 and `ror eax,cl` @ `0x1d7203`–`0x1d7215`.*
 
-**Philox** is Philox-4x32-10 with the canonical Random123/cuRAND constants `M0=0xD2511F53`, `M1=0xCD9E8D57`, Weyl `W0=0x9E3779B9` (golden ratio), `W1=0xBB67AE85` (√5); 10 rounds are confirmed by the unrolled `lea` key-bumps for every `r×W0`/`r×W1` (r=1..9) and 40 `imul` (4/round). **LFSR** is a 32-bit Fibonacci LFSR with taps `{32,22,2,1}` read from rodata `0x5F2700` (poly `x³² + x²² + x² + x + 1`):
+**Philox** is Philox-4x32-10 with the canonical Random123/cuRAND constants `M0=0xD2511F53`, `M1=0xCD9E8D57`, Weyl `W0=0x9E3779B9` (golden ratio), `W1=0xBB67AE85` (√5). The round count is 10: the body unrolls a `lea` key-bump for every `r×W0`/`r×W1` (r=1..9) and issues 40 `imul` (4 per round). **LFSR** is a 32-bit Fibonacci LFSR with taps `{32,22,2,1}` read from rodata `0x5F2700` (poly `x³² + x²² + x² + x + 1`):
 
 ```c
 // LFSR taps {32,22,2,1} @ 0x5F2700 (xxd = 20 00 00 00 16 00 00 00 02 00 00 00 01 00 00 00)
@@ -180,7 +186,7 @@ state = (state << 1) | (b & 1);
 output = state;
 ```
 
-[CONFIRMED — taps `xxd`-verified; step disasm `0x1d6d82`.]
+*Anchors: taps at `0x5F2700`; LFSR step @ `0x1d6d82`.*
 
 ### 2.2 GEN-2 — `visitInstRand2` (IT 97): cuRAND XORWOW
 
@@ -201,9 +207,11 @@ float xorwowStep(uint32_t s[6], float lo, float hi) {       // @0x1aa1c0
 }
 ```
 
-[CONFIRMED — Weyl `lea 0x587c5(%rdi),%edx` @ `0x1aa1a7` (`362437`); mantissa mask `and 0x7FFFFF` @ `0x1aa1e1`, exponent `or 0x3F800000` @ `0x1aa1e6`.] `Rand2`'s operands are `getMin` (operand[0] `ImmediateValue`, default `0.0`) and `getMax` (operand[1], default `1.0`); dst dtype is float32. The `is2x1p/2x2p/4x2p` AbleFlags choose which of the 4 lanes drives each output column — this selects which lane's state advances, not the PRNG itself.
+*Anchors: Weyl `lea 0x587c5(%rdi),%edx` @ `0x1aa1a7` (`362437`); mantissa mask `and 0x7FFFFF` @ `0x1aa1e1`; exponent `or 0x3F800000` @ `0x1aa1e6`.*
 
-> **QUIRK — `visitInstRand` produces RAW bits only.** The kernel reads *only* `Instruction+240` (algorithm). It does **not** read `+288` (distribution) or `+296` (params) or `+248` (rand_num_steps) — verified by exhaustive field-offset grep of the body. So `Uniform / Normal / Binomial` distribution transforms are **not implemented** in `libBIRSimulator`; the gen-1 kernel models the hardware RNG *bit-stream*, leaving distribution shaping to the upstream lowering. There is **no Box-Muller**, no inverse-CDF/erfinv, no binomial loop anywhere in the 6 RNG kernels. The *only* `[0,1)→affine` conversion is `Rand2`'s `xorwowStep` (a float32 `Uniform[min,max)`). [CONFIRMED — only `+0xF0` algorithm, operand lists, and IT field are read.]
+`Rand2`'s operands are `getMin` (operand[0] `ImmediateValue`, default `0.0`) and `getMax` (operand[1], default `1.0`); dst dtype is float32. The `is2x1p/2x2p/4x2p` AbleFlags choose which of the 4 lanes drives each output column — this selects which lane's state advances, not the PRNG itself.
+
+> **QUIRK — `visitInstRand` produces RAW bits only.** The kernel reads *only* `Instruction+240` (algorithm). It does **not** read `+288` (distribution), `+296` (params), or `+248` (rand_num_steps). So `Uniform / Normal / Binomial` distribution transforms are **not implemented** in `libBIRSimulator`; the gen-1 kernel models the hardware RNG *bit-stream*, leaving distribution shaping to the upstream lowering. There is **no Box-Muller**, no inverse-CDF/erfinv, no binomial loop anywhere in the 6 RNG kernels. The *only* `[0,1)→affine` conversion is `Rand2`'s `xorwowStep` (a float32 `Uniform[min,max)`). The only instruction fields the body touches are `+0xF0` (algorithm), the operand lists, and the IT tag.
 
 ### 2.3 RNGSTATE format and the MT19937-64 seed engine
 
@@ -220,7 +228,7 @@ for (int i = 1; i < 312; ++i) {
 mti = 312;                              // NN = 312
 ```
 
-For `EngineType 1` the seed arrives either as a tensor/AP (`doCopy` direct state copy) or as an 8-u32 `ImmediateArray` — the wire seed for gen-1 is **8 u32** (`word0 = (partition_idx<<24) | (imm[0] & 0xFFFFFF)`, `words[1..7]=imm[1..7]`), while the running state is the 6-u32 representation. `InstRng` (IT 100) routes to the base `visitInstruction` — sim-UNSUPPORTED, records the opcode name with no FATAL and executes no PRNG. [CONFIRMED.]
+For `EngineType 1` the seed arrives either as a tensor/AP (`doCopy` direct state copy) or as an 8-u32 `ImmediateArray` — the wire seed for gen-1 is **8 u32** (`word0 = (partition_idx<<24) | (imm[0] & 0xFFFFFF)`, `words[1..7]=imm[1..7]`), while the running state is the 6-u32 representation. `InstRng` (IT 100) routes to the base `visitInstruction` — sim-UNSUPPORTED, records the opcode name with no FATAL and executes no PRNG.
 
 > **Cross-ref — the codegen-side discriminator.** The PCG/Philox `RandomAlgorithmKind` enum is *dead code* for KLR-originated randomness: per [7.29](codegen-dve-rng-control.md), `KlirToBirCodegen` lowers `klr::Rng → InstMemset(Random)` and `klr::Rand2 → InstRand2(XORWOW)`, never emitting `InstRand(60)` or `InstRng(100)`. The `codegenEngine {2,4,5,3,1,6}` table stamps the `EngineType` at `+0x90` that the get/set kernels above read back (`Pool=1`/`DVE=5`). A reimplementer wiring the gen-1 `InstRand` switch into the NKI path is implementing a code path KLR never reaches; `InstRand`/`InstRng` arrive only via direct BIR-JSON / HLO.
 
@@ -238,7 +246,7 @@ The Max-8 family is the DVE "running top-8" hardware primitive set — the itera
 | 91 | MaxIndexAndMatchReplace | `0x1f37d0` → helper + idx | `0xebcd0` | YES |
 | 104 | NonzeroWithCount | base `0x1aa750` | — | **NO** (skip-and-note) |
 
-All four share a unifying execution model: resolve in/out APs via `getInOutPhysicalAP`, `Memory::read` (vtable `+0x18`) each input, `cast_to(fp32)` it (value comparison is *always* IEEE-754 single precision — bf16/fp16 widened first), build the output `MemoryObject` (dtype 16 fp32 for value outputs, dtype 14 uint32 for index outputs), loop per partition row, and `Memory::write` (vtable `+0x48`). The hard contract is **8 outputs per partition** (the silicon DVE lane width), with `8 ≤ data ≤ 16384` input elements per row. JSON-record-wise (per the wire schema), IT 88/89/104 are header-only; IT 90/91 carry exactly one key `imm_value` (the replacement sentinel) at `Inst+0xF0`. [CONFIRMED — `movss 0xf0(%rax),%xmm1` @ `0x1f347f`.]
+All four share a unifying execution model: resolve in/out APs via `getInOutPhysicalAP`, `Memory::read` (vtable `+0x18`) each input, `cast_to(fp32)` it (value comparison is *always* IEEE-754 single precision — bf16/fp16 widened first), build the output `MemoryObject` (dtype 16 fp32 for value outputs, dtype 14 uint32 for index outputs), loop per partition row, and `Memory::write` (vtable `+0x48`). The hard contract is **8 outputs per partition** (the silicon DVE lane width), with `8 ≤ data ≤ 16384` input elements per row. JSON-record-wise (per the wire schema), IT 88/89/104 are header-only; IT 90/91 carry exactly one key `imm_value` (the replacement sentinel) at `Inst+0xF0`, loaded by `movss 0xf0(%rax),%xmm1` @ `0x1f347f`.
 
 ### 3.1 Max (IT 88) — descending insertion sort into 8 slots
 
@@ -260,7 +268,7 @@ for (i = 0; i < numDataPerPartition; ++i) {
 // result: maxVals[0] >= maxVals[1] >= ... >= maxVals[7]
 ```
 
-> **GOTCHA — strict `>` gives stable, earliest-index tie-break + sticky NaN.** A new value *equal* to an existing slot does **not** displace it, so the earliest (lowest-index) data element wins the slot — decisive for argmax determinism. `comiss` is unordered on NaN → `jbe` is taken (no swap): a NaN carry never displaces a slot, and a NaN in a slot is never displaced by a non-NaN (since `non-NaN > NaN` is false). **NaNs are sticky** in whichever slot first received them — an IEEE quirk inherited from the strict-`>` model. [CONFIRMED — disasm `0x1f28a7`/`0x1f28b0`.]
+> **GOTCHA — strict `>` gives stable, earliest-index tie-break + sticky NaN.** A new value *equal* to an existing slot does **not** displace it, so the earliest (lowest-index) data element wins the slot — decisive for argmax determinism. `comiss` is unordered on NaN → `jbe` is taken (no swap): a NaN carry never displaces a slot, and a NaN in a slot is never displaced by a non-NaN (since `non-NaN > NaN` is false). **NaNs are sticky** in whichever slot first received them — an IEEE quirk inherited from the strict-`>` model. *Anchors: `comiss`/`jbe` @ `0x1f28a7`, `0x1f28b0`.*
 
 ### 3.2 MaxIndex (IT 89) — one-to-one argmax index resolver
 
@@ -280,7 +288,9 @@ for (i = 0; i < numDataPerPartition; ++i) {        // ascending data index
 }
 ```
 
-A `maxVal` that never appears in the data (or is NaN) leaves index `= -1 (0xFFFFFFFF)`. Equal `maxVals` are assigned to *successive first occurrences* (slot0 gets the earliest, slot1 the next), consistent with Max's stable tie-break. [CONFIRMED — `0x1f2e73`, output dtype `mov edx,0Eh`=uint32 @ `0x1f2c48`.]
+A `maxVal` that never appears in the data (or is NaN) leaves index `= -1 (0xFFFFFFFF)`. Equal `maxVals` are assigned to *successive first occurrences* (slot0 gets the earliest, slot1 the next), consistent with Max's stable tie-break.
+
+*Anchors: match loop @ `0x1f2e73`; output dtype `mov edx,0Eh` (uint32) @ `0x1f2c48`.*
 
 ### 3.3 MatchReplace (IT 90) and the fused MaxIndexAndMatchReplace (IT 91)
 
@@ -306,9 +316,11 @@ for (each partition row p) {
 }
 ```
 
-So IT 91 produces, in one pass, **both** the struck-out data (matched top-8 → `imm_value`) **and** the uint32 indices of those 8 matches. This is exactly the iterative-TopK round: extract where the current top-8 live and simultaneously remove them so the next `Max-8` pass yields ranks 9–16. The HLO `AwsNeuronTopK` lowers (via `LegalizeTopK`) into the NKI `router_topk`/`topk_reduce` path which emits `nisa.{max8, nc_find_index8, nc_match_replace8, nc_match_replace_indices8}` → BIR IT 88–91 → these kernels. Duplicate handling is one-to-one across all of 89/90/91, so a row with repeated maxima yields distinct indices and the iteration cannot livelock on a repeated value. [CONFIRMED — helper `0x1f3250`, sentinel replace `movss [r10],xmm1` @ `0x1f3642`, idx write @ `0x1f3638`.]
+So IT 91 produces, in one pass, **both** the struck-out data (matched top-8 → `imm_value`) **and** the uint32 indices of those 8 matches. This is exactly the iterative-TopK round: extract where the current top-8 live and simultaneously remove them so the next `Max-8` pass yields ranks 9–16. The HLO `AwsNeuronTopK` lowers (via `LegalizeTopK`) into the NKI `router_topk`/`topk_reduce` path which emits `nisa.{max8, nc_find_index8, nc_match_replace8, nc_match_replace_indices8}` → BIR IT 88–91 → these kernels. Duplicate handling is one-to-one across all of 89/90/91, so a row with repeated maxima yields distinct indices and the iteration cannot livelock on a repeated value.
 
-`NonzeroWithCount` (IT 104) has **no** simulator kernel — it dispatches to the base `visitInstruction` (a skip-and-note leaf shared with `InlineASMBytes(93)` and `Rng(100)`). Its intended "count + compact nonzero indices → `[idx…, -1…, count]`" semantics (pad `-1`) exist only in the NKI `find_nonzero_indices_with_count` kernel, not in the simulator; the only IT 104 functions present are `Hwm::getLatency*` timing models. [CONFIRMED.]
+*Anchors: shared helper @ `0x1f3250`; sentinel store `movss [r10],xmm1` @ `0x1f3642`; index write @ `0x1f3638`.*
+
+`NonzeroWithCount` (IT 104) has **no** simulator kernel — it dispatches to the base `visitInstruction` (a skip-and-note leaf shared with `InlineASMBytes(93)` and `Rng(100)`). Its intended "count + compact nonzero indices → `[idx…, -1…, count]`" semantics (pad `-1`) exist only in the NKI `find_nonzero_indices_with_count` kernel, not in the simulator; the only IT 104 functions present are `Hwm::getLatency*` timing models.
 
 ---
 
@@ -333,9 +345,9 @@ switch (*(int*)(inst + 0xF8)) {        // cmpl $0xa,0xf8(%rsi); ja default; jmp 
 }
 ```
 
-[CONFIRMED — `objdump` `0x1ed9b0`: `cmpl $0xa,0xf8(%rsi)` / `ja` / `mov 0xf8(%rsi),%eax` / `jmp *%rax`.]
+*Anchors: `0x1ed9b0` `cmpl $0xa,0xf8(%rsi)` / `ja` / `mov 0xf8(%rsi),%eax` / `jmp *%rax` — the bounded jump table above.*
 
-> **QUIRK — `PermuteReduce` (kind 8) has no reduce model.** Kinds 7 (Permute) and 9 (PermuteImplicit) share the `doCollectivePermute` arm; kind 8 falls into the `default` arm and is modeled as a plain **identity copy** (`in.numElems == out.numElems` assert, copy-through). Only `PermuteReduceImplicit` (10) has a real reduce. So in this build `PermuteReduce(8)` is a no-reduce stub — possibly because the verifier forbids kind 8 in sim inputs, but the sim itself would silently identity-copy it. [CONFIRMED from the case table.]
+> **QUIRK — `PermuteReduce` (kind 8) has no reduce model.** Kinds 7 (Permute) and 9 (PermuteImplicit) share the `doCollectivePermute` arm; kind 8 falls into the `default` arm and is modeled as a plain **identity copy** (`in.numElems == out.numElems` assert, copy-through). Only `PermuteReduceImplicit` (10) has a real reduce. So in this build `PermuteReduce(8)` is a no-reduce stub — possibly because the verifier forbids kind 8 in sim inputs, but the sim itself would silently identity-copy it.
 
 ### 4.1 The rank / topology model
 
@@ -384,15 +396,19 @@ if (op == 4 /*add*/ && scale.has_value()) {           // AVERAGE / SCALE branch
 }
 ```
 
-[CONFIRMED — `op@[rbx+180h]` @ `0x1b3444`; `MemoryObject` stride `0x70` recovered via the `×0x6DB6DB…B7` (÷112) loop bound.] Only `add(4)/max(8)/min(9)` are accepted — exactly the HLO `AwsNeuron<Coll><RedOp>` `RedOp∈{Add,Max,Min}` producer set; mult/average/bitwise abort.
+The op is read from `[rbx+0x180]` @ `0x1b3444`, and the `MemoryObject` stride of `0x70` falls out of the `×0x6DB6DB…B7` (÷112) loop bound. Only `add(4)/max(8)/min(9)` are accepted — exactly the HLO `AwsNeuron<Coll><RedOp>` `RedOp∈{Add,Max,Min}` producer set; mult/average/bitwise abort.
 
-> **GOTCHA — the multi-worker `AllReduce` is a local `×N` approximation.** In regime (B) the `AllReduce` kernel sets an "average" flag and threads `scale = numReplicas` into `doReduction`, which takes the SCALE branch: `res = ins[0] × numReplicas`. Since each worker only holds its own rank's buffer, this is a *local approximation* of "sum of N equal replicas", **not** a true cross-worker sum. [CONFIRMED — branch `0x1e7295`, optional push `0x1e72e7`–`0x1e732e`.] Note also that the collective `min`/`max` fold uses **inline SSE `maxss`/`minss`** (`0x1b3af4`/`0x1b3b74` — *not* a `fmaxf`/`fminf` PLT call), the *same* 2nd-operand-on-NaN family as the scatter-RMW `minss`/`maxss` SSE core in [7.35](sim-core-arithmetic.md): on a NaN the result is whichever operand sits in the register source (the running accumulator), so neither path implements libm's NaN-quieting `minNum`/`maxNum` semantics. The collective path is the only one that executes min/max for a collective. **CORRECTION — an earlier revision of this page mislabeled this fold as libm `fmaxf`/`fminf` with distinct NaN semantics; the disasm shows inline `maxss`/`minss`, matching [7.35](sim-core-arithmetic.md). The Hex-Rays decompiler renders `maxss`/`minss` as `fmaxf`/`fminf` intrinsics — a rendering artifact, not a real libm call.**
+> **GOTCHA — the multi-worker `AllReduce` is a local `×N` approximation.** In regime (B) the `AllReduce` kernel sets an "average" flag and threads `scale = numReplicas` into `doReduction`, which takes the SCALE branch: `res = ins[0] × numReplicas`. Since each worker only holds its own rank's buffer, this is a *local approximation* of "sum of N equal replicas", **not** a true cross-worker sum. *Anchors: scale branch @ `0x1e7295`; optional-scale push @ `0x1e72e7`–`0x1e732e`.*
+
+The `min`/`max` arms of the same reducer are **inline SSE `maxss`/`minss`** (`0x1b3af4` / `0x1b3b74`), the same 2nd-operand-on-NaN family as the scatter-RMW core in [7.35](sim-core-arithmetic.md). On a NaN the result is whichever operand sits in the register source — the running accumulator — so neither path implements libm's NaN-quieting `minNum`/`maxNum` semantics. This reducer is the only collective path that executes min/max at all.
+
+> **GOTCHA — `fmaxf`/`fminf` in decompiler output here are not libm calls.** Hex-Rays renders the inline `maxss`/`minss` instructions as `fmaxf`/`fminf` intrinsics. There is no PLT call and no libm NaN-quieting; reimplement the SSE semantics, not the C library ones.
 
 ### 4.3 Per-kind routing and the rank-id opcodes
 
-The non-reducing kinds are pure data routing. `AllGather` (kind 4) `memcpy`s each rank's slice into its output offset (output is N× the per-rank input; `cc_dim@+0x27C != 1` picks per-partition vs flat concatenation). `AllToAll` (kind 5) splits each rank's buffer into N chunks and `memcpy`s peer `p`'s chunk-for-this-rank locally; `AllToAllV` (kind 6) is the variable-chunk version. `Permute` (7/9) routes rank `r`'s output ← the source rank named by `src_target_pairs` (kind 7) or `replica_groups` (kind 9). `SendRecv` (kind 0) is a point-to-point routed copy: this rank's output ← the peer's input (peer resolved by a `QuasiAffineExpr` over the `+0x100` pair). `SendRecvCCE` (kind 1) gathers the recv-from ranks and folds via `doReduction` (the on-chip CCE recv+reduce). `CollectiveSend`/`Recv` (IT 49/50) are separate point-to-point primitives carrying only `peer_id`, routed through the same registry. [HIGH — routing handlers traced structurally; the IT 49/50 primitive bodies enumerated at the registry call-site, not line-by-line.]
+The non-reducing kinds are pure data routing. `AllGather` (kind 4) `memcpy`s each rank's slice into its output offset (output is N× the per-rank input; `cc_dim@+0x27C != 1` picks per-partition vs flat concatenation). `AllToAll` (kind 5) splits each rank's buffer into N chunks and `memcpy`s peer `p`'s chunk-for-this-rank locally; `AllToAllV` (kind 6) is the variable-chunk version. `Permute` (7/9) routes rank `r`'s output ← the source rank named by `src_target_pairs` (kind 7) or `replica_groups` (kind 9). `SendRecv` (kind 0) is a point-to-point routed copy: this rank's output ← the peer's input (peer resolved by a `QuasiAffineExpr` over the `+0x100` pair). `SendRecvCCE` (kind 1) gathers the recv-from ranks and folds via `doReduction` (the on-chip CCE recv+reduce). `CollectiveSend`/`Recv` (IT 49/50) are separate point-to-point primitives carrying only `peer_id`, routed through the same registry. The routing handlers above are traced structurally; the IT 49/50 bodies were read at their registry call-sites rather than line-by-line.
 
-The rank-id opcodes assign ranks: `GetGlobalRankId` (IT 11) @ `0x1ba670` writes the precomputed `InstVisitor+0xDE8` (ctor-initialized to 0; a driver sets non-zero) into the output register. `GetCurProcessingRankID` (IT 66) @ `0x1bb1f0` maps `(iter_id, channel_id, replica_group, ArchLevel)` → physical TP rank via a *global permutation table* `qword_22969A0` (`unordered_map<ArchLevel, unordered_map<u32 groupSize, vector<vector<int>>>>`, indexed `table[archLevel][groupSize][iter_id][col]`), modeling the TP rank-remapping the runtime applies. [HIGH — `sub_1BA6A0` index-formula traced; the table *populator* not traced.]
+The rank-id opcodes assign ranks: `GetGlobalRankId` (IT 11) @ `0x1ba670` writes the precomputed `InstVisitor+0xDE8` (ctor-initialized to 0; a driver sets non-zero) into the output register. `GetCurProcessingRankID` (IT 66) @ `0x1bb1f0` maps `(iter_id, channel_id, replica_group, ArchLevel)` → physical TP rank via a *global permutation table* `qword_22969A0` (`unordered_map<ArchLevel, unordered_map<u32 groupSize, vector<vector<int>>>>`, indexed `table[archLevel][groupSize][iter_id][col]`), modeling the TP rank-remapping the runtime applies. The index formula in `sub_1BA6A0` is traced; what *populates* that table is not.
 
 ---
 
@@ -413,7 +429,7 @@ The executor is the `birsim::Memory*` at `InstVisitor+0x138`. The `Memory` vtabl
 
 The accumulate path is the PSUM-reuse of the shared `cast_copy_or_accumulate` core from [7.35](sim-core-arithmetic.md). `runAP` asserts `AP.dtype == MemObj.dtype` and bounds-checks the offset. A DMA with differing src/dst dtypes casts the source via `Memory::writeLocal`'s `cast_and_reshape` before `writeAP`, and a uninit-NaN guard fires on write (`canInstReadFromUninitMem(&I) || !hasNaN()`). Remote (cross-core) DMA is a property of the AP's `MemoryLocation::isRemote` → routed to `NeuronCoresManager` — collective DMA and auto-sharded cross-core copies use the *same* read/write primitive.
 
-> **The sim models SW-DGE vs HW-DGE by AP manifestation, not the `DGEType` enum.** No DMA kernel reads `InstDMA+0xF8` (DGEType) — that field is consumed by the verifier/codegen. Instead: **SW-DGE** = an explicit descriptor list (`DMATrigger → DMABlock → descriptors`) that the sim executes by iterating and re-dispatching; **HW-DGE** = a dynamic-offset AP detected by `isVectorDynamicOffsetDMA` / `isScalarDynamicOffsetDMA`, for which the sim *software-materializes* the per-element address vector (`getIndirectAddrsVector` @ `0x1db900`) and feeds it to `readIndirect`/`writeIndirect`. [CONFIRMED — no `getDGEType`/`+0xF8` read in any DMA body.]
+> **The sim models SW-DGE vs HW-DGE by AP manifestation, not the `DGEType` enum.** No DMA kernel reads `InstDMA+0xF8` (DGEType) — that field is consumed by the verifier/codegen. Instead: **SW-DGE** = an explicit descriptor list (`DMATrigger → DMABlock → descriptors`) that the sim executes by iterating and re-dispatching; **HW-DGE** = a dynamic-offset AP detected by `isVectorDynamicOffsetDMA` / `isScalarDynamicOffsetDMA`, for which the sim *software-materializes* the per-element address vector (`getIndirectAddrsVector` @ `0x1db900`) and feeds it to `readIndirect`/`writeIndirect`. No DMA body contains a `getDGEType` call or a read of `+0xF8`.
 
 `visitInstDMACopy` (IT 32) @ `0x20b7b0` is the mode multiplexer, reading `CopyMode` at `inst+0x128`:
 
@@ -431,9 +447,9 @@ switch (mode) {
 }
 ```
 
-[CONFIRMED — `mov 0x128(%rsi),%eax` @ `0x20b7c7`.] `doDMACCE` is the collective-compute-engine in-flight reduce: it casts N source APs to fp32, then folds `op∈{add=4, max=8, min=9}` across them into a zeroed fp32 accumulator via inline SSE — `addss` @`0x1da808`, `maxss` @`0x1da742`, `minss` @`0x1da761` (no `fmaxf`/`fminf` PLT call), the same 2nd-operand-on-NaN family as the [7.35](sim-core-arithmetic.md) scatter-RMW core. The plain-copy core `doCopy` @ `0x1d2660` (`src = getInOutPhysicalAP(0,0)`, `dst = getInOutPhysicalAP(0,1)`, `read → write`) is shared by **all** plain copy ops: `Load(19)`, `Save(22)`, `TensorCopy(23)`, `GenericCopy`, `AbstractCopy(3)`, and `DMACopy` mode 0 — every plain copy is an AP→AP element copy through the universal primitive.
+`doDMACCE` is the collective-compute-engine in-flight reduce: it casts N source APs to fp32, then folds `op∈{add=4, max=8, min=9}` across them into a zeroed fp32 accumulator via inline SSE — `addss` @ `0x1da808`, `maxss` @ `0x1da742`, `minss` @ `0x1da761` — the same 2nd-operand-on-NaN family as the [7.35](sim-core-arithmetic.md) scatter-RMW core, again with no libm call involved. The plain-copy core `doCopy` @ `0x1d2660` (`src = getInOutPhysicalAP(0,0)`, `dst = getInOutPhysicalAP(0,1)`, `read → write`) is shared by **all** plain copy ops: `Load(19)`, `Save(22)`, `TensorCopy(23)`, `GenericCopy`, `AbstractCopy(3)`, and `DMACopy` mode 0 — every plain copy is an AP→AP element copy through the universal primitive.
 
-The SW-DGE descriptor machinery: `DMATrigger` (IT 67) @ `0x2124a0` is a *cursor over its block list* — it reads a per-trigger fire counter (`InstVisitor+3680` `DenseMap`), fires the `id`-th `DMABlock`, and advances round-robin. `DMABlock` (IT 107) @ `0x212420` iterates its descriptor list and re-feeds each `DMADescriptor` (IT 68–72) through the main dispatcher — so descriptor execution reuses the same kernels as inline DMA. The TREE2 descriptor visitors (`DMADescriptorCopy/CCE/Transpose/Replicate`, IT 69–72) thunk to the same `do*` bodies as the IT 32 mode-switch. Finally `TensorLoad`/`TensorSave` are *not* bulk DMA: they move a single scalar (or a memory pointer) between memory and a register, used for dynamic offsets and loop bounds. [CONFIRMED — full kernel→behavior map traced.]
+The SW-DGE descriptor machinery: `DMATrigger` (IT 67) @ `0x2124a0` is a *cursor over its block list* — it reads a per-trigger fire counter (`InstVisitor+3680` `DenseMap`), fires the `id`-th `DMABlock`, and advances round-robin. `DMABlock` (IT 107) @ `0x212420` iterates its descriptor list and re-feeds each `DMADescriptor` (IT 68–72) through the main dispatcher — so descriptor execution reuses the same kernels as inline DMA. The TREE2 descriptor visitors (`DMADescriptorCopy/CCE/Transpose/Replicate`, IT 69–72) thunk to the same `do*` bodies as the IT 32 mode-switch. Finally `TensorLoad`/`TensorSave` are *not* bulk DMA: they move a single scalar (or a memory pointer) between memory and a register, used for dynamic offsets and loop bounds.
 
 ---
 
@@ -441,42 +457,47 @@ The SW-DGE descriptor machinery: `DMATrigger` (IT 67) @ `0x2124a0` is a *cursor 
 
 | Family | Kernel | Addr | Confidence |
 |---|---|---|---|
-| BN | `visitInstBNStats` (34) | `0x1df7b0` | CONFIRMED |
-| BN | `visitInstBNStatsAggregate` (35) | `0x1dfcb0` | CONFIRMED |
-| BN | `visitInstBNGradients` (36) | `0x1dfff0` | CONFIRMED |
-| BN | `visitInstBNBackprop` (37) | `0x1e0560` | CONFIRMED |
-| BN | `visitInstBNBackprop2` (38) | `0x1e0ab0` | CONFIRMED |
-| RNG | `visitInstRand` (60) | `0x1d6290` | CONFIRMED |
-| RNG | `visitInstRand2` (97) | `0x1d2fa0` | CONFIRMED |
-| RNG | `generateXorwowRandom` | `0x1aa180` | CONFIRMED |
-| RNG | `xorwowStep` | `0x1aa1c0` | CONFIRMED |
-| RNG | `visitInstSetRandState` (59) | `0x1f8490` | CONFIRMED |
-| RNG | `visitInstRandSetState` (98) | `0x1d4360` | CONFIRMED |
-| RNG | MT19937-64 seed engine | `0x237990` | CONFIRMED |
-| Search | `visitInstMax` (88) | `0x1f2690` | CONFIRMED |
-| Search | `visitInstMaxIndex` (89) | `0x1f2b50` | CONFIRMED |
-| Search | `doInstMatchReplaceWithOptionalMaxIndex` | `0x1f3250` | CONFIRMED |
-| Search | `visitInstMatchReplace` (90) | `0x1f37c0` | CONFIRMED |
-| Search | `visitInstMaxIndexAndMatchReplace` (91) | `0x1f37d0` | CONFIRMED |
-| Collective | `visitInstCollectiveCompute` (48) | `0x1ed9b0` | CONFIRMED |
-| Collective | `doCollectiveAllReduce` | `0x1e6ff0` | CONFIRMED |
-| Collective | `doReduction` | `0x1b3400` | CONFIRMED |
-| Collective | `isInReplicaGroup` | `0x1aa460` | CONFIRMED |
-| Collective | `NeuronCoresManager::getRankIdforCore` | `0x272380` | CONFIRMED |
-| Collective | `NeuronCoresManager::getCcOpInMemObjForCore` | `0x272aa0` | CONFIRMED |
-| DMA | `visitInstDMACopy` (32) | `0x20b7b0` | CONFIRMED |
-| DMA | `doCopy` | `0x1d2660` | CONFIRMED |
-| DMA | `doDMACCE` | `0x1da0c0` | CONFIRMED |
-| DMA | `MemoryObject::runAP` | `0x298390` | CONFIRMED |
-| DMA | `getIndirectAddrsVector` | `0x1db900` | CONFIRMED |
-| DMA | `visitInstDMATrigger` (67) | `0x2124a0` | CONFIRMED |
-| DMA | `visitInstDMABlock` (107) | `0x212420` | CONFIRMED |
+| BN | `visitInstBNStats` (34) | `0x1df7b0` | CERTAIN |
+| BN | `visitInstBNStatsAggregate` (35) | `0x1dfcb0` | CERTAIN |
+| BN | `visitInstBNGradients` (36) | `0x1dfff0` | CERTAIN |
+| BN | `visitInstBNBackprop` (37) | `0x1e0560` | CERTAIN |
+| BN | `visitInstBNBackprop2` (38) | `0x1e0ab0` | CERTAIN |
+| RNG | `visitInstRand` (60) | `0x1d6290` | CERTAIN |
+| RNG | `visitInstRand2` (97) | `0x1d2fa0` | CERTAIN |
+| RNG | `generateXorwowRandom` | `0x1aa180` | CERTAIN |
+| RNG | `xorwowStep` | `0x1aa1c0` | CERTAIN |
+| RNG | `visitInstSetRandState` (59) | `0x1f8490` | CERTAIN |
+| RNG | `visitInstRandSetState` (98) | `0x1d4360` | CERTAIN |
+| RNG | MT19937-64 seed engine | `0x237990` | CERTAIN |
+| Search | `visitInstMax` (88) | `0x1f2690` | CERTAIN |
+| Search | `visitInstMaxIndex` (89) | `0x1f2b50` | CERTAIN |
+| Search | `doInstMatchReplaceWithOptionalMaxIndex` | `0x1f3250` | CERTAIN |
+| Search | `visitInstMatchReplace` (90) | `0x1f37c0` | CERTAIN |
+| Search | `visitInstMaxIndexAndMatchReplace` (91) | `0x1f37d0` | CERTAIN |
+| Collective | `visitInstCollectiveCompute` (48) | `0x1ed9b0` | CERTAIN |
+| Collective | `doCollectiveAllReduce` | `0x1e6ff0` | CERTAIN |
+| Collective | `doReduction` | `0x1b3400` | CERTAIN |
+| Collective | `isInReplicaGroup` | `0x1aa460` | CERTAIN |
+| Collective | `NeuronCoresManager::getRankIdforCore` | `0x272380` | CERTAIN |
+| Collective | `NeuronCoresManager::getCcOpInMemObjForCore` | `0x272aa0` | CERTAIN |
+| DMA | `visitInstDMACopy` (32) | `0x20b7b0` | CERTAIN |
+| DMA | `doCopy` | `0x1d2660` | CERTAIN |
+| DMA | `doDMACCE` | `0x1da0c0` | CERTAIN |
+| DMA | `MemoryObject::runAP` | `0x298390` | CERTAIN |
+| DMA | `getIndirectAddrsVector` | `0x1db900` | CERTAIN |
+| DMA | `visitInstDMATrigger` (67) | `0x2124a0` | CERTAIN |
+| DMA | `visitInstDMABlock` (107) | `0x212420` | CERTAIN |
 
 ## 7. Adversarial verification ceiling
 
-Five strongest claims were re-checked directly against the cp310 binary (md5 `f3acdcba9176056cb50daac01389dd13`) this pass and hold byte-exact: (1) `BNStats` prologue `41 57 31 d2 31 c9 41 56` @ `0x1df7b0` and the `1.0f` count-step `00 00 80 3f` @ `0x5f02c4`; (2) PCG32 `movabs $0x5851f42d4c957f2d,%r14` / `$0x14057b7ef767814f,%r15` @ `0x1d71b4`; (3) XORWOW Weyl `lea 0x587c5(%rdi),%edx` @ `0x1aa1a7` (`362437`) and the LFSR taps `{32,22,2,1}` @ `0x5F2700`; (4) the collective kind switch `cmpl $0xa,0xf8(%rsi); ja; jmp *%rax` @ `0x1ed9b0` and `doReduction`'s `cmpl $0x4,0x180(%rbx)` @ `0x1b3444`; (5) the DMA mode read `mov 0x128(%rsi),%eax` @ `0x20b7c7` and the MatchReplace sentinel `movss 0xf0(%rax),%xmm1` @ `0x1f347f`.
+The five strongest claims on this page rest on byte-exact reads of the cp310 binary (md5 `f3acdcba9176056cb50daac01389dd13`): (1) `BNStats` prologue `41 57 31 d2 31 c9 41 56` @ `0x1df7b0` and the `1.0f` count-step `00 00 80 3f` @ `0x5f02c4`; (2) PCG32 `movabs $0x5851f42d4c957f2d,%r14` / `$0x14057b7ef767814f,%r15` @ `0x1d71b4`; (3) XORWOW Weyl `lea 0x587c5(%rdi),%edx` @ `0x1aa1a7` (`362437`) and the LFSR taps `{32,22,2,1}` @ `0x5F2700`; (4) the collective kind switch `cmpl $0xa,0xf8(%rsi); ja; jmp *%rax` @ `0x1ed9b0` and `doReduction`'s `cmpl $0x4,0x180(%rbx)` @ `0x1b3444`; (5) the DMA mode read `mov 0x128(%rsi),%eax` @ `0x20b7c7` and the MatchReplace sentinel `movss 0xf0(%rax),%xmm1` @ `0x1f347f`.
 
-The numeric models, op-sets, dispatch offsets, and PRNG constants are **CONFIRMED**. The residual inferences (tagged inline) are: the BN backprop coefficient → textbook `{γ, invstd, Σdy, Σ(x−μ)dy}` mapping (HIGH/INFERRED — the sim sees opaque fp32 coefficients; the fold is set by the walrus codegen); the gen-1 6-u32 word→`Philox key/counter` assignment (MED — decompiler-fused); the multi-worker (B) cross-worker buffer-exchange transport (the local `×N` arithmetic is CONFIRMED, but *how* a separate worker's `MemoryObject` becomes visible is unpinned — `isMultiWorkerSimTest` suggests a test harness); and the `qword_22969A0` TP-rank table populator (HIGH on the index formula, untraced on init).
+The numeric models, op-sets, dispatch offsets, and PRNG constants are pinned. Four things on this page are not, and a reimplementer should treat them as open:
+
+- The BN backprop coefficient → textbook `{γ, invstd, Σdy, Σ(x−μ)dy}` mapping. The sim sees only three opaque fp32 scalars; the fold is chosen by the walrus codegen.
+- The gen-1 6-u32 word → `Philox key/counter` assignment, which the decompiler fuses.
+- The multi-worker (B) cross-worker buffer-exchange transport. The local `×N` arithmetic is exact, but *how* a separate worker's `MemoryObject` becomes visible is unpinned; `isMultiWorkerSimTest` suggests a test harness.
+- What populates the `qword_22969A0` TP-rank table. The index formula that reads it is traced; the initializer is not.
 
 ## 8. Cross-references
 

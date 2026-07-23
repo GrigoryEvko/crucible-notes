@@ -1,6 +1,6 @@
 # The Three-Sink Kernel-Node Model
 
-> *All symbols, addresses, strings, and enum values on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. The codegen sinks live in `BirCodeGenLoop.cpython-310-x86_64-linux-gnu.so` (`neuronxcc/starfish/penguin/targets/codegen/`, Cython `-O3 -fwrapv -fPIC -g`, UNSTRIPPED with DWARF). The three BIR node classes (`bir::InstBIRKernel` / `bir::InstNKIKernel` / `bir::InstNKIKLIRKernel`) and their `InstructionType` enum values live in the native `libwalrus` / BIR runtime; the downstream resolvers are in `libwalrus`. cp311/cp312 share the `__pyx` method roster; addresses are the cp310 frame. Provenance: report D-P13.*
+> *All symbols, addresses, strings, and enum values on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. The codegen sinks live in `BirCodeGenLoop.cpython-310-x86_64-linux-gnu.so` (`neuronxcc/starfish/penguin/targets/codegen/`, Cython `-O3 -fwrapv -fPIC -g`, UNSTRIPPED with DWARF). The three BIR node classes (`bir::InstBIRKernel` / `bir::InstNKIKernel` / `bir::InstNKIKLIRKernel`) and their `InstructionType` enum values live in the native `libwalrus` / BIR runtime; the downstream resolvers are in `libwalrus`. cp311/cp312 share the `__pyx` method roster; addresses are the cp310 frame.*
 
 ## Abstract
 
@@ -36,7 +36,7 @@ For reimplementation, the contract is:
 
 The natural model — and the one an earlier pass of this analysis assumed — is that *every* macro kernel funnels through a single trace driver: `codegen<Name>` → `codegenInternalNativeNkiKernel` → `_resolve_kernel_config` → trace the leaf. That model is **wrong**, and getting it wrong is expensive: it implies the compiler re-traces and re-compiles a flash-attention kernel on *every* lowering, when in fact the production model macros are emitted as a bare string name and resolved by a downstream splice.
 
-> **CORRECTION (D-P13) —** an earlier reading (P06 §0) held that every bespoke `codegen<Name>` *and* the generic `codegenBIRKernel` "ALL funnel into `codegenInternalNativeNkiKernel` → `_resolve_kernel_config` → trace." With the UNSTRIPPED `BirCodeGenLoop` body in hand this is refuted. There are **three** distinct BIR kernel nodes built by **three** distinct codegen sinks, and only one of them (`codegenInternalNativeNkiKernel`) touches the registry or re-traces anything. `[CONFIRMED — see §2/§3]`
+> **GOTCHA — the codegen sinks do not all funnel into the registry.** There are **three** distinct BIR kernel nodes built by **three** distinct codegen sinks, and only one of them, `codegenInternalNativeNkiKernel`, touches the registry or re-traces anything. Neither the bespoke `codegen<Name>` methods nor the generic `codegenBIRKernel` reach `_resolve_kernel_config` at all (§2, §3).
 
 The three nodes are real, separate C++ classes in the `bir` namespace. The mangled latency-model symbols in `libwalrus` name all three explicitly:
 
@@ -70,14 +70,14 @@ The numbering is not inferred from string order — it is pinned by the node con
 : Instruction(name, bb, /*InstructionType=*/54)   // ← ordinal is a ctor literal
 ```
 
-So "IT54 / IT55 / IT56" on this page are the literal enum values `BIRKernel=54`, `NKIKernel=55`, `NKIKLIRKernel=56`. All three are direct `bir::Instruction` subclasses (not `InstCollective`/`InstMatmultBase` subclasses), and all three are tagged category `Cust` in the BIR opcode table. `[CONFIRMED — enum + ctor literal, cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned)]`
+So "IT54 / IT55 / IT56" on this page are the literal enum values `BIRKernel=54`, `NKIKernel=55`, `NKIKLIRKernel=56`. All three are direct `bir::Instruction` subclasses (not `InstCollective`/`InstMatmultBase` subclasses), and all three are tagged category `Cust` in the BIR opcode table. See [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned).
 
 The enum itself is defined in `libBIR.so` (`neuronxcc/starfish/lib/libBIR.so`, imported as `UND` by every native driver via `DT_NEEDED`). Two mutually-confirming functions pin the ordinals byte-exact:
 
 - **Forward** — `bir::InstructionType::string(InstructionType)` @ VMA `0x2d5bf0` dispatches through a 110-entry jump table @ `0x7853a0` (one self-relative `int32` per opcode, `cmp $0x6d,%esi` bounding the 0..109 index). Index 54 loads the name string `"BIRKernel"` @ `0x709947`, index 55 `"NKIKernel"` @ `0x709951`, index 56 `"NKIKLIRKernel"` @ `0x70995b`.
 - **Inverse** — `bir::string2InstructionType(string const&)` @ VMA `0x2da0b0` returns the raw ordinal as an immediate: `mov $0x36,%eax` (54) / `$0x37` (55) / `$0x38` (56) at `0x2dae6c` / `0x2dae62` / `0x2dae58`.
 
-The numbering is **0-based** with no off-by-one: the IT-number *is* the enum integer (IT54 ⇔ `0x36`). `[CONFIRMED — forward + inverse name↔ordinal tables in the defining binary `libBIR.so`]`
+The numbering is **0-based** with no off-by-one: the IT-number *is* the enum integer (IT54 ⇔ `0x36`), per the forward and inverse name↔ordinal tables in `libBIR.so`.
 
 > **QUIRK — "Custom/Extension" is the catch-all band, not a coincidence.** Slots 53–57 (`CustomOp`, `BIRKernel`, `NKIKernel`, `NKIKLIRKernel`, `DevicePrint`) are the opcodes the scheduler/simulator treat as opaque, latency-modelled black boxes rather than ISA instructions it can reason about. A macro kernel is, to the backend, an opaque cost — which is exactly why the latency model carries a per-node `getLatency` overload for each of `InstBIRKernel` / `InstNKIKernel` / `InstNKIKLIRKernel`.
 
@@ -93,7 +93,7 @@ pyx_int_0 = v63(kw_argsf, __pyx_n_s_BIRKernel);            // line 1146: Opcode.
 // → addInstruction(Opcode.BIRKernel)  ⇒ emits an InstBIRKernel (IT54)
 ```
 
-The same shape appears in every sink, differing only in the final attribute name. This is the single fact that sorts a macro into one of three nodes. `[CONFIRMED — decompiled + disasm]`
+The same shape appears in every sink, differing only in the final attribute name. This is the single fact that sorts a macro into one of three nodes.
 
 ---
 
@@ -115,7 +115,7 @@ An `InstBIRKernel` node says: *"here is a kernel called `<kernel_name>`, with th
 | Cast policy | `set_auto_cast`, `set_auto_cast_type` | mixed-precision policy |
 | Operand access | per-operand `addSeqAccess` / `addAP` / `addOpaqueAP` (§5) | the access-pattern marshalling |
 
-No `klir_binary`, no `kernel_format`, no `nki_binary_version_identifier` — those are IT56-only fields (§4). `[CONFIRMED — setter strings present in every IT54 body; cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned)]`
+No `klir_binary`, no `kernel_format`, no `nki_binary_version_identifier` — those are IT56-only fields (§4). The setter strings above are present in every IT54 body; see [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned).
 
 ### The four IT54 sinks
 
@@ -138,19 +138,19 @@ Each was confirmed to reference `Opcode` + `BIRKernel` + `addInstruction` in its
 | `codegenBackwardsAttention` (#223) | `0x1e02c0` | `Opcode.BIRKernel` (inline) | + `set_is_causal` |
 | `codegenBIRKernel` (#221) | `0xa8360` | `Opcode.BIRKernel` | generic: `set_kernel_attrs` + metrics |
 
-`[CONFIRMED — each body greps to exactly one of {Opcode, BIRKernel, addInstruction} plus its named setters]`
+*Each body reduces to exactly one of `{Opcode, BIRKernel, addInstruction}` plus its named setters.*
 
-> **NOTE — two shared emitters, one node.** `_commonNativeKernelCodegen` (#225) and `_commonAttentionKernelCodegen` (#217) are *shared* IT54 builders. The bespoke per-family methods (`codegenMLPKernel`, `codegenNormQKV`, `codegenRMSNormQuantKernel`, `codegenAttentionMMSoftmaxMM`, and the four `codegenTiledNativeKernel*` twins) pin the family attrs and marshal operands, then hand off to one of these two for the actual `addInstruction(Opcode.BIRKernel)`. `codegenBackwardsAttention` is the one exception — it inlines its own `addInstruction` because it carries `is_causal` as a first-class `set_is_causal` field that the common builder doesn't name. `[CONFIRMED]`
+> **NOTE — two shared emitters, one node.** `_commonNativeKernelCodegen` (#225) and `_commonAttentionKernelCodegen` (#217) are *shared* IT54 builders. The bespoke per-family methods (`codegenMLPKernel`, `codegenNormQKV`, `codegenRMSNormQuantKernel`, `codegenAttentionMMSoftmaxMM`, and the four `codegenTiledNativeKernel*` twins) pin the family attrs and marshal operands, then hand off to one of these two for the actual `addInstruction(Opcode.BIRKernel)`. `codegenBackwardsAttention` is the one exception — it inlines its own `addInstruction` because it carries `is_causal` as a first-class `set_is_causal` field that the common builder doesn't name.
 
 ### Why the model macros are IT54 and not registry-traced
 
 The decisive fact: the compiled BIR for attention/MLP/QKV/RMSNorm **already exists** in `neuronxcc/nki/_private_kernels/{attention,mlp,qkv,rmsnorm}.cpython-310…so`. Lowering does not need to regenerate it — it only needs to *reference* it by name and let the downstream inliner splice it. So the lowerer emits a cheap `InstBIRKernel` (IT54) carrying just the name, and the heavy lifting is deferred.
 
-Downstream, in `libwalrus`, `InlineBIRKernel::run` @ `0xd86510` scans IT54 nodes (reading the name at `node+0xF0`) and expands each via `BIRKernelWrapper::createInstance(Logger, InstBIRKernel*, BasicBlock*, bool)` @ `0xd855d0` — directly, with **no JSON round-trip and no KLR walk**. The macro's compute is pattern-rewritten into the function in place. `[CONFIRMED — D-P13 / D-I28 §5 / D-H16]`
+Downstream, in `libwalrus`, `InlineBIRKernel::run` @ `0xd86510` scans IT54 nodes (reading the name at `node+0xF0`) and expands each via `BIRKernelWrapper::createInstance(Logger, InstBIRKernel*, BasicBlock*, bool)` @ `0xd855d0` — directly, with **no JSON round-trip and no KLR walk**. The macro's compute is pattern-rewritten into the function in place.
 
 > **GOTCHA — `codegenBIRKernel` does NOT touch the registry.** A reimplementer who wires the generic library-kernel path through `_INTERNAL_KERNEL_REGISTRY` will be wrong. The `codegenBIRKernel` body (#221 @ `0xa8360`) contains **zero** references to `get_internal_kernel_registry`, `_resolve_kernel_config`, or `InternalKernelConfig` — verified in both the decompiled C and the raw disassembly, and corroborated by the xref table (those strings are referenced only by their own `pw` functions, never by `0xa8360`). The registry is for IT56 (§4) only.
 >
-> **CORRECTION (D-P13) —** an earlier reading (P06 §2) had "RouterTopK / ExpertMLPs / RowTiledMM / ColumnTiledMM / Cayman route through generic `codegenBIRKernel` **+ `_INTERNAL_KERNEL_REGISTRY`**." The "+ registry" half is refuted: `codegenBIRKernel` emits an IT54 library node keyed by name; those macros are name-inlined downstream like every other IT54. `[CONFIRMED by registry-call absence]`
+> **GOTCHA — `codegenBIRKernel` never consults the registry.** RouterTopK, ExpertMLPs, RowTiledMM, ColumnTiledMM, and Cayman all route through the generic `codegenBIRKernel`, which emits an IT54 library node keyed by name; there is no `_INTERNAL_KERNEL_REGISTRY` call anywhere in its body. Those macros are name-inlined downstream like every other IT54.
 
 ### `codegenBIRKernel` — the generic expander
 
@@ -177,9 +177,11 @@ function codegenBIRKernel(self, inst):
     return node     // NO trace, NO registry, NO inner GEMM/softmax math
 ```
 
-The generic path is therefore: **name the leaf + pass `kernel_attrs` through verbatim + bind operand access patterns.** The inner math is spliced by name downstream. `[CONFIRMED — KernelMetricsCollector ×2, record_kernel, KernelCategory ×2, and all six setters confirmed at disasm level]`
+The generic path is therefore: **name the leaf + pass `kernel_attrs` through verbatim + bind operand access patterns.** The inner math is spliced by name downstream.
 
-> **NOTE — the telemetry sidecar.** `codegenBIRKernel` records every library-kernel emission into `KernelMetricsCollector` (`record_kernel`, keyed by `KernelCategory.BIR_KERNEL` and the kernel name). This is the metrics half of the `NEW_NKI_FE` instrumentation; the IT56 path has its own cache-hit/miss counters (next page). The IT54 path has no *trace* cache because there is no trace to memoize — the leaf BIR is inlined by name. `[CONFIRMED]`
+*Anchors: `KernelMetricsCollector` ×2, `record_kernel`, `KernelCategory` ×2, and all six setters, at disasm level.*
+
+> **NOTE — the telemetry sidecar.** `codegenBIRKernel` records every library-kernel emission into `KernelMetricsCollector` (`record_kernel`, keyed by `KernelCategory.BIR_KERNEL` and the kernel name). This is the metrics half of the `NEW_NKI_FE` instrumentation; the IT56 path has its own cache-hit/miss counters (next page). The IT54 path has no *trace* cache because there is no trace to memoize — the leaf BIR is inlined by name.
 
 ---
 
@@ -202,7 +204,7 @@ This is the *same* bespoke-vs-generic boundary documented on the emit side in [N
 | `codegenAttentionMMSoftmaxMM` (#219) | `0xb8c10` | (via `_commonAttentionKernelCodegen`) `cache_softmax`, `use_flash`, `use_dma_transpose` | name-dispatches untiled vs tiled |
 | `codegenBackwardsAttention` (#223) | `0x1e02c0` | `is_causal` (`set_is_causal`, inline) | scale=1.0, dropout=0 contracts |
 
-`[CONFIRMED — all attr strings present; `skip_gate`/`act_fn`/`useTkgQKVKernel` provable only from disasm (see GOTCHA below)]`
+*All attr strings are present; `skip_gate`, `act_fn`, and `useTkgQKVKernel` are visible only in the disasm (see the note below).*
 
 ### `codegenMLPKernel` — the token-gen routing decision
 
@@ -224,11 +226,11 @@ function codegenMLPKernel(self, inst):
     return _commonNativeKernelCodegen(self, inst, ...)    // ⇒ addInstruction(Opcode.BIRKernel)
 ```
 
-Why bespoke: MLP must (i) read the gate/up/down + norm + quant + store-add config explicitly (the generic bag can't name them), and (ii) make the `is_tkg` token-generation-vs-prefill decision *in the lowerer* — which requires pulling `TKG_BS_SEQLEN_THRESHOLD` from the `mlp` leaf module. `codegenNormQKV` makes the analogous decision via `useTkgQKVKernel` and the same threshold. `[CONFIRMED]`
+Why bespoke: MLP must (i) read the gate/up/down + norm + quant + store-add config explicitly (the generic bag can't name them), and (ii) make the `is_tkg` token-generation-vs-prefill decision *in the lowerer* — which requires pulling `TKG_BS_SEQLEN_THRESHOLD` from the `mlp` leaf module. `codegenNormQKV` makes the analogous decision via `useTkgQKVKernel` and the same threshold.
 
 > **GOTCHA — the `mlp` module import is NOT a registry registration.** `neuronxcc.nki._private_kernels.mlp` appears as a module-path string in `BirCodeGenLoop`, but it is imported *only* by `codegenMLPKernel`/`codegenNormQKV` to read the `TKG_BS_SEQLEN_THRESHOLD` constant. There is **no** `PyDict_SetItem(registry, 'MLP', …)` and **no** `fused_mlp_isa_kernel` string anywhere in the binary (grep returns 0). MLP is an IT54 library node, not an IT56 registry carrier.
 >
-> **CORRECTION (D-P13) —** an earlier reading (O30 §3) said "the registry maps `mlp → fused_mlp_isa_kernel`." Refuted: the registry holds no `MLP` key and the binary holds no `fused_mlp_isa_kernel` string. The O30 entry conflated the module-string *presence* with a registry *registration*. `[CONFIRMED by PyDict key + string absence]`
+> **GOTCHA — there is no `mlp → fused_mlp_isa_kernel` registry entry.** The registry holds no `MLP` key, and the binary holds no `fused_mlp_isa_kernel` string at all. A module string being present in the binary is not the same as a registry registration.
 
 ### The tiled-native twins — same attrs, `addAP` instead of `addSeqAccess`
 
@@ -241,7 +243,7 @@ The four `codegenTiledNativeKernel*` twins read the **same** family attrs as the
 | `codegenTiledNativeKernelRMSNormQuant` (#249) | `0x94240` | `codegenRMSNormQuantKernel` (+`set_lnc_size`) | `addAP` |
 | `codegenTiledNativeKernelAttention` (#253) | `0x5aaf0` | (via `_commonAttentionKernelCodegen`) | `addAP` |
 
-The upstream IO-type test (`_is_all_io_type_memref_tile`, in `KernelBuilder.so` — [NeuronCodegen Macro-Kernel Emitters §3](neuroncodegen-macro.md)) picks *which* codegen runs; the codegen just honors the operand access flavor it was handed. `[CONFIRMED — twin attr rosters identical modulo addAP↔addSeqAccess]`
+The upstream IO-type test (`_is_all_io_type_memref_tile`, in `KernelBuilder.so` — [NeuronCodegen Macro-Kernel Emitters §3](neuroncodegen-macro.md)) picks *which* codegen runs; the codegen just honors the operand access flavor it was handed. The twin attr rosters are identical apart from `addAP` versus `addSeqAccess`.
 
 ---
 
@@ -271,13 +273,13 @@ function codegenInternalNativeNkiKernel(self, inst):
     return node
 ```
 
-| IT56-only field | Setter | Carrier offset (D-I28) |
+| IT56-only field | Setter | Carrier offset |
 |---|---|---|
 | Traced binary (file path or embedded blob) | `set_klir_binary` | `klir_binary` @ `+0xF0` |
 | Carrier discriminator (`"bir"` ⇒ FORM B) | `set_kernel_format` | `kernel_format` @ `+0x110` |
 | Kernel version | `set_nki_binary_version_identifier` | `nki_binary_version_identifier` @ `+0x130` (optional) |
 
-These three fields are what make IT56 distinct from IT54 — an `InstBIRKernel` has *none* of them. `[CONFIRMED — all 8 setters present in #243 body; offsets from D-I28]`
+These three fields are what make IT56 distinct from IT54 — an `InstBIRKernel` has *none* of them. All eight setters are present in the #243 body.
 
 ### Downstream resolution — two carrier forms
 
@@ -286,7 +288,7 @@ In `libwalrus`, `TranslateNKIASTToBIR::lowerKernelInst` @ `0xf0b610` reads `kern
 - **FORM A** (`kernel_format != "bir"`) — `klir_binary@+0xF0` is a path to a serialized `klr::` KLR-AST binary; `fopen` + `KLRFile_des`/`KLRMetaData_des`/`Contents_des` deserialize it (this is the **beta2 / KLIR** default path).
 - **FORM B** (`kernel_format == "bir"`) — `klir_binary@+0xF0` is an embedded/on-disk BIR-JSON blob; `lowerFromBirJson` @ `0xf0a160` nlohmann-parses it and picks `j["functions"][NeuronCoreId]` (this is the **beta3 / BIR** path).
 
-`[CONFIRMED — D-I28 §3/§4; cross-ref [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned)]`
+*Cross-reference: [BIR Kernel-Inst Nodes](../bir/kernel-inst-nodes.md) (Part 7, planned).*
 
 ### The registry's contents (proof of the IT54/IT56 boundary)
 
@@ -306,9 +308,9 @@ tiled_pf_transpose                       ← neuronxcc.private_nkl.transpose
 tiled_dve_transpose_10                   ← neuronxcc.private_nkl.transpose
 ```
 
-This is the *same* boundary as §2/§3, ground-truthed: the registry holds the kernels that need **re-tracing** (no precompiled-leaf BIR), and the IT54 path holds the kernels whose BIR **already exists** (model-fusion macros). `[CONFIRMED — all 13 keys present; `MLP`/`fused_mlp_isa_kernel` absent]`
+This is the *same* boundary as §2/§3, ground-truthed: the registry holds the kernels that need **re-tracing** (no precompiled-leaf BIR), and the IT54 path holds the kernels whose BIR **already exists** (model-fusion macros). All 13 keys are present; `MLP` and `fused_mlp_isa_kernel` are not.
 
-> **NOTE — two registry namespaces.** The production resize/select-and-scatter/conv2d/transpose leaves come from `neuronxcc.private_nkl.{resize,select_and_scatter,conv,transpose}` — a *sibling* of `nki._private_kernels`. Only the two `pbp_*experimental` conv2d variants and `blockwise_mm` come from `neuronxcc.nki._private_kernels.{conv,blockwise_mm}`. Both module-path namespaces are confirmed as strings in the binary. The build/resolve mechanics are the next page's subject. `[CONFIRMED]`
+> **NOTE — two registry namespaces.** The production resize/select-and-scatter/conv2d/transpose leaves come from `neuronxcc.private_nkl.{resize,select_and_scatter,conv,transpose}` — a *sibling* of `nki._private_kernels`. Only the two `pbp_*experimental` conv2d variants and `blockwise_mm` come from `neuronxcc.nki._private_kernels.{conv,blockwise_mm}`. Both module-path namespaces are confirmed as strings in the binary. The build/resolve mechanics are the next page's subject.
 
 ---
 
@@ -326,7 +328,7 @@ function codegenExternalNativeNkiKernel(self, inst):
     return node
 ```
 
-IT55 is the *legacy* trace-and-AOT-compile NKI form; IT56 (`InstNKIKLIRKernel`) is the new-frontend re-trace variant. The companion `codegenExternalNativeNkiKlirKernel` (#233) @ `0x137c40` is the external KLIR-path twin. These are out of scope for the model-fusion macros (which are all IT54), but they complete the three-sink picture: IT54 = library, IT55 = user external, IT56 = registry-traced internal. `[CONFIRMED — Opcode.NKIKernel + set_func* in #231 body]`
+IT55 is the *legacy* trace-and-AOT-compile NKI form; IT56 (`InstNKIKLIRKernel`) is the new-frontend re-trace variant. The companion `codegenExternalNativeNkiKlirKernel` (#233) @ `0x137c40` is the external KLIR-path twin. These are out of scope for the model-fusion macros (which are all IT54), but they complete the three-sink picture: IT54 = library, IT55 = user external, IT56 = registry-traced internal. *Anchors: `Opcode.NKIKernel` and the `set_func*` calls in the #231 body.*
 
 ---
 
@@ -353,7 +355,7 @@ function codegenBIRKernelAccess(node, operand, isOutput):
     restore_original_ap(operand)                      // un-do any temporary AP reshape
 ```
 
-This is the same access-type taxonomy the untiled (`addSeqAccess`) vs tiled-native (`addAP`) emitters specialize on. `[CONFIRMED — FullTensorAccess/NDimSubTensorAccess/TileAccess/OpaqueAccess + addSeqAccess/addBIRKernelNDimSubTensorAccess/addBIRKernelTileAccess/addOpaqueAP/restore_original_ap all present in the nested body]`
+This is the same access-type taxonomy the untiled (`addSeqAccess`) vs tiled-native (`addAP`) emitters specialize on. *All of `FullTensorAccess`, `NDimSubTensorAccess`, `TileAccess`, `OpaqueAccess`, `addSeqAccess`, `addBIRKernelNDimSubTensorAccess`, `addBIRKernelTileAccess`, `addOpaqueAP`, and `restore_original_ap` are present in the nested body.*
 
 ### The tile / sub-tensor AP builders
 
@@ -369,7 +371,7 @@ function addBIRKernelTileAccess(node, operand, isOutput):
     node.addArgumentOrOutput(ap, isOutput)          // reduce flag = may reduce along partition dim
 ```
 
-The tile-vs-sub-tensor split is *which* dim-iterator builds `addrs`; the `createAP → addArgumentOrOutput` tail is identical. `[CONFIRMED — createAP, addArgumentOrOutput, access_shape, partition_dim, reduce, access_elts_per_dim all present in #277]`
+The tile-vs-sub-tensor split is *which* dim-iterator builds `addrs`; the `createAP → addArgumentOrOutput` tail is identical. *`createAP`, `addArgumentOrOutput`, `access_shape`, `partition_dim`, `reduce`, and `access_elts_per_dim` are all present in #277.*
 
 ---
 
@@ -384,7 +386,7 @@ A reimplementer of the BIR-node side of macro lowering needs:
 5. **The bespoke-vs-generic split (both emit IT54).** A family gets a bespoke `codegen<Name>` when it reads a *named* attr set (and possibly a token-gen routing flag via `TKG_BS_SEQLEN_THRESHOLD`); everything else passes a generic `kernel_attrs` bag through `codegenBIRKernel`. The tiled twins differ only in `addAP` (pre-tiled) vs `addSeqAccess` (whole-tensor).
 6. **The IT56 carrier fields and two forms.** `klir_binary@+0xF0`, `kernel_format@+0x110` (`"bir"` ⇒ FORM B embedded BIR-JSON, else FORM A KLR-AST file), `nki_binary_version_identifier@+0x130`. Operands use `addOpaqueAP` (the kernel owns its internal tiling).
 
-> **What is not pinned here.** The Cython macro-op → `codegen<Name>` *dispatch* (which Inst type routes to which codegen) is a dynamic PyObject dispatch (vtable/dict), not a static call edge — the codegen identity is grounded by the `__pyx_n_s` name rosters + the mdef table, not a static jump (`STRONG`, standard for Cython). The registry build/resolve mechanics, the trace cache, and the beta2/beta3 trace leaves are the next page's subject. The downstream `InlineBIRKernel` / `lowerKernelInst` resolvers live in `libwalrus` and are covered by the Part-7 BIR pages.
+> **What is not pinned here.** The Cython macro-op → `codegen<Name>` *dispatch* (which Inst type routes to which codegen) is a dynamic PyObject dispatch (vtable/dict), not a static call edge — the codegen identity is grounded by the `__pyx_n_s` name rosters plus the mdef table rather than a static jump, which is standard for Cython. The registry build/resolve mechanics, the trace cache, and the beta2/beta3 trace leaves are the next page's subject. The downstream `InlineBIRKernel` / `lowerKernelInst` resolvers live in `libwalrus` and are covered by the Part-7 BIR pages.
 
 > **NOTE — verification caveats (carried from binary re-grep).** Two precision notes from re-disassembly: (1) `beta3` is *not* a standalone interned string in `BirCodeGenLoop` — only `beta2` is (at `0x1f8668`), consistent with `beta2` being the hardcoded `NKI_FRONTEND` default; `beta3` appears only inside the selector docstring. (2) The MLP attrs `skip_gate`/`act_fn` and the QKV `useTkgQKVKernel` are provable only from the `.asm` (the IDA decompiler's "local variable allocation has failed" on the large kernel functions drops some Cython interned-string loads from the C text); each was confirmed as an `__pyx_n_[su]_NAME` load inside the claimed function's disassembly.
 

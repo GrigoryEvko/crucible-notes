@@ -4,7 +4,7 @@
 
 ## Abstract
 
-A `*.neff` file is the single deliverable a neuronx_cc compilation produces: the packaged executable image a Neuron device loads. The natural assumption — and the one this part of the wiki inherited from an earlier survey — is that a NEFF is an **ELF**-style object container, with a magic number, an `e_type`, a section header table, and per-section `sh_offset`/`sh_size`/`sh_flags`. That assumption is **false in every particular**. There is no ELF header, no bespoke "NEFF" magic, and no section table anywhere in the file.
+A `*.neff` file is the single deliverable a neuronx_cc compilation produces: the packaged executable image a Neuron device loads. The natural assumption is that a NEFF is an **ELF**-style object container, with a magic number, an `e_type`, a section header table, and per-section `sh_offset`/`sh_size`/`sh_flags`. That assumption is **false in every particular**. There is no ELF header, no bespoke "NEFF" magic, and no section table anywhere in the file.
 
 A NEFF is a **libarchive PAX-format tar stream, gzip-wrapped by default**. Its "sections" are ordinary tar *members* — named files (`info.json`, `def.json`, `PE.bin`, `Pool.bin`, weight `.bin` blobs, protobuf `.dbg` files) copied verbatim from a build directory. Its "magic" is whatever the container layer puts first: the gzip member header `1f 8b` in the default compressed mode, or the tar `ustar` magic at byte `0x101` of the first member header in `--uncompressed` mode. The structured metadata that a reader might expect in a leading binary record — version, UUID, engine-present bitmap, feature mask — lives **inside** `info.json` (itself a tar member), assembled in-process and never written as a header at offset 0.
 
@@ -37,7 +37,9 @@ For reimplementation, the contract is:
 
 This is the headline, so it goes first and is made airtight before anything else is described.
 
-> **CORRECTION (S2-10 §4a) —** The earlier "NEFF *ELF* container byte-layout" framing — `e_ident`/`e_type`/`e_machine`, a section header table, `sh_type`/`sh_flags`/`sh_offset`, an "Invalid magic" check — rests on a false premise. A NEFF has **none** of these. It is a libarchive PAX tar (gzip by default). The one string that looked like a container magic check, `"invalid BOM; must be 0xEF 0xBB 0xBF if given"`, is the **nlohmann::json UTF-8 byte-order-mark lexer** rejecting a malformed JSON BOM on a *sidecar member* — it is neither the NEFF Bill-Of-Materials nor a container magic. The two distinct things both called "BOM" are disentangled in [§5](#5-the-two-boms).
+A NEFF is a libarchive PAX tar, gzip-filtered by default. It has no `e_ident`, no `e_type`/`e_machine`, no section header table, no `sh_type`/`sh_flags`/`sh_offset`, and no magic check at offset 0.
+
+> **GOTCHA — the one string that looks like a container magic check is a JSON lexer message.** `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` comes from the **nlohmann::json UTF-8 byte-order-mark lexer** rejecting a malformed BOM at the head of a *sidecar JSON member*. It is neither the NEFF Bill-Of-Materials nor a container magic. The two unrelated things called "BOM" are disentangled in [§5](#5-the-two-boms).
 
 ### What an ELF would require, and why none of it is present
 
@@ -48,7 +50,7 @@ PROOF 1 — the WRITER calls libarchive, and there is no ELF emitter.
   nm -D libwalrus.so | rg archive_         → 20 symbols (full PAX tar API, see §3)
   nm -DC libwalrus.so | rg -i \
     'Elf_Ehdr|Elf_Shdr|MCObjectWriter|MachO|COFF|e_shoff|writeELF|emitELF'
-                                            → 0 hits   [CONFIRMED, this session]
+                                            → 0 hits
 
 PROOF 2 — the CLI vocabulary is a tar's, not an ELF's.
   strings -a libwalrus.so | rg 'file.neff archive'
@@ -61,12 +63,12 @@ PROOF 3 — the CONSUMER parses no header (see §7).
    — no `struct`, no `tarfile`, no `.seek()`, no magic. It open()s members by NAME.
 ```
 
-> **GOTCHA —** a substring grep for ELF section fields gives false positives, so verify the hits, never the count. `nm -DC libwalrus.so | rg -i 'sh_offset|elf'` returns 15 symbols — **all 15** are DMA dynamic-offset routines (`handle64BitStaticOffset`, `setStaticOffsetPortion`, `calcOffsets`…) where the regex matched `…StaticOffset…`/`…SetOffset…`. None is an ELF emitter. The precise patterns (`Elf_Ehdr`, `Elf_Shdr`, `MCObjectWriter`, `e_shoff`, `writeELF`) return **zero**. The no-ELF-writer claim survives the adversarial check. [CONFIRMED]
+> **GOTCHA —** a substring grep for ELF section fields gives false positives, so verify the hits, never the count. `nm -DC libwalrus.so | rg -i 'sh_offset|elf'` returns 15 symbols — **all 15** are DMA dynamic-offset routines (`handle64BitStaticOffset`, `setStaticOffsetPortion`, `calcOffsets`…) where the regex matched `…StaticOffset…`/`…SetOffset…`. None is an ELF emitter. The precise patterns (`Elf_Ehdr`, `Elf_Shdr`, `MCObjectWriter`, `e_shoff`, `writeELF`) return **zero**. The no-ELF-writer claim survives the adversarial check.
 
 ### The byte at offset 0
 
 ```text
-default (gzip):   1f 8b 08 …            gzip member header (RFC 1952)   [filter CONFIRMED in binary]
+default (gzip):   1f 8b 08 …            gzip member header (RFC 1952)   [filter present in binary]
 --uncompressed:   <tar member header>   ustar\0 ASCII at header byte 0x101
 NEVER:            7f 45 4c 46           ELF magic — absent
 NEVER:            4e 45 46 46 ("NEFF")  no bespoke container tag at offset 0
@@ -116,14 +118,14 @@ NeffPackager::run(vector<unique_ptr<Module>>&)          @ 0x15307e0   (pass "nef
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `NeffPackager::run` | `0x15307e0` | Driver; one `bir::Module` per virtual NeuronCore | CONFIRMED |
-| `NeffPackager::writePackageFile` | `0x15200e0` | BOM assembler; iterates module vector | CONFIRMED |
-| `NeffFileWriter::writeFile` | `0x1541040` | Top-level write driver | CONFIRMED |
-| `NeffFileWriter::initializeNeffHeader` | `0x1540a00` | Builds `neff_header` POD on the stack | CONFIRMED |
-| `NeffFileWriter::writeArchiveFile` | `0x153df90` | **The libarchive PAX+gzip writer** | CONFIRMED |
-| `NeffFileWriter::addToBom` | `0x153fb80` | Upserts one `path → member-name` BOM entry | CONFIRMED |
-| `NeffFileWriter::findInfoJson` | `0x153ca20` | Resolves `<baseDir>/info.json` | CONFIRMED |
-| `NeffFileWriter::computeOutputPath` | `0x153c7a0` | Output path composition | CONFIRMED |
+| `NeffPackager::run` | `0x15307e0` | Driver; one `bir::Module` per virtual NeuronCore | CERTAIN |
+| `NeffPackager::writePackageFile` | `0x15200e0` | BOM assembler; iterates module vector | CERTAIN |
+| `NeffFileWriter::writeFile` | `0x1541040` | Top-level write driver | CERTAIN |
+| `NeffFileWriter::initializeNeffHeader` | `0x1540a00` | Builds `neff_header` POD on the stack | CERTAIN |
+| `NeffFileWriter::writeArchiveFile` | `0x153df90` | **The libarchive PAX+gzip writer** | CERTAIN |
+| `NeffFileWriter::addToBom` | `0x153fb80` | Upserts one `path → member-name` BOM entry | CERTAIN |
+| `NeffFileWriter::findInfoJson` | `0x153ca20` | Resolves `<baseDir>/info.json` | CERTAIN |
+| `NeffFileWriter::computeOutputPath` | `0x153c7a0` | Output path composition | CERTAIN |
 
 > **NOTE —** the `0x153df90` entry above is the true function start (where `archive_write_new` → `archive_write_set_format_pax` → `archive_write_open` are called). D-S01 cites `0x153e030`, which is the per-member loop body, ~0xa0 bytes into the function. Both are correct frames of the same routine; this page anchors the *setup* to the entry and the *loop body* to `0x153e030+`. (Two-VA-frame: the `archive_*@plt` thunk addresses are a distinct frame again — see [§3](#3-the-write-path).)
 
@@ -185,17 +187,17 @@ Every nondeterministic field a tar normally carries is pinned to a constant:
 
 | Field | Value | Mechanism | Confidence |
 |---|---|---|---|
-| owner / group name | `"nobody"` | `archive_entry_set_uname`/`set_gname` @ `0x153e09a`/`0x153e0a9` | CONFIRMED |
-| mtime / ctime / atime | `0` | `archive_entry_set_mtime`/`ctime`/`atime` @ `0x153e0b5`–`0x153e0cd` | CONFIRMED |
-| gzip mtime stamp | suppressed | `set_filter_option(gzip, "timestamp", "false")` @ `0x153f166` | CONFIRMED |
-| gzip level | `1` | `set_filter_option(gzip, "compression-level", "1")` @ `0x153f14d` | CONFIRMED |
-| member order | path-sorted | BOM is a `std::map`, iterated in key order — not insertion order | CONFIRMED |
+| owner / group name | `"nobody"` | `archive_entry_set_uname`/`set_gname` @ `0x153e09a`/`0x153e0a9` | CERTAIN |
+| mtime / ctime / atime | `0` | `archive_entry_set_mtime`/`ctime`/`atime` @ `0x153e0b5`–`0x153e0cd` | CERTAIN |
+| gzip mtime stamp | suppressed | `set_filter_option(gzip, "timestamp", "false")` @ `0x153f166` | CERTAIN |
+| gzip level | `1` | `set_filter_option(gzip, "compression-level", "1")` @ `0x153f14d` | CERTAIN |
+| member order | path-sorted | BOM is a `std::map`, iterated in key order — not insertion order | CERTAIN |
 
 > **QUIRK —** member order is **`std::map` key order over absolute on-disk source paths**, *not* `addToBom` call order. A reimplementer who tars members in insertion order produces a different byte stream and breaks the IR-signature comparison. The BOM key is the source path; the value is the in-tar member name. (The two are usually different — e.g. key `…/nc0/sg00/sgLnk/PE.bin`, member name `PE.bin`.)
 
 ### Member alignment
 
-libarchive's PAX writer pads each member's data to a **512-byte tar record** boundary, and uses a 10240-byte default blocking factor. `writeArchiveFile` imposes no extra alignment: `nm -D libwalrus.so | rg 'set_bytes_per_block'` returns **zero**, so no override is present and the libarchive defaults stand. The 512-byte record is the only on-NEFF alignment of a member; the *logical* in-DRAM tensor alignment (`const_ap_offset`) is a separate concern computed by `getAlignmentSize` @ `0x1091890`, unrelated to the tar padding. [CONFIRMED]
+libarchive's PAX writer pads each member's data to a **512-byte tar record** boundary, and uses a 10240-byte default blocking factor. `writeArchiveFile` imposes no extra alignment: `nm -D libwalrus.so | rg 'set_bytes_per_block'` returns **zero**, so no override is present and the libarchive defaults stand. The 512-byte record is the only on-NEFF alignment of a member; the *logical* in-DRAM tensor alignment (`const_ap_offset`) is a separate concern computed by `getAlignmentSize` @ `0x1091890`, unrelated to the tar padding.
 
 ---
 
@@ -234,9 +236,9 @@ The single most error-prone point. Two spellings of each engine live at differen
 - **On-disk `.bin`/`.json` basenames** use `bir::EngineInfo2string` = TitleCase: `PE`, `Pool`, `Activation`, `SP`, `DVE`. The shipped analyzer opens exactly these ([§7](#7-the-consumer-proof)).
 - **`def.json` `"definition"` key tokens** use the NEFF-local formatter `sub_15248C0` (a standalone engine→string function, called by `writeDefJson`/`writeDMAQueueDefinitions`) = lowercase: `1→"pool"`, `2→"act"`, `3→"pe"`, `4→"dma"`, `5→"dve"`, `6→"sp"`, suffixed `_instr`/`_dbg`/`_asm_dbg`.
 
-So `def.json["definition"]["pe"]["_instr"] == "PE.bin"`; the BOM maps the on-disk `…/PE.bin` path → the in-tar member name. `dma`(4) is a `def.json` token but has **no** `.bin` of its own — DMA descriptors fold into the issuing compute engine's stream. [CONFIRMED — analyzer confirms the TitleCase set; the lowercase map is byte-proven from the jump table in `sub_15248C0` (see CORRECTION below).]
+So `def.json["definition"]["pe"]["_instr"] == "PE.bin"`; the BOM maps the on-disk `…/PE.bin` path → the in-tar member name. `dma`(4) is a `def.json` token but has **no** `.bin` of its own — DMA descriptors fold into the issuing compute engine's stream. The analyzer supplies the TitleCase set; the lowercase map comes from the jump table in `sub_15248C0` (see the note below).
 
-> **CORRECTION (M1 — formatter grounding) —** an earlier note tied this map to `sub_15248C0` as if it were a block of standalone `\0pool\0`/`\0act\0`/`\0dve\0` string literals, and a separate survey misread `sub_15248C0` as sitting *inside* `NeffPackager::findRemoteSBVars`. Both are corrected here. (a) `sub_15248C0` (range `0x15248c0–0x1524d03`) is its **own** function, adjacent to but not part of `findRemoteSBVars` (`0x15244d0–0x1524884`). (b) The six tokens are **not** standalone strings — none of `pool`/`act`/`pe`/`dma`/`dve`/`sp` exists as a `\0token\0` literal in `libwalrus.so`. The map is instead produced by a **switch jump table** at `0x15248f1`: each case loads a token via a substring `lea` into a longer string — case 1 `"pool"`, case 2 `"act"` (offset into a longer name), case 3 `"pe"` (= `"Bad Shape"+7`), case 4 `"dma"` (tail of `enableRemoteSemaphoreDMA`), case 5 `"dve"` (`SyncPoolDve+0xa`), case 6 `"sp"` (= `"Ssp"+1`). The `{1→pool … 6→sp}` mapping is therefore **byte-proven from the jump table**, not from token literals. `[CONFIRMED — jump table @ 0x15248f1 with per-case substring leas resolved.]`
+> **GOTCHA — the six engine tokens are not string literals; grepping for them fails.** None of `pool`/`act`/`pe`/`dma`/`dve`/`sp` exists as a `\0token\0` literal in `libwalrus.so`. The map comes from a **switch jump table** at `0x15248f1`, where each case loads its token as a substring `lea` into a longer string: case 1 `"pool"`, case 2 `"act"` (an offset into a longer name), case 3 `"pe"` (= `"Bad Shape"+7`), case 4 `"dma"` (the tail of `enableRemoteSemaphoreDMA`), case 5 `"dve"` (`SyncPoolDve+0xa`), case 6 `"sp"` (= `"Ssp"+1`). Note also that `sub_15248C0` (range `0x15248c0`–`0x1524d03`) is its own function, adjacent to but not part of `findRemoteSBVars` (`0x15244d0`–`0x1524884`).
 
 ### Per-core directory tree
 
@@ -263,14 +265,16 @@ Members come from a per-core build directory; the paths become the BOM keys.
 
 ## 5. The Two BOMs
 
-There are two unrelated things called "BOM" in this codebase, and conflating them is what produced the original "ELF magic" misreading.
+There are two unrelated things called "BOM" in this codebase, and conflating them is what makes a NEFF look like an object file with a magic number.
 
-1. **The NEFF BOM** — `NeffFileWriter`'s `std::map<boost::filesystem::path, std::string>` @ `writer+144`. Key = absolute on-disk source path; value = in-tar member name. Built one entry at a time by `addToBom` @ `0x153fb80`, iterated in key order by `writeArchiveFile` to drive the tar. **This is the "section index" of a NEFF** — an in-memory manifest, not an on-disk record, and not an ELF section header table. Dumped at LogLevel 10 between the literals `The NeffPacakger BOM:` … per-entry … `End of NeffPacakger BOM` (the `Pacakger` typo is in the binary). [CONFIRMED — both literals present]
-2. **The "0xEF 0xBB 0xBF" BOM** — the nlohmann::json **UTF-8 byte-order-mark**. The string `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` is the JSON lexer rejecting a malformed BOM at the head of a *sidecar JSON member*. It has nothing to do with the NEFF container or with the manifest above. [CONFIRMED — live string]
+1. **The NEFF BOM** — `NeffFileWriter`'s `std::map<boost::filesystem::path, std::string>` @ `writer+144`. Key = absolute on-disk source path; value = in-tar member name. Built one entry at a time by `addToBom` @ `0x153fb80`, iterated in key order by `writeArchiveFile` to drive the tar. **This is the "section index" of a NEFF** — an in-memory manifest, not an on-disk record, and not an ELF section header table. Dumped at LogLevel 10 between the literals `The NeffPacakger BOM:` … per-entry … `End of NeffPacakger BOM` (the `Pacakger` typo is in the binary; both literals are present).
+2. **The "0xEF 0xBB 0xBF" BOM** — the nlohmann::json **UTF-8 byte-order-mark**. The string `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` is the JSON lexer rejecting a malformed BOM at the head of a *sidecar JSON member*. It has nothing to do with the NEFF container or with the manifest above.
 
 The IR-signature subset (`writer+216`) is a third set: the BOM entries whose bytes feed the MD5.
 
-> **CORRECTION (Part-12 reconcile) —** the membership predicate is **byte-proven**, not opaque. 12.4 ([Per-Engine `.bin`](per-engine-bin.md)) and 12.2 ([NEFF header + BOM writer](neff-header-bom-writer.md)) resolve it directly in `addToBom`: a member enters the IR-sig set iff its on-disk basename **equals `".npy"`** (`string::compare==0` @ `0x153fc6f`) **or contains `".dbg"`** (`string::find` @ `0x153fc9b`), plus the constructor pre-seed `"info.json"`. So the signed set is exactly `{info.json} ∪ {*.dbg} ∪ {*.npy}` — the per-engine `.bin` instruction streams and the `<const>.bin` blobs are **not** signed (the roster above is corrected to match). The signature certifies debug-info + weights + header, not the program code.
+The membership predicate is explicit in `addToBom`: a member enters the IR-signature set iff its on-disk basename **equals `".npy"`** (`string::compare==0` @ `0x153fc6f`) **or contains `".dbg"`** (`string::find` @ `0x153fc9b`), on top of the constructor's `"info.json"` pre-seed. The signed set is therefore exactly `{info.json} ∪ {*.dbg} ∪ {*.npy}`.
+
+> **GOTCHA — the signature does not cover the program code.** Neither the per-engine `.bin` instruction streams nor the `<const>.bin` blobs are signed. The IR signature certifies debug info, weights, and the header — not the instructions. See 12.4 ([Per-Engine `.bin`](per-engine-bin.md)) and 12.2 ([NEFF header + BOM writer](neff-header-bom-writer.md)).
 
 ---
 
@@ -282,14 +286,14 @@ The IR-signature subset (`writer+216`) is a third set: the BOM entries whose byt
 
 | Offset | Field | Value / source | Confidence |
 |---|---|---|---|
-| `+0` | NEFF format version | `2` (rodata OWORD; `0200000000000000`) | CONFIRMED |
-| `+8` | region / header size | `0x400` (1024) | CONFIRMED |
-| `+192` | feature flags | 64-bit mask (`writeNEFFFeatures` @ `0x15294b0`) | CONFIRMED |
-| `+204` | UUID | 16-byte RFC-4122 **v4** | CONFIRMED |
-| `+220` | filename | `"file.neff"` (override path) or `info.json` value | CONFIRMED |
-| `+480` | engine-present bitmap | one byte/engine slot, from `info.json` bool array | CONFIRMED |
+| `+0` | NEFF format version | `2` (rodata OWORD; `0200000000000000`) | CERTAIN |
+| `+8` | region / header size | `0x400` (1024) | CERTAIN |
+| `+192` | feature flags | 64-bit mask (`writeNEFFFeatures` @ `0x15294b0`) | CERTAIN |
+| `+204` | UUID | 16-byte RFC-4122 **v4** | CERTAIN |
+| `+220` | filename | `"file.neff"` (override path) or `info.json` value | CERTAIN |
+| `+480` | engine-present bitmap | one byte/engine slot, from `info.json` bool array | CERTAIN |
 
-The override branch (`internalOverride`, the single-output `file.neff` fast path) sets filename `file.neff`, major=1, minor=1, zeroes the engine array, and skips `info.json`. The `"file.neff"` literal is emitted as `movabs 0x66656e2e656c6966` (`"file.nef"`) + `'f'`. [CONFIRMED]
+The override branch (`internalOverride`, the single-output `file.neff` fast path) sets filename `file.neff`, major=1, minor=1, zeroes the engine array, and skips `info.json`. The `"file.neff"` literal is emitted as `movabs 0x66656e2e656c6966` (`"file.nef"`) plus `'f'`.
 
 > **NOTE —** the `def.json` schema string `"0.6"` and the `neff.json` schema string `"0.5"` are *JSON-member* schema versions, distinct from the binary `neff_header` version `2`. Three independent version numbers; do not collapse them.
 
@@ -309,7 +313,7 @@ function fill_uuid(uuid[16]):
     uuid[8] = (uuid[8] & 0x3F) | 0x80     // variant bits    → 10xx (RFC-4122)
 ```
 
-The `"expand 32-byte k"` constant is the ChaCha/Salsa20 sigma — its presence is a binary-confirmed fingerprint of a ChaCha20 keystream generator feeding the UUID. The masking (`&0x0F|0x40`, `&0x3F|0x80`) is the standard RFC-4122-v4 version/variant stamp. [CONFIRMED — string present; STRONG on the ChaCha20→UUID wiring, which is inferred from the sigma constant co-located with the header builder]
+The `"expand 32-byte k"` constant is the ChaCha/Salsa20 sigma — its presence is a binary-confirmed fingerprint of a ChaCha20 keystream generator feeding the UUID. The masking (`&0x0F|0x40`, `&0x3F|0x80`) is the standard RFC-4122-v4 version/variant stamp. The sigma string is present in the binary; the ChaCha20→UUID wiring itself is [INFERRED] from that constant being co-located with the header builder.
 
 ---
 
@@ -345,7 +349,7 @@ for engine in ['Pool', 'SP', 'DVE', 'PE', 'Activation']:
     file_size = os.stat(f'{prefix}/{engine}.bin').st_size   # line 75 — os.stat, no read/seek
 ```
 
-`analyzeTmpBuf` likewise `json.load`s `def.json` and walks `data['var']` / `data['dma']`. There is **no** magic check, **no** version check, **no** `struct`/`seek`/`unpack` anywhere in the 502-line file. A consumer that needed an ELF would read `e_shoff`/`sh_offset`; this one `open()`s files. That is the behavioural signature of a tar/directory, and it is the cleanest proof on the page that a NEFF is not an object file. [CONFIRMED — full read, md5-pinned]
+`analyzeTmpBuf` likewise `json.load`s `def.json` and walks `data['var']` / `data['dma']`. There is **no** magic check, **no** version check, **no** `struct`/`seek`/`unpack` anywhere in the 502-line file. A consumer that needed an ELF would read `e_shoff`/`sh_offset`; this one `open()`s files. That is the behavioural signature of a tar or directory, and it is the cleanest proof on the page that a NEFF is not an object file.
 
 ---
 
@@ -406,10 +410,11 @@ xxd model.neff | head                   # leading = gzip 1f 8b, OR (uncompressed
 
 What this page can and cannot stand behind, honestly:
 
-- **CONFIRMED, this session, on the cp310 binary** (the frame this page is pinned to): the full libarchive PAX+gzip API (20 `archive_*` symbols); zero ELF-writer symbols (the 15 substring hits are all `StaticOffset` DMA false positives); the `archive_write_new`/`set_format_pax`/`open` setup sequence and the per-member `set_uname`/`gname`/`mtime`/`ctime`/`atime` + `add_filter_gzip` + two `set_filter_option` call sites at the cited addresses; the `"nobody"`, `"expand 32-byte k"`, `"file.neff archive"`, `"The NeffPacakger BOM:"`, and `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` strings; the absence of any `set_bytes_per_block` override; the analyzer's import set and by-name member opens (md5-pinned).
-- **CONFIRMED (byte-proven elsewhere in Part 12)**: the IR-signature member-subset predicate (`writer+216`) — resolved on the `addToBom` disasm by 12.2/12.4 as `{info.json} ∪ {*.dbg} ∪ {*.npy}` (`.npy`-equals @ `0x153fc6f`, `.dbg`-contains @ `0x153fc9b`); the `.bin` streams are excluded. **STRONG, not byte-proven**: the ChaCha20-keystream→UUID wiring (the sigma constant is confirmed and co-located with the header builder, but the keystream-to-`uuid[16]` copy was not single-stepped).
-- **INFERRED / deferred**: the exact `info.json` key names feeding header fields `+168`/`+476`/`+480` (nlohmann `operator[]` inlined — deferred to 12.2/12.3); the gzip member byte `1f 8b` and the tar `ustar`@`0x101` layout are RFC/POSIX spec facts, not literals stored in the binary (the gzip *filter* is binary-confirmed).
-- **CORRECTION (frame banner) — addresses are the cp310 frame.** An earlier revision of this page declared a cp312 banner while citing cp310 body addresses throughout (`addToBom@0x153fb80`, the `.npy`/`.dbg` predicate at `0x153fc6f`/`0x153fc9b`, the method table). That was self-contradictory: the cp310/cp312 wheels **share** `.text`/`.rodata` bases but their function *bodies* differ by a per-wheel delta (~`0xa0`), so a cp312 banner over cp310 body addresses cannot be objdump-verified on either binary. The banner is now pinned to **cp310**, matching the cited disassembly and the seven sibling Part-12 pages. The one stray cp312 datum — the `expand 32-byte k` seed at `0x1dd5ed0` — has been corrected to the cp310 address `0x1dd7910` (the cp312 wheel keeps it at `0x1dd5ed0`). The `@plt` thunk addresses form a third VA frame distinct from the `.dynsym` `U` entries and the function-body addresses.
+- **Read directly off the cp310 binary** (the frame this page is pinned to): the full libarchive PAX+gzip API (20 `archive_*` symbols); zero ELF-writer symbols (the 15 substring hits are all `StaticOffset` DMA false positives); the `archive_write_new`/`set_format_pax`/`open` setup sequence and the per-member `set_uname`/`gname`/`mtime`/`ctime`/`atime` + `add_filter_gzip` + two `set_filter_option` call sites at the cited addresses; the `"nobody"`, `"expand 32-byte k"`, `"file.neff archive"`, `"The NeffPacakger BOM:"`, and `"invalid BOM; must be 0xEF 0xBB 0xBF if given"` strings; the absence of any `set_bytes_per_block` override; the analyzer's import set and by-name member opens (md5-pinned).
+- **Pinned on the `addToBom` disassembly in the sibling Part-12 pages**: the IR-signature member-subset predicate (`writer+216`), resolved as `{info.json} ∪ {*.dbg} ∪ {*.npy}` (`.npy`-equals @ `0x153fc6f`, `.dbg`-contains @ `0x153fc9b`), with the `.bin` streams excluded.
+- **Argued rather than byte-walked**: the ChaCha20-keystream→UUID wiring. The sigma constant is present and co-located with the header builder, but the keystream-to-`uuid[16]` copy was not single-stepped.
+- **[INFERRED] or deferred**: the exact `info.json` key names feeding header fields `+168`/`+476`/`+480`, where nlohmann's `operator[]` is inlined — deferred to 12.2/12.3. The gzip member byte `1f 8b` and the tar `ustar` at `0x101` are RFC/POSIX spec facts rather than literals stored in the binary, though the gzip *filter* itself is present.
+- **Three VA frames coexist here, and mixing them is the standard trap.** Every address on this page is the **cp310** frame. The cp310 and cp312 wheels share `.text`/`.rodata` bases, but their function *bodies* differ by a per-wheel delta of roughly `0xa0`, so a cp312 address will not objdump-verify against a cp310 body. The `expand 32-byte k` seed, for instance, is at `0x1dd7910` on cp310 and `0x1dd5ed0` on cp312. Separately, the `@plt` thunk addresses form a third frame, distinct from both the `.dynsym` `U` entries and the function-body addresses.
 
 ---
 

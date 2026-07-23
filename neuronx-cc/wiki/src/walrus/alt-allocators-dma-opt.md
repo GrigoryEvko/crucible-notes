@@ -10,7 +10,7 @@ The walrus backend has one *principal* tensor allocator — the Chaitin–Briggs
 2. **`LinearScanAllocator` + `BestFitMemoryManager`** — an *alternative memory allocator* selected by `--allocator=lsa` or forced at optlevel 8. It scans live intervals once in program order, expires dead intervals, and delegates concrete 2-D placement to a best-fit free-list manager — faster and lower-quality than the colorer, single-core only.
 3. **`dma_optimization_{psum,sb}`** — two instances of one `DMAOptimization` pass that run *after* the allocator has bound tensors to physical addresses and inserted spill/reload DMAs. They perform three peephole families on real addresses: **coalescing** (merge abutting DMAs into one descriptor), **partial-DMA** (shrink an over-broad DMA to the used sub-range), and **redundant-removal** (drop a load whose data is already resident).
 
-> **CORRECTION (K11) —** the "optlevel-7 SMT allocation" is **not** a Z3/SMT solver. `nm -D libwalrus.so` shows **zero** `Z3_*` / `CVC` / `Yices` symbols and **zero** `__gmp*` call sites; `libgmp` is a transitive NEEDED dependency but is never reached by any allocation path. `--smt-allocation` is an `llvm::cl::opt<bool>` ("Doing smt allocation") that merely forces `optlevel = 7`, whose pipeline is built from the *same* family-(a) `coloring_allocator_{dram,dram_shared,sb}` passes — a reordered graph-coloring pipeline plus an in-place re-verification (`Unroll::check_in_place`), no objective and no UNSAT path. The whole "solver / optimal allocation / timeout fallback" framing is FALSIFIED for this build. See [§4](#optlevel-7-smt-allocation--not-a-solver).
+> **GOTCHA — "SMT allocation" involves no solver.** Despite the name, optlevel-7 allocation is not Z3 or any other SMT engine: `nm -D libwalrus.so` shows zero `Z3_*` / `CVC` / `Yices` symbols and zero `__gmp*` call sites, and although `libgmp` is a transitive NEEDED dependency, no allocation path reaches it. `--smt-allocation` is an `llvm::cl::opt<bool>` ("Doing smt allocation") that merely forces `optlevel = 7`, whose pipeline is built from the *same* family-(a) `coloring_allocator_{dram,dram_shared,sb}` passes — a reordered graph-coloring pipeline plus an in-place re-verification (`Unroll::check_in_place`). There is no objective function and no UNSAT path. See [§4](#optlevel-7-smt-allocation--not-a-solver).
 
 For reimplementation, the contract is:
 
@@ -66,12 +66,12 @@ function dispatch(PassOptions& po):
 
 | CLI | optlevel | SBUF/PSUM allocator | DRAM | REG (always) | Confidence |
 |---|---|---|---|---|---|
-| `--optlevel 0` | 0 | minimal / reservation | `coloring_*` | `coloring_allocator_reg` | CONFIRMED |
-| `--optlevel 1/2/3` | 1/2/3 | `coloring_allocator_{psum,sb}` | `coloring_*` | `coloring_allocator_reg` | CONFIRMED |
-| `--optlevel 6` (or `--optlevel 2` + `loopsInBackend`) | 6 | `coloring_allocator_with_loop` | `coloring_*` | `coloring_allocator_reg` | CONFIRMED |
-| opt6 + `--allocator=lsa` | 6 | `linear_scan_allocator` (+`coloring_sb`) | `coloring_*` | `coloring_allocator_reg` | CONFIRMED |
-| `--smt-allocation` | 7 | `coloring_allocator_{dram,sb}` (reordered) | `coloring_*` | `coloring_allocator_reg` | CONFIRMED |
-| `--optlevel 8` | 8 | `linear_scan_allocator` (SOLE) | `coloring_dram_debug` | `coloring_allocator_reg` | CONFIRMED |
+| `--optlevel 0` | 0 | minimal / reservation | `coloring_*` | `coloring_allocator_reg` | CERTAIN |
+| `--optlevel 1/2/3` | 1/2/3 | `coloring_allocator_{psum,sb}` | `coloring_*` | `coloring_allocator_reg` | CERTAIN |
+| `--optlevel 6` (or `--optlevel 2` + `loopsInBackend`) | 6 | `coloring_allocator_with_loop` | `coloring_*` | `coloring_allocator_reg` | CERTAIN |
+| opt6 + `--allocator=lsa` | 6 | `linear_scan_allocator` (+`coloring_sb`) | `coloring_*` | `coloring_allocator_reg` | CERTAIN |
+| `--smt-allocation` | 7 | `coloring_allocator_{dram,sb}` (reordered) | `coloring_*` | `coloring_allocator_reg` | CERTAIN |
+| `--optlevel 8` | 8 | `linear_scan_allocator` (SOLE) | `coloring_dram_debug` | `coloring_allocator_reg` | CERTAIN |
 
 > **QUIRK — `REG_Allocator` is optlevel-independent.** Every row spells the same final column. The register colorer cannot be swapped out by an optlevel because scalar SP-engine registers do not *exist* until `lower_branch`/`lower_sync`/`lower_ap` have expanded control flow into sequencer machine instructions. So `coloring_allocator_reg` lives in the *always-run* `sub_805870` pipeline (L33), after machine lowering and before `codegen`, regardless of which memory allocator ran upstream.
 
@@ -131,7 +131,7 @@ function REG_allocate(Function* fn):                          // banner "  alloc
     //          "<pct>% REG utilization after allocation"
 ```
 
-> **QUIRK — one scored color, not best-of-N.** The SBUF colorer runs a *heuristic sweep* and keeps the best of several scored colorings (the "best-of-N" reading corrected in [`allocator-drivers`](allocator-drivers.md#the-spill-fixpoint--best-of-n-is-a-correction)). REG does **not**: `select` `@0x9b9de0` produces a *single* `double` score ("REG score … lower is better"), and the outer counter ("REG GCA interation nums") is the spill-reinsert **fixpoint**, not an enumeration of alternative colorings. A reimplementer who copies the 2-D sweep into the scalar colorer will add iterations that this colorer never runs. [CONFIRMED/STRONG]
+> **QUIRK — one scored color, not best-of-N.** The SBUF colorer runs a *heuristic sweep* and keeps the best of several scored colorings (the "best-of-N" reading corrected in [`allocator-drivers`](allocator-drivers.md#the-spill-fixpoint--best-of-n-is-a-correction)). REG does **not**: `select` `@0x9b9de0` produces a *single* `double` score ("REG score … lower is better"), and the outer counter ("REG GCA interation nums") is the spill-reinsert **fixpoint**, not an enumeration of alternative colorings. A reimplementer who copies the 2-D sweep into the scalar colorer will add iterations that this colorer never runs.
 
 ### The spill target — registers spill to memory
 
@@ -146,32 +146,32 @@ function insert_spill_code(insts, spilled, info):
         rewrite each use of r  → reload slot → r  (+ bir::sync::Wait)
 ```
 
-> **GOTCHA — a spilled register becomes a `MemoryLocation`, not a stack frame.** The spill map is `DenseMap<bir::Register*, bir::MemoryLocation*>`: a scalar register that cannot be colored is materialized into SBUF/local store and reloaded around each use, with `bir::sync::Wait` instructions threaded in so the spill stores/loads are ordered against the SP engine's sequencer. There is no spill stack and no register-window. This is the inverse direction of an LSA memory spill (which goes the other way, memory → smaller-footprint memory, §3.4). [CONFIRMED]
+> **GOTCHA — a spilled register becomes a `MemoryLocation`, not a stack frame.** The spill map is `DenseMap<bir::Register*, bir::MemoryLocation*>`: a scalar register that cannot be colored is materialized into SBUF/local store and reloaded around each use, with `bir::sync::Wait` instructions threaded in so the spill stores/loads are ordered against the SP engine's sequencer. There is no spill stack and no register-window. This is the inverse direction of an LSA memory spill, which goes the other way — memory to smaller-footprint memory (§3.4).
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `RepT<REG_Allocator>::allocateImpl` | `0x98b010` | builds stack colorer, calls `allocate` | CONFIRMED |
-| `REG_Allocator::allocate(Function*)` | `0x9cbaf0` | the per-function spill fixpoint driver | CONFIRMED |
-| `build_ssa_representative` | `0x9ce0b0` | SSA value-numbering of registers | CONFIRMED |
-| `renumber_locations` | `0x9c8580` | assigns location id = `numPhysicalRegs` (+396) | CONFIRMED |
-| `recordFirstDefLastUse` | `0x9c8e10` | per-register live-range endpoints | CONFIRMED |
-| `live_range` | `0x9b5930` | recompute live ranges | CONFIRMED |
-| `coalesce_ssa_live_range` | `0x9cead0` | SSA-copy coalescing (`getRepresentative @0x9c73e0`) | CONFIRMED |
-| `build` | `0x9af510` | interference graph (`SparseSet`, Universe=#regs) | CONFIRMED |
-| `find_costs` | `0x9b2130` | spill cost (`+= numPhysicalRegs` per def) | CONFIRMED |
-| `simplify` | `0x9bc880` | Briggs simplify / optimistic stack push | CONFIRMED |
-| `select` | `0x9b9de0` | single-score color assignment | CONFIRMED |
-| `insert_spill_code` | `0x9c10d0` | reg → `MemoryLocation` spill (`DenseMap`) | CONFIRMED |
-| `propagate_coalesced_ssa_allocation` | `0x9cef00` | push color through coalesced copies | CONFIRMED |
-| `linearize(Function*)` | `0x9ca0e0` | flattens BBs to one interference scope | CONFIRMED |
-| `candidate(MemoryLocation&)` | `0x9cda10` | `return 0;` stub (no MemLoc candidates) | CONFIRMED |
-| `get_defs_reg` / `get_uses_reg` | `0x986710` / `0x988370` | register use-def edge harvest | CONFIRMED |
+| `RepT<REG_Allocator>::allocateImpl` | `0x98b010` | builds stack colorer, calls `allocate` | CERTAIN |
+| `REG_Allocator::allocate(Function*)` | `0x9cbaf0` | the per-function spill fixpoint driver | CERTAIN |
+| `build_ssa_representative` | `0x9ce0b0` | SSA value-numbering of registers | CERTAIN |
+| `renumber_locations` | `0x9c8580` | assigns location id = `numPhysicalRegs` (+396) | CERTAIN |
+| `recordFirstDefLastUse` | `0x9c8e10` | per-register live-range endpoints | CERTAIN |
+| `live_range` | `0x9b5930` | recompute live ranges | CERTAIN |
+| `coalesce_ssa_live_range` | `0x9cead0` | SSA-copy coalescing (`getRepresentative @0x9c73e0`) | CERTAIN |
+| `build` | `0x9af510` | interference graph (`SparseSet`, Universe=#regs) | CERTAIN |
+| `find_costs` | `0x9b2130` | spill cost (`+= numPhysicalRegs` per def) | CERTAIN |
+| `simplify` | `0x9bc880` | Briggs simplify / optimistic stack push | CERTAIN |
+| `select` | `0x9b9de0` | single-score color assignment | CERTAIN |
+| `insert_spill_code` | `0x9c10d0` | reg → `MemoryLocation` spill (`DenseMap`) | CERTAIN |
+| `propagate_coalesced_ssa_allocation` | `0x9cef00` | push color through coalesced copies | CERTAIN |
+| `linearize(Function*)` | `0x9ca0e0` | flattens BBs to one interference scope | CERTAIN |
+| `candidate(MemoryLocation&)` | `0x9cda10` | `return 0;` stub (no MemLoc candidates) | CERTAIN |
+| `get_defs_reg` / `get_uses_reg` | `0x986710` / `0x988370` | register use-def edge harvest | CERTAIN |
 
 ### Considerations
 
-`linearize` `@0x9ca0e0` ("linearize and check (REG)") flattens `bir::BasicBlock`s into one linear instruction order so register live ranges that cross basic blocks sit in a *single* interference scope — the same flattening idea the loop-aware memory colorer uses ([`allocator-drivers`](allocator-drivers.md#the-loop-flattening-linearize)), but applied to scalar registers. The hard register-file size that bounds `select` is `HwmCore->MaxRegNumPerEngine` (asserted, but the literal integer is not pinned in this slice — [`sp-engine`](../arch/sp-engine.md) carries a SPECULATIVE 64; do not hard-code it).
+`linearize` `@0x9ca0e0` ("linearize and check (REG)") flattens `bir::BasicBlock`s into one linear instruction order so register live ranges that cross basic blocks sit in a *single* interference scope — the same flattening idea the loop-aware memory colorer uses ([`allocator-drivers`](allocator-drivers.md#the-loop-flattening-linearize)), but applied to scalar registers. The hard register-file size that bounds `select` is `HwmCore->MaxRegNumPerEngine` — asserted, but the literal integer is not pinned in this slice. [`sp-engine`](../arch/sp-engine.md) carries a [SPECULATIVE] 64; do not hard-code it.
 
 ---
 
@@ -181,7 +181,7 @@ function insert_spill_code(insts, spilled, info):
 
 `LinearScanAllocator` (pass `linear_scan_allocator`) is an *alternative memory allocator*: a drop-in replacement for `coloring_allocator_{sb,psum}` that allocates the **same** `bir::MemoryLocationSet` symbolic tensors but with a classic linear-scan algorithm instead of a graph colorer. It is selected by `--allocator=lsa` on the opt6 path or forced as the *sole* SBUF/PSUM allocator at optlevel 8. It handles both spaces one pass each, keyed off the `MemoryType` at `this+88` (PSUM if `==32`, else SB — log channel switch in `allocate(Function*) @0xb0e670`). Concrete 2-D placement is delegated to a `BestFitMemoryManager` free-list backend.
 
-> **QUIRK — the colorer vs the scan, in one sentence.** The colorer builds a full interference **graph** and runs Chaitin–Briggs simplify/select; LSA scans intervals **once** in program order, expiring dead ones, and hands each live interval to a best-fit free-list manager for concrete placement. LSA is faster and lower-quality, and is **single-vNC-core only** (the multi-core assert in `sub_80D9D0` L853 forbids it). [CONFIRMED/STRONG]
+> **QUIRK — the colorer vs the scan, in one sentence.** The colorer builds a full interference **graph** and runs Chaitin–Briggs simplify/select; LSA scans intervals **once** in program order, expiring dead ones, and hands each live interval to a best-fit free-list manager for concrete placement. LSA is faster and lower-quality, and is **single-vNC-core only** — the multi-core assert in `sub_80D9D0` L853 forbids it.
 
 ### Entry Point
 
@@ -231,7 +231,7 @@ function LSA_run(Module& M):
 The active set is the linear-scan heart: an `std::_Rb_tree<info*, …, bool(*)(info*,info*)>` keyed by `liveSetComparator` `@0xb2ba60` — a **sorted active list**, with `info*` the per-interval node. The comparator orders by, in priority:
 
 ```c
-// Live_Range_Manager::liveSetComparator(a, b)  @0xb2ba60  [CONFIRMED layout; STRONG semantics]
+// Live_Range_Manager::liveSetComparator(a, b)  @0xb2ba60  (layout exact; semantics read from use)
 function liveSetComparator(info* a, info* b):
     if (*(int*)(a->loc+76) != *(int*)(b->loc+76))
         return *(int*)(a->loc+76) > *(int*)(b->loc+76);   // 1. interval-end weight DESC (head = furthest)
@@ -242,7 +242,7 @@ function liveSetComparator(info* a, info* b):
     return c ? c < 0 : a->loc->size < b->loc->size;        //    then size (loc+304)
 ```
 
-`pickForSpilling()` `@0xb2b020` returns `**(QWORD**)(activeTree.begin.node+32)` — the **leftmost** (head) of this sorted tree, i.e. the highest interval-end-weight interval is chosen as the spill victim. [CONFIRMED]
+`pickForSpilling()` `@0xb2b020` returns `**(QWORD**)(activeTree.begin.node+32)` — the **leftmost** (head) of this sorted tree, i.e. the highest interval-end-weight interval is chosen as the spill victim.
 
 ### Spill — copy-and-shrink + reload
 
@@ -278,28 +278,28 @@ function BestFit_allocate(MemoryLocation& loc):
         || tryAllocateRight(loc, window);              // @0xb212b0
 ```
 
-> **QUIRK — SBUF is 2-D, PSUM is 1-D, even inside the "best-fit" manager.** The SB path tries three corner-placement strategies (lower-left / upper-left / right) against a `(partition × byte)` rectangle window; the PSUM path is a separate bank-addressed allocator with no corner search, because PSUM is a small array of fixed banks rather than a 2-D scratchpad ([`sbuf-psum-geometry`](../arch/sbuf-psum-geometry.md)). One manager class, two geometrically different placement routines selected by `MemoryType`. [CONFIRMED]
+> **QUIRK — SBUF is 2-D, PSUM is 1-D, even inside the "best-fit" manager.** The SB path tries three corner-placement strategies (lower-left / upper-left / right) against a `(partition × byte)` rectangle window; the PSUM path is a separate bank-addressed allocator with no corner search, because PSUM is a small array of fixed banks rather than a 2-D scratchpad ([`sbuf-psum-geometry`](../arch/sbuf-psum-geometry.md)). One manager class, two geometrically different placement routines selected by `MemoryType`.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `LinearScanAllocator` ctor | `0xb15740` | takes a `MemoryManager` factory (default → BestFit) | CONFIRMED |
-| `run(Module&)` / `run_with_loops` | `0xb0eeb0` / `0xb14fc0` | scan driver (non-loop / `(LIW)` twice) | CONFIRMED |
-| `allocate(Function*)` | `0xb0e670` | per-space entry; channel from `this+88` | CONFIRMED |
-| `allocate(MemLocSet*)` | `0xb0d1d0` | place one interval (asserts MemType match) | CONFIRMED |
-| `spillMemLocSet` | `0xb0a870` | copy+`setShrinkDim`+reload | CONFIRMED |
-| `addSpillInstsCanread` | `0xb13ec0` | finalize deferred spill-reads | CONFIRMED |
-| `deAllocate` | `0xb0a1f0` | free an expired interval's memory | CONFIRMED |
-| `Live_Range_Manager::init` / `initLiveRange` | `0xb323f0` / `0xb312c0` | build per-tensor `[firstDef,lastUse]` | CONFIRMED |
-| `getRemUses` | `0xb2f8c0` | remaining-uses count (drives expiry) | CONFIRMED |
-| `makeLive` / `kill` / `erase` | `0xb2fb11` / `0xb2f7f0` / `0xb2fad0` | active-set membership | CONFIRMED |
-| `pickForSpilling` | `0xb2b020` | head-of-sorted-set victim | CONFIRMED |
-| `liveSetComparator` | `0xb2ba60` | active-set ordering (4-key) | CONFIRMED layout / STRONG semantics |
-| `BestFitMemoryManager` ctor / `allocate` | `0xb21fa0` / `0xb241a0` | multi-index free-list + dispatch | CONFIRMED |
-| `tryAllocate{LowerLeft,UpperLeft,Right}` | `0xb20310` / `0xb20ae0` / `0xb212b0` | SB 2-D corner placement | CONFIRMED |
-| `tryAllocatePSUM` | `0xb1b5f0` | PSUM bank placement | CONFIRMED |
-| `getAddressConstraints` | `0xb22cd0` | per-tensor align/bank | CONFIRMED |
+| `LinearScanAllocator` ctor | `0xb15740` | takes a `MemoryManager` factory (default → BestFit) | CERTAIN |
+| `run(Module&)` / `run_with_loops` | `0xb0eeb0` / `0xb14fc0` | scan driver (non-loop / `(LIW)` twice) | CERTAIN |
+| `allocate(Function*)` | `0xb0e670` | per-space entry; channel from `this+88` | CERTAIN |
+| `allocate(MemLocSet*)` | `0xb0d1d0` | place one interval (asserts MemType match) | CERTAIN |
+| `spillMemLocSet` | `0xb0a870` | copy+`setShrinkDim`+reload | CERTAIN |
+| `addSpillInstsCanread` | `0xb13ec0` | finalize deferred spill-reads | CERTAIN |
+| `deAllocate` | `0xb0a1f0` | free an expired interval's memory | CERTAIN |
+| `Live_Range_Manager::init` / `initLiveRange` | `0xb323f0` / `0xb312c0` | build per-tensor `[firstDef,lastUse]` | CERTAIN |
+| `getRemUses` | `0xb2f8c0` | remaining-uses count (drives expiry) | CERTAIN |
+| `makeLive` / `kill` / `erase` | `0xb2fb11` / `0xb2f7f0` / `0xb2fad0` | active-set membership | CERTAIN |
+| `pickForSpilling` | `0xb2b020` | head-of-sorted-set victim | CERTAIN |
+| `liveSetComparator` | `0xb2ba60` | active-set ordering (4-key) | CERTAIN (layout) / HIGH (semantics) |
+| `BestFitMemoryManager` ctor / `allocate` | `0xb21fa0` / `0xb241a0` | multi-index free-list + dispatch | CERTAIN |
+| `tryAllocate{LowerLeft,UpperLeft,Right}` | `0xb20310` / `0xb20ae0` / `0xb212b0` | SB 2-D corner placement | CERTAIN |
+| `tryAllocatePSUM` | `0xb1b5f0` | PSUM bank placement | CERTAIN |
+| `getAddressConstraints` | `0xb22cd0` | per-tensor align/bank | CERTAIN |
 
 ### Considerations — the opt8 pipeline
 
@@ -310,7 +310,7 @@ At optlevel 8 (`sub_809580`, ~35 passes) `linear_scan_allocator` is the **sole**
    → assign_hwdge_engine → alloc_queues → chain_dma_transposes → lnc_barriercheck
 ```
 
-The interval `loc+76` field that drives `liveSetComparator` priority 1 is INFERRED to be the interval-end / spill-priority weight (it is printed alongside `MemoryType2string` at the failure site, but its exact semantic was not isolated — STRONG, not CONFIRMED).
+The interval `loc+76` field that drives `liveSetComparator` priority 1 is [INFERRED] to be the interval-end / spill-priority weight. It is printed alongside `MemoryType2string` at the failure site, but its exact semantic was not isolated.
 
 ---
 
@@ -333,7 +333,7 @@ function check_in_place(Function& fn):
 
 This re-materializes every `MemoryLocation` at its *exact* type/addrspace/address/bank/partition/pinned tuple and asserts the placement succeeds — a verifier that the (already-fixed) assignment is self-consistent, **not** constraint solving.
 
-> **GOTCHA — there is no objective, no encoding, no UNSAT, no timeout.** A reimplementer reading the task's "Z3 finds an optimal allocation / UNSAT fallback" framing would build a solver that this binary does not contain. The interpretation (STRONG) is that `smt-allocation` is a developer/experimental mode treating allocation as a **fixed, pre-determined assignment** to be reproduced and verified in place — likely fed from an upstream (NKI / pre-solved) source, since no external-allocation-file string survives in this build. Allocation failure surfaces as the ordinary coloring overflow assert (`"Allocation failed for v128/…"`), never as solver UNSAT. [CONFIRMED — N/A for the solver claims]
+> **GOTCHA — there is no objective, no encoding, no UNSAT, and no timeout.** Building against a "Z3 finds an optimal allocation, with an UNSAT fallback" model produces a solver this binary does not contain. The reading that fits the code is that `smt-allocation` is a developer or experimental mode treating allocation as a **fixed, pre-determined assignment** to be reproduced and verified in place — plausibly fed from an upstream NKI or pre-solved source, though no external-allocation-file string survives in this build. Allocation failure surfaces as the ordinary coloring overflow assert (`"Allocation failed for v128/…"`), never as a solver UNSAT.
 
 ### The distinctive opt7 trait
 
@@ -353,7 +353,7 @@ The one thing that makes opt7 *structurally* different from the default coloring
 
 `dma_optimization_psum` (pipeline order 45) and `dma_optimization_sb` (order 54) are **one** class, `neuronxcc::backend::DMAOptimization` (0x8e0 B, `run @0x966740`). They run *immediately after* the graph-coloring allocator has bound logical tensors to physical addresses **and** inserted spill/reload DMAs (`coloring_allocator_psum @44` → `_psum` opt @45; `coloring_allocator_sb @51` → `_sb` opt @54). The "GCA" in every report string is **G**raph-**C**oloring **A**llocator; these passes are the post-allocation cleanup that brackets the spill/reload-insertion phase (the `Pre/PostGcaDMAAccesses` counters, §6). They follow the DMA *legalization* of [`dma-legalization`](dma-legalization.md) — legalize makes each DMA valid; optimize makes the valid set cheaper.
 
-> **NOTE — PSUM vs SB is data-driven, not two classes.** The two registration invokers build the **same** object and differ *only* in the stored name byte-suffix (`"…_psum"` len 21 vs `"…_sb"` len 19) and the `MemoryType` they work on (PSUM=0x20 / SB=0x10). `run()` reads the name + `has_uncovered_live_range(Module, MemoryType)` to gate which sub-optimizations fire and routes every rewrite through the space-correct address-rotation helper (`AddressRotation::update_psum_partition` for PSUM banks vs `sb_rotation` for SB partitions). [CONFIRMED — disasm]
+> **NOTE — PSUM vs SB is data-driven, not two classes.** The two registration invokers build the **same** object and differ *only* in the stored name byte-suffix (`"…_psum"` len 21 vs `"…_sb"` len 19) and the `MemoryType` they work on (PSUM=0x20 / SB=0x10). `run()` reads the name + `has_uncovered_live_range(Module, MemoryType)` to gate which sub-optimizations fire and routes every rewrite through the space-correct address-rotation helper: `AddressRotation::update_psum_partition` for PSUM banks, `sb_rotation` for SB partitions.
 
 ### Entry Point
 
@@ -402,7 +402,7 @@ function internal_dma_coalescing(Module& M):
         //   re-point consumers; the two source DMAs collapse to one wider DMA.
 ```
 
-> **GOTCHA — the budget cap is an ArchModel field, not a JSON scalar.** `tooLargeForCoalescing` `@0x918640` vetoes a merge if the combined per-partition extent exceeds a byte cap fetched by a virtual call into the `ArchModel`/`EngineInfo` (`[obj+0x340]`/`[+0x2c0]`), with a hard `0x3E8 (1000)` element ceiling and an alignment `≤ 8` gate. The *numeric* cap is a constructor immediate on the per-arch model, not a recoverable JSON value — the same provenance gap as the DMA-legalization tile budget. INFERRED value; CONFIRMED mechanism.
+> **GOTCHA — the budget cap is an ArchModel field, not a JSON scalar.** `tooLargeForCoalescing` `@0x918640` vetoes a merge if the combined per-partition extent exceeds a byte cap fetched by a virtual call into the `ArchModel`/`EngineInfo` (`[obj+0x340]`/`[+0x2c0]`), with a hard `0x3E8 (1000)` element ceiling and an alignment `≤ 8` gate. The *numeric* cap is a constructor immediate on the per-arch model, not a recoverable JSON value — the same provenance gap as the DMA-legalization tile budget. The mechanism is pinned; the value is [INFERRED].
 
 #### Partial-DMA — shrink an over-broad descriptor (`partial_DMA_access @0x95a7f0`)
 
@@ -444,28 +444,28 @@ function load_merging(Module& M):
 PSUM (`MemoryType 0x20`) is a small banked space (a fixed window of 2 KiB banks, bank id at `MemoryLocation+528`), so every PSUM merge/shrink/spill must respect bank+partition geometry:
 
 - `is_psum_dma(Inst*)` `@0x9234c0` — a DMA is PSUM iff its op has a `PhysicalAccessPattern` whose `MemoryLocation` type `[+0]==0x20`.
-- `AddressRotation::update_psum_partition(MemLoc*, vector<vector<u32>>&, int, set<u32>)` `@0x922400` is **recursive** (self-calls ×5) and rebalances which bank/partition the (merged/trimmed) tile lands on; every PSUM rewrite routes through it. [STRONG]
+- `AddressRotation::update_psum_partition(MemLoc*, vector<vector<u32>>&, int, set<u32>)` `@0x922400` is **recursive** (self-calls ×5) and rebalances which bank/partition the (merged/trimmed) tile lands on; every PSUM rewrite routes through it.
 - `PSUM_spill_optimization` `@0x946b70` ("[psum spill optimization]: removed N") is invoked *only* on the psum(45) path; the sb(54) path relies on `spill_optimization` + `AddressRotation::sb_rotation` instead.
 
 ### Function Map
 
 | Function | Address | Role | Confidence |
 |---|---|---|---|
-| `DMAOptimization::run(Module&)` | `0x966740` | the worker dispatch (~9.4 KB) | CONFIRMED |
-| `skip_pass(Module&)` | `0x9188c0` | "no DMA insts" early-out | CONFIRMED |
-| `internal_dma_coalescing` | `0x9654f0` | post-alloc contiguous merge | CONFIRMED |
-| `tooLargeForCoalescing` | `0x918640` | per-partition byte budget veto | CONFIRMED (mech) / INFERRED (cap) |
-| `coalesc_per_partition_load_only` / `_save_only` | `0x9639a0` / `0x962720` | the merge mechanics | CONFIRMED |
-| `partial_DMA_access` | `0x95a7f0` | descriptor minimization | CONFIRMED |
-| `create_new_reload_location` | `0x958350` | mint the trimmed memloc | CONFIRMED |
-| `load_merging` | `0x9534e0` | redundant-load removal | CONFIRMED |
-| `same_load` / `same_src` / `same_sb_dst` | `0x923c70` / `0x934ae0` / `0x934c20` | redundancy predicates | CONFIRMED |
-| `merge_load` / `transform_load` | `0x94bce0` / `0x94dd60` | rewrite (drop / AP-reapply) | CONFIRMED |
-| `is_psum_dma` | `0x9234c0` | PSUM DMA classifier | CONFIRMED |
-| `AddressRotation::update_psum_partition` | `0x922400` | recursive PSUM bank rebalance | STRONG |
-| `PSUM_spill_optimization` | `0x946b70` | PSUM-only spill cleanup | CONFIRMED |
-| `DMACopy_insertion` / `dmacopy_remat_optimization` | `0x94fff0` / `0x94e7c0` | IO→Internal tradeoff (§6) | CONFIRMED |
-| `DMAReport::DMA_analysis` | `0x9252d0` | Pre/Post GCA counters | CONFIRMED |
+| `DMAOptimization::run(Module&)` | `0x966740` | the worker dispatch (~9.4 KB) | CERTAIN |
+| `skip_pass(Module&)` | `0x9188c0` | "no DMA insts" early-out | CERTAIN |
+| `internal_dma_coalescing` | `0x9654f0` | post-alloc contiguous merge | CERTAIN |
+| `tooLargeForCoalescing` | `0x918640` | per-partition byte budget veto | CERTAIN (mechanism) / MEDIUM (cap) |
+| `coalesc_per_partition_load_only` / `_save_only` | `0x9639a0` / `0x962720` | the merge mechanics | CERTAIN |
+| `partial_DMA_access` | `0x95a7f0` | descriptor minimization | CERTAIN |
+| `create_new_reload_location` | `0x958350` | mint the trimmed memloc | CERTAIN |
+| `load_merging` | `0x9534e0` | redundant-load removal | CERTAIN |
+| `same_load` / `same_src` / `same_sb_dst` | `0x923c70` / `0x934ae0` / `0x934c20` | redundancy predicates | CERTAIN |
+| `merge_load` / `transform_load` | `0x94bce0` / `0x94dd60` | rewrite (drop / AP-reapply) | CERTAIN |
+| `is_psum_dma` | `0x9234c0` | PSUM DMA classifier | CERTAIN |
+| `AddressRotation::update_psum_partition` | `0x922400` | recursive PSUM bank rebalance | HIGH |
+| `PSUM_spill_optimization` | `0x946b70` | PSUM-only spill cleanup | CERTAIN |
+| `DMACopy_insertion` / `dmacopy_remat_optimization` | `0x94fff0` / `0x94e7c0` | IO→Internal tradeoff (§6) | CERTAIN |
+| `DMAReport::DMA_analysis` | `0x9252d0` | Pre/Post GCA counters | CERTAIN |
 
 ---
 
@@ -475,11 +475,11 @@ PSUM (`MemoryType 0x20`) is a small banked space (a fixed window of 2 KiB banks,
 
 | Knob | Type | Default | Description | Confidence |
 |---|---|---|---|---|
-| `--gca-dma-optlevel` | INT | **1** | reload/spill insertion level: `{-1 auto, 0 off, 1 default, 2 aggressive}` (`SB_Allocator` branch `cmp eax,1/2/-1`) | CONFIRMED |
-| `--enableIOToInternalDMACopyInsertion` | BOOL | **false** | enable `DMACopy_insertion` (copy IO→Internal to cut runtime IO-descriptor overhead); the pass is gated behind it ("When on, …") | STRONG (flag CONFIRMED; default-`false` INFERRED) |
-| `--repeat-load-thres` | INT | **4** | insert a DMACopy for a LOAD when its reload count exceeds this | CONFIRMED |
-| `--save-len-thres` | INT | **512** | insert for a SAVE when max save DMA length ≤ this | CONFIRMED |
-| `--save-dma-cnt-thres` | INT | **32** | insert for a SAVE when #saves for the tensor exceeds this | CONFIRMED |
+| `--gca-dma-optlevel` | INT | **1** | reload/spill insertion level: `{-1 auto, 0 off, 1 default, 2 aggressive}` (`SB_Allocator` branch `cmp eax,1/2/-1`) | CERTAIN |
+| `--enableIOToInternalDMACopyInsertion` | BOOL | **false** | enable `DMACopy_insertion` (copy IO→Internal to cut runtime IO-descriptor overhead); the pass is gated behind it ("When on, …") | HIGH (flag pinned; default `false` is MEDIUM) |
+| `--repeat-load-thres` | INT | **4** | insert a DMACopy for a LOAD when its reload count exceeds this | CERTAIN |
+| `--save-len-thres` | INT | **512** | insert for a SAVE when max save DMA length ≤ this | CERTAIN |
+| `--save-dma-cnt-thres` | INT | **32** | insert for a SAVE when #saves for the tensor exceeds this | CERTAIN |
 
 The `DMACopy_insertion` tradeoff is **cost-modeled**: it weighs DMA-ring-slot pressure ("IO to Internal copy instruction increases DMA ring usage by N" / "leads to DMA ring decrease N") against scratch-pad cost ("leads to scratch pad increase") and inserts the copy only when the descriptor-generation saving outweighs the ring/scratch cost. `dmacopy_remat_optimization` `@0x94e7c0` is the inverse — it *re-creates* a value near its use (`MemoryLocation::copyInto` + a fresh `InstLoad`), trading recompute for a shorter live range.
 
@@ -503,13 +503,13 @@ Common to all: `bir::Register`/`MemoryLocation` use-def edges, the `MemoryType` 
 
 ## Confidence and Gaps
 
-**CONFIRMED** (dynsym names + disassembled bodies, this evidence frame): the optlevel→allocator selection switch in `sub_80D9D0`; the `REG_Allocator` spill-fixpoint cycle and its `candidate`-stub / reg→`MemoryLocation` spill; the `LinearScanAllocator` scan/expire/spill loop, the `Live_Range_Manager` comparator layout and `pickForSpilling`-head rule, and the `BestFitMemoryManager` three-index multi-index + corner-vs-bank dispatch; the `DMAOptimization` run() dispatch order; coalescing legality (`IsContiguous` + `isFullAccess` + `tooLargeForCoalescing`); `load_merging` redundancy predicates; `partial_DMA_access` shrink path; the IO→Internal thresholds 4/512/32; `--gca-dma-optlevel` default 1 / levels {-1,0,1,2} read by `SB_Allocator`; the falsified-SMT correction (no Z3/GMP refs; `check_in_place` is a verifier).
+**Pinned by dynsym names and disassembled bodies:** the optlevel→allocator selection switch in `sub_80D9D0`; the `REG_Allocator` spill-fixpoint cycle and its `candidate`-stub / reg→`MemoryLocation` spill; the `LinearScanAllocator` scan/expire/spill loop, the `Live_Range_Manager` comparator layout and `pickForSpilling`-head rule, and the `BestFitMemoryManager` three-index multi-index + corner-vs-bank dispatch; the `DMAOptimization` run() dispatch order; coalescing legality (`IsContiguous` + `isFullAccess` + `tooLargeForCoalescing`); `load_merging` redundancy predicates; `partial_DMA_access` shrink path; the IO→Internal thresholds 4/512/32; `--gca-dma-optlevel` default 1 / levels {-1,0,1,2} read by `SB_Allocator`; and the absence of any solver in the SMT path (no Z3 or GMP references; `check_in_place` is a verifier).
 
-**STRONG:** the `liveSetComparator` *semantics* (layout CONFIRMED); the recursive PSUM bank-rotation in `update_psum_partition`; the 129-entry `addCandidate` bucket = 128 partitions + sentinel; the "smt-allocation = fixed-upstream-assignment" interpretation.
+**Read from use rather than byte-walked:** the `liveSetComparator` *semantics*, whose layout is exact; the recursive PSUM bank-rotation in `update_psum_partition`; the 129-entry `addCandidate` bucket as 128 partitions plus a sentinel; and the reading of `smt-allocation` as a fixed upstream assignment.
 
-**INFERRED:** the exact per-partition byte cap inside `tooLargeForCoalescing` (an ArchModel/EngineInfo ctor field, not a JSON scalar); the precise semantic of the `loc+76` interval-end weight that orders the LSA active set; the exact `FunctionAttribute` gates branched in `run()` (likely `ready_for_codegen` / `no_spill`).
+**[INFERRED]:** the exact per-partition byte cap inside `tooLargeForCoalescing` (an ArchModel/EngineInfo ctor field, not a JSON scalar); the precise semantic of the `loc+76` interval-end weight that orders the LSA active set; the exact `FunctionAttribute` gates branched in `run()` (likely `ready_for_codegen` / `no_spill`).
 
-**Gaps:** the colorer *bodies* of the SBUF/PSUM memory allocators are out of scope here (owned by [`allocator-drivers`](allocator-drivers.md) / [`sbuf-liveness-interference`](sbuf-liveness-interference.md)); `MaxRegNumPerEngine`, the literal SP register-file size bounding REG `select`, is asserted but not pinned to a numeric in this slice (SPECULATIVE 64 per [`sp-engine`](../arch/sp-engine.md)); the arch-revision constants `0xA(10)`/`0x13(19)` that gate the DMA-opt constant tables are SPECULATIVE Trainium-core ISA versions.
+**Gaps:** the colorer *bodies* of the SBUF/PSUM memory allocators are out of scope here (owned by [`allocator-drivers`](allocator-drivers.md) / [`sbuf-liveness-interference`](sbuf-liveness-interference.md)); `MaxRegNumPerEngine`, the literal SP register-file size bounding REG `select`, is asserted but not pinned to a numeric in this slice ([SPECULATIVE] 64, per [`sp-engine`](../arch/sp-engine.md)); and the arch-revision constants `0xA(10)` / `0x13(19)` that gate the DMA-opt constant tables are [SPECULATIVE] Trainium-core ISA versions.
 
 ---
 

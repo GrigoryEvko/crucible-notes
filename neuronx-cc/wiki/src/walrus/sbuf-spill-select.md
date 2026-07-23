@@ -53,11 +53,11 @@ allocate(lf):                                   @0xa95310   (loop top = 0xa95b50
   } while (true);                                // back-edge re-colors the spilled lf'
 ```
 
-The `select` return value is a `Locations*` (a `tc_new(24)` struct); the word at `Locations+8` is the **need-spill flag** that controls the loop — non-zero means some `Info+121` (the "allocated" bit) is still `0`, i.e. select could not place every range. (CONFIRMED — the `test edx,edx ; je 0xa97135` decision at `0xa95fb8` reads `*(Locations+8)`.)
+The `select` return value is a `Locations*` (a `tc_new(24)` struct); the word at `Locations+8` is the **need-spill flag** that controls the loop — non-zero means some `Info+121` (the "allocated" bit) is still `0`, i.e. select could not place every range. The `test edx,edx ; je 0xa97135` decision at `0xa95fb8` reads `*(Locations+8)`.
 
 ### Address frames
 
-The cp310 `nm -DC` table places these bodies at the addresses cited throughout (e.g. `simplify` @ `0xab58c0`, `select` @ `0xaafa30`, `find_costs` @ `0xaa12c0`, `insert_spill_code` @ `0xac87d0`). The cp311 `.dynsym` export reports the *with-loop* family 0x30 lower (`simplify` @ `0xab5890`, `select` @ `0xaafa00`, …) — the two-VA-frame artifact (a per-symbol prologue/frame offset, **not** a wheel-wide delta: the flat-sibling `SB_Allocator::select` @ `0xa07990` and `simplify` @ `0xa1b4a0` are identical in both frames). This page uses the cp310 body frame as canonical. (CONFIRMED — cross-checked cp310 `nm -DC` body addresses against the cp311 dynsym export.)
+The cp310 `nm -DC` table places these bodies at the addresses cited throughout (e.g. `simplify` @ `0xab58c0`, `select` @ `0xaafa30`, `find_costs` @ `0xaa12c0`, `insert_spill_code` @ `0xac87d0`). The cp311 `.dynsym` export reports the *with-loop* family 0x30 lower (`simplify` @ `0xab5890`, `select` @ `0xaafa00`, …) — the two-VA-frame artifact (a per-symbol prologue/frame offset, **not** a wheel-wide delta: the flat-sibling `SB_Allocator::select` @ `0xa07990` and `simplify` @ `0xa1b4a0` are identical in both frames). This page uses the cp310 body frame as canonical.
 
 The flat (non-loop) `SB_Allocator` is the default opt1–3 colorer and the TBB-parallel sibling of the same algorithm; its addresses are noted where they differ but it is not the subject of this page.
 
@@ -65,7 +65,7 @@ The flat (non-loop) `SB_Allocator` is the default opt1–3 colorer and the TBB-p
 
 ## §1 — The Hwm-latency spill cost and the `+inf` sentinel
 
-The spill cost answers "how many machine cycles do we pay if this range lives in DRAM instead of SBUF?". It is computed by `find_costs` and written to the cost slot of each node's `Info` record. The decisive design fact: **the cost is a pure sum of hardware access latencies, with no float multipliers baked into the allocator.** A disassembly of the flat `find_costs` @ `0x9e3ff0` contains **zero** `mulsd`/`divsd`-by-literal and zero `movsd`-from-`.rodata` weight constant — the only literal double it touches is the `+inf` sentinel. (CONFIRMED — `objdump` of `0x9e3ff0..0x9e6400` shows no float-weight literals; the latency numbers arrive through `bir::MemoryLocation::getLatency`, the per-arch `bir::Hwm` oracle, documented in the planned **Hwm / PerfSim Cost** page.)
+The spill cost answers "how many machine cycles do we pay if this range lives in DRAM instead of SBUF?". It is computed by `find_costs` and written to the cost slot of each node's `Info` record. The decisive design fact: **the cost is a pure sum of hardware access latencies, with no float multipliers baked into the allocator.** A disassembly of the flat `find_costs` @ `0x9e3ff0` contains **zero** `mulsd`/`divsd`-by-literal and zero `movsd`-from-`.rodata` weight constant — the only literal double it touches is the `+inf` sentinel. A disassembly of `0x9e3ff0`–`0x9e6400` shows no float-weight literals; the latency numbers arrive through `bir::MemoryLocation::getLatency`, the per-arch `bir::Hwm` oracle, documented in the planned **Hwm / PerfSim Cost** page.
 
 ### The latency tiers
 
@@ -80,9 +80,9 @@ cost(n) = Σ_{uses u}  L(u)  +  Σ_{defs d}  L_SB
      gated by [Info+0x414] > 4)                                     // mov esi,0x10 @0x9e58d3
 ```
 
-The "loop-depth multiplier" that earlier guesses posited does **not** exist as a power `K^depth`. The flat allocator's loop weighting is a **binary switch**: a use inside a loop body pays a full DRAM round-trip latency (`getLatency(8)`), a use outside pays the on-chip SBUF latency (`getLatency(16)`). The in-loop test is a `CFG::isLoopBody` membership query, not a depth integer. (CONFIRMED — the two `mov esi` immediates `0x8` and `0x10` at `0x9e4713`/`0x9e4df9` are byte-verified; this page documents the loop family, which feeds on the same cost slot.)
+There is no loop-depth multiplier of the form `K^depth`. The flat allocator's loop weighting is a **binary switch**: a use inside a loop body pays a full DRAM round-trip latency (`getLatency(8)`), a use outside pays the on-chip SBUF latency (`getLatency(16)`). The in-loop test is a `CFG::isLoopBody` membership query, not a depth integer. The two `mov esi` immediates `0x8` and `0x10` sit at `0x9e4713` and `0x9e4df9`; this page documents the loop family, which feeds the same cost slot.
 
-The loop-aware family `find_costs` @ `0xaa12c0` differs only in that every term is scaled by `getLiveN` (the live-element count from `bir::MemoryLocationSet::getLiveN`), so larger tensors carry proportionally larger spill cost — and it has no separate `isLoopBody` term because its input is already a linearized function in which loop bodies are laid out per their trip-count occurrence. A disassembly of `0xaa12c0` likewise shows no float-weight literal. (STRONG — corroborated by the PSUM sibling's `"need load, add load cost, add to needSave"` / `"add store cost, remove from needSave"` log strings; the exact `<<7`/`+0` cost-slot view onto the flat allocator's `<<6`/`+160` slot is a struct-view detail, the *value* is identical.)
+The loop-aware family `find_costs` @ `0xaa12c0` differs only in that every term is scaled by `getLiveN` (the live-element count from `bir::MemoryLocationSet::getLiveN`), so larger tensors carry proportionally larger spill cost — and it has no separate `isLoopBody` term because its input is already a linearized function in which loop bodies are laid out per their trip-count occurrence. A disassembly of `0xaa12c0` likewise shows no float-weight literal. The PSUM sibling's `"need load, add load cost, add to needSave"` and `"add store cost, remove from needSave"` log strings corroborate this. The `<<7`/`+0` cost-slot view onto the flat allocator's `<<6`/`+160` slot is a struct-view difference; the *value* is identical.
 
 ### The `+inf` must-not-spill sentinel
 
@@ -102,7 +102,7 @@ qword @ 0x1DBCEB8 :  00 00 00 00 00 00 F0 7F   =  0x7FF0000000000000  =  +infini
   loaded into the cost slot at finalize:  mov rax/rsi, [rip → 0x1dbceb8]  @0x9e612c / @0x9e61a7
 ```
 
-(CONFIRMED — the eight bytes were read directly from the cp310 binary at file offset `0x1DBCEB8`; they decode to `+inf`, and `find_costs` loads that qword into the cost slot at the two finalize sites.)
+The eight bytes at file offset `0x1DBCEB8` decode to `+inf`, and `find_costs` loads that qword into the cost slot at both finalize sites.
 
 The un-spillable predicate is tiny:
 
@@ -111,7 +111,7 @@ The un-spillable predicate is tiny:
 bool pseudo_inf(Info &n) { return n[+48] ? true : n[+49]; }   // pin#1 || pin#2
 ```
 
-A node is un-spillable when **either** pin flag is set, **or** (flat family) when it was never touched by a real use (`Info+270` still `1` — spilling a never-used range relieves no pressure), **or** (loop family) when its live range collapses to a single program point (`writer_order − reader_order == 1`). (CONFIRMED — `pseudo_inf` body; the single-point live-range pin is from the loop `find_costs` finalize.)
+A node is un-spillable when **either** pin flag is set, **or** (flat family) when it was never touched by a real use (`Info+270` still `1` — spilling a never-used range relieves no pressure), **or** (loop family) when its live range collapses to a single program point (`writer_order − reader_order == 1`). *Anchors: the `pseudo_inf` body; the single-point live-range pin comes from the loop `find_costs` finalize.*
 
 Crucially, the *stored* value is `+inf`, but the downstream **eligibility test** is a comparison against `DBL_MAX`:
 
@@ -120,7 +120,7 @@ Crucially, the *stored* value is `+inf`, but the downstream **eligibility test**
 //  appears in simplify @0xa1b4a0 and select @0xa07990; the +inf value fails it ⇒ routed INFINITE
 ```
 
-So `+inf` (`0x7FF0…`) is the value, `> DBL_MAX` is the predicate — the two must not be conflated. The pinned/infinite ranges are collected into a separate worklist that the colorer asserts empty before it gives up. (CONFIRMED — the `DBL_MAX` literal is the comparison bound in both phases.)
+So `+inf` (`0x7FF0…`) is the value, `> DBL_MAX` is the predicate — the two must not be conflated. The pinned/infinite ranges are collected into a separate worklist that the colorer asserts empty before it gives up. The `DBL_MAX` literal is the comparison bound in both phases.
 
 ### The Chaitin spill-priority metric
 
@@ -133,9 +133,9 @@ mode 1:                                  argmin  cost(+0) / cap²
 mode 2:                                  argmin  cost(+0) / degreeMarker(+76)²
 ```
 
-The degree-squared variants are real in the binary — the squaring `imul` (`imul edx,edx` ×3 plus one `imul edi,edi`, four total) appears in `simplify` and `divsd` (the `cost/deg²` division) six times — but the driver always passes `mode 0`, the classic `cost/degree` with the *geometric* residual capacity as the degree. (CONFIRMED — the `imul` and `divsd` counts are from a disassembly of `0xab58c0..0xab8400`; the driver call site passes the third argument `0` via `xor ecx,ecx` @ `0xa95eaa`.)
+The degree-squared variants are real in the binary — the squaring `imul` (`imul edx,edx` ×3 plus one `imul edi,edi`, four total) appears in `simplify` and `divsd` (the `cost/deg²` division) six times — but the driver always passes `mode 0`, the classic `cost/degree` with the *geometric* residual capacity as the degree. The `imul` and `divsd` counts come from a disassembly of `0xab58c0`–`0xab8400`; the driver call site passes the third argument `0` via `xor ecx,ecx` @ `0xa95eaa`.
 
-A range whose uses live inside loop bodies accrues higher cost (DRAM-tier or liveN-scaled terms), so its `cost/cap` ratio is high and it is *disfavoured* as a spill candidate — this is exactly the loop-bias the cost model injects, realized as a cost weight rather than a separate ordering rule. (STRONG.)
+A range whose uses live inside loop bodies accrues higher cost (DRAM-tier or liveN-scaled terms), so its `cost/cap` ratio is high and it is *disfavoured* as a spill candidate — this is exactly the loop-bias the cost model injects, realized as a cost weight rather than a separate ordering rule.
 
 ---
 
@@ -179,7 +179,7 @@ vertical_impact_with_loop @0x3ded040  (9×9 int32, 324 bytes, values ∈ {0,1,2,
 
 The `0` entries are shape-class pairs that *do not* conflict in the partition dimension (they can coexist on different partition bands), the `2`s are half×half pairs, and the `4` in the class-0 axis is the quarter-block multiplier.
 
-> **CORRECTION (#827 audit).** The 9×9 cell values above are **INFERRED**, not CONFIRMED — an earlier draft over-claimed they were "dumped byte-for-byte" / "read directly from the cp310 binary." `impact` @ `0xab5000` reaches the table through a relocated GOT pointer (`mov rcx, cs:vertical_impact_with_loop_ptr` @ `0xab5024`, then `imul eax,[rcx+rdx*4]` with `rdx = 9·Height`), so the symbol, the `.data` residence at `0x3ded040`, the `9·sc+sc` index arithmetic, and the `{0,1,2,4}` value range are CONFIRMED, but the individual integers live in `.data` behind the relocation and are **not byte-recoverable from this corpus** (absent from `rodata.bin` and `data_tables.json`). The sibling front-half page [SBUF Liveness / Interference](sbuf-liveness-interference.md) tags the same table INFERRED; this page is now consistent with it.
+> **NOTE — the 9×9 cell values above are [INFERRED].** `impact` @ `0xab5000` reaches the table through a relocated GOT pointer (`mov rcx, cs:vertical_impact_with_loop_ptr` @ `0xab5024`, then `imul eax,[rcx+rdx*4]` with `rdx = 9·Height`). That pins the symbol, the `.data` residence at `0x3ded040`, the `9·sc+sc` index arithmetic, and the `{0,1,2,4}` value range — but the individual integers live in `.data` behind the relocation and are not byte-recoverable from this corpus. The sibling [SBUF Liveness / Interference](sbuf-liveness-interference.md) page carries the same table with the same caveat.
 
 ### The trivially-colorable test and the three worklists
 
@@ -195,7 +195,7 @@ else if (fabs(cost) <= DBL_MAX)         → UNSAFE    // finite cost ⇒ spillab
 else                                    → INFINITE  // cost == +inf ⇒ un-spillable
 ```
 
-`SAFE`, `UNSAFE`, and `INFINITE` are three `llvm::SparseSet` worklists. This is where the `+inf` sentinel pays off: a `+inf`-cost range fails the `<= DBL_MAX` test and is routed into `INFINITE`, never considered as a spill candidate. (CONFIRMED — the three-way classification with the `fabs(cost) <= DBL_MAX` test.)
+`SAFE`, `UNSAFE`, and `INFINITE` are three `llvm::SparseSet` worklists. This is where the `+inf` sentinel pays off: a `+inf`-cost range fails the `<= DBL_MAX` test and is routed into `INFINITE`, never considered as a spill candidate. The three-way classification hangs off the `fabs(cost) <= DBL_MAX` test.
 
 ### The drain loop and the optimistic spill
 
@@ -223,7 +223,7 @@ for each n still in INFINITE:  S.push_back(n);  follow Info+48 partner set, forc
 assert(INFINITE.empty());  return S;
 ```
 
-The push order is the *removal* order, which is the **reverse** of the select assignment order — a classic Chaitin optimistic ordering, so the last (most constrained) node removed is colored first. The `-1` sentinel separates the definite prefix from the optimistic spill-candidate suffix, and the select phase re-seeds its band watermarks when it pops it. The phase-3 partner force-push keeps coalesced groups adjacent on the stack so select assigns them together. (CONFIRMED — the LIFO push/pop relationship, the sentinel, and the partner force-push.)
+The push order is the *removal* order, which is the **reverse** of the select assignment order — a classic Chaitin optimistic ordering, so the last (most constrained) node removed is colored first. The `-1` sentinel separates the definite prefix from the optimistic spill-candidate suffix, and the select phase re-seeds its band watermarks when it pops it. The phase-3 partner force-push keeps coalesced groups adjacent on the stack so select assigns them together.
 
 ---
 
@@ -260,9 +260,9 @@ while (v != stack.begin()) {
 }
 ```
 
-> **NOTE — the `LF+696` field.** Earlier reports flagged `LF+696` (= `allocator+0x2b8`) as ambiguous between "SB_SIZE bytes" and "NumPartitions". The [SBUF/PSUM geometry page](../arch/sbuf-psum-geometry.md) resolves it: `allocator+0x2b8` holds `SB_SIZE` **bytes** (read from `Statebuf+0` at allocator-ctor time), and the 128-partition count is the separate `Statebuf+0x8` field. So `select`/`search_*` read `LF+696` as the byte budget (consistent with the `"upper <= SB_SIZE"` asserts), while `possible_placements` reads `NumPartitions` from a different slot. The two are distinct fields of one geometry record. (STRONG — resolved cross-page.)
+> **GOTCHA — `LF+696` is a byte budget, not a partition count.** `LF+696` (= `allocator+0x2b8`) holds `SB_SIZE` in **bytes**, read from `Statebuf+0` at allocator-ctor time; the 128-partition count is the separate `Statebuf+0x8` field. So `select` and `search_*` read `LF+696` as the byte budget — consistent with the `"upper <= SB_SIZE"` asserts — while `possible_placements` reads `NumPartitions` from a different slot. They are two distinct fields of one geometry record; see the [SBUF/PSUM geometry page](../arch/sbuf-psum-geometry.md).
 
-The seven `LF[168..174]` watermarks split SBUF into a low band (small tensors pack bottom-up) and a high band (large tensors pack top-down), which is the fragmentation-reduction strategy. Byte coordinates are 8-byte aligned via `aligned` @ `0xa929a0` (`round-up-to-multiple-of-8` — the SBUF access granule). (CONFIRMED — `"node should be unallocated when popped from stack"` is present in the binary; the watermark seeding and the alignment-to-8.)
+The seven `LF[168..174]` watermarks split SBUF into a low band (small tensors pack bottom-up) and a high band (large tensors pack top-down), which is the fragmentation-reduction strategy. Byte coordinates are 8-byte aligned via `aligned` @ `0xa929a0` (`round-up-to-multiple-of-8` — the SBUF access granule). The string `"node should be unallocated when popped from stack"` is present in the binary.
 
 ### Per-node placement: the size-class cascade
 
@@ -279,7 +279,7 @@ switch (Info+116 /*height class*/) {
 }
 ```
 
-The partition bands are the four 32-partition quadrants `[0,32) [32,64) [64,96) [96,128)` (pool tags `0x200000`/`0x200020`/`0x200040`/`0x200060`), the half-band split at 64 (`find_medium`, tag `0x400000`), and the full 128-partition band (`find_tall`, tag `0x800000`). This is the same 4-band partition geometry the front-half and geometry pages report. (CONFIRMED — the band tag math and the height-domain abort string.)
+The partition bands are the four 32-partition quadrants `[0,32) [32,64) [64,96) [96,128)` (pool tags `0x200000`/`0x200020`/`0x200040`/`0x200060`), the half-band split at 64 (`find_medium`, tag `0x400000`), and the full 128-partition band (`find_tall`, tag `0x800000`). This is the same 4-band partition geometry the front-half and geometry pages report.
 
 ### First-fit interval search
 
@@ -303,7 +303,7 @@ for (it = free.begin(); it != free.end(); it += 12) {
 }
 ```
 
-The collision test is purely the byte-axis overlap *inside* each candidate free interval; the partition axis is implicit in which pool (band) the interval came from. (CONFIRMED — both walks, the `"upper <= SB_SIZE"` byte-capacity asserts, and the place-at-`upper−size` vs place-at-`lower` direction.)
+The collision test is purely the byte-axis overlap *inside* each candidate free interval; the partition axis is implicit in which pool (band) the interval came from.
 
 ### Reservation: marking the rectangle occupied
 
@@ -317,9 +317,9 @@ src.push_back(placed_rectangle);  std::sort(src.begin, src.end, compareStarts); 
 on the last block:  Info+121 = 1;   // node allocated
 ```
 
-The loop colorer keeps **one** flat sorted free-list and re-derives the band pools on demand; the **flat/scalar** sibling instead materializes an explicit `std::array<std::vector<std::pair<int,int>>, 4>` — the literal `partitionBandReservations` table, one sorted reserved-byte-interval vector per 32-partition quadrant, in `selectNode` @ `0xa05250` (asserts `"boundIter != partitionBandReservations.end()"` / `"intersectionIter != reservations[otherPartitionBandIndex].end()"`). Both realize the same 4-band 2-D reservation model. Per the front-half **reservation-table disambiguation**, this table belongs to the *allocator*, not any scheduler. (CONFIRMED — the `src` re-sort-after-insert in the loop colorer; the `partitionBandReservations` asserts in the flat `selectNode`.)
+The loop colorer keeps **one** flat sorted free-list and re-derives the band pools on demand; the **flat/scalar** sibling instead materializes an explicit `std::array<std::vector<std::pair<int,int>>, 4>` — the literal `partitionBandReservations` table, one sorted reserved-byte-interval vector per 32-partition quadrant, in `selectNode` @ `0xa05250` (asserts `"boundIter != partitionBandReservations.end()"` / `"intersectionIter != reservations[otherPartitionBandIndex].end()"`). Both realize the same 4-band 2-D reservation model. This table belongs to the *allocator*, not to any scheduler.
 
-After all blocks are placed, select runs a paranoid all-pairs check that no two committed rectangles intersect (byte-overlap ∧ partition-overlap → `"in sb_select, a bad allocation"` → abort) — the explicit statement of the geometric-coloring conflict model. (CONFIRMED — `"in sb_select, a bad allocation"` is present in the binary.)
+After all blocks are placed, select runs a paranoid all-pairs check that no two committed rectangles intersect (byte-overlap ∧ partition-overlap → `"in sb_select, a bad allocation"` → abort) — the explicit statement of the geometric-coloring conflict model.
 
 ### The heuristic score
 
@@ -330,7 +330,7 @@ After all blocks are placed, select runs a paranoid all-pairs check that no two 
 //             if (cost == +inf)  LOG "infinite node <name>"
 ```
 
-A run that placed everything leaves `*heuristic == 0.0`. The allocator driver's best-of-n loop perturbs the simplify/select order and keeps the run with the **lowest** `*heuristic` — the cheapest set of spills. (CONFIRMED — the per-unplaced-node `*heuristic += Info+0` accrual and the `"infinite node"` log.)
+A run that placed everything leaves `*heuristic == 0.0`. The allocator driver's best-of-n loop perturbs the simplify/select order and keeps the run with the **lowest** `*heuristic` — the cheapest set of spills.
 
 The epilogue asserts every node placed (`"info[i].allocated"`), sets the `MemoryLocationSet.allocated` flag, and commits each address to the IR via `bir::MemoryLocation::allocate()`. If select could not place every range, the un-placed set becomes the `spillset` the next phase consumes.
 
@@ -366,11 +366,11 @@ for each spilled MemoryLocationSet m in spillset:
     // insert InstSave (SB→home) ; setDebugInfo
 ```
 
-The two `MemoryType` immediates are byte-verified: the `_SpillSave` DRAM home is minted with `mov edx,0x8`, the `_ReloadStore` SB copy with `mov edx,0x10`. The `_ReloadStore` SB copy is a short live range that **re-enters liveness/interference/select on the next iteration** — that is the engine of the fixpoint. (CONFIRMED — `mov edx,0x8` and `mov edx,0x10` at the copyInto call sites; the `_SpillSave`/`_ReloadStore` name strings are present in the binary.)
+The two `MemoryType` immediates are byte-verified: the `_SpillSave` DRAM home is minted with `mov edx,0x8`, the `_ReloadStore` SB copy with `mov edx,0x10`. The `_ReloadStore` SB copy is a short live range that **re-enters liveness/interference/select on the next iteration** — that is the engine of the fixpoint. *Anchors: `mov edx,0x8` and `mov edx,0x10` at the `copyInto` call sites; the `_SpillSave` / `_ReloadStore` name strings.*
 
-A spill is an `InstSave` and a reload is an `InstLoad` (asserts `"Reload/Spill instruction has to be of type Load or Save"`); per the front-half/DMA pages, Load = Save = DMACopy collapse to one wire-opcode. (CONFIRMED-name.)
+A spill is an `InstSave` and a reload is an `InstLoad` (asserts `"Reload/Spill instruction has to be of type Load or Save"`); per the front-half and DMA pages, Load, Save, and DMACopy collapse to one wire opcode.
 
-> **Where the reload *load* is materialized.** `insert_spill_code` mints the DRAM home, the SB reload copy, and the spill *store* — but the per-use reload `InstLoad` itself (named `_Reload` / `_ReloadTensorCopy` / `_ReloadPartial`) is emitted **downstream** by `Rep::indice_legalization` @ `0xa8eb00`, once physical addresses are fixed, from the `Homes` bindings. (STRONG — those reload-name strings have no xref inside `insert_spill_code`; their only with-loop xrefs fall inside `indice_legalization`.) The PSUM and flat siblings do the reload load in-place instead.
+> **Where the reload *load* is materialized.** `insert_spill_code` mints the DRAM home, the SB reload copy, and the spill *store* — but the per-use reload `InstLoad` itself (named `_Reload` / `_ReloadTensorCopy` / `_ReloadPartial`) is emitted **downstream** by `Rep::indice_legalization` @ `0xa8eb00`, once physical addresses are fixed, from the `Homes` bindings. Those reload-name strings have no xref inside `insert_spill_code`; their only with-loop xrefs fall inside `indice_legalization`. The PSUM and flat siblings do the reload load in-place instead.
 
 ### Redundant-reload elimination
 
@@ -388,7 +388,7 @@ fast_liveness_analysis(lf, info, …)  @0xac2c60     // "compute liveness for ea
         //   residence cannot be removed (the back-edge re-kills the SB copy).
 ```
 
-`find_next_user` @ `0xabdd80` (walks the instruction chain to find the next downstream use of `m`) feeds the coalescing by extending one reload's live range across several consecutive uses. `legalize_predicates` @ `0xac64c0` then runs `correct_predicates` per inserted DMA, inheriting the defining instruction's `AffinePredicate` so a value defined under a guard is only spilled/reloaded when the original def fired. (STRONG — the elimination strings and the `getLoopnest`/`find_redundant_reloads` ×2 call structure; `correct_predicates` is live via `legalize_predicates`. Note: the SB-with-loop `need_reload` @ `0xabdfe0` and `correct_spill_reload` @ `0xac6d10` are exported but **dead** in this build — the liveness-based path replaced them.)
+`find_next_user` @ `0xabdd80` (walks the instruction chain to find the next downstream use of `m`) feeds the coalescing by extending one reload's live range across several consecutive uses. `legalize_predicates` @ `0xac64c0` then runs `correct_predicates` per inserted DMA, inheriting the defining instruction's `AffinePredicate` so a value defined under a guard is only spilled/reloaded when the original def fired. This rests on the elimination strings and the `getLoopnest` / `find_redundant_reloads` ×2 call structure; `correct_predicates` is live via `legalize_predicates`. Note that the SB-with-loop `need_reload` @ `0xabdfe0` and `correct_spill_reload` @ `0xac6d10` are exported but **dead** in this build — the liveness-based path replaced them.
 
 ### The spill cap
 
@@ -399,7 +399,7 @@ cmp DWORD PTR [Rep+0x2fc], 0x10000    @0xacc7fd   ; je → "Warning: too many sp
                                                   ;        turning optimizations off"
 ```
 
-When the `_ReloadStore` serial reaches 65536, the colorer disables further optimization rather than looping forever — the reload-store counter doubles as a hard spill-count ceiling. (CONFIRMED — the `cmp …,0x10000` immediate appears twice in the `insert_spill_code` body, paired with the warning-string branch.)
+When the `_ReloadStore` serial reaches 65536, the colorer disables further optimization rather than looping forever — the reload-store counter doubles as a hard spill-count ceiling. The `cmp …,0x10000` immediate appears twice in the `insert_spill_code` body, each paired with the warning-string branch.
 
 ### The fixpoint
 
@@ -413,9 +413,9 @@ jmp loop-top (0xa95b50)       // re-run renumber → live_range → build → fi
 
 The loop terminates one of three ways:
 
-1. **Fixpoint** — select reports need-spill `== 0` (everything placed). The driver commits, sets a per-`Function` attribute (`no_spill`/`ready_for_codegen`), logs `"no more spills"` plus the spilled-tensor count and total bytes/partition, and returns. (CONFIRMED — the `je 0xa97135` commit branch.)
+1. **Fixpoint** — select reports need-spill `== 0` (everything placed). The driver commits, sets a per-`Function` attribute (`no_spill`/`ready_for_codegen`), logs `"no more spills"` plus the spilled-tensor count and total bytes/partition, and returns, via the `je 0xa97135` commit branch.
 2. **Spill cap** — the `Rep+0x2fc == 0x10000` ceiling fires inside `insert_spill_code`, turning optimizations off.
-3. **Failure** — select fails *and* the spill set is empty or all-infinite-cost (nothing left to spill): `"couldn't allocate every tensor in SB and spilling can't help"`. (CONFIRMED-name — the failure string is present.)
+3. **Failure** — select fails *and* the spill set is empty or all-infinite-cost (nothing left to spill): `"couldn't allocate every tensor in SB and spilling can't help"`.
 
 DRAM home offsets for the `_SpillSave` homes are bumped downstream by the `DRAM_Allocator` (the `DramSpillSpace`/`DramAlignedSpillSpace` metrics), not in this driver.
 
@@ -464,13 +464,13 @@ DRAM home offsets for the `_SpillSave` homes are bumped downstream by the `DRAM_
 
 The five strongest claims were re-verified against the cp310 binary first-hand this pass:
 
-1. **`+inf` sentinel** — the eight bytes at file offset `0x1DBCEB8` were read directly: `00 00 00 00 00 00 F0 7F` = `0x7FF0000000000000` = `+inf`. **CONFIRMED.**
-2. **Impact LUT** — the symbol, the `.data` residence at `0x3ded040`, the `9·sc+sc` indexing in `impact` (via the relocated `vertical_impact_with_loop_ptr`), and the `{0,1,2,4}` value range are **CONFIRMED**; the individual 81 int32 cell values are **INFERRED** (the table is `.data`-resident behind a relocation, absent from `rodata.bin`/`data_tables.json` — see the CORRECTION in §2).
-3. **Spill cap** — `cmp DWORD PTR [Rep+0x2fc],0x10000` is present (twice) in the `insert_spill_code` body, paired with the warning string. **CONFIRMED.**
-4. **Latency tiers / cost has no float weights** — the `mov esi,0x8` (DRAM) and `mov esi,0x10` (SB) immediates are byte-verified in `find_costs`, and the disassembly carries no `mulsd`/`movsd`-from-`.rodata` weight literal. **CONFIRMED.**
-5. **Degree-squared metric exists but is off-path** — the squaring `imul` (×4: three `imul edx,edx` + one `imul edi,edi`) and `divsd` (×6) are present in `simplify`; the driver passes mode `0` (`cost/cap`, `xor ecx,ecx` @ `0xa95eaa`). **CONFIRMED** for presence; the mode-0 driver path is STRONG.
+1. **`+inf` sentinel** — the eight bytes at file offset `0x1DBCEB8` read `00 00 00 00 00 00 F0 7F` = `0x7FF0000000000000` = `+inf`.
+2. **Impact LUT** — the symbol, the `.data` residence at `0x3ded040`, the `9·sc+sc` indexing in `impact` via the relocated `vertical_impact_with_loop_ptr`, and the `{0,1,2,4}` value range are all pinned. The individual 81 int32 cell values are [INFERRED]: the table is `.data`-resident behind a relocation and absent from the extracted rodata (see §2).
+3. **Spill cap** — `cmp DWORD PTR [Rep+0x2fc],0x10000` appears twice in the `insert_spill_code` body, paired with the warning string.
+4. **Latency tiers, and no float weights in the cost** — the `mov esi,0x8` (DRAM) and `mov esi,0x10` (SB) immediates are byte-exact in `find_costs`, and the disassembly carries no `mulsd`/`movsd`-from-`.rodata` weight literal.
+5. **The degree-squared metric exists but is off-path** — the squaring `imul` (four in total: three `imul edx,edx` plus one `imul edi,edi`) and six `divsd` are present in `simplify`, but the driver passes mode `0` (`cost/cap`, `xor ecx,ecx` @ `0xa95eaa`). Its presence is exact; that mode 0 is the only driver path is read from that one call site.
 
-Remaining ceilings (tagged in-text): the exact `<<7`/`+0` (loop) vs `<<6`/`+160` (flat) cost-slot struct view is STRONG, not byte-traced; the redundant-reload coalescing *order* and the eintervals-driven choice of *which* candidate to store-vs-split are STRONG (string + call-graph), not line-by-line; the `_Reload` load materialization in `indice_legalization` is STRONG (string-xref ownership + `Homes` hand-off). The numeric `SB_SIZE` is a per-arch immediate in the geometry record, documented on the [geometry page](../arch/sbuf-psum-geometry.md), not re-derived here.
+Remaining ceilings, all flagged in-text: the exact `<<7`/`+0` (loop) versus `<<6`/`+160` (flat) cost-slot struct view is not byte-traced; the redundant-reload coalescing *order* and the eintervals-driven choice of *which* candidate to store versus split rest on strings plus the call graph, not a line-by-line read; and the `_Reload` load materialization in `indice_legalization` rests on string-xref ownership plus the `Homes` hand-off. The numeric `SB_SIZE` is a per-arch immediate in the geometry record, documented on the [geometry page](../arch/sbuf-psum-geometry.md) rather than re-derived here.
 
 ## Cross-references
 
