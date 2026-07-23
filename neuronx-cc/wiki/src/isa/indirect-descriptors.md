@@ -81,7 +81,7 @@ The generic on-chip gather descriptor with no microscaling: an index vector and 
 void assignAccess3D(u8 *B, AccessPattern const& ap, bool out) {
     if (!ap.isTensorIndirectDynamicAP())          // call [r12+0x80]  @0x150cd35 -> fork
         return assignStaticPattern<TENSOR3D>(B, ap, out);  // jmp 0x150c390  @0x150cf0b
-                                                  //   16-byte 4+4N static fill (D-N02)
+                                                  //   16-byte 4+4N static fill
 
     // --- the INDIRECT branch ---
     AccessPattern* idxAP = ap.getTensorIndirectIndicesAP();      // call [r12+0x68]  @0x150cdbf

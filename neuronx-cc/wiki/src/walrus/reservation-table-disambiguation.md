@@ -38,7 +38,7 @@ For reimplementation, the contract is:
 
 ### The claim being corrected
 
-An early reading of this backend (the S2-07 §3.4 brief) described a single **"scheduler partition-band reservation table shared by pre_sched and post_sched for resource-constrained list scheduling,"** with a per-engine issue-slot intersection test and a Hwm-latency-weighted critical path. That description fuses three real things that live in three different passes into one imaginary object. The correction, byte-grounded below, is:
+An early reading of this backend described a single **"scheduler partition-band reservation table shared by pre_sched and post_sched for resource-constrained list scheduling,"** with a per-engine issue-slot intersection test and a Hwm-latency-weighted critical path. That description fuses three real things that live in three different passes into one imaginary object. The correction, byte-grounded below, is:
 
 > **The partition-band reservation table is the SBUF coloring allocator's, not any scheduler's.** No scheduler function in the binary owns, fills, or reads it. pre_sched has *no* resource table at all; post_sched's resource model is per-engine cycle timelines, not partition bands.
 

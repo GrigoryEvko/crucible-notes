@@ -1,6 +1,6 @@
 # Experimental conv2d_pbp Kernels
 
-> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. The two kernels live ONLY as compiled bodies in `neuronxcc/nki/_private_kernels/conv.cpython-310-x86_64-linux-gnu.so` (5,993,224 B; Cython-3, `-O3`); cp311/cp312 carry byte-identical sources and the same `__pyx` roster (not byte-diffed). There is no readable `.py` twin for the pbp functions — the readable `neuronxcc/private_nkl/conv.py` (4259 L, "New NKI FE, Migrated from old NKI FE") ships the depthwise / column-packing / `rep_nhwc_Pcinh` siblings with identical helpers and naming, but NOT pbp. Algorithm and op-flow are grounded on that twin and flagged where the Cython `mstate` string-indirection blocks static call-order recovery. Provenance: D-AA05, cross-checked against the binary string/symbol table and `private_nkl/conv.py`.*
+> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. The two kernels live ONLY as compiled bodies in `neuronxcc/nki/_private_kernels/conv.cpython-310-x86_64-linux-gnu.so` (5,993,224 B; Cython-3, `-O3`); cp311/cp312 carry byte-identical sources and the same `__pyx` roster (not byte-diffed). There is no readable `.py` twin for the pbp functions — the readable `neuronxcc/private_nkl/conv.py` (4259 L, "New NKI FE, Migrated from old NKI FE") ships the depthwise / column-packing / `rep_nhwc_Pcinh` siblings with identical helpers and naming, but NOT pbp. Algorithm and op-flow are grounded on that twin and flagged where the Cython `mstate` string-indirection blocks static call-order recovery. Provenance: cross-checked against the binary string/symbol table and `private_nkl/conv.py`.*
 
 ## Abstract
 
@@ -381,7 +381,7 @@ The conv-op → NKI-kernel auto-selector is `TransformConvOp` (class `TransformC
 | Guard/assertion message set | CERTAIN | verbatim `.rodata` (all 10 grepped) |
 | Tiling vars (`H_REP`, `H_REP_NUM_TILES`, `C/COUT/K0/K1/WF/MM_REDUCE_NUM_TILES`) | CERTAIN | interned in pbp `.so` pool |
 | `H_REP` packing = `C_in × H_REP`; tile nest; weight-stationary; im2col-by-AP; `mm_reduce_weight` reduction | HIGH | `.so` vocabulary + twin `Pcinh_default` algorithm |
-| `nc_matmul` partition≤128 / moving-free≤512; `is_stationary_onezero` 2× | HIGH | D-AA05 stub + twin call sites |
+| `nc_matmul` partition≤128 / moving-free≤512; `is_stationary_onezero` 2× | HIGH | stub + twin call sites |
 | `0f1b` "Prefetches filter" + runtime print; `fb01` has neither | CERTAIN | only `0f1b` interns the prefetch tokens + print |
 | Never auto-matched (absent from `TransformConvOp`) | HIGH | grep: pbp absent from selector, present only as inline locals |
 | Literal name `filter_partition_dim` inside pbp bodies | MEDIUM | string count 0 in pbp `.so`; name lives in twin `conv.py` L1408 |

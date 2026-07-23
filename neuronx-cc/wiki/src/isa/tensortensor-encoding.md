@@ -24,7 +24,7 @@ The bar for this page: a reimplementer can byte-encode any of the thirteen instr
 
 ## At a glance — 13 opcodes, 5 bodies, one family
 
-| Opcode | Mnemonic (D-V06 ordinal) | Generator (`CoreV2GenImpl`, libwalrus) | Wire struct | Band shape | Operand slots |
+| Opcode | Mnemonic (ordinal) | Generator (`CoreV2GenImpl`, libwalrus) | Wire struct | Band shape | Operand slots |
 |---|---|---|---|---|---|
 | `0x41` / `0x51` / `0x8A`/`0x8E` | TensorTensor (65/81/138/142) | `visitInstTensorTensor @0x12356d0` (1965 B) | `s3d3_tt` | 3-D, `+0x0C..0x0F` | dst/in0/in1 `TENSOR3D` `+0x10`/`+0x20`/`+0x30` |
 | `0xEA` | SelectReduce (234) | `visitInstCopyPredicated @0x125eb20` (5994 B) | select-reduce | 2-D, `+0x24..0x2C` | dst/mask/src `TENSOR2D` `+0x18`/`+0x30`/(packed) |

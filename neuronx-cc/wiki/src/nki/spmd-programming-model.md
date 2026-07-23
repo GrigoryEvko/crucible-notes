@@ -82,7 +82,7 @@ PyObject* program_id(PyObject* axis) {
     program_ids = sema->program_ids;   // list[ProgramId], one entry per grid axis
     i = normalize_dim(axis);           // int|Axis → non-negative axis index
     if (!(0 <= i && i < len(program_ids)))
-        err_program_id_axis_out_of_bounds(...);   // raise (D-A13 error catalog)
+        err_program_id_axis_out_of_bounds(...);   // raise (error catalog)
     return program_ids[i];             // mp_subscript → ProgramId (symbolic uint64)
 }
 ```

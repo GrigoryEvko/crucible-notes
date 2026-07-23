@@ -70,7 +70,7 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 | `--disable-stream-shuffle` | bool | False | HID | (no help) `[0x88e10]` — disables stream-shuffle DMA optimization | HIGH |
 | `--disable-stream-transpose-small` | bool | False | HID | (no help) `[0x87fa0]` — disables stream-transpose for small tensors | HIGH |
 | `--disable-tiling-of-non-overlapping-mem-access` | bool | False | HID | (no help) `[0x870e0]` — disables tiling for non-overlapping memory accesses | HIGH |
-| `--distribution-strategy <name>` | str/enum(fsdp, nemo, llm-training) | (none) | INT | *"Enable compiler optimizations for best performance with specific distribution strategy"* `[0x84b80]` — BP branches to FSDP/NeMo/LLM-training sharding ([Part 2.27](../arch/) / D-AB08) | CERTAIN |
+| `--distribution-strategy <name>` | str/enum(fsdp, nemo, llm-training) | (none) | INT | *"Enable compiler optimizations for best performance with specific distribution strategy"* `[0x84b80]` — BP branches to FSDP/NeMo/LLM-training sharding ([Part 2.27](../arch/)) | CERTAIN |
 | `--distribution-type-llm-training` | bool | False | INT | (no help) `[0x87f60]` — shorthand that sets `distribution_strategy=="llm-training"` (BP compares the literal) | CERTAIN |
 | `--enable-arch-legalize` | bool | False | PUB(/HID) | (no help) `[0x89170]` — public face of `--enable-internal-arch-legalize` | HIGH |
 | `--enable-bir-vnsplitter` | bool | False | HID | (no help) `[0x89010]`; dest `enable_bir_vnsplitter` `[0x88b90]` — enables BIR virtual-node splitter | HIGH |
@@ -151,7 +151,7 @@ Registered in `driver/CommandDriver.cpython-310-...so`, **not** in `CompileComma
 | `--skip-pass=<PassName>` | list/str(`=value`, repeatable) | (none) | HID | (no help) — removes named pass(es); two baked-in literals `--skip-pass=MaskPropagation` `[0x88750]`, `--skip-pass=VDNSPrep` `[0x89430]` | HIGH |
 | `--softmax-division-delay` | bool | False | HID | (no help) `[0x88cd0]` — delays the softmax division (numerator/denominator split) | HIGH |
 | `--softmax-epsilon=<float>` | float(`=value`) | `-100000000.0` | HID | (no help; literal carries `=-100000000.0` `[0x883f0]`) — large-negative masking value (-1e8) for numerically-stable softmax | HIGH |
-| `--spmd` | bool | False | HID | (no help; cf. *"enable spmd mode"* `[0x898e0]` for the experimental twin) — SPMD compilation mode; cf. `--enable-experimental-spmd` (D-AB08) | HIGH |
+| `--spmd` | bool | False | HID | (no help; cf. *"enable spmd mode"* `[0x898e0]` for the experimental twin) — SPMD compilation mode; cf. `--enable-experimental-spmd` | HIGH |
 | `--state in:<S>:out:<S>` | str | (full: in=initial, out=final) | HID | (no help) — START/END pipeline STATE so the compiler runs a sub-range; parsed by `getInStateFromCmdline` `[0x84040]`; works with `--pipeline` | CERTAIN |
 | `--static-weights` | bool | False | PUB(/HID) | (no positive help; conflict *"Option %s cannot be used with --static-weights."* `[0x85620]`) — bakes weights into the NEFF; mutually exclusive with `--enable-fast-loading-neuron-binaries` | CERTAIN |
 | `--submit-metrics` | bool | False | HID | (no help) — submits compile metrics to `global_metric_store.json` `[0x88950]`; pairs with `--run-id`/`--metrics-timestamp` | HIGH |

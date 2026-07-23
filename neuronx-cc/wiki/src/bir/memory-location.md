@@ -178,7 +178,7 @@ function toString(this):                          // @0x330560
 
 All eight values are CERTAIN, byte-decoded in both directions. The enum is *defined* in `walrus/ir/lib/IR/StorageBase.cpp` (the fatal-path string carries the source path).
 
-> **QUIRK —** because the values are powers of two, a `type` field *could* OR multiple flags, but no observed site combines them — each `MemoryLocation` has exactly one type. Whether `Input|DRAM` is ever formed is unverified (D-D05 G2); treat `type` as a single enum value in practice but as a bitmask in the struct. [LOW — no OR-combination site found.]
+> **QUIRK —** because the values are powers of two, a `type` field *could* OR multiple flags, but no observed site combines them — each `MemoryLocation` has exactly one type. Whether `Input|DRAM` is ever formed is unverified; treat `type` as a single enum value in practice but as a bitmask in the struct. [LOW — no OR-combination site found.]
 
 The three placeable memories are exactly **DRAM=8 / SB=16 / PSUM=32**, proven independently by `getLatency` @0x3365a0: it branches only on own-type ∈{8,16,32} × dst-type ∈{8,16,32}, dispatching to the `bir::Hwm` cost model per `(src,dst)` pair; any other combination fatals `"RESOLUTION_CONTACT_SUPPORT"` with `src_mem_type`/`dst_mem_type` keys. *Anchors: `getLatency` branch lines 184–206, plus the assert string at line 239.*
 
@@ -317,7 +317,7 @@ function getUniqueId_MemoryLocation(node):          // @0x32dab0 (node = MemoryL
 
 Two offsets pin this. First, the `NamedObject` sub-object sits at **`MemoryLocation+0x118`** (280) — `insertElement` calls `getUniqueId(v64 + 280)` on the fresh object. Second, the owner back-pointer that `getMemoryLocationSet` returns is `*((u64*)this + 44)` = **`MemoryLocation+352`** (= `+280 + 0x48`, the `NamedObject` sub-object's owner slot). So the same `+0x48` universal owner slot that the [container model](container-model.md) page traces lands at `MemoryLocation+352`, and the cascade adds `+0x118` to reach the *MLS's* `NamedObject<Storage,Function>` sub-object before delegating upward. *Anchors: `getUniqueId` @0x32dab0, `getMemoryLocationSet` @0x32db30, `insertElement` @0x34e7e0 — consistent with the 7.3 id-cascade analysis.*
 
-> **NOTE —** `tensor_id` (+552) is *also* read off the ilist node at `node+272` during the loader's `buildTensorId2MemLoc` pass, which asserts every `getTensorId() >= 0` (`"Unassigned tensorId"`, MemoryLocationSet.cpp:0x1D9) and populates the Set's `tensorId2MemLoc` lookup vector. Do not conflate this node-relative `+272` (= `MemoryLocation+552`, the `tensor_id`) with the `StorageBase` storage-kind discriminator at struct-`+272` (value `4`=MemoryLocation). They are different fields at coincidentally the same numeric offset relative to different bases. [HIGH — both verified independently; D-E13 note.]
+> **NOTE —** `tensor_id` (+552) is *also* read off the ilist node at `node+272` during the loader's `buildTensorId2MemLoc` pass, which asserts every `getTensorId() >= 0` (`"Unassigned tensorId"`, MemoryLocationSet.cpp:0x1D9) and populates the Set's `tensorId2MemLoc` lookup vector. Do not conflate this node-relative `+272` (= `MemoryLocation+552`, the `tensor_id`) with the `StorageBase` storage-kind discriminator at struct-`+272` (value `4`=MemoryLocation). They are different fields at coincidentally the same numeric offset relative to different bases. [HIGH — both verified independently.]
 
 ---
 

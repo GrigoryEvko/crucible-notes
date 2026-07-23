@@ -61,7 +61,7 @@ sort_and_merge.cpp / bitonic_sort.cpp                       ── the embedded 
 
 The two PyTorch spellings (`/opt/amazon/custom_op/...` and `/opt/amazon/include/c10/...`) are two build trees merged at link time; a third spelling, `/workplace/auderian/custom-ops/dana-libc-cr/src/KaenaPytorchCustomOps/pytorch_source/c10/...`, names the cross-build umbrella (`dana-libc-cr` = the libc + PyTorch-`c10` cross-build for the Sunda CPU; `KaenaPytorchCustomOps` the package). The SDK is therefore a **freestanding, statically-linked PyTorch-`c10` subset for an Xtensa core** — `at::Tensor` and `c10::ScalarType` semantics, but no Python, no autograd, no dynamic loader.
 
-> **QUIRK — "Sunda" is the NeuronCore family, not a vendor.** `SundaCustomOpLibrary`, `SUNDA_APB_BASE`, and the `targets/sunda/` codegen tree (S2-09) all name the Trainium/Sunda NeuronCore. The GPSIMD custom-op runtime is a per-target software layer named after the core generation it ships on.
+> **QUIRK — "Sunda" is the NeuronCore family, not a vendor.** `SundaCustomOpLibrary`, `SUNDA_APB_BASE`, and the `targets/sunda/` codegen tree all name the Trainium/Sunda NeuronCore. The GPSIMD custom-op runtime is a per-target software layer named after the core generation it ships on.
 
 ---
 

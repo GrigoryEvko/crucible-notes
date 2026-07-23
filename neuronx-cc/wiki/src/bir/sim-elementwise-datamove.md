@@ -243,7 +243,7 @@ All the `[W,Z,Y,X]` iteration and any dtype cast happen inside `runAP`/`read` (Â
 `visitInstDMACopy@0x20b7b0` (`nm`-confirmed) reads `CopyMode@+0x128` and multiplexes (the `do*` asserts name each mode):
 
 ```c
-switch (inst+0x128) {                        // CopyMode (D-E07)
+switch (inst+0x128) {                        // CopyMode
   case 1: doDMATranspose(I); break;          // permute axes per transpose_op
   case 3: doDMAReplicate(I); break;          // broadcast src across dst partitions
   case 2: doDMACCE(I);       break;          // N-input in-flight reduce (add/min/max)

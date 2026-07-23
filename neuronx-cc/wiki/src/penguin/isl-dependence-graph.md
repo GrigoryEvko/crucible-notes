@@ -289,7 +289,7 @@ function get_alloc_remapping(self, inst, ap):          // 0x2c870
 
 ### Step 2 — check_valid_schedule (the legality gate; policy in 5.17)
 
-This is the gate that *consumes* the dependence relation. The RAW/WAR/WAW *construction* below is the D-Y01 dependence relation and is documented here; the gate *policy* (when it runs, what it does with a violation) is owned by [Schedule-Tree Legality](isl-schedule-tree-legality.md).
+This is the gate that *consumes* the dependence relation. The RAW/WAR/WAW *construction* below is the dependence relation and is documented here; the gate *policy* (when it runs, what it does with a violation) is owned by [Schedule-Tree Legality](isl-schedule-tree-legality.md).
 
 ```c
 function check_valid_schedule(self, new_schedule, insts,

@@ -115,7 +115,7 @@ RegisterMove 64-byte bundle (r15 in the GENERATE path) — opcode 0xA7
 
 ### 3.1 The ALU-op wire LUT — `sub_12039C0` (`_ALU_OP`)
 
-The op byte at bundle `+0x0C` is **not** the BIR `AluOpType` ordinal — it is the *silicon ISA* opcode, produced by a 30-arm jump table (`sub_12039C0`, joined to D-V06's `_ALU_OP` table; call site `@0x1243404` → store `mov %al,0xc(%r12)` `@0x1243410`). The table identity-maps the arithmetic head `0..18`, then **permutes** the comparison block and **scatters** the transcendental tail, and `FATAL`s on `average`(24)/`elemwise_mul`(25) and the out-of-bound tail (30–32). This is the **same** table documented at [1.12 §2.1](../arch/sp-engine.md) — keep it consistent.
+The op byte at bundle `+0x0C` is **not** the BIR `AluOpType` ordinal — it is the *silicon ISA* opcode, produced by a 30-arm jump table (`sub_12039C0`, joined to the `_ALU_OP` table; call site `@0x1243404` → store `mov %al,0xc(%r12)` `@0x1243410`). The table identity-maps the arithmetic head `0..18`, then **permutes** the comparison block and **scatters** the transcendental tail, and `FATAL`s on `average`(24)/`elemwise_mul`(25) and the out-of-bound tail (30–32). This is the **same** table documented at [1.12 §2.1](../arch/sp-engine.md) — keep it consistent.
 
 ```c
 // AluOpType -> wire byte, the 30-arm jump table behind RegisterAlu.

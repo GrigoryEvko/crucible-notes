@@ -10,7 +10,7 @@ The recovered wire structs name the families:
 
 - **`StreamShuffle`** (`visitInstStreamShuffle`) decomposes into a `{stream_transpose 0x6A + stream_shuffle 0x69}` micro-pair; the shuffle half packs a **32-byte lane-select immediate** (`instr.immediate.uint8[32]`) across the entire `+0x20..+0x3F` control band.
 - **`StreamTranspose`** (`visitInstStreamTranspose`) decomposes into `{stream_transpose 0x6B + stream_shuffle 0x69}`; the `0x6B` half is the `S4D4_TR` struct (`d3_transpose_ch`, `d4_tr_*`).
-- **`Gather`** (`visitInstGather`) emits a `{reg_load 0x68 + pool_buffer_load 0x67}` pair per 512-element chunk; this page maps the **`0x68 reg_load`** half (`S4D4_GT` / `s_reg_load_*` / `gload_*`), whose paired `0x67` carries the index/data read ([2.10 PE-matmul page covers `0x67` only by reference; D-V05](pe-matmul-encoding.md)).
+- **`Gather`** (`visitInstGather`) emits a `{reg_load 0x68 + pool_buffer_load 0x67}` pair per 512-element chunk; this page maps the **`0x68 reg_load`** half (`S4D4_GT` / `s_reg_load_*` / `gload_*`), whose paired `0x67` carries the index/data read ([2.10 PE-matmul page covers `0x67` only by reference](pe-matmul-encoding.md)).
 - **`Dropout`** (`visitInstDropout`, op `0x7F`) is the `S3D3_DROPOUT` struct with a `threshold_imm_ptr` scalar-operand slot and an out-of-band-seeded RNG mode byte.
 - **`IndirectCopy`** (`visitInstIndirectCopy`, op `0xE7`) is the `S4D4_IC` struct; its **TensorIndirect index descriptor** rides in the source band `+0x0C..+0x14` with the bit-29 indirect marker — the carried-descriptor contract shared with [2.7 indirect descriptors](indirect-descriptors.md).
 - **`RangeSelect`** (`visitInstRangeSelect`, op `0xBC`) is `CoreV3`-only — the `S2D2_RS` struct with two **f32 bound immediates** at `+0x10`/`+0x14` and a paired `0x9B` select-reduce companion.
@@ -27,7 +27,7 @@ Each op shares the [2.1 64-byte bundle skeleton](instruction-bundle.md): `byte[0
 | `0x6A` stream_transpose | `visitInstStreamShuffle` `@0x123b460` (transpose half) | DVE (5) | `S4D4_TR` (`d4_tr_*`) | src @`+0x0C`, dst @`+0x2C` |
 | `0x6B` stream_transpose | `CoreV2GenImpl::visitInstStreamTranspose` `@0x1266df0` | DVE (5) | `S4D4_TR` (`d3_transpose_ch`) | src @`+0x0C`, dst @`+0x2C` |
 | `0x68` reg_load | `CoreV2GenImpl::visitInstGather` `@0x12532e0` (reg_load half) | DVE (5) | `S4D4_GT` (`s_reg_load_*`/`gload_*`) | data-src @`+0x0C`, dst @`+0x2C` |
-| `0x67` pool_buffer_load | `visitInstGather` `@0x12532e0` (pbl half) | DVE (5) | `…_POOL_BUFFER_LOAD` | index/src-AP @`+0x18` (see [2.10](pe-matmul-encoding.md) / D-V05) |
+| `0x67` pool_buffer_load | `visitInstGather` `@0x12532e0` (pbl half) | DVE (5) | `…_POOL_BUFFER_LOAD` | index/src-AP @`+0x18` (see [2.10](pe-matmul-encoding.md)) |
 | `0x7F` dropout | `CoreV2GenImpl::visitInstDropout` `@0x123e510` | DVE (5) | `S3D3_DROPOUT` (`d3_dropout_*`) | TENSOR3D src @`+0x10`, dst @`+0x30`; `threshold_imm_ptr` @`+0x23` |
 | `0xE7` indirect_copy | `CoreV2GenImpl::visitInstIndirectCopy` `@0x1275c40` | DVE (5) | `S4D4_IC` (`s4d4_ic_*`) | indirect idx desc @`+0x0C..+0x14`; dst TENSOR4D @`+0x2C` |
 | `0xBC` range_select | `CoreV3GenImpl::visitInstRangeSelect` `@0x135f8c0` | DVE (5) | `S2D2_RS` (`s2d2_rs_*`) | TENSOR2D src @`+0x18`, dst @`+0x30`; pairs with `0x9B` |
@@ -133,7 +133,7 @@ Validator `dbg_is_valid_stream_transpose @0x1325aa0` (base `rsp+0x7020`): reads 
 
 ## Gather — `visitInstGather @0x12532e0` → `{0x68 reg_load + 0x67 pool_buffer_load}`
 
-`bir::InstGather`. This page maps the **`0x68 reg_load`** half; the paired `0x67 pool_buffer_load` control band (`S4_PB`) is mapped by [2.10 / D-V05](pe-matmul-encoding.md) and only summarized here for the join.
+`bir::InstGather`. This page maps the **`0x68 reg_load`** half; the paired `0x67 pool_buffer_load` control band (`S4_PB`) is mapped by [2.10](pe-matmul-encoding.md) and only summarized here for the join.
 
 **Pre-amble** (`0x1253324..0x1253481`): `arg0 = getArgument(0)` = DATA/source AP (`rbp-0xd8`); `arg1 = getArgument(1)` = **INDEX AP** (`rbp-0xf0`); `dst = getOutput` (`rbp-0xf8`). The DATA AP must **not** be TensorIndirect — `reportError("TODO: support POOL_BUFFER_LOAD with TensorIndirect AP once ISA supports it" @0x1d6a2e0)`. `idx_dtype_val = arg0.AP[0x50][0x8] → rbp-0xe8` (used at `reg_load +0x22`). **Chunk math**: `n = getNumElementsPerPartition(); chunks = floor(n × 1/512)` (`mulss` by `1/512`, `roundss` trunc; chunk size `0x200` = 512). The gather streams the index tensor in **512-element chunks** — one `{reg_load, pool_buffer_load}` pair per chunk, `r13d` = chunk index. COLLECT inserts `0x67` (`movl $0x67 @0x12534e7`) and `0x68` (`movl $0x68 @0x1253579`).
 
@@ -292,7 +292,7 @@ Byte offsets within the 64-byte bundle. `dt` = dtype byte (`sub_120E650`); `AP` 
 | `0x6A` stream_transpose | `@0x123b6d9` (in Shuffle) | `@0x123b829` | (pair-covered by `0x13281a0`) |
 | `0x6B` stream_transpose | `@0x1266ead` | `@0x1266fd7`/`@0x12674d2` | `dbg_is_valid_stream_transpose @0x1325aa0` (`cmp 0x6B @0x1325bff`) |
 | `0x68` reg_load | `@0x1253579` | `@0x125372e` | `dbg_is_valid_reg_load @0x1301820` |
-| `0x67` pool_buffer_load | `@0x12534e7` | `@0x1253a58` (D-V05) | (S4_PB validator) |
+| `0x67` pool_buffer_load | `@0x12534e7` | `@0x1253a58` | (S4_PB validator) |
 | `0x7F` dropout | `@0x123e5fb` | `@0x123e676` | `dbg_is_valid_dropout @0x12dbef0` (`cmp 0x7F @0x12dc08b`) |
 | `0xE7` indirect_copy | `@0x1275d2b` | `@0x1275dab` | `dbg_is_valid_indirect_copy @0x1313fd0` (`cmp 0xE7 @0x1314141`) |
 | `0xBC` range_select (V3) | `@0x135f95f` | `@0x135fb14` | `dbg_is_valid_range_select @0x13b9950` (`cmp 0xBC @0x13b9bac`) |
@@ -303,7 +303,7 @@ Byte offsets within the 64-byte bundle. `dt` = dtype byte (`sub_120E650`); `AP` 
 - **All six op encodings — CERTAIN at byte level.** Every opcode seed, every `+0x20`/`+0x21`/`+0x22` dtype/active store, the Shuffle 32-byte lane immediate base, the Transpose `transpose_ch=1`, the reg_load `+0x24`/`+0x28`, the Dropout `threshold_imm_ptr`/`threshold_dtype`/`rng_mode`, the IndirectCopy `+0x0C..+0x14` indirect descriptor + bit-5 marker, and the RangeSelect two f32 bounds are disassembled against the named encoder bodies.
 - **Wire-struct + field names — CERTAIN present / HIGH bound.** `S3D3_DROPOUT`, `S4D4_GT`, `S4D4_IC`, `S4D4_TR`, `S2D2_RS` and their `d3_dropout_*`/`gload_*`/`s_reg_load_*`/`s4d4_ic_*`/`d4_tr_*`/`s_range_select_*`/`threshold_imm_ptr`/`d3_transpose_ch` members are all live strings in `libwalrus.so` `.rodata`.
 - **Dropout `+0x2B rng_mode` semantics — MEDIUM.** The store itself is pinned (`mov [r13+0x2B],al` from `*(this+0xF0)`); that the value selects an RNG *variant*, with the seed set out-of-band by `PseudoSetRngSeed`, is inferred from the generator-global read and the absence of any seed field.
-- **`0x67 pool_buffer_load` / `0x9B` companion — out of scope here.** The pool-buffer-load `S4_PB` band is [2.10](pe-matmul-encoding.md) / D-V05; the `0x9B` select-reduce companion is not deep-transcribed (out of the named-encoder scope).
+- **`0x67 pool_buffer_load` / `0x9B` companion — out of scope here.** The pool-buffer-load `S4_PB` band is [2.10](pe-matmul-encoding.md); the `0x9B` select-reduce companion is not deep-transcribed (out of the named-encoder scope).
 
 ## Cross-References
 

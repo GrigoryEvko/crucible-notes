@@ -174,7 +174,7 @@ A firsthand programmatic sweep this session decoded all 777 `exp` LUT records wi
 
 ```text
 exp LUT body : 777 sections — mismatches = 0, nonzero-pad = 0
-FULL CATALOG : 35 sets, 409 funcs, 32,759 bkt records — 0 mismatch, 0 bad pad   (D-T04/M06)
+FULL CATALOG : 35 sets, 409 funcs, 32,759 bkt records — 0 mismatch, 0 bad pad
 ```
 
 Independent heroes corroborate: `sqrt_65536p` (1113 pos-only LINEAR sections — `d2=d3=0`, a tangent line per power-of-two octave — at `bkt_start=52` behind the 13 universal residents); `derivative_gelu_apprx_sigmoid_4096p` (the densest single octave: `extract_size=10` ⇒ 1024 cubic segments in one octave). `cp310/11/12` are md5-identical.
@@ -319,7 +319,7 @@ A firsthand sweep this session decoded all 52 `exp` `ctrl` words and rebuilt eac
 
 ```text
 exp ctrl    : 52 octaves — mismatches = 0, (extract_lsb != 23 - extract_size) violations = 0
-FULL CATALOG: 35 sets, 3,071 ctrl words — 0 mismatch on (base, lsb, size);  (D-T04/T05)
+FULL CATALOG: 35 sets, 3,071 ctrl words — 0 mismatch on (base, lsb, size);
               extract_lsb == 23 - extract_size on every populated octave.
               bits[24:32] == 0 always.
 ```

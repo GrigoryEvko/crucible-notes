@@ -369,7 +369,7 @@ These are truthful code-quality observations, all read directly in the shipped s
 | Name | Relationship |
 |---|---|
 | `moe_cte_utils.py` | `BlockShardStrategy`, `SkipMode`, `InputTensors`/`Configs`, HW constants, shared `compute_intermediate_states` / `calculate_expert_affinities` |
-| `moe_cte_mx_utils.py` | MX helpers: `convert_to_mxfp_dtype`, `quantize_block_hidden_state_T`, `_generate_expert_index_vector` (the D-O29 "mxfp_load_utils" — no such file exists; helpers live here) |
+| `moe_cte_mx_utils.py` | MX helpers: `convert_to_mxfp_dtype`, `quantize_block_hidden_state_T`, `_generate_expert_index_vector` (the "mxfp_load_utils" — no such file exists; helpers live here) |
 | `mlp/mlp_tkg/gate_up_projection_mx_shard_H.py`, `down_projection_mx_shard_H.py` | the `nc_matmul_mx` projection inner loops the MX kernels delegate to |
 | `_private_kernels.blockwise_mm` (`.so`) | the **production** compiled MoE-blockwise path NxD actually calls — *not* this readable library entry |
 | `moe_cte_torch.py` | implementation-agnostic PyTorch reference (no `MoECTESpec` arg) for numerical golden checks |

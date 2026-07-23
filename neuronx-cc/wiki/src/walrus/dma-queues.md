@@ -54,7 +54,7 @@ The `run()` body is otherwise pure diagnostics: a libfort (`ft_*`) table with co
 ```c
 // AllocQueuesImpl::visitInstruction(Instruction &I)  @0x111be20
 void visitInstruction(Instruction &I) {
-  uint32_t it = *(uint32_t*)(&I + 0x58);          // InstructionType  (D-D01)
+  uint32_t it = *(uint32_t*)(&I + 0x58);          // InstructionType
   // gate — only DMA-family opcodes are queued:
   //   mov 0x58(%rsi),%eax ; cmp $0x12,%eax ; je accept            // IT 18 == DMA
   //   lea -0x13(%rax),%edx ; cmp $0x30,%edx ; jbe maskcheck       // idx = it-0x13, ≤48
@@ -260,7 +260,7 @@ void chainDMATransposes(BasicBlock &bb) {
 }
 ```
 
-> **CHAIN CRITERION = adjacency in program order ∧ `isTransposeDMA` ∧ same `DMAQueue`.** The `mov $0x3,%edx` immediately before `addDependency` is byte-proven: `EdgeKind = 3 = Output` (D-E19 precedence `Invalid0 < Ordered1 < Anti2 < Output3 < Flow4`). It is a strict *ordering* edge, **not** a data edge — the scheduler serialises the transposes on their shared queue without inventing a false data dependence. The diagnostic `"DMATranspose dependency check: I …"` (`@0x1d85e60`) dumps each link.
+> **CHAIN CRITERION = adjacency in program order ∧ `isTransposeDMA` ∧ same `DMAQueue`.** The `mov $0x3,%edx` immediately before `addDependency` is byte-proven: `EdgeKind = 3 = Output` (precedence `Invalid0 < Ordered1 < Anti2 < Output3 < Flow4`). It is a strict *ordering* edge, **not** a data edge — the scheduler serialises the transposes on their shared queue without inventing a false data dependence. The diagnostic `"DMATranspose dependency check: I …"` (`@0x1d85e60`) dumps each link.
 
 ### Algorithm — XBar transpose ↔ SB ordering
 
@@ -286,7 +286,7 @@ void chainDMATransposes(BasicBlock &bb) {
 
 ### Purpose
 
-Two opcodes carry the queue-context switch (D-D01 / D-G03):
+Two opcodes carry the queue-context switch:
 
 - **IT 85 `SwitchQueueInstance`** — directs subsequent DMAs of a queue to a specific queue-**instance** (a `BasicBlockHolder` in the `DMAQueue`'s `dma_blocks` list).
 - **IT 86 `ResetQueueInstance`** — re-arms / resets the queue-instance pointer (same `{Q, Instance}` compare, no new holder).

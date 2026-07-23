@@ -378,7 +378,7 @@ Each pass is registered by a `std::function` factory `(PassOptions → unique_pt
 | `register_generator_dynamic_dma_cleanup__` | `0xd06550` / `0xd04d60` | `dynamic_dma_cleanup` |
 | `register_generator_assign_hwdge_engine__` | `0x1182710` / `0x1180100` | `assign_hwdge_engine` |
 
-The relevant relative placement in the backend pipeline (the second numbers below are the D-H17 pipeline-trace sub-sequence, distinct from the alphabetical registry IDs `dynamic_dma_cleanup=49 / dynamic_dma_scan=50 / dynamic_dma_setup=51 / assign_hwdge_engine=12 / lower_dynamic_dma=92`):
+The relevant relative placement in the backend pipeline (the second numbers below are the pipeline-trace sub-sequence, distinct from the alphabetical registry IDs `dynamic_dma_cleanup=49 / dynamic_dma_scan=50 / dynamic_dma_setup=51 / assign_hwdge_engine=12 / lower_dynamic_dma=92`):
 
 ```text
  ... 35 bir_splitter
@@ -395,7 +395,7 @@ The relevant relative placement in the backend pipeline (the second numbers belo
  ... 110 assign_trigger_engine    123 assign_hwdge_engine    124 alloc_queues
 ```
 
-> **NOTE — setup before scan, and scan twice.** `dynamic_dma_setup` (36) runs *before* the first authoritative scan because the scratch reservation must exist before the allocators color SB. The scan appears at 73 *after* allocation so that late-introduced/cloned DMAs (spill/reload, SSA re-clones) get routed; the `Unassigned` guard makes this second pass touch only the new DMAs. The cleanup at 71 runs just ahead of that post-alloc scan to strip stale marks; the authoritative route+engine verify is the cleanup that follows codegen. The exact global ordering of the cleanup/scan pair versus `assign_hwdge_engine` is the D-H17 sub-sequence numbering, distinct from the registry's global IDs.
+> **NOTE — setup before scan, and scan twice.** `dynamic_dma_setup` (36) runs *before* the first authoritative scan because the scratch reservation must exist before the allocators color SB. The scan appears at 73 *after* allocation so that late-introduced/cloned DMAs (spill/reload, SSA re-clones) get routed; the `Unassigned` guard makes this second pass touch only the new DMAs. The cleanup at 71 runs just ahead of that post-alloc scan to strip stale marks; the authoritative route+engine verify is the cleanup that follows codegen. The exact global ordering of the cleanup/scan pair versus `assign_hwdge_engine` is the sub-sequence numbering, distinct from the registry's global IDs.
 
 ---
 

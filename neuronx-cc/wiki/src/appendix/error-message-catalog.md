@@ -8,7 +8,7 @@ This appendix is the generated reference dump behind the diagnostics narrative p
 
 1. The **`ErrorMessages.so` flat dict** — `NEURON_ASSERT_ERROR_MESSAGES: Dict[(category:str, index:int), (cause:str, resolution:str)]`, the backend BIR / walrus / codegen / scheduler / NKI / ISA message bodies. **2556 entries** across **353 categories**, dumped verbatim by importing the shipped `.so`.
 2. The **224 native `NCC_<CAT><idx>` codes** baked per-call-site into the HLO/penguin frontend binaries (`hlo2penguin`, `hlo-opt`, `hlo-neff-wrapper`, `xla_infergoldens`) — a *separate* catalog whose code→text binding lives in those binaries' own rodata.
-3. The **NKI `err_*` funnel** — 78 `err_*` diagnostic leaves + 24 `assert_*` + 32 `check_*` validators in `nki/.../sema.so`, the front-end semantic-analysis layer (D-W05).
+3. The **NKI `err_*` funnel** — 78 `err_*` diagnostic leaves + 24 `assert_*` + 32 `check_*` validators in `nki/.../sema.so`, the front-end semantic-analysis layer.
 
 > **NOTE —** the central artifact here is the `ErrorMessages.so` dict, and it is not reverse-engineered text. The `.so` imports standalone — its only dependency is `typing` — so the live Python object was dumped directly rather than reconstructed from `strings`. Every `(category,index)→(cause,resolution)` row in [§4](#4-errormessagesso--the-full-2556-entry-catalog) is the exact runtime value.
 
@@ -4494,7 +4494,7 @@ The complete verbatim runtime dump of `NEURON_ASSERT_ERROR_MESSAGES` (cp310; byt
 
 ## 5. NKI `err_*` Funnel (sema)
 
-The NKI front-end semantic-analysis layer (`nki/compiler/backends/neuron/sema.so`, md5 `755c15de65e6cc00083fab0e5838e4a0`) validates every `nl.*`/`nisa.*` API call's operands during kernel *tracing*, before lowering to penguin.ir. On failure it raises a user-facing exception. The ~150 diagnostic symbols form a three-tier funnel: `check_*` validators (32) → `assert_*` engine helpers (24) → `err_*` diagnostic leaves (78). Every `err_*` is wrapped by `sema_err_url`, which appends the docs link `https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.errors.html`. (D-W05; full per-diagnostic reference on [§6.4.5](../nki/diagnostic-catalog.md).)
+The NKI front-end semantic-analysis layer (`nki/compiler/backends/neuron/sema.so`, md5 `755c15de65e6cc00083fab0e5838e4a0`) validates every `nl.*`/`nisa.*` API call's operands during kernel *tracing*, before lowering to penguin.ir. On failure it raises a user-facing exception. The ~150 diagnostic symbols form a three-tier funnel: `check_*` validators (32) → `assert_*` engine helpers (24) → `err_*` diagnostic leaves (78). Every `err_*` is wrapped by `sema_err_url`, which appends the docs link `https://awsdocs-neuron.readthedocs-hosted.com/en/latest/nki/api/nki.errors.html`. (full per-diagnostic reference on [§6.4.5](../nki/diagnostic-catalog.md).)
 
 > **NOTE —** these are a *fourth*, separate surface: `err_*` raise Python exceptions (`NKISyntaxError` / `ValueError` / `TypeError` / `IndexError` / `RuntimeError`) that propagate up to the `nki.jit` driver and are then surfaced by the A08/A13 logger layers — i.e. the `ErrorMessages`/`NCC_*` machinery sits *above* this layer and reports what it raises. All 78 `err_*` are hard compile-time errors; the lone non-fatal diagnostic is `warn_block_dimension_is_deprecated` (`DeprecationWarning`).
 
@@ -4606,7 +4606,7 @@ Addresses are `sema.so` file VAs; line numbers are `sema.py` source lines (Cytho
 | `check_store_shape` | `0xa5ac0` | `err_store_dst_shape_smaller_than_other_shape` |
 | `check_tensor_reduce_supported_ops` | `0x5ec40` | `err_instruction_unsupported_op` |
 
-The remaining validators (`check_matmul_mx_low_level_shape`, `check_param_against_dtype_hints`, `check_modified_type`, `check_parameter_types`, `check_and_update_list_param`, `check_and_update_param`, `check_direct_type_match`, `check_tensor_tile_promotion`, `check_modified_tensor_type`, `check_parameter_shapes`, `check_parameter_shapes_no_broadcast`, `check_parameter_shapes_low_level`, `check_matmul_low_level_shape`, `check_local_gather_shape`, `check_stream_shuffle_shape`, `check_quantize_mx_shape`) perform leaf checks or dispatch via a Cython-cached slot; several (`check_quantize_mx_shape`, `check_matmul_mx_low_level_shape`, `check_local_gather_shape`) raise *inline* messages with no fronting `err_*` symbol (D-W05 §5d).
+The remaining validators (`check_matmul_mx_low_level_shape`, `check_param_against_dtype_hints`, `check_modified_type`, `check_parameter_types`, `check_and_update_list_param`, `check_and_update_param`, `check_direct_type_match`, `check_tensor_tile_promotion`, `check_modified_tensor_type`, `check_parameter_shapes`, `check_parameter_shapes_no_broadcast`, `check_parameter_shapes_low_level`, `check_matmul_low_level_shape`, `check_local_gather_shape`, `check_stream_shuffle_shape`, `check_quantize_mx_shape`) perform leaf checks or dispatch via a Cython-cached slot; several (`check_quantize_mx_shape`, `check_matmul_mx_low_level_shape`, `check_local_gather_shape`) raise *inline* messages with no fronting `err_*` symbol.
 
 ### 5c. `assert_*` → `err_*` (the named-err subset)
 

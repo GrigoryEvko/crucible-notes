@@ -22,7 +22,7 @@ this page is **stock OpenXLA** — `mlir::sdy` (github.com/openxla/shardy), `xla
 (`xla/service/spmd/shardy`), and `xla::HloSharding` (XLA core), all linked verbatim
 into `hlo-opt`. Not one symbol, field offset, or enum value carries a Neuron delta;
 Neuron *drives* this bridge from its propagation pipeline ([13.2](sharding-propagation.md))
-and consumes the resulting `HloSharding` downstream. Provenance D-AB06.
+and consumes the resulting `HloSharding` downstream.
 
 This page covers, in order: the five `mlir::sdy` attribute storage layouts (§A);
 the export converter `convertToHloSharding` and its axis→tile-dim flattening (§B);

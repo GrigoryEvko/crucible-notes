@@ -139,7 +139,7 @@ The disjointness is proven by disassembly, not asserted:
 // And the cast's signature carries no random input:
 //   bir::CastToNewDType(shared_ptr<vector<uint8>> data,
 //                       Dtype src, Dtype dst, bool,
-//                       optional<FP8ConversionConfig>)   // D-X06, confirmed in
+//                       optional<FP8ConversionConfig>)   // signature from
 //                                                        // the libBIR sidecar symbol
 ```
 
@@ -242,7 +242,7 @@ Pin the positive numeric fact that anchors §2's negative one: FP8 and FP4 subno
 `neuronx-cc` has two byte-level FP8 narrowers reached at compile/sim time:
 
 ```text
-(1) libBIR  bir::CastToNewDType — the canonical OCP narrow (D-X06):
+(1) libBIR  bir::CastToNewDType — the canonical OCP narrow:
       e4m3fn helper @0x4b1f40 (max 448, NO Inf, code 0x7E saturate),
       e5m2   helper @0x4b2160 (max 57344, HAS Inf, code 0x7B saturate).
     Imported (undefined `U`) by BOTH libBIRSimulator and libwalrus — they call
@@ -342,11 +342,10 @@ A negative-results page must also fence the positive, so the absence of stochast
 // Every FP-narrowing encoder (e4m3fn, e5m2, E3M4, E4M3-legacy, e2m1 FP4, bf16,
 //   fp16) does explicit guard + round + sticky round-to-nearest-EVEN in integer
 //   arithmetic: round-bias = 1 << (MANT_SHIFT - 1); ties broken toward even via
-//   the odd-bit test. (Confirmed bit-exact in the sim's bf16/fp16/fp8 kernels,
-//   D-F04 §2.1-2.3.)
+//   the odd-bit test. (Confirmed bit-exact in the sim's bf16/fp16/fp8 kernels.)
 //
 // The hardware MX-quantize / activation bundles emit NO round-mode operand
-//   (D-J20): rounding is HARD RNE in silicon for both the matmul MX-quantize
+//   rounding is HARD RNE in silicon for both the matmul MX-quantize
 //   and the activation narrow. No round-mode byte is encoded.
 ```
 
@@ -355,7 +354,7 @@ No round-toward-zero, round-toward-+∞, round-toward-−∞, or stochastic FP-n
 ### The one float→int conversion — IEEE-standard, not a directed mode
 
 ```c
-// float -> integer (CastToNewDType float->int leg, D-X06 §4.2):
+// float -> integer (CastToNewDType float->int leg):
 x = roundss(f, 0xc)      // imm 0xc = round-to-nearest-EVEN, suppress-exc
 i = cvttss2si(x)         // cvtt = truncate-toward-zero the now-INTEGRAL x
 // + a saturating cmov clamp to the target int range.

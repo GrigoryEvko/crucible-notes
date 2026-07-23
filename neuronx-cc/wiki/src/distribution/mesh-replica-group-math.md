@@ -1,6 +1,6 @@
 # Mesh → Replica-Group Topology Math
 
-> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt` unless tagged otherwise; resolve via `objdump --start-address=<VA>` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset: for `hlo-opt`, `.text` file_off = VA − 0x201000 and `.rodata` file_off = VA − 0x200000 (section headers). Cross-binary symbols in `hlo2penguin` / `libwalrus.so` are tagged inline. Other builds differ; treat every address as version-pinned. Provenance D-AB07.*
+> *All addresses on this page are virtual addresses (VMA) for `neuronx_cc` 2.24.5133.0+58f8de22 (cp310), binary `neuronxcc/starfish/bin/hlo-opt` unless tagged otherwise; resolve via `objdump --start-address=<VA>` or the VMA-keyed `disasm/` sidecars. VA ≠ raw file offset: for `hlo-opt`, `.text` file_off = VA − 0x201000 and `.rodata` file_off = VA − 0x200000 (section headers). Cross-binary symbols in `hlo2penguin` / `libwalrus.so` are tagged inline. Other builds differ; treat every address as version-pinned.*
 
 ## Abstract
 

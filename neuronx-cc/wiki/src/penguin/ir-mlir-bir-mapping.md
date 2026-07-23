@@ -94,7 +94,7 @@ The back-half of `hlo2penguin` is a **printer**, not a builder. `MhloToPythonPri
 function printModule(mlir::ModuleOp m):
     emit("from neuronxcc.starfish.penguin.ir import *")   // textual import
     for func in m.funcs:
-        emit("cu = IRBuilder(...)")                       // IRBuilder, D-P22
+        emit("cu = IRBuilder(...)")                       // IRBuilder
         for op in func.ops:
             switch (op.dialect_opcode):
               case mhlo.dot, dot_general:   printDotOp(op);        // → TensorContractOp(...)

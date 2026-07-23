@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 | **Pass 123** | `assign_hwdge_engine` — orchestrator `AssignHWDGEEngine::run(vector&)` `@0x117fe00`; worker `assignEngine` `@0x1180360` (114 lines) |
 | **Pass order** | 110 (`assign_trigger_engine`) · 123 (`assign_hwdge_engine`) · 124 (`alloc_queues`) |
 | **Engine field** | `InstDMA+0x90` engine-id (low u32 = `EngineType`) · `+0x94` sub-id · `+0xF8` `DGEType` · `+0x38` DMA-kind |
-| **`EngineType`** | `{0 Unassigned, 1 Pool, 2 Activation, 3 PE, 4 DMA, 5 DVE, 6 SP, 7 ALL}` (D-D03; abstract `DMA=4` is the lowering default these passes re-home) |
+| **`EngineType`** | `{0 Unassigned, 1 Pool, 2 Activation, 3 PE, 4 DMA, 5 DVE, 6 SP, 7 ALL}` (abstract `DMA=4` is the lowering default these passes re-home) |
 | **`DGEType`** | `{0 None, 1 SWDGE, 2 HWDGE, 3 Unassigned}` — gate value for both passes is `HWDGE = 2` |
 | **DMA family** | `byte_1DF3660` selector table (`.rodata`, 49 entries, index = IT−19) → `IT ∈ {18,19,22,32,41-46,67}` |
 
@@ -36,7 +36,7 @@ Both passes operate on one `InstDMA` structure and touch four fields. Nailing th
 
 | Field | Offset | Decoded as | Meaning | Confidence |
 |---|---|---|---|---|
-| Instruction type | `+0x58` | `*((uint*)inst + 22)` | `bir::InstructionType` — selects the DMA family (D-D01) | CERTAIN |
+| Instruction type | `+0x58` | `*((uint*)inst + 22)` | `bir::InstructionType` — selects the DMA family | CERTAIN |
 | DMA-kind | `+0x38` | `inst[14]` (dword) | DMA-kind classification; `== 2` enables the dedup-vs-`ValidEngines` fast path in pass 123 | HIGH |
 | Engine-id | `+0x90` | `inst[36]`, written as a **qword** | The engine handle; **low u32 = `EngineType` ordinal**. The trigger engine (pass 110) and the HW-DGE descriptor-gen engine (pass 123) both land here | CERTAIN |
 | Engine sub-id | `+0x94` | `inst[37]` | Engine sub-id companion (the high half of the `+0x90` qword) | HIGH |
@@ -50,7 +50,7 @@ Three of the pass-110 leaf visitors (`AssignSaves`, `CheckLimitIOQueues`, `Limit
 
 ```c
 // the DMA-family gate shared by AssignSaves / CheckLimitIOQueues / LimitIOQueues
-IT = *((uint*)inst + 22);                       // InstDMA+0x58 (D-D01)
+IT = *((uint*)inst + 22);                       // InstDMA+0x58
 is_dma_family = (IT == 18)                       // InstDMA base
              || ((uint)(IT - 19) <= 0x30         // index in [0, 48]
                  && byte_1DF3660[IT - 19] != 0);  // .rodata @0x1DF3660
@@ -119,7 +119,7 @@ For *every* instruction, `visitInstruction` `@0x117a610` inserts `(inst → ID)`
 ```c
 function AssignIdsAndCcLocs_visit(inst):                // 0x117a610
     idMap[inst] = counter++;                            // visitor+0x8; ID = scheduled order
-    if (inst[+0x58] == 48)                              // IT == InstCollectiveCompute (D-D09)
+    if (inst[+0x58] == 48)                              // IT == InstCollectiveCompute
         record_cc_locations(inst);                      // sub_117A0F0
 ```
 
@@ -237,7 +237,7 @@ AssignHWDGEEngine::run(vector<unique_ptr<Module>>&)     0x117fe00  ── orches
 
 ```c
 function AssignHWDGEEngine_run(modules):                 // 0x117fe00
-    arch = modules[0][+0xAC];                            // Module ArchLevel (D-D03)
+    arch = modules[0][+0xAC];                            // Module ArchLevel
     if (arch <= 49):                                     // cmp [rax+0xac], 0x31  @0x117fe44
         ValidEngines = [ EngineInfo{type=6 /*SP*/}, EngineInfo{type=2 /*Activation*/} ];
         // injected literally: mov QWORD [rax], 6 ; mov QWORD [rax-8], 2   @0x1180060/0x1180073

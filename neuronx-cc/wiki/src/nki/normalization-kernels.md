@@ -1,6 +1,6 @@
 # Normalization Kernels — the RMSNorm & LayerNorm Family
 
-> *All file:line citations on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310; the cp311 subkernel tree is byte-identical, `diff -q` empty; cp312 ships the same un-minified source). The evidence base is the shipped, decompressed nkilib wheel under `nkilib/core/` — readable Apache-2.0 NKI Python, **not** a stripped binary, so an nkilib `.py` line quoted here is itself a binary-derived wheel artifact. Provenance is drawn from RE reports **D-O11** (RMSNorm trio) and **D-O12** (LayerNorm + NormType taxonomy).*
+> *All file:line citations on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310; the cp311 subkernel tree is byte-identical, `diff -q` empty; cp312 ships the same un-minified source). The evidence base is the shipped, decompressed nkilib wheel under `nkilib/core/` — readable Apache-2.0 NKI Python, **not** a stripped binary, so an nkilib `.py` line quoted here is itself a binary-derived wheel artifact.*
 
 ## Abstract
 

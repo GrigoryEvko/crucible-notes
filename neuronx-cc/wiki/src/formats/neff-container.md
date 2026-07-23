@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 |---|---|
 | **Container format** | libarchive **PAX** tar (`archive_write_set_format_pax`), **gzip**-filtered by default |
 | **Offset 0** | gzip `1f 8b` (default) **or** tar `ustar`@`0x101` (`--uncompressed`) — **never** ELF `7f 45 4c 46`, never a `NEFF` tag |
-| **Container writer** | `NeffFileWriter::writeArchiveFile` @ `0x153df90` (D-S01 cites `0x153e030`, the per-member loop body) |
+| **Container writer** | `NeffFileWriter::writeArchiveFile` @ `0x153df90` (`0x153e030` is the per-member loop body) |
 | **Packager driver** | `NeffPackager::writePackageFile` @ `0x15200e0`; `NeffPackager::run` @ `0x15307e0` (pass `neff_packager`) |
 | **Header builder** | `NeffFileWriter::initializeNeffHeader` @ `0x1540a00` → `neff_header` POD (≥556 B), lands in `info.json` |
 | **BOM** | `std::map<boost::filesystem::path, std::string>` @ `writer+144`; `addToBom` @ `0x153fb80` |
@@ -127,7 +127,7 @@ NeffPackager::run(vector<unique_ptr<Module>>&)          @ 0x15307e0   (pass "nef
 | `NeffFileWriter::findInfoJson` | `0x153ca20` | Resolves `<baseDir>/info.json` | CERTAIN |
 | `NeffFileWriter::computeOutputPath` | `0x153c7a0` | Output path composition | CERTAIN |
 
-> **NOTE —** the `0x153df90` entry above is the true function start (where `archive_write_new` → `archive_write_set_format_pax` → `archive_write_open` are called). D-S01 cites `0x153e030`, which is the per-member loop body, ~0xa0 bytes into the function. Both are correct frames of the same routine; this page anchors the *setup* to the entry and the *loop body* to `0x153e030+`. (Two-VA-frame: the `archive_*@plt` thunk addresses are a distinct frame again — see [§3](#3-the-write-path).)
+> **NOTE —** the `0x153df90` entry above is the true function start (where `archive_write_new` → `archive_write_set_format_pax` → `archive_write_open` are called). The `0x153e030` frame is the per-member loop body, ~0xa0 bytes into the function. Both are correct frames of the same routine; this page anchors the *setup* to the entry and the *loop body* to `0x153e030+`. (Two-VA-frame: the `archive_*@plt` thunk addresses are a distinct frame again — see [§3](#3-the-write-path).)
 
 > **NOTE (M2 — verifier frame) —** the `NeffPackager`/`NeffFileWriter` method addresses in the tables above and in [§2](#2-producer-topology) (`writePackageFile 0x15200e0`, `writeDefJson 0x152a0e0`, `writeNeffJson 0x152c740`, `writeNEFFFeatures 0x15294b0`, `initializeNeffHeader 0x1540a00`) are the **`.dynsym` symbol-start / function-entry** addresses on the cp310 binary — each is the prologue (`push %r15`), confirmed against the IDA `functions.json` `addr` field and the demangled `.dynsym` value (both equal). A verifier running `objdump -d --start-address=0x15200e0` lands on the prologue, not mid-body. (Do not confuse these with the *internal* per-symbol frame IDA also reports — e.g. `0x60ed60` for `writePackageFile` — which is the `addToBom`-style second VA frame, ~`0xa0` lower; the entry addresses cited here are the ones to verify against.)
 

@@ -1,6 +1,6 @@
 # Codegen of DVE-Search, RNG, Fill, Control, Barrier, and Debug Ops
 
-> *All symbols, addresses, and struct offsets on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310). The codegen bodies live in `neuronxcc/starfish/lib/libwalrus.so` (`.text`/`.rodata` `VA == file offset`, base `0x62d660` / `0x1c72000`); the `bir::Inst*` templates and `InstBuilder` overloads they call resolve into `libBIR.so` (md5 `12bb979f7ca41248252abb0f16b2da98`), and the runtime numeric models into `libBIRSimulator.so`. The `nki_klr_sim` sibling links the identical `KlirToBirCodegen` statically (stripped). The cp311/cp312 wheels share the ABI but drift every VA. Provenance: static binary analysis, cross-checked against reports D-I11/I12/I13/I14/I17/I18, D-D01, D-D02, D-D08, D-E14, D-F08/F10/F12, D-H35.*
+> *All symbols, addresses, and struct offsets on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310). The codegen bodies live in `neuronxcc/starfish/lib/libwalrus.so` (`.text`/`.rodata` `VA == file offset`, base `0x62d660` / `0x1c72000`); the `bir::Inst*` templates and `InstBuilder` overloads they call resolve into `libBIR.so` (md5 `12bb979f7ca41248252abb0f16b2da98`), and the runtime numeric models into `libBIRSimulator.so`. The `nki_klr_sim` sibling links the identical `KlirToBirCodegen` statically (stripped). The cp311/cp312 wheels share the ABI but drift every VA. Provenance: static binary analysis.*
 
 ## Abstract
 

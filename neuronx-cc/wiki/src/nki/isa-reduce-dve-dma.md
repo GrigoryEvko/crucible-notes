@@ -535,7 +535,7 @@ Registers a call to a precompiled custom-op library (the `libbuiltincustomop_cpu
 
 ## IR Node / Builder Inventory
 
-The intrinsic layer never constructs a penguin `Operator` directly; it calls a builder on `nki_ctx` (or a `sema.*_inst` constructor). The node-kind names below are `__pyx_n_s_*` identifiers; the rest forward to the same-named `nki_ctx.<op>` method, where the `Operator` is built (see the IRBuilder, sibling D-P22).
+The intrinsic layer never constructs a penguin `Operator` directly; it calls a builder on `nki_ctx` (or a `sema.*_inst` constructor). The node-kind names below are `__pyx_n_s_*` identifiers; the rest forward to the same-named `nki_ctx.<op>` method, where the `Operator` is built (see the IRBuilder).
 
 | Intrinsic | IR node / builder | Confidence |
 |---|---|---|

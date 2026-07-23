@@ -1,6 +1,6 @@
 # AwsNeuronLNCShardingConstraint and the SPMD↔LNC Coupling
 
-> *All addresses on this page apply to `neuronx-cc` 2.24.5133.0+58f8de22, the `hlo2penguin` front-end binary, cp310 build, unless tagged otherwise. The two-VA-frame convention holds: `.rodata` VA = file offset + 0x200000, `.text` VA = file offset + 0x201000 — VA is **not** the raw file offset. Other versions will differ. Evidence is static-binary-derived (`D-AB08`).*
+> *All addresses on this page apply to `neuronx-cc` 2.24.5133.0+58f8de22, the `hlo2penguin` front-end binary, cp310 build, unless tagged otherwise. The two-VA-frame convention holds: `.rodata` VA = file offset + 0x200000, `.text` VA = file offset + 0x201000 — VA is **not** the raw file offset. Other versions will differ. Evidence is static-binary-derived.*
 
 ## Abstract
 
