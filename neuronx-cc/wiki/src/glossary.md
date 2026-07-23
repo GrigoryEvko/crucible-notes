@@ -75,7 +75,7 @@ The compiler names targets two ways — a silicon codename and an ISA-generation
 
 - **`sub_ADDR`** — a function whose symbol was stripped, named by address. A readable name, when assigned, keeps the `sub_ADDR` in a comment.
 - **`base+0xNN`** — a byte offset into a struct or instruction bundle.
-- **CONFIRMED / STRONG / INFERRED / SPECULATIVE** — the confidence ladder; see [Methodology](methodology.md).
+- **CERTAIN / HIGH / MEDIUM / LOW** — the confidence ladder, used in a table's Confidence column; see [Methodology](methodology.md). Certainty is the default, so prose marks only doubt, with `[INFERRED]` / `[SPECULATIVE]` / `[UNRESOLVED]`.
 - **"binary-derived"** — every claim is from static analysis of the pinned build; recovered identifier strings count as binary evidence.
 
 ## Cross-References
