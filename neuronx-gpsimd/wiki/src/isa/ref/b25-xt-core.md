@@ -16,25 +16,25 @@ the `CPENABLE` state-in and raises `Coprocessor1Exception` when the coprocessor 
 implicit state is the 6-bit `SAR` shift-amount register (dynamic shifts), the 1-bit boolean register
 file `BR` (`MOVT`/`MOVF`), and user register #231 = `THREADPTR` (`RUR`/`WUR`). `[HIGH/OBSERVED — ICLASS state args]`
 
-Everything below is re-grounded against the shipped binaries **this pass**: the **encoding** from the
+Everything below is grounded in the shipped binaries: the **encoding** from the
 `Opcode_<mnem>_Slot_inst_encode` thunks in `libisa-core.so` (read byte-for-byte; the selector word is
 the architectural op2/op1 nibble), the **value semantics** by disassembling the matching
 `module__xdref_*` leaf bodies in `libfiss-base.so`, the **issue timing** from the per-op
 `*_inst_*_issue` scoreboard bodies in `libcas-core.so`, and a byte-exact **encode/decode oracle**
 from the device-native `xtensa-elf-as` / `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). Every
-representative was round-tripped through that device oracle this pass. Confidence tags per
+representative round-trips through that device oracle. Confidence tags per
 [the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
 read-from-byte / proven-by-disasm-or-round-trip, `[MED/INFERRED]` = reasoned over OBSERVED,
 `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic and binary identity, re-confirmed this pass.** `libisa-core.so`
-> (9 690 712 B, ET_DYN x86-64, **not stripped**). `readelf -SW` this pass: `.text` (VMA `0x312c10`)
+> **NOTE — address arithmetic and binary identity.** `libisa-core.so`
+> (9 690 712 B, ET_DYN x86-64, **not stripped**). Per `readelf -SW`: `.text` (VMA `0x312c10`)
 > and `.rodata` (VMA `0x3b6e40`) are **VMA == file-offset**; `.data` (VMA `0x764040` ↔ file
 > `0x564040`) and `.data.rel.ro` (VMA `0x67bb00` ↔ file `0x47bb00`) carry the per-binary delta
 > **`0x200000`** — **not** libtpu's `0x400000`. The encode thunks documented here live in `.text`
 > (VMA == file), so `objdump -d` reads them directly with no offset correction. All config DLLs are
 > under `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/` (gitignored; reach with
-> `fd --no-ignore` or an absolute path). `[HIGH/OBSERVED]`
+> `fd --no-ignore` or an absolute path).
 
 ---
 
@@ -46,7 +46,7 @@ from the symbol table (`nm libisa-core.so | rg -oP 'Opcode_\K\w+(?=_Slot_)' | so
 filtering `^ivp_`). This page is the first of the five base-Xtensa batches that partition those 469;
 it owns the **full-width core arith/logic/shift singleton groups plus the `THREADPTR` UR pair =
 39 mnemonics**. The roster is fixed by `<SEMANTIC>`-group membership (each op is its own singleton
-group, e.g. `<SEMANTIC name="ADD">`), disjoint by construction. `[HIGH/OBSERVED]`
+group, e.g. `<SEMANTIC name="ADD">`), disjoint by construction.
 
 The following adjacent families **spell** like this batch but route elsewhere — verified 0
 cross-membership:
@@ -56,18 +56,18 @@ cross-membership:
   exactly **14** such 16-bit-slot ops (`nm … | rg -c '_Slot_inst16[ab]_encode$'` = 14):
   `add.n addi.n mov.n movi.n beqz.n bnez.n l32i.n nop.n ret.n retw.n break.n halt.n ill.n s32i.n`.
   The four ALU members of that set are the density counterparts of ops on *this* page; they are cited
-  in §6 as the prime density-encoding QUIRK but counted at B26. `[HIGH/OBSERVED]`
+  in §6 as the prime density-encoding QUIRK but counted at B26.
 * **`MUL16S`/`MUL16U`/`MULL`/`MULSH`/`MULUH` (the 16/32-bit integer multiplier) → B26.** Group
-  `xt_mul16`/`xt_mul32`/`xt_mul32h`, distinct iclasses; not an arith/logic/shift op. `[HIGH/OBSERVED]`
+  `xt_mul16`/`xt_mul32`/`xt_mul32h`, distinct iclasses; not an arith/logic/shift op.
 * **`MIN`/`MAX`/`MINU`/`MAXU` and `QUOS`/`QUOU`/`REMS`/`REMU` → B28.** Groups `xt_iclass_minmax`,
-  `xt_iclass_div`; both branch-free integer select/divide, not on this page. `[HIGH/OBSERVED]`
+  `xt_iclass_div`; both branch-free integer select/divide, not on this page.
 * **`NSA`/`NSAU`, `CLAMPS`, `SEXT` → system/misc batches.** Normalize-shift-amount and the
-  sign-extend/clamp helpers are their own iclasses. `[HIGH/OBSERVED]`
+  sign-extend/clamp helpers are their own iclasses.
 * **`CONST16`/`L32R` (the 32-bit immediate builders) → B26 (loads/immediate-load family).** Both are
   real ops in this config (`Opcode_const16_Slot_inst_encode @0x33a280` template `0x4`;
   `Opcode_l32r_Slot_inst_encode @0x33a860` template `0x1`). They are documented here in §3.8 / §6 as
   the *companions* to `MOVI` for building wide constants, because reimplementing the immediate-load
-  path requires all three together — but the partition assigns them to B26. `[HIGH/OBSERVED]`
+  path requires all three together — but the partition assigns them to B26.
 
 The control-flow ops (`L32I`/`S32I`/branches/`CALL`/`LOOP`) are [B26](b26-xt-ctrl.md); the
 special-register / register-window / sync machinery (`RSR`/`WSR`/`MOVSP`/`ENTRY`) is
@@ -77,7 +77,7 @@ classifier itself is [Template & Partition](template-and-partition.md).
 
 ---
 
-## 1. Roster and count verification `[HIGH/OBSERVED]`
+## 1. Roster and count verification
 
 The 39 mnemonics, by iclass (each row enumerated from its `Opcode_<mnem>_Slot_inst_encode` thunk in
 `libisa-core.so`; the `_Slot_` anchor pins the mnemonic boundary so `add` does not bleed into
@@ -105,11 +105,11 @@ The 39 mnemonics, by iclass (each row enumerated from its `Opcode_<mnem>_Slot_in
 
 All 39 round-trip byte-for-byte through the device toolchain (§7). The `rur.threadptr` / `wur.threadptr`
 mnemonics mangle the `.` to `_` in the symbol name: `Opcode_rur_threadptr_Slot_inst_encode @0x338790`,
-`Opcode_wur_threadptr_Slot_inst_encode @0x3387a0`. `[HIGH/OBSERVED]`
+`Opcode_wur_threadptr_Slot_inst_encode @0x3387a0`.
 
 ---
 
-## 2. Common encoding model `[HIGH/OBSERVED]`
+## 2. Common encoding model
 
 ### 2.1 Register file and operand fields
 
@@ -125,13 +125,13 @@ wire (`v = b0 | b1<<8 | b2<<16`):
 The field roles for the core ALU group (`op0 = 0`, RST family): `r` = destination `arr`, `s` =
 source1 `ars`, `t` = source2 `art`; the `op2` nibble discriminates the operation. The RRI8 group
 (`ADDI`/`MOVI`/`ADDMI`, `op0 = d`/`4`/`1`) uses `t` = dest, `s` = src, with the immediate in the
-byte-0 / byte-2 field and the `r` nibble as the sub-selector. `[HIGH/OBSERVED]`
+byte-0 / byte-2 field and the `r` nibble as the sub-selector.
 
 ### 2.2 Selector constants — read from the encode thunks
 
 Each `Opcode_<mnem>_Slot_inst_encode` thunk is a one-line x86 body `movl $word0,(%rdi); ret`
 (bytes `C7 07 <imm32le> C3`). The `word0` template carries the **architectural opcode bits with the
-register fields zeroed** — the bare selector. Read this pass from `libisa-core.so`:
+register fields zeroed** — the bare selector. Read from `libisa-core.so`:
 
 | op | `Slot_inst` VMA | template `word0` | decode |
 |----|-----------------|------------------|--------|
@@ -177,7 +177,7 @@ register fields zeroed** — the bare selector. Read this pass from `libisa-core
 
 The `word0` byte[2] high nibble *is* the architectural op2 for the RST0/RST1/RST2/RST3 sub-tables;
 the assembler then ORs in the `r`/`s`/`t` register bits to form the emitted instruction. The `extui`
-template `0x00040000` has op0=4 with op1=4 (the QRST family `EXTUI` selector). `[HIGH/OBSERVED]`
+template `0x00040000` has op0=4 with op1=4 (the QRST family `EXTUI` selector).
 
 ### 2.3 Immediate operand semantics
 
@@ -195,7 +195,7 @@ Read from the per-op immediate descriptors and confirmed by the device round-tri
 | `SSAI` | `sas` | 5-bit immediate → `SAR` | 0 … 31 |
 
 The `SLLI` `32 − imm` convention is verified by an amount sweep in §6; the `ADDMI` step-256, `MOVI`
-±2048 and `SSAI` 0–31 ranges are verified at their boundaries in §7. `[HIGH/OBSERVED]`
+±2048 and `SSAI` 0–31 ranges are verified at their boundaries in §7.
 
 ---
 
@@ -204,7 +204,7 @@ The `SLLI` `32 − imm` convention is verified by an amount sweep in §6; the `A
 Common to all 39: scalar 1×i32 (AR); **no** `CPENABLE` state-in, **no** `Coprocessor1Exception`
 (plus the per-op `SAR`/`BR`/`THREADPTR` noted). Timing is from the `*_inst_*_issue` scoreboard bodies
 in `libcas-core.so` — each registers its operand USE/DEF at a pipeline stage encoded as the `$imm`
-passed to the scoreboard callback (see §5). `[HIGH/OBSERVED]`
+passed to the scoreboard callback (see §5).
 
 ### 3.1 `ADD` / `SUB` / `ADDX`n / `SUBX`n — `xt_iclass_addsub`
 
@@ -222,7 +222,6 @@ arr = ((ars << k) - art) & 0xFFFFFFFF;      // SUBX{2,4,8}  k=log2(n)
 Pure two's-complement **wrap** — base Xtensa has no carry/overflow flag and no condition codes.
 The `ADDXn`/`SUBXn` forms are the array-index/address builders (`base + i*elemW`). Timing: `arr`
 DEF @stage 4; `ars`, `art` USE @4 — a 1-cycle E-stage ALU op with full forwarding. Example §7.1.
-`[HIGH/OBSERVED]`
 
 ### 3.2 `ADDI` / `ADDMI` — `xt_iclass_addi` / `xt_iclass_addmi`
 
@@ -233,7 +232,7 @@ art = (ars + (sext8(imm8) << 8)) & 0xFFFFFFFF;   // ADDMI (step 256)
 ```
 
 `ADDMI` is the coarse-grained add used to reach a stack/frame offset in one instruction when the
-displacement is a multiple of 256. Timing: `art` DEF @4; `ars` USE @4, imm @3. Example §7.2. `[HIGH/OBSERVED]`
+displacement is a multiple of 256. Timing: `art` DEF @4; `ars` USE @4, imm @3. Example §7.2.
 
 ### 3.3 `NEG` / `ABS` — `xt_iclass_neg`
 
@@ -246,7 +245,7 @@ arr = (art >> 31) ? ((-art) & 0xFFFFFFFF) : art;  // ABS ; ABS(0x80000000) == 0x
 // the fiss leaf computes ABS as: m = art >> 31 (arith) ; arr = (art ^ m) - m
 ```
 
-The `module__xdref_abs_32_32` body read this pass is the canonical sign-mask form
+The `module__xdref_abs_32_32` body is the canonical sign-mask form
 (`eax = src>>31; ecx = −eax; esi ^= ecx; eax += esi` = `(x ^ (x>>31)) − (x>>31)`), so `ABS` wraps at
 `INT32_MIN` like `NEG` — **no saturation**. Timing: `arr` DEF @4; `art` USE @4. Example §7.3.
 `[HIGH/OBSERVED — fiss leaf disasm]`
@@ -258,7 +257,7 @@ The `module__xdref_abs_32_32` body read this pass is the canonical sign-mask for
 arr = ars & art;   arr = ars | art;   arr = ars ^ art;   // bitwise, full 32b
 ```
 
-Timing: `arr` DEF @4; `ars`, `art` USE @4. `[HIGH/OBSERVED]`
+Timing: `arr` DEF @4; `ars`, `art` USE @4.
 
 ### 3.5 Immediate shift — `SLLI` / `SRLI` / `SRAI`
 
@@ -271,7 +270,7 @@ arr = (int32) art >> sargt;                    // SRAI  arithmetic, sargt in 0..
 ```
 
 The `SLLI` amount-encoding QUIRK is the prime gotcha — the encoded field is `32 − amount`, proven by
-the sweep in §6. Timing: `arr` DEF @4; src USE @4, imm @3. Example §7.4. `[HIGH/OBSERVED]`
+the sweep in §6. Timing: `arr` DEF @4; src USE @4, imm @3. Example §7.4.
 
 ### 3.6 Dynamic shift — `SLL` / `SRL` / `SRA` / `SRC` + `SAR` setup
 
@@ -299,7 +298,7 @@ SAR = sas;                   // SSAI  r=4  (5-bit immediate, 0..31)
 load assembly: load two aligned words, set `SAR` from the byte offset via `SSA8L`/`SSA8B`, then
 `SRC` extracts the straddling word. The `module__xdref_sll_u_32_32_5` body confirms the shift
 primitive is `value << (amount & 0x1f)`. Timing: shift ops — `arr` DEF @4, `SAR`+src USE @4; `SSx` —
-`SAR` DEF @4, `ars`/`sas` USE @4/@3. Example §7.5. `[HIGH/OBSERVED]`
+`SAR` DEF @4, `ars`/`sas` USE @4/@3. Example §7.5.
 
 ### 3.7 `EXTUI` — `xt_iclass_exti`
 
@@ -310,7 +309,7 @@ arr = (art >> sae) & ((1u << op2p1) - 1);   // unsigned bit-field extract, zero-
 
 `EXTUI` is the **only** bit-field extract in the base ISA: zero-extended, width 1–16, start 0–31.
 Wider or signed extracts compose from `SLLI`+`SRAI`. Timing: `arr` DEF @4; `art` USE @4, imm @3.
-Example §7.6. `[HIGH/OBSERVED]`
+Example §7.6.
 
 ### 3.8 `MOVI` — `xt_iclass_movi`
 
@@ -324,7 +323,7 @@ art = sext12(imm12);   // -2048 .. 2047
 than an arithmetic result. Constants outside ±2047 need the two-step builders: `CONST16` (two
 instructions, high-then-low 16-bit halves accumulated `result = (CONST16_hi << 16) | CONST16_lo`) or
 the PC-relative literal-pool load `L32R` — both at [B26](b26-xt-ctrl.md). Timing: `art` DEF @1;
-imm USE @0. Example §7.7. `[HIGH/OBSERVED]`
+imm USE @0. Example §7.7.
 
 ### 3.9 Conditional move (compare-zero) — `MOVEQZ` / `MOVNEZ` / `MOVLTZ` / `MOVGEZ` — `xt_iclass_movz`
 
@@ -340,7 +339,6 @@ if ((int32)art >= 0)     arr = ars;   // MOVGEZ op2=11
 These are branch-free predicated AR writes — the compiler's if-conversion primitive. The destination
 `arr` is a read-modify operand: on a false predicate it retains its prior value, so the scoreboard
 lists `arr` as an input as well as an output. Timing: `arr` DEF @4; `ars`, `art` USE @4. Example §7.8.
-`[HIGH/OBSERVED]`
 
 ### 3.10 Boolean conditional move — `MOVT` / `MOVF` — `xt_iclass_bmove`
 
@@ -352,7 +350,7 @@ if (bt == 0)  arr = ars;   // MOVF
 
 The predicate is a 1-bit boolean from the `BR` register file (selected by the `t` field), the
 companion to the compare-and-branch booleans of B28. Timing: `arr` DEF @4; `ars`, `bt` USE @4.
-Example §7.9. `[HIGH/OBSERVED]`
+Example §7.9.
 
 ### 3.11 Set-on-less-than — `SALT` / `SALTU` — `xt_iclass_salt`
 
@@ -364,7 +362,7 @@ arr = ((uint32)ars < (uint32)art)  ? 1 : 0;   // SALTU (unsigned)
 
 Materialises a branch-free 0/1 comparison into an AR (the LX "set-less-than" added for
 if-conversion). Signedness is a **distinct decode** (op2 6 vs 7), never a runtime mode. Timing:
-`arr` DEF @4; `ars`, `art` USE @4. Example §7.10. `[HIGH/OBSERVED]`
+`arr` DEF @4; `ars`, `art` USE @4. Example §7.10.
 
 ### 3.12 Thread pointer — `RUR.THREADPTR` / `WUR.THREADPTR`
 
@@ -388,26 +386,26 @@ MED/INFERRED — exact UR-access stage]`
 * **Wrap everywhere.** The base-Xtensa integer ALU is pure two's-complement modulo 2³². No
   saturation, no carry/overflow flag, no condition-code register. (The saturating/flagged arithmetic
   is the IVP vector datapath's, [B01–B03], and the `CLAMPS` TIE extension's — not here.) `NEG` and
-  `ABS` both wrap `INT32_MIN` to itself, as the `module__xdref_abs_32_32` body shows. `[HIGH/OBSERVED]`
+  `ABS` both wrap `INT32_MIN` to itself, as the `module__xdref_abs_32_32` body shows.
 * **One `SAR`, three setup verbs + immediate.** The dynamic shifts read the single 6-bit `SAR`;
   `SSR`/`SSL` load it from `ars[4:0]` (right) or `32 − ars[4:0]` (left); `SSA8L`/`SSA8B` load the
   byte-alignment amount `8·(ars[1:0])` (or its `32 −` complement) for unaligned-access merge; `SSAI`
   loads a 5-bit immediate. `SLL` uses the internal `(32 − SAR)` convention so that "`SSL ax; SLL …`"
-  shifts *left* by the value in `ax`. `[HIGH/OBSERVED]`
-* **`EXTUI` is the sole bit-field extract**, zero-extended only. `[HIGH/OBSERVED]`
+  shifts *left* by the value in `ax`.
+* **`EXTUI` is the sole bit-field extract**, zero-extended only.
 * **Conditional moves keep the destination on a false predicate** — `arr` is an implicit input.
-  Reimplementations that allocate `arr` write-only will mis-model `MOVcc`/`MOVT`/`MOVF`. `[HIGH/OBSERVED]`
+  Reimplementations that allocate `arr` write-only will mis-model `MOVcc`/`MOVT`/`MOVF`.
 
 ---
 
-## 5. Timing summary `[HIGH/OBSERVED]`
+## 5. Timing summary
 
 The `*_inst_*_issue` scoreboard bodies in `libcas-core.so` extract each operand's AR-field and
 register a USE/DEF at a fixed pipeline stage. The `F0_F0_S0_LdSt_4_inst_ADD_issue @0x1188b60` body
-read this pass extracts the `r` (dest) field via `(word<<0x14)>>0x1c` = bits[15:12], the `s`/`t`
+extracts the `r` (dest) field via `(word<<0x14)>>0x1c` = bits[15:12], the `s`/`t`
 sources via `& 0xf`, and passes `$0x4` (stage 4) to the scoreboard callback `opnd_sem_AR_addr` for
 **every** operand — confirming the 1-cycle E-stage ALU model. The `MOVI` body passes `$0x1` for its
-result. `[HIGH/OBSERVED]`
+result.
 
 | op-class | inputs USE @stage | result DEF @stage | latency |
 |----------|-------------------|-------------------|---------|
@@ -425,14 +423,14 @@ result. `[HIGH/OBSERVED]`
 | `rur`/`wur.threadptr` | `art` / `THREADPTR` | `arr` / `THREADPTR` | UR access (E-stage) |
 
 Scalar ALU results land at the M-stage boundary (4) with full E-stage forwarding, so dependent ops
-issue back-to-back. `MOVI`'s DEF @1 reflects its immediate-only datapath. `[HIGH/OBSERVED]`
+issue back-to-back. `MOVI`'s DEF @1 reflects its immediate-only datapath.
 
 ---
 
 ## 6. QUIRK / GOTCHA — the encoding traps a reimplementation will hit
 
 > **QUIRK — `SLLI` encodes its amount as `32 − amount`, split across two fields.** A device-oracle
-> sweep this pass (`xtensa-elf-as --no-transform`):
+> sweep (`xtensa-elf-as --no-transform`):
 > ```
 > slli a4,a5,1   -> 1145f0   (encoded amount field reads 31)
 > slli a4,a5,7   -> 114590   (reads 25)
@@ -443,13 +441,13 @@ issue back-to-back. `MOVI`'s DEF @1 reflects its immediate-only datapath. `[HIGH
 > uses `OR`/`MOV`). `SRLI` (4-bit, 0–15) and `SRAI` (5-bit split, 0–31) encode the amount *directly*:
 > `srli a4,a6,0 = 414060`, `srli a4,a6,15 = 414f60`; `srai a4,a6,0 = 214060`,
 > `srai a4,a6,31 = 314f60`. A reimplementation that uses the same amount-field convention for all
-> three immediate shifts will silently mis-shift `SLLI`. `[HIGH/OBSERVED]`
+> three immediate shifts will silently mis-shift `SLLI`.
 
 > **QUIRK — `SSL`/`SSR`/`SSA8x` carry no shift amount in the instruction.** They take the amount from
 > the *register* `ars` at run time and write it to `SAR`; the actual shift is a separate
 > `SLL`/`SRL`/`SRA`. There is no single dynamic-shift-by-register instruction — the amount is always
 > staged through `SAR`. `SSL a5 = 401500`, `SSR a5 = 400500`, `SSA8L a5 = 402500`,
-> `SSA8B a5 = 403500`. `[HIGH/OBSERVED]`
+> `SSA8B a5 = 403500`.
 
 > **GOTCHA — `CONST16` is *one* 24-bit op carrying *16* immediate bits; a 32-bit constant is *two*
 > `CONST16`s.** Device round-trip: `const16 a4,0x1234 = 123444`, `const16 a4,0x5678 = 567844` — each
@@ -458,7 +456,6 @@ issue back-to-back. `MOVI`'s DEF @1 reflects its immediate-only datapath. `[HIGH
 > so the canonical 32-bit-constant idiom is `const16 a4, HI ; const16 a4, LO`. `MOVI` (this page)
 > handles only ±2047; for anything wider the firmware uses the `CONST16` pair or a `L32R` literal-pool
 > load (both [B26](b26-xt-ctrl.md)). Reimplementing the immediate-load path requires all three.
-> `[HIGH/OBSERVED]`
 
 > **NOTE — the assembler defaults to the 16-bit `.N` density form.** Without `--no-transform`,
 > `add a4,a5,a6` assembles to the **2-byte** `add.n` (`6a 45`), not the 3-byte `add` (`80 45 60`) —
@@ -466,13 +463,13 @@ issue back-to-back. `MOVI`'s DEF @1 reflects its immediate-only datapath. `[HIGH
 > `ADDI.N`/`MOV.N`/`MOVI.N`, on the `Inst16a`/`Inst16b` 16-bit formats) are *separate* `<SEMANTIC>`
 > groups counted at [B26](b26-xt-ctrl.md); this page documents the 24-bit standalone forms, which a
 > disassembler emits only for amounts/registers the narrow form cannot express, or under
-> `--no-transform`. `[HIGH/OBSERVED]`
+> `--no-transform`.
 
 ---
 
-## 7. Worked bit-patterns — round-tripped through the device oracle `[HIGH/OBSERVED]`
+## 7. Worked bit-patterns — round-tripped through the device oracle
 
-Oracle this pass: `xtensa-elf-as --no-transform` → `.o` → `xtensa-elf-objdump -d`
+Oracle: `xtensa-elf-as --no-transform` → `.o` → `xtensa-elf-objdump -d`
 (`XTENSA_CORE=ncore2gp`, `XTENSA_SYSTEM=…/XtensaTools/config`). Wire bytes little-endian; the bytes
 below are copy-exact from that disassembly.
 
@@ -512,11 +509,11 @@ below are copy-exact from that disassembly.
 
 All 41 representatives (the 39 mnemonics plus the second `addi`/`movi`/`addmi` boundary forms)
 assembled and disassembled identically; the `.N` relaxation default and the `SLLI` amount-field
-were checked adversarially against this oracle. `[HIGH/OBSERVED]`
+were checked adversarially against this oracle.
 
 ---
 
-## 8. Self-verification ledger (5 strongest claims, adversarially re-tested this pass)
+## 8. Self-verification ledger (5 strongest claims, adversarially re-tested)
 
 | # | claim | test | verdict |
 |---|-------|------|---------|
@@ -526,21 +523,21 @@ were checked adversarially against this oracle. `[HIGH/OBSERVED]`
 | 4 | scalar roster = 469 (vs 1065 vector); this batch = 39 | `nm \| rg -oP 'Opcode_\K\w+(?=_Slot_)' \| sort -u` = 1534, filter `^ivp_` → 469/1065; iclass enumeration → 39 | **PASS** |
 | 5 | scalar ALU result DEF @stage 4; `MOVI` DEF @1 | disasm `F0_F0_S0_LdSt_4_inst_ADD_issue @0x1188b60` (passes `$0x4` per operand) and the `MOVI` issue body (`$0x1`) | **PASS** |
 
-> **CORRECTION / DIVERGENCE LEDGER.**
+> **CORRECTION / DIVERGENCE LEDGER** (every entry `[HIGH/OBSERVED]`).
 > 1. **Batch size = 39, not the "~80 (subset of 120)" planning figure.** The 30-batch plan's
 >    early estimate over-counted by lumping the density `.N` variants and the `MUL16`/`MUL32` family
 >    into this batch; those are *separate* `<SEMANTIC>` groups correctly deferred to B26. The binding
 >    rule (per-`<SEMANTIC>`-singleton membership) fixes the disjoint full-width arith/logic/shift +
->    `THREADPTR` roster at **39**. `[HIGH/OBSERVED]`
+>    `THREADPTR` roster at **39**.
 > 2. **The TIE field named `op2` is the *architectural* RST selector, not the emitted wire's high
 >    nibble.** The encode template `ADD = 0x00800000` has op2=8 with `r`/`s`/`t` zeroed; the emitted
 >    `add a4,a5,a6` wire `80 45 60` has top byte `0x60` because the assembler ORs in the register
 >    fields. Both are consistent; `xtensa-elf-objdump` is the authoritative decoder and was used as
->    the ground truth for every byte pattern in §7. `[HIGH/OBSERVED]`
+>    the ground truth for every byte pattern in §7.
 > 3. **`CONST16`/`L32R` appear on this page but belong to B26.** They are documented in §3.8/§6
 >    because the `MOVI` immediate-load path is incomplete without them, but the partition assigns the
 >    32-bit-constant builders to the load/immediate batch [B26](b26-xt-ctrl.md). No double-count: they
->    are *not* in the §1 roster of 39. `[HIGH/OBSERVED]`
+>    are *not* in the §1 roster of 39.
 
 ---
 

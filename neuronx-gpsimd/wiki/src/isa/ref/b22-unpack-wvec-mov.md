@@ -34,7 +34,7 @@ static-analysis derived only.
 > **24/48/96-bit** `wvec` accumulator lanes with **zero-fill (U) / sign-fill (S)**, plus the two moves.
 > **18 mnemonics, 141 placements, 10 widen value leaves.** The whole group rides the **Mul slot `s2`** —
 > *not* the ALU slot — because writing the wide 1536-bit accumulator uses the multiply pipe's wide write
-> port. `[HIGH/OBSERVED]`
+> port.
 
 ---
 
@@ -74,7 +74,7 @@ the *Mul* class. The reason: the result is the **1536-bit `wvec`**, and the only
 can write at that width is the one the multiply pipe owns (the partial-product / accumulate target). So the
 unpack co-resides with the MAC's wide write port and inherits its depth — the result lands at **stage 12**,
 one cycle later than the ALU's stage-11 / 1-cycle `vec` writes. A dependent MAC that reads the freshly
-unpacked `wvt` must respect that 2-cycle DEF. `[HIGH/OBSERVED]`
+unpacked `wvt` must respect that 2-cycle DEF.
 
 ---
 
@@ -136,7 +136,7 @@ the roster, the leaf width-signatures and the executed bodies:
 > [B20](b20-hp-cvt.md)'s `fld_ivpep_sem_hp_cvt_*` (the fp16↔int converts) and
 > [B21](b21-select-shuffle.md)'s `fld_ivp_sem_vec_select_*`. The three groups share no member — B22 is the
 > integer **widen-into-accumulator** direction only; the fp converts and the `vec`↔`vec` narrows live
-> elsewhere, and the saturating `wvec`→`vec` narrow read-outs are [B10](b10-wvec-pack.md). `[HIGH/OBSERVED]`
+> elsewhere, and the saturating `wvec`→`vec` narrow read-outs are [B10](b10-wvec-pack.md).
 
 ---
 
@@ -157,7 +157,7 @@ cvt48unx32l   8  {…}    movww          8  {…}
 movscfv        5  {f0,f1,f2,f3,f7}        ← absent from f6/f11/n1 (the rarer/narrow encodings)
 ```
 
-`17 × 8 + 1 × 5 = 141`. `[HIGH/OBSERVED]`
+`17 × 8 + 1 × 5 = 141`.
 
 ### 3.2 The F0/S2 slot-local field map (verified)
 
@@ -177,7 +177,7 @@ The opcode **selector** occupies the remaining bits — for the binary CVTs that
 a full `[27:6]` CONST with only `vr` left. The other formats relocate the same fields: **F11/S2** keeps
 `wvt` at `[15:14]` (`@0x331b42`: same `shl $0x10; shr $0x1e`); **N1/S2** packs `wvt` into `[3:2]`
 (`@0x331c22`: `shl $0x1c; shr $0x1e`). The full per-slot scatter is the
-[FLIX decoder](../core/flix-encoding.md)'s domain. `[HIGH/OBSERVED]`
+[FLIX decoder](../core/flix-encoding.md)'s domain.
 
 ### 3.3 The full 32-bit selector templates
 
@@ -209,13 +209,13 @@ the gaps. Read directly out of `libisa-core.so` (`objdump -d` of each `…_Slot_
 The `[27:16]` quartet `{0x104, 0x10c, 0x114, 0x11c}` is the `{signed/unsigned, H/L, arity}` fan within the
 unpack block; the `[13:12]` and `[7:6]` low fragments disambiguate the rest of the family within the shared
 `0x10x`/`0x11x` prefix. The full discriminator is the concatenation of all three fragments (so e.g.
-`cvt48snx32` and `cvt96un_2x64` share `[27:16]=0x104` but split on `[7:6]` = `1` vs `2`). `[HIGH/OBSERVED]`
+`cvt48snx32` and `cvt96un_2x64` share `[27:16]=0x104` but split on `[7:6]` = `1` vs `2`).
 
 > **GOTCHA — `WORD0` ≠ a 12-bit selector.** A prior pass quoted only the `[27:16]` 12-bit fragment as "the
 > selector." It is not sufficient to identify the op: `cvt24u2nx16`, `cvt24u32`, `cvt48snx32l`, `cvt48u64`,
 > `cvt48unx32`, `cvt48unx32l`, `cvt96u64`, `cvtg48n_2x32h` and `movscfv` **all** carry `[27:16]=0x10c`. The
 > low `[13:12]`/`[7:6]` (and, for the moves, the wider `[27:6]`/`[27:21]` CONST) are required to
-> disambiguate. The full 32-bit `WORD0` above is the authoritative discriminator. `[HIGH/OBSERVED]`
+> disambiguate. The full 32-bit `WORD0` above is the authoritative discriminator.
 
 ### 3.4 The `wvec` geometry, verified in the descriptor table
 
@@ -231,7 +231,7 @@ The register-file descriptor table is at `libisa-core.so` `.data.rel.ro` VMA `0x
 
 `1536 = 3 × 512`: the `wvec` slot is **three NX16-wide accumulators stacked**, viewed as `32×24` /
 `16×48` / `8×96`-bit accumulator lanes depending on the `CVT` width. The 2-bit `wvt`/`wvr` selects address
-exactly the 4 entries. `[HIGH/OBSERVED]`
+exactly the 4 entries.
 
 ---
 
@@ -319,7 +319,7 @@ Signedness is a **distinct decode bit** (the `S`/`U` selector CONST, [§3.3](#33
 > field; the upper 16 bits of `word1` are *not part of the 48-bit accumulator* and stay whatever they were.
 > Read the slot as `(out[0] | (out[1] << 32)) & ((1<<48)-1)` — exactly what the
 > [B10 pack readout](b10-wvec-pack.md) does in reverse. Confirmed live:
-> `(0x80000000, word1=0x0000ffff)` → `acc48 = 0xffff80000000`. `[HIGH/OBSERVED]`
+> `(0x80000000, word1=0x0000ffff)` → `acc48 = 0xffff80000000`.
 
 ### 4.3 Half-select and gather-convert
 
@@ -351,7 +351,7 @@ Overflow is impossible: the destination accumulator slot is strictly wider than 
 48 ≥ 32+16, 96 ≥ 64+32). Saturation and round-half-up belong to the *opposite* direction — the `wvec`→`vec`
 pack narrows of [B10](b10-wvec-pack.md) (`packvr*` clamps the shift to 32 and saturates to the signed
 range). The VAL-09 differential proves the two are *genuinely different leaves*: B22 widen is exact,
-B10 `packl` low-truncate **wraps**, B10 `packvr` **saturates**. `[HIGH/OBSERVED]`
+B10 `packl` low-truncate **wraps**, B10 `packvr` **saturates**.
 
 ### 4.5 The two moves
 
@@ -405,7 +405,7 @@ result, the extra depth of the 1536-bit wide write port. Staged bypass applies; 
 * **`IVP_MOVSCFV`** — `vr` USE `@10`; the 11 fp-CSR DEFs all `@stage 12`.
 
 If cp1 is disabled, `Coprocessor1Exception` fires at the `CPENABLE` sample (stage 3), *before* any datapath
-effect — the op is squashed, `state_out = ∅`. `[HIGH/OBSERVED]`
+effect — the op is squashed, `state_out = ∅`.
 
 ---
 
@@ -415,7 +415,7 @@ Assembled with `xtensa-elf-as` (`XTENSA_CORE=ncore2gp`) and disassembled byte-id
 canonical spelling with `xtensa-elf-objdump`. The flat sequence picks the **F7-format S2 slot** (8-byte
 bundle, prefix `02a5…`, low byte `…352f`); `MOVSCFV` (no `wvec` dest) picks the **F11 16-byte** frame
 (`0007…`, `…452f`). Bytes are the raw bundle as `objdump` prints them; all 18 round-trip (the remaining 12
-share this structure with the [§3.3](#33-the-full-32-bit-selector-templates) selector). `[HIGH/OBSERVED]`
+share this structure with the [§3.3](#33-the-full-32-bit-selector-templates) selector).
 
 ```
 { nop; nop; ivp_cvt24s2nx16   wv0, v1, v2 }   = 02a568018881352f   (i16  -> 24-bit, SIGNED)
@@ -444,18 +444,18 @@ F0/S2 slot-local word = 0x01042102    (decode-back: wvt=0, vs=2, vr=1 — exact)
 The reconstruction `0x01042102` is exact: re-running the verified field extractors on it yields
 `wvt=0, vs=2, vr=1, sel[27:16]=0x104`. **Semantics executed:** for `k` in `0..31`,
 `wv0.acc24[k] = sext24(v1/v2 i16 lane)` — sign-fill bits `[23:16]` (`vr=v1` IN1, `vs=v2` IN2 per the
-iclass). `[HIGH/OBSERVED]`
+iclass).
 
 ### 6.2 `IVP_CVT96UN_2X64 wv2, v24, v25` — the widest slot
 
 `bundle = 0x02a57c318858352f`. **Semantics:** `acc96[k] = zeroext(src64[k])` — the widest accumulator slot
 (96 = 64 + 32 guard) for the i32×i64 / i64-accumulate MAC chains; the top 32-bit guard word is `0`
-([§4.1](#41-unsigned-widen--zero-fill), executed live above). `[HIGH/OBSERVED]`
+([§4.1](#41-unsigned-widen--zero-fill), executed live above).
 
 ### 6.3 `IVP_MOVWW wv1, wv2` — the wide NOP
 
 `bundle = 0x02a56b010800352f`. **Semantics:** `wv1 = wv2`, a verbatim 1536-bit copy. `wvr` at `[20:19]`
-(F0/S2), the selector `WORD0 = 0x01043100` (`[27:21] = 0x8`). `[HIGH/OBSERVED]`
+(F0/S2), the selector `WORD0 = 0x01043100` (`[27:21] = 0x8`).
 
 ---
 

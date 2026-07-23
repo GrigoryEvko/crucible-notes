@@ -39,7 +39,7 @@ tags: **HIGH/MED/LOW × OBSERVED** (literal bytes / oracle round-trip) /
 
 ## 1. Encoding model — the scalar decode skeleton
 
-[HIGH/OBSERVED] B27 ops share one base-Xtensa field map. The 24-bit word `W` is
+B27 ops share one base-Xtensa field map. The 24-bit word `W` is
 little-endian (`movl $W,(%rdi)` in the encode thunk; emitted low byte first):
 
 ```
@@ -63,7 +63,7 @@ Composite fields used by this batch:
 
 ### 1.1 The R/W/X special-register lattice
 
-[HIGH/OBSERVED] `RSR`/`WSR`/`XSR` are **one parameterised datapath** gated by the
+`RSR`/`WSR`/`XSR` are **one parameterised datapath** gated by the
 `(op1,op2)` pair, with the SR number in `sr[15:8]` as the shared index. The three
 selector CONSTs, read byte-exact from the thunks:
 
@@ -73,7 +73,7 @@ wsr.<S>  word = 0x00130000 | (SR << 8)      (op1=3, op2=1)   write art -> SR
 xsr.<S>  word = 0x00610000 | (SR << 8)      (op1=1, op2=6)   atomic swap art <-> SR
 ```
 
-[HIGH/OBSERVED] These three constants are **invariant across every SR**. The
+These three constants are **invariant across every SR**. The
 cross-family XORs are constant for all SRs that carry all three forms:
 `xsr.X ^ rsr.X == 0x00620000` and `xsr.X ^ wsr.X == 0x00720000`. The
 read→write delta is the clean single-nibble `op1` flip `wsr.X ^ rsr.X ==
@@ -89,7 +89,7 @@ read→write delta is the clean single-nibble `op1` flip `wsr.X ^ rsr.X ==
 
 ### 1.2 The user-register (`RUR`/`WUR`) sub-family
 
-[HIGH/OBSERVED] THREADPTR is a **user register** (`UR 0xe7`), reachable only via
+THREADPTR is a **user register** (`UR 0xe7`), reachable only via
 `RUR`/`WUR`. There is **no `rsr.threadptr`** — the device assembler rejects it
 ("unknown opcode"). The UR number sits in `st = s‖t` (for `RUR`, where `t` is
 free) and the AR operand goes in a *different* field than the SR forms:
@@ -110,7 +110,7 @@ wur.<U>  word = 0x00f30000 | (UR<<8 split r‖s) ; AR src  in t[7:4]    (op1=3,o
 
 ### 1.3 Window-control, spill/fill, fence and external-register skeletons
 
-[HIGH/OBSERVED] The remaining families pin distinct `op0`/`op1`/`op2`/`r`/`s`
+The remaining families pin distinct `op0`/`op1`/`op2`/`r`/`s`
 constants; each was read from its `Opcode_<mn>_Slot_inst_encode` thunk:
 
 | Family | Members | Template base | Decode chain |
@@ -153,7 +153,7 @@ constants; each was read from its `Opcode_<mn>_Slot_inst_encode` thunk:
 
 ## 2. The architectural special-register file (number → name)
 
-[HIGH/OBSERVED] The binary ships **45 `rsr.*`, 44 `wsr.*`, 41 `xsr.*`** encode
+The binary ships **45 `rsr.*`, 44 `wsr.*`, 41 `xsr.*`** encode
 thunks (`nm libisa-core.so | rg -c 'Opcode_{r,w,x}sr_.*_Slot_inst_encode'`). That
 full set spans all of batches 27/28/29; the **B27 subset** owns the
 processor-control / shifter / loop / windowing / prefetch / coprocessor SRs. The
@@ -207,7 +207,7 @@ the windowed-state read (MS is shared with B28; the window primitives read
 `MS_DISPST`). The `WindowBase` (`WB`, `0x48`) state args are confirmed present as
 `Iclass_xt_iclass_{rsr,wsr,xsr}_windowbase_stateArgs` in `libisa-core.so`.
 
-[HIGH/OBSERVED] The privilege class (gated when `PS.RING != 0 && !InOCDMode`):
+The privilege class (gated when `PS.RING != 0 && !InOCDMode`):
 `PS`, `MS`, `WB`, `MEMCTL`, `CPENABLE` raise `PrivilegedException`; `SAR`, `BR`,
 `LBEG`, `LEND`, `LCOUNT`, `PREFCTL` are user-accessible (no gate). `THREADPTR`
 (via `RUR`/`WUR`) is non-privileged user state.
@@ -247,7 +247,7 @@ XSR.SAR  art:  tmp = AR[t]; AR[t] = SAR; SAR = tmp;  // atomic
 
 * **Encoding** `rsr.sar a3 = 0x030330`, `wsr.sar a3 = 0x130330`,
   `xsr.sar a3 = 0x610330`. Round-trip `wsr.sar a3` ⇒ objdump `wsr.sar a3`
-  (bytes LE `30 03 13`). [HIGH/OBSERVED]
+  (bytes LE `30 03 13`).
 * **Side-effects** `WSR.SAR` asserts `XTSYNC` (the funnel shifter samples the new
   amount on the next cycle); `RSR.SAR` defs `art` at the M-stage. **No privilege
   gate** — SAR is user-visible.
@@ -263,7 +263,6 @@ XSR.PS  art:  atomic swap (the exception-prologue PS save/restore primitive);
 
 * **Encoding** `rsr.ps a4 = 0x03e640`, `wsr.ps a4 = 0x13e640` (LE `40 e6 13`),
   `xsr.ps a4 = 0x61e640`. Round-trip `wsr.ps a4` ⇒ objdump `wsr.ps a4`.
-  [HIGH/OBSERVED]
 * **Side-effects** PRIVILEGED — reads `PS.RING`/`MS_DISPST`/`InOCDMode`, raises
   `PrivilegedException` when `RING != 0 && !InOCDMode`. `WSR.PS`/`XSR.PS` force a
   full pipeline resync (`XTSYNC` latest of the family) because PS controls
@@ -281,7 +280,6 @@ WSR.WB  art:  WB.{S,N,C,P} = AR[t];               // committed early (stage 1)
 
 * **Encoding** `rsr.ms a5 = 0x03e550`, `wsr.ms a5 = 0x13e550`,
   `rsr.wb a6 = 0x034860`, `wsr.wb a6 = 0x134860`, `xsr.wb a6 = 0x614860`.
-  [HIGH/OBSERVED]
 * **Side-effects** Both PRIVILEGED. `WSR.WB` commits `WB_{S,N,C,P}` *early* (the
   window rotation must land before a dependent `ENTRY`/`RETW`); `WSR.MS` is gated
   by `NMILock` (write blocked under NMI). `XSR.WB` exists (`0x614800`) — atomic
@@ -298,7 +296,7 @@ WSR.LCOUNT           art:  LCOUNT = AR[t]; XTSYNC;        // pipeline-sensitive
 
 * **Encoding** `rsr.lbeg a7 = 0x030070`, `rsr.lend a8 = 0x030180`,
   `rsr.lcount a9 = 0x030290`. Round-trip `rsr.lcount a9` ⇒ objdump
-  `rsr.lcount a9`. [HIGH/OBSERVED]
+  `rsr.lcount a9`.
 * **Side-effects** non-privileged. `LBEG`/`LEND` writes broadcast on `WSRBus`
   (they steer the loop-back fetch); `LCOUNT` R/W asserts `XTSYNC` and `RSR.LCOUNT`
   defs `art` one stage later than `LBEG`/`LEND` (the counter read crosses the
@@ -317,7 +315,6 @@ WSR.BR       art:  {b15..b0} = AR[t][15:0];
 * **Encoding** `rsr.memctl a10 = 0x0361a0`, `wsr.memctl a10 = 0x1361a0`,
   `xsr.memctl a10 = 0x6161a0`; `rsr.prefctl a11 = 0x0328b0`,
   `wsr.cpenable a12 = 0x13e0c0`; `rsr.br a13 = 0x0304d0`. All six oracle-validated.
-  [HIGH/OBSERVED]
 * **Side-effects** `MEMCTL`/`CPENABLE` PRIVILEGED; `WSR.MEMCTL` drives
   `MEMCTLOut` the same cycle (cache/local-mem reconfig); `WSR.CPENABLE` takes
   effect late (W-stage) so in-flight vector ops still see the old mask — the
@@ -335,7 +332,7 @@ WUR.THREADPTR art:  THREADPTR = AR[t];     // AR SRC  in t-field
 
 * **Encoding** thunk templates `rur=0xe30e70` (`op2=0xe`), `wur=0xf3e700`
   (`op2=0xf`). Round-trip `rur.threadptr a7 = 0xe37e70`,
-  `wur.threadptr a8 = 0xf3e780`. [HIGH/OBSERVED] See §1.2 GOTCHA for the r/t
+  `wur.threadptr a8 = 0xf3e780`. See §1.2 GOTCHA for the r/t
   field swap.
 * **Side-effects** non-privileged TLS pointer; no exception.
 
@@ -370,11 +367,11 @@ EXIT   (0x0001b0): pop dispatched window frame and resume;
 * **Encoding round-trips** `entry a1, 32 = 0x004136` (imm-nibble 4 → 4×8=32),
   `movsp a2,a3 = 0x001320`, `rotw 1 = 0x408010`, `rotw -3 = 0x4080d0`
   (`simm4=0xd`), `rotw -8 = 0x408080`, `setw 2 = 0x408120`, `spillw = 0x003600`,
-  `tossw = 0x003700`, `exit = 0x0001b0`. [HIGH/OBSERVED]
+  `tossw = 0x003700`, `exit = 0x0001b0`.
 * **`RETW` relaxation** the assembler relaxes `retw` → `retw.n` (`0xf01d`,
   density 2-byte) whenever it can; both forms share iclass `xt_iclass_retw` and
   carry identical semantics. The wide form `0x000090` is reachable only inside a
-  `no-transform` region. [HIGH/OBSERVED]
+  `no-transform` region.
 
 > **GOTCHA — ENTRY is XEA3 with a hard 32-byte minimum and ×8 alignment.** The
 > `ncore2gp-params` config carries `ExceptionArch3 = 1` / `NewExceptionArch = 1`
@@ -403,12 +400,12 @@ S32STK: spill AR[t] to stack at AR[s]+imm; produce updated SP;
 ```
 
 * **Encoding round-trips** `l32e a3,a4,-64 = 0x090430`, `s32e a3,a4,-64 =
-  0x490430`. [HIGH/OBSERVED]
+  0x490430`.
 * **`S32STK` immediate field** legal values are **positive, [80, 192], step 16**
   (`immr_stk` is a 4-bit field encoding a fixed-granularity downward stack
   offset). The descending sweep: `imm=80 → 0x69f430`, `96 → 0x69e430`,
   `… 192 → 0x698430` (nibble `0x10 − imm/16`). All other tested values
-  (0, ±4, ±64, 32, 2048, …) are **rejected** by the assembler. [HIGH/OBSERVED]
+  (0, ±4, ±64, 32, 2048, …) are **rejected** by the assembler.
 
 > **QUIRK — S32STK is positive-only and coarse.** Unlike `L32E`/`S32E` (which
 > accept signed `immr×4` offsets such as −64), `S32STK` encodes only a small
@@ -434,7 +431,6 @@ empty for every fence).
 
 * **Round-trips** `isync=0x002000`, `rsync=0x002010`, `esync=0x002020`,
   `dsync=0x002030`, `memw=0x0020c0`, `extw=0x0020d0` — all oracle-validated.
-  [HIGH/OBSERVED]
 
 > **GOTCHA — the four `*SYNC` fences are NOT interchangeable.** They resync
 > different pipeline domains, distinguishable by their ISS `XTSYNC` stage:
@@ -460,7 +456,7 @@ WER:  external_reg[AR[s]] = AR[t];   // commonly ack/mask IRQs in the distributo
 
 * **Encoding round-trips** `rer a11,a12 = 0x406cb0` (`s=0xc,t=0xb`),
   `wer a11,a12 = 0x407cb0`. The read/write delta is the `r`-field
-  `+0x1000` (`RER r=6`, `WER r=7`). [HIGH/OBSERVED]
+  `+0x1000` (`RER r=6`, `WER r=7`).
 * **Side-effects** both PRIVILEGED (gated by `ERACCESS` + `PS.RING`). `RER` has a
   deep result latency (bus round-trip, `art@6`); `WER` defs the
   interrupt-controller state and `WERBus`, then an `ERI_RAW_INTERLOCK` at the
@@ -470,7 +466,7 @@ WER:  external_reg[AR[s]] = AR[t];   // commonly ack/mask IRQs in the distributo
 
 ## 4. ISS / INSTR_SCHEDULE timing
 
-[HIGH/OBSERVED] Each B27 op has a dedicated `x24_Inst_0_inst_<MN>_issue` in
+Each B27 op has a dedicated `x24_Inst_0_inst_<MN>_issue` in
 `libcas-core.so` (DWARF-bearing; e.g. `WSR_SAR_issue` is 0x59 bytes at
 `0x1678820`); `RETW.N` uses the 16-bit `x16b_Inst16b_0_inst_RETW_N_issue`. The
 pipeline-stage root is `rstage=0 / estage=3 / mstage=4 / wstage=6`. Summary of
@@ -574,7 +570,7 @@ of the prior decode-chain resolver):
 present in `libisa-core.so` as `Opcode_<mn>_Slot_inst[16b]_encode` thunks; the
 roster anchors to `nm` (45 `rsr.*` / 44 `wsr.*` / 41 `xsr.*` total across all
 system batches; B27 owns the 11-SR processor/shift/loop/window/prefetch/coproc
-subset). `num_states = 81` (OBSERVED). [HIGH/OBSERVED]
+subset). `num_states = 81` (OBSERVED).
 
 **Confidence summary.** Encoding templates, the SR/UR number map, the privilege
 class, the XEA3 / S32STK / RUR-WUR / RETW-relax behaviors, and the fence words are

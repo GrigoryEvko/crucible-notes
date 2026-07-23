@@ -21,36 +21,36 @@ clear; **none** of the 51 ops on this page do. The datapath subset (min/max, the
 lane-reduce, `BT`/`BF`) is unconditionally executable with `state_in = []`, `exc = []`; the
 control subset reads `PS.RING`/`InOCDMode`/`MS_DISPST` and raises *control-side* traps
 (`PrivilegedException`, `WindowOverflow8`/`WindowUnderflow8`, `SyscallException`, `BreakException`,
-`HaltException`) — never a coprocessor exception. `[HIGH/OBSERVED]`
+`HaltException`) — never a coprocessor exception.
 
-Everything below is re-grounded against the shipped binaries **this pass**: the **encoding** from the
+Everything below is grounded in the shipped binaries: the **encoding** from the
 `Opcode_<mnem>_Slot_inst_encode` thunks in `libisa-core.so` (read byte-for-byte; the selector word is
 the architectural opcode nibble with register fields zeroed); the **value semantics** by disassembling
 the matching `module__xdref_*` leaf bodies in `libfiss-base.so`; the **issue timing and exception
 side-effects** from the per-op `*_inst_*_issue` / `*_inst_stageN` scoreboard bodies and the named
 `*Exception_exc` helpers in `libcas-core.so`; and a byte-exact **encode/decode oracle** from the
 device-native `xtensa-elf-as` / `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). Every representative
-was round-tripped through that device oracle this pass. Confidence tags per
+round-trips through that device oracle. Confidence tags per
 [the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
 read-from-byte / proven-by-disasm-or-round-trip, `[MED/INFERRED]` = reasoned over OBSERVED,
 `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic and binary identity, re-confirmed this pass.** `libisa-core.so`
-> (9 690 712 B, ET_DYN x86-64, **not stripped** — 45 198 symtab entries). `readelf -SW` this pass:
+> **NOTE — address arithmetic and binary identity.** `libisa-core.so`
+> (9 690 712 B, ET_DYN x86-64, **not stripped** — 45 198 symtab entries). Per `readelf -SW`:
 > `.text` (VMA `0x312c10`) and `.rodata` (VMA `0x3b6e40`) are **VMA == file-offset**; `.data` and
 > `.data.rel.ro` (VMA `0x67bb00` ↔ file `0x47bb00`) carry the per-binary delta **`0x200000`** — **not**
 > libtpu's `0x400000`. The encode thunks live in `.text` (VMA == file), so `objdump -d` reads them
 > directly. The `regfiles[]` / `regfile_views[]` tables sit in `.data.rel.ro`, so a raw `xxd` must use
 > file offset `VMA − 0x200000` (e.g. `regfile_views[]` VMA `0x74a780` ↔ file `0x54a780`). All config
 > DLLs are under `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/` (gitignored; reach with
-> `fd --no-ignore` or an absolute path). `[HIGH/OBSERVED]`
+> `fd --no-ignore` or an absolute path).
 
 ---
 
 ## 0. Headline — the count, and what is *absent*
 
 **B28 is exactly 51 distinct mnemonics across 11 semantic groups** (§1 table). Every one round-trips
-through the device `xtensa-elf-as` → `xtensa-elf-objdump` byte-for-byte this pass; the worked bytes in
+through the device `xtensa-elf-as` → `xtensa-elf-objdump` byte-for-byte; the worked bytes in
 §7 are copy-exact from that disassembly. The roster is anchored to the `nm` symbol table of
 `libisa-core.so`, **not** a decompile:
 
@@ -63,7 +63,7 @@ intersected with the B28 semantic-group set yields exactly 51 (§1, §8).
 > **CORRECTION — this `ncore2gp` config has NO return-from-exception / interrupt-return
 > architecture.** A naïve XEA2/XEA3 reading expects `RFE`/`RFI`/`RFDE`/`RFWO`/`RFWU`/`RSIL` to anchor
 > the exception machine. **They do not exist here.** Both the symbol table and the device assembler
-> agree, this pass:
+> agree:
 >
 > ```
 > nm libisa-core.so | rg -o 'Opcode_rf[a-z0-9]*_Slot' | sort -u
@@ -124,7 +124,7 @@ boolean-file ops, whereas `ANDB`…`XORB` write the 1-bit **BR** file and live h
 branches/`CALL`/`J`/density `.N`/`MUL32`/scalar-`div` are [B26](b26-xt-ctrl.md). The non-loop SRs
 (`SAR`, `PS`, `EPC`, `VECBASE`, …), `ENTRY`/`RETW`/`MOVSP`, `MEMCTL`/`PREFETCH` and the generic sync
 fences are [B27](b27-xt-system.md). `SEXT`, **`CLAMPS`** (cross-referenced in §3.12 below), `NSA`/`NSAU`,
-and the `RFDO`/`RFR` debug-return + cache/timer/MMU remainder are [B29](b25-xt-core.md). `[HIGH/OBSERVED]`
+and the `RFDO`/`RFR` debug-return + cache/timer/MMU remainder are [B29](b25-xt-core.md).
 
 > **NOTE — the loop SRs are pulled in with the construct they serve.** `LBEG`/`LEND`/`LCOUNT` are
 > Xtensa special registers and would, by a generic SR sweep, fall to B27; they are placed here because
@@ -133,7 +133,7 @@ and the `RFDO`/`RFR` debug-return + cache/timer/MMU remainder are [B29](b25-xt-c
 > `mov $0x51,%eax; ret`) reports **81** architectural state cells in the core config; `LBEG`/`LEND`/`LCOUNT`
 > are three of them. Merging the `libisa-core-hw.so` module (its `num_states` → `mov $0x6,%eax` = 6) gives
 > **87 = 81 + 6** — the merged figure the Part-2 register/identity pages cite. Read **81** for the core
-> architectural-state count, **87** for the merged (incl. `libisa-core-hw`) total. `[HIGH/OBSERVED]`
+> architectural-state count, **87** for the merged (incl. `libisa-core-hw`) total.
 
 ---
 
@@ -160,7 +160,7 @@ entries), each `{ name, parent="BR", width }`:
 | `BR16` | `0x10` | `_TIE_xtbool16` | (full-file mask view) |
 
 > **CORRECTION — the four BR views are `BR2`/`BR4`/`BR8`/`BR16`, not `BR`/`BR2`/`BR4`/`BR8`.** Read
-> byte-exact from `regfile_views[]` at file offset `0x54a780` this pass: the four name pointers
+> byte-exact from `regfile_views[]` at file offset `0x54a780`: the four name pointers
 > resolve to the `.rodata` strings `"BR2"`, `"BR4"`, `"BR8"`, `"BR16"`, each with `parent = "BR"` and
 > the width field `{2,4,8,16}`. The full file is `BR` (in `regfiles[]`); the views are the strided
 > sub-windows. The lane-reduce ops read a `BR4`/`BR8` view; there is no `BR1`/`BR8`-of-`BR` naming
@@ -179,12 +179,12 @@ op0 = v[3:0]   t = v[7:4]   s = v[11:8]   r = v[15:12]   op1 = v[19:16]   op2 = 
 `objdump` prints the three bytes **big-endian-grouped** in its hex column, e.g. `"434560"` ⇒ wire
 bytes `60 45 43` ⇒ `v = 0x434560`. The §7 decodes show both spellings.
 
-### 2.3 Selector constants — read from the encode thunks (this pass)
+### 2.3 Selector constants — read from the encode thunks
 
 Each `Opcode_<mnem>_Slot_inst_encode` thunk in `libisa-core.so` is a one-line x86 body
 `movl $word0,(%rdi); ret` (bytes `C7 07 <imm32le> C3`). `word0` is the **architectural opcode with
 the register fields zeroed** — the bare selector. The assembler ORs the operand fields in. Read
-byte-for-byte this pass:
+byte-for-byte:
 
 | op | `Slot_inst` VMA | template `word0` | decode |
 |----|-----------------|------------------|--------|
@@ -220,7 +220,7 @@ byte-for-byte this pass:
 | `HALT` | `0x338630` | `0x00005200` | s=2 |
 
 Loop-SR `RSR`/`WSR`/`XSR` carry the SR number in the `sr` byte: **`LBEG = 0`, `LEND = 1`,
-`LCOUNT = 2`** (confirmed by the §7.7 round-trip `030040`/`030140`/`030240`). `[HIGH/OBSERVED]`
+`LCOUNT = 2`** (confirmed by the §7.7 round-trip `030040`/`030140`/`030240`).
 
 > **NOTE — every datapath op (min/max, bool) also has the full FLIX slot-placement set.** Beyond the
 > 24-bit `Inst` form, the bundler can co-issue min/max/bool next to a vector op via `F0…F11`/`N0…N2`
@@ -228,7 +228,7 @@ Loop-SR `RSR`/`WSR`/`XSR` carry the SR number in the `sr` byte: **`LBEG = 0`, `L
 > (`@0x33e4c0`), `F0_S0_LdSt` `0x10f67000` (`@0x33e480`); for `MAX`: `F11_S1_ALU` `0x0009f000`,
 > `F0_S0_LdSt` `0x10f65000`. The selector bits move per format but the architectural opcode is the
 > same. This page documents the **24-bit standalone forms** — the ones a control thread executes
-> outside a bundle. `[HIGH/OBSERVED — thunk reads this pass]`
+> outside a bundle.
 
 ---
 
@@ -239,7 +239,7 @@ booleans; `STATE`/`EXC` per §6; `TIMING` from the `libcas-core.so` `*_inst_stag
 (stage = pipeline cycle). Pipeline frame (per the `INSTR_SCHEDULE` model): `rstage = 0`, `estage = 3`,
 `mstage = 4`, `wstage = 6`. **No `CPENABLE` / no `Coprocessor1Exception` anywhere on this page.**
 
-### 3.1 `MIN` / `MAX` / `MINU` / `MAXU` — integer compare-select `[HIGH/OBSERVED]`
+### 3.1 `MIN` / `MAX` / `MINU` / `MAXU` — integer compare-select
 
 ```
 OPERANDS  OUT[ arr : AR(r) ]  IN[ ars : AR(s), art : AR(t) ]
@@ -254,7 +254,7 @@ SEM  // module__xdref_min_32_32_32 @ libfiss-base.so 0x5c05e0 (signed forms: MSB
 
 The signed value function `module__xdref_min_32_32_32` (@`0x5c05e0`) does **not** issue a signed
 compare. It biases both operands by flipping the sign bit, then runs an *unsigned* compare + `cmov`,
-disassembled byte-for-byte this pass:
+disassembled byte-for-byte:
 
 ```asm
 ; esi = ars, edx = art, (%rcx) = arr
@@ -298,7 +298,7 @@ TIMING  arr DEF @5; ars/art USE @4; opcode @3.  2-cycle compare-select — one s
 
 Worked: §7.1.
 
-### 3.2 Boolean logic `ANDB` / `ANDBC` / `ORB` / `ORBC` / `XORB` — `xt_iclass_bbool1` `[HIGH/OBSERVED]`
+### 3.2 Boolean logic `ANDB` / `ANDBC` / `ORB` / `ORBC` / `XORB` — `xt_iclass_bbool1`
 
 ```
 OPERANDS  OUT[ br : BR(r) ]  IN[ bs : BR(s), bt : BR(t) ]   (single-bit boolean regs)
@@ -346,7 +346,7 @@ TIMING  bt DEF @4; bs4/bs8 USE @4; opcode @3.  1-cycle reduce.  [HIGH/OBSERVED]
 
 Worked: §7.3.
 
-### 3.4 Boolean branch `BT` / `BF` — `xt_iclass_bbranch` `[HIGH/OBSERVED]`
+### 3.4 Boolean branch `BT` / `BF` — `xt_iclass_bbranch`
 
 ```
 OPERANDS  OUT[ BranchTarget, BranchTaken ]  IN[ bs : BR(s), label8, PC ]
@@ -417,7 +417,7 @@ TIMING    mirrors loopz; the libcas scoreboard LOOP_W15 chain runs stage0…stag
 
 Worked: §7.6.
 
-### 3.7 Loop special registers `RSR`/`WSR`/`XSR` `.LBEG`/`.LEND`/`.LCOUNT` (9 ops) `[HIGH/OBSERVED]`
+### 3.7 Loop special registers `RSR`/`WSR`/`XSR` `.LBEG`/`.LEND`/`.LCOUNT` (9 ops)
 
 ```
 OPERANDS  RSR.x : OUT[ art : AR ]                IN[ <SR> ]
@@ -448,7 +448,7 @@ switch and to set up software-managed loops.
 
 Worked: §7.7.
 
-### 3.8 Branch-predictor BTB `RBTB0-2` / `WBTB0-2` — `xt_iclass_rbtb`/`wbtb` `[HIGH/OBSERVED]`
+### 3.8 Branch-predictor BTB `RBTB0-2` / `WBTB0-2` — `xt_iclass_rbtb`/`wbtb`
 
 ```
 OPERANDS  RBTBn : OUT[ art : AR, PrivilegedException ]  IN[ ars : AR, MS_DISPST, PSRING, InOCDMode,
@@ -543,7 +543,7 @@ sub-code.
 
 Worked: §7.10.
 
-### 3.11 `BREAK` / `BREAK.N` / `BREAK1` / `HALT` / `HALT.N` — `xt_sem_core_brk`/`halt` `[HIGH/OBSERVED]`
+### 3.11 `BREAK` / `BREAK.N` / `BREAK1` / `HALT` / `HALT.N` — `xt_sem_core_brk`/`halt`
 
 ```
 BREAK   OUT[ BreakNum, BreakException, MaybeOCDBreakException ]  IN[ imms, immt ]  (r=4)
@@ -563,12 +563,12 @@ Debug-trap dispatch — `BREAK*` drop to the debugger / break vector, `HALT*` st
 
 Worked: §7.11.
 
-### 3.12 `CLAMPS` — saturating compare-select (cross-ref to B29) `[HIGH/OBSERVED]`
+### 3.12 `CLAMPS` — saturating compare-select (cross-ref to B29)
 
 `CLAMPS` is the saturating sibling of the min/max compare-select family and the task groups it with
 them — but by the canonical partition it is `xt_sem_clamps`, **owned by [B29](b25-xt-core.md)**, so it
 is **not** counted in the B28 total of 51 (this preserves the 0-overlap rule, the same way scalar-`div`
-was cross-referenced to B26). One-line recap, re-grounded this pass:
+was cross-referenced to B26). One-line recap:
 
 ```
 OPERANDS  OUT[ art : AR(t) ]  IN[ ars : AR(s), imm (saturation bit-width, 7..22) ]
@@ -607,14 +607,14 @@ is silent. Full entry at [B29](b25-xt-core.md). `[HIGH/OBSERVED — encode thunk
 
 The min/max DEF @5 (vs the B25 ALU DEF @4) is the extra compare-then-select stage — confirmed by the
 six-stage `MAX_inst_stage0…stage5` chain in `libcas-core.so`. The BTB ops are the longest scalar
-control-register paths (DEF @5/@6). `[HIGH/OBSERVED]`
+control-register paths (DEF @5/@6).
 
 ---
 
 ## 5. Exceptions / state
 
 - **Datapath (`MIN`/`MAX`, booleans, `ALL`/`ANY`, `BT`/`BF`, `CLAMPS`):** `state_in = []`, `exc = []`.
-  Unconditionally executable; **no `CPENABLE`, no `Coprocessor1Exception`.** `[HIGH/OBSERVED]`
+  Unconditionally executable; **no `CPENABLE`, no `Coprocessor1Exception`.**
 - **Control / dispatch exception ARG_OUTs** (gen_sig, control-side traps; the named `*_exc` helpers in
   `libcas-core.so` are the targets):
 
@@ -640,7 +640,7 @@ control-register paths (DEF @5/@6). `[HIGH/OBSERVED]`
 - **Implicit control state read:** `PSRING` (`PS.RING` privilege), `MS_DISPST` (dispatch state),
   `InOCDMode` (debug mode), `SAR` (window spill addressing), `WB_C`/`WB_N`/`WB_S`/`WB_P` (WindowBase
   current/next/save/pending), `XTSYNC` (loop-count re-arm). The loop SRs `LBEG`/`LEND`/`LCOUNT` are the
-  only SRs owned by this batch. `[HIGH/OBSERVED]`
+  only SRs owned by this batch.
 
 ---
 
@@ -649,7 +649,7 @@ control-register paths (DEF @5/@6). `[HIGH/OBSERVED]`
 Oracle: `XTENSA_SYSTEM=.../tools/XtensaTools/config  XTENSA_CORE=ncore2gp`; `xtensa-elf-as -o b28.o
 b28.s` then `xtensa-elf-objdump -d`. `objdump` prints the 3 core bytes big-endian-grouped; the
 little-endian wire value `v = b0|b1<<8|b2<<16` and the `(op0,t,s,r,op1,op2)` decode are shown. Every
-byte below is copy-exact from the device disassembly **this pass**.
+byte below is copy-exact from the device disassembly.
 
 **7.1 `MIN`/`MAX`** — `min a4,a5,a6` → `434560` ⇒ wire `60 45 43`, `v=0x434560`
 (`op0=0 t=6 s=5 r=4 op2=4`). `arr=a4 ars=a5 art=a6`; `a4 = ((int32)a5 < (int32)a6) ? a5 : a6`.
@@ -696,7 +696,7 @@ BreakException. `break.n 3 = f32d` (16-bit), `break1 3 = 0003f5`, `halt 5 = 0052
 `halt.n = f16d` (16-bit `s=1 t=6`). And the cross-ref: `clamps a4,a5,7 = 334500`, `,15 = 334580`,
 `,22 = 3345f0` (§3.12).
 
-All 51 representatives assembled + disassembled identically through the device toolchain this pass.
+All 51 representatives assembled + disassembled identically through the device toolchain.
 
 ---
 
@@ -719,12 +719,12 @@ All 51 representatives assembled + disassembled identically through the device t
 > **DIVERGENCE — `CLAMPS` is counted at B29, not B28.** The task groups `CLAMPS` with `MIN`/`MAX`
 > (it is the saturating compare-select), so it is documented here (§3.12) as an adjacent cross-ref, but
 > it belongs to the `xt_sem_clamps` group owned by [B29](b25-xt-core.md) and is excluded from the 51
-> to preserve the disjoint partition. No double-count. `[HIGH/OBSERVED]`
+> to preserve the disjoint partition. No double-count.
 >
 > **DIVERGENCE — wide-loop §7.6 bytes vs an earlier draft.** The wide-loop bundle's last byte encodes
 > the resolved loop-end label, so it is body-length-dependent. The bytes above (`…04036f`) are the
-> round-trip for a one-`nop` body this pass; an earlier per-instruction draft cited a different label
-> distance. The 8-byte `{ loop.w15 …; nop }` structure is invariant. `[HIGH/OBSERVED]`
+> round-trip for a one-`nop` body; an earlier per-instruction draft cited a different label
+> distance. The 8-byte `{ loop.w15 …; nop }` structure is invariant.
 
 ---
 

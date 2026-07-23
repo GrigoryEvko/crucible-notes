@@ -25,30 +25,30 @@ The six groups have **zero cross-membership** with each other or with the preced
 [B21 (select / shuffle / compress)](b21-select-shuffle.md) — the `count*` / `*sqz*` / `recipqli*` /
 `*ur*fcr*` / `addmod16u` member sets are mutually exclusive name spaces in the encode-thunk table.
 
-Everything below is re-grounded against the shipped binaries **this pass**: the **encoding** from
+Everything below is grounded in the shipped binaries: the **encoding** from
 `libisa-core.so` (the `Opcode_<mnem>_Slot_<slot>_<unit>_encode` thunks read byte-for-byte, each body being a
 single `movl $imm,(%rdi); ret` that writes the slot-local instruction word), the **value semantics** by
 *executing* the matching `module__xdref_*` and `opcode__*__stage_*` leaves in `libfiss-base.so` live
 in-process, the **issue timing** from the per-op `_inst_stage*` / `_issue` scoreboard leaves in
 `libcas-core.so`, and a byte-exact **encode/decode oracle** from the device-native
-`xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). Every one of the 24 mnemonics was
-round-tripped through that device oracle this pass.
+`xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). Every one of the 24 mnemonics
+round-trips through that device oracle.
 
 Confidence tags per the project model: `[HIGH/OBSERVED]` = read-from-byte / proven-by-execution,
 `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic re-confirmed this pass.** `libisa-core.so` (9 690 712 B, ET_DYN x86-64,
-> not stripped). `readelf -SW` this pass: `.text` (VMA `0x312c10` ↔ file `0x312c10`) and `.rodata` (VMA
+> **NOTE — address arithmetic.** `libisa-core.so` (9 690 712 B, ET_DYN x86-64,
+> not stripped). Per `readelf -SW`: `.text` (VMA `0x312c10` ↔ file `0x312c10`) and `.rodata` (VMA
 > `0x3b6e40` ↔ file `0x3b6e40`) are **VMA == file-offset** — so the `objdump -d` of the encode thunks below
 > reads the live bytes directly. `.data` (VMA `0x764040` ↔ file `0x564040`) carries the per-binary delta
 > **`0x200000`** — **not** libtpu's `0x400000` — so any walk of the `Opcode_*_args` operand-descriptor
 > leaves in `.data` must subtract `0x200000`. All config DLLs are under
 > `extracted/nested/gpsimd_tools_tgz/tools/ncore2gp/config/` (gitignored; reach with `fd --no-ignore` or an
-> absolute path). `[HIGH/OBSERVED]`
+> absolute path).
 
 ---
 
-## 0. Roster and count verification `[HIGH/OBSERVED]`
+## 0. Roster and count verification
 
 The authoritative roster is the set of distinct mnemonics that own at least one encode thunk. Stripping
 `Opcode_(.*)_Slot_…_encode` to its mnemonic and de-duplicating gives the global ISA totals, which match the
@@ -91,10 +91,10 @@ against. The 24 Batch-24 mnemonics, with their per-mnemonic placement counts (`n
 > leaf search alone returns 1064 `ivp_` because `ivp_scatterw` has encode thunks but no `_args` leaf; the
 > encode-thunk strip is the authoritative 1065). Note in particular that `ivp_addmod16u` is *semantically* a
 > scalar AR op (no `CPENABLE`, no vector regfile), yet it is `ivp_`-**prefixed** and therefore counts toward
-> the vector tally — a naming/semantics mismatch that any tally script must respect.
-> `[HIGH/OBSERVED — every prefix classified from the thunk table this pass]`
+> the vector tally — a naming/semantics mismatch that any tally script must respect. Every prefix is
+> classified from the thunk table.
 
-The 24-op split and the `8+6+5+2+2+1` partition are both nm-verified this pass:
+The 24-op split and the `8+6+5+2+2+1` partition are both nm-verified:
 
 ```
 … mnemonics matching count(eq|le) | (un)?sqz | recipqli | (rur|wur).*(fcr|fsr) | addmod
@@ -103,7 +103,7 @@ The 24-op split and the `8+6+5+2+2+1` partition are both nm-verified this pass:
 
 ---
 
-## 1. Common encoding & ABI model `[HIGH/OBSERVED]`
+## 1. Common encoding & ABI model
 
 The 19 vector ops of Batch 24 (histogram 8, sqz 6, vector recip 4 — and `recipqli_s`, `rur*`, which are
 scalar but still vector-pipe) share the vector-coprocessor contract: `STATE_IN = CPENABLE` (sampled at USE
@@ -127,7 +127,7 @@ oracle resolves each. The two operand-bearing register fields the histogram/sqz/
 
 ---
 
-## 2. Group 1 — `ivp_sem_vec_histogram` (COUNTEQ / COUNTLE 4NX8) `[HIGH/OBSERVED]`
+## 2. Group 1 — `ivp_sem_vec_histogram` (COUNTEQ / COUNTLE 4NX8)
 
 ### 2.1 Role and operands
 
@@ -152,7 +152,7 @@ IVP_COUNTLEMZ4NX8  …  (LE + M + Z)
 ### 2.2 Encoding — the selector lattice
 
 The non-`M` variants carry the **15-bit base selector** in `[34:20]`; `EQ` vs `LE` is the selector LSB
-`0x866` vs `0x867`, and `Z` is bit `[9]`. The encode thunks read byte-for-byte this pass:
+`0x866` vs `0x867`, and `Z` is bit `[9]`. The encode thunks read byte-for-byte:
 
 ```
 Opcode_ivp_counteq4nx8_Slot_f0_s3_alu_encode :  movl $0x86600000,(%rdi)   ; sel[34:20]=0x866, bit9=0
@@ -176,7 +176,7 @@ Opcode_ivp_countlemz4nx8_Slot_f0_s3_alu_encode:  movl $0x58000000,(%rdi)   ; [34
 
 The compute is a masked lane-compare feeding the same 3-level carry-save reduce-ADD tree the cross-lane
 `radd` reductions use (the `ivp_sem_csa_8_16_32_l0/l1/l2 → ivp_sem_reduce_stage1` network; see
-[ISS arith semantics](../../iss/cas-arith-sem.md) and the reduce tree documentation). `[HIGH/OBSERVED]`
+[ISS arith semantics](../../iss/cas-arith-sem.md) and the reduce tree documentation).
 
 ```c
 // ivp_sem_vec_histogram :: per call, 64×i8 input
@@ -206,7 +206,7 @@ uint16_t ivp_counteq4nx8(uint8_t vr[64], uint8_t vs[64],   // the 64 data lanes 
 pair; `Z` restarts the sweep at bin 0. No saturation, no rounding, no IEEE exceptions — only
 `Coprocessor1Exception` on cp1-disable.
 
-### 2.4 Timing `[HIGH/OBSERVED]`
+### 2.4 Timing
 
 `libcas-core.so` carries the F0/S3 scoreboard as `IVP_COUNTEQ4NX8_inst_stage0 … _stage12` — **13 stages**.
 Per the `INSTR_SCHEDULE` USE→DEF deltas: `ars@3`, `vr@10`, `vs@10`, `CPENABLE@3` (`+ vbs@10, vbr@10` for the
@@ -232,12 +232,12 @@ ivp_counteqm4nx8 v3, a6, v1, v2, vb1, vb2  →  0005190448c083009408a2b08504452f
     vbs = 1st vbool operand, vbr = 2nd)
 ```
 
-All four byte strings were produced by `xtensa-elf-as` this pass and are byte-identical to the device-native
+All four byte strings were produced by `xtensa-elf-as` and are byte-identical to the device-native
 encoding. `[HIGH/OBSERVED — round-trip oracle]`
 
 ---
 
-## 3. Group 2 — `ivp_sem_sqz` (SQZ / UNSQZ stream compaction) `[HIGH/OBSERVED]`
+## 3. Group 2 — `ivp_sem_sqz` (SQZ / UNSQZ stream compaction)
 
 ### 3.1 Role and operands
 
@@ -253,7 +253,7 @@ of predicate-true lanes** (the new packed length / squeeze pointer). Assembler o
 ### 3.2 Encoding
 
 The SQZ/UNSQZ direction and the width are *not* one contiguous selector — they are split CONST fields per
-format. At F0/S3 the member words read this pass:
+format. At F0/S3 the member words read:
 
 ```
 Opcode_ivp_sqz2n_Slot_f0_s3_alu_encode  :  movl $0x81000402,(%rdi)
@@ -301,7 +301,7 @@ void ivp_sqz(vec512 src, vbool vbr, bool op_unsqz, unsigned elemW,
 > direction are all observed), only the silicon lane-pairing of the innermost tree is un-rendered. This is a
 > value-determined static-analysis boundary, **not** a missing datapath body. `[HIGH structure / residual NAMED]`
 
-### 3.4 Timing and worked pattern `[HIGH/OBSERVED]`
+### 3.4 Timing and worked pattern
 
 `IVP_SQZN` scoreboard runs `…_inst_stage0 … _stage12` (result `@12`). USE `vbr@10`, `CPENABLE@3`; DEF
 prefix-popcount prefanout `@9`, stage-2 gather `@10`, `vt` + `arr` `@12` (≈2-cycle result latency).
@@ -318,7 +318,7 @@ packed source back to lanes 1, 3. `[HIGH/OBSERVED — round-trip oracle]`
 
 ---
 
-## 4. Group 3 — `bbn_sem_vec_sprecip_rsqrt` (RECIPQLI quadratic-interp refine) `[HIGH/OBSERVED]`
+## 4. Group 3 — `bbn_sem_vec_sprecip_rsqrt` (RECIPQLI quadratic-interp refine)
 
 ### 4.1 Role and the seed→refine pipeline
 
@@ -329,7 +329,7 @@ reads a small ROM table and emits a coarse approximation; `RECIPQLI` then perfor
 evaluates a second-order polynomial interpolant, lifting the seed to full `fp32` precision under IEEE
 round/exception control.
 
-That seed is real and observable. Driving the seed leaf `module__xdref_recip0_1_1_32f_32f` live this pass
+That seed is real and observable. Driving the seed leaf `module__xdref_recip0_1_1_32f_32f` live
 (its internal `table__RECIP_Data8` ROM at `0x958fc0`, reached `lea 0xe082f(%rip)` then indexed
 `(%rcx,%r12,4)`):
 
@@ -367,7 +367,7 @@ path). Assembler operand order: **`vt, vr [, vbr for T]`**.
 ### 4.3 Encoding
 
 The non-`T` selector is `[34:15]` (20-bit, base `0x10905`) with the recip/rsqrt-segment sub-selector in
-`[7:4]` and bit `[0]`. The encode thunks read this pass:
+`[7:4]` and bit `[0]`. The encode thunks read:
 
 ```
 Opcode_recipqli_s_Slot_f0_s3_alu_encode           :  movl $0x84828050,(%rdi)  ; [34:15]=0x10905, [7:4]=0x5, [0]=0
@@ -383,7 +383,7 @@ selector to `[34:19]` and slots the `vbr` predicate in the freed low bits.)
 > **CORRECTION — the `T` (predicated) recip forms have 5 placements, not 6.** The non-`T` `ivp_recipqlin_2xf32_0`
 > places into `{F0, F1, F2, F3, F7, N0}` (6); the predicated `ivp_recipqlin_2xf32t_0` drops **F3** and places
 > into `{F0, F1, F2, F7, N0}` (5). The narrow `T` encoding (which must carry the extra `vbr` field) does not
-> fit the F3 7-bit selector format. `[HIGH/OBSERVED — slot lists read this pass]`
+> fit the F3 7-bit selector format. `[HIGH/OBSERVED — slot lists read from the thunk table]`
 
 ### 4.4 Semantics — the QLI refine `[HIGH/OBSERVED structure]`
 
@@ -413,7 +413,7 @@ machinery documented at [the fp sub-ISA page](../core/fp-sub-isa.md).
 > single QLI refine step plus the coefficient tables. Any further Newton/QLI iteration on top of these seeds
 > is a firmware-kernel decision, out of the ISA carve. `[HIGH structure / iteration-count CARRIED firmware]`
 
-### 4.5 Timing and worked pattern `[HIGH/OBSERVED]`
+### 4.5 Timing and worked pattern
 
 This is the **deepest vector latency in the batch**: the `IVP_RECIPQLIN_2XF32_0` scoreboard runs
 `…_inst_stage0 … _stage15` — **16 stages**. USE `vr@10`, the 5 enables + 5 flags `@14`, `CPENABLE@3`; DEF
@@ -433,7 +433,7 @@ exception. `[HIGH/OBSERVED — round-trip oracle; value path via the live seed l
 
 ---
 
-## 5. Groups 4 & 5 — `ivp_sem_rur_fcr_fsr` / `ivp_sem_wur_fcr_fsr` (fp control state) `[HIGH/OBSERVED]`
+## 5. Groups 4 & 5 — `ivp_sem_rur_fcr_fsr` / `ivp_sem_wur_fcr_fsr` (fp control state)
 
 ### 5.1 Role and the FCR/FSR field layout
 
@@ -442,8 +442,8 @@ register (FSR = sticky exception flags) between an AR and the fp-control state. 
 URs, not the base `THREADPTR` UR. `RUR.*` read into an AR; `WUR.*` write from an AR; the FSR flags are sticky
 (`shared_or`), set on raise and cleared only by `WUR.FSR`.
 
-The intra-FCR bit packing — which DX-side analysis previously had to mark `MED-INFER` — is now read **exactly**
-from the `libfiss-base.so` field-pack/unpack leaves this pass. `opcode__wur_fcr__stage_5` unpacks the AR value
+The intra-FCR bit packing — which a prior analysis had to mark `MED-INFER` — is read **exactly**
+from the `libfiss-base.so` field-pack/unpack leaves. `opcode__wur_fcr__stage_5` unpacks the AR value
 `art` into the model state words, and `opcode__rur_fcr__stage_5` packs them back, an exact round-trip:
 
 | FCR bit | field | WUR extract | RUR re-pack |
@@ -458,7 +458,7 @@ from the `libfiss-base.so` field-pack/unpack leaves this pass. `opcode__wur_fcr_
 So the FCR is a **7-bit** register: `RoundMode[1:0] ++ {5 exception enables}` at bits `[6:2]`. The FSR is the
 5-bit sticky-flag companion (`Invalid/DivZero/Overflow/Underflow/Inexact`). RoundMode encoding (shared with
 the convert/round cores): `000 RNE`, `001 RTZ`, `010 RPI` (+inf), `011 RMI` (−inf), `100 RNA` (round-half-away).
-The FCR reset default is **RNE**. `[HIGH/OBSERVED — the WUR/RUR field shift lattices read & matched this pass]`
+The FCR reset default is **RNE**. `[HIGH/OBSERVED — the WUR/RUR field shift lattices read & matched]`
 
 ```c
 // ivp_sem_wur_fcr_fsr :: WUR.FCR — art → FCR (the exact bit lattice, observed)
@@ -484,7 +484,7 @@ uint32_t rur_fcr(void) {
 > rather than the per-format ladder. The `RUR` reads, by contrast, *are* FLIX vector-pipe ops (6 placements
 > each) — the read and write paths use different instruction encodings. `[HIGH/OBSERVED — slot tables + oracle]`
 
-### 5.2 Encoding `[HIGH/OBSERVED]`
+### 5.2 Encoding
 
 ```
 Opcode_rur_fcr_Slot_f0_s3_alu_encode :  movl $0x6498de02,(%rdi)   ; [34:10]=0x192637, [3:0]=0x2
@@ -496,7 +496,7 @@ Opcode_wur_fsr_Slot_inst_encode      :  movl $0x00f3e900,(%rdi)   ; UR-number by
 The FCR vs FSR discriminator is the `[3:0]` field `0x2↔0x3` for `RUR`, and the UR-number byte `0xe8↔0xe9`
 for the narrow `WUR`.
 
-### 5.3 Timing and worked pattern `[HIGH/OBSERVED]`
+### 5.3 Timing and worked pattern
 
 `RUR.FCR` runs `…RUR_FCR_inst_stage0 … _stage12` (read latency `arr@12`, ≈2 cycles); the `WUR` writes commit
 `@12`. USE all-fields `@10` (`RUR`) / `art@3` (`WUR`); `CPENABLE@3`.
@@ -515,7 +515,7 @@ toward zero; `WUR.FSR a7` with `a7 = 0` clears all sticky flags; `RUR.FSR a2` th
 
 ---
 
-## 6. Group 6 — `ivp_sem_addmod` (IVP_ADDMOD16U) `[HIGH/OBSERVED]`
+## 6. Group 6 — `ivp_sem_addmod` (IVP_ADDMOD16U)
 
 ### 6.1 Role — a scalar circular-pointer increment
 
@@ -526,10 +526,10 @@ slot**, not the S3 vector ALU. As a base-pipe op it carries **no `CPENABLE`** an
 
 `OUT[arr:AR]  IN[ars:AR, art:AR]`; no STATE_IN/OUT, no EXC. Assembler operand order: **`arr, ars, art`**.
 
-### 6.2 Semantics — live-driven `[HIGH/OBSERVED]`
+### 6.2 Semantics — live-driven
 
-The wrap mask `0xFFFF` — previously the one `INFERRED` item in the DX-side model — is now **executed** this
-pass. The value leaf `module__xdref_add_16_16_16` at file offset `0x858480` is the three-instruction
+The wrap mask `0xFFFF` — previously the one `INFERRED` item in the model — is **executed**.
+The value leaf `module__xdref_add_16_16_16` at file offset `0x858480` is the three-instruction
 `add %esi,%edx ; and $0xffff,%edx ; mov %edx,(%rcx)`; driving it via `ctypes` gives:
 
 ```c
@@ -545,11 +545,11 @@ addmod16u(0xFFFF, 0xFFFF) = 0xFFFE   (wrap-around)
 ```
 
 > **CORRECTION — the `0xFFFF` wrap mask is OBSERVED, not inferred.** The earlier model marked the upper-bit
-> behaviour above bit 15 as an inferred `& 0xFFFF`; executing `module__xdref_add_16_16_16` live this pass
+> behaviour above bit 15 as an inferred `& 0xFFFF`; executing `module__xdref_add_16_16_16` live
 > confirms the mask exactly (the `and $0xffff` is a literal in the leaf), upgrading the claim to
-> `[HIGH/OBSERVED]`. `[HIGH/OBSERVED — leaf executed in-process]`
+> `[HIGH/OBSERVED — leaf executed in-process]`.
 
-### 6.3 Encoding, timing, worked pattern `[HIGH/OBSERVED]`
+### 6.3 Encoding, timing, worked pattern
 
 ```
 Opcode_ivp_addmod16u_Slot_f0_s1_ld_encode :  movl $0x005ad000,(%rdi)   ; [25:12]=0x5ad (F0/F1)
@@ -570,7 +570,7 @@ Worked value: `a4 = 0xFFFE`, `a5 = 0x0003` → `a3 = 0x0001` (wrap); `a4 = 0x100
 
 ---
 
-## 7. The B01–B24 vector tally and residual `[HIGH/OBSERVED]`
+## 7. The B01–B24 vector tally and residual
 
 Batch 24 is the **last** IVP-vector batch, so its close must reconcile the running sum of the B01–B24
 `ivp_`-prefixed members against the nm-authoritative roster:
@@ -588,11 +588,11 @@ Since every `ivp_`-prefixed mnemonic falls into exactly one of the 30 batches an
 vector batch, the B01–B24 vector running total **closes at 1065 with zero residual** — the union of the
 batch-by-batch `ivp_` member sets equals the global 1065-op `ivp_` roster, no mnemonic double-counted, none
 orphaned. `[HIGH/OBSERVED — the global 1065 figure and the B24 19-of-1065 contribution are both
-nm-grounded this pass]`
+nm-grounded]`
 
 > **CORRECTION — the planning-target "1174-op IVP subtotal" is a count of a different population.** Some
 > upstream planning notes carry an IVP-vector subtotal of **1174** and a Batch-24 partition figure of "~21".
-> Re-grounding against the encode-thunk table this pass, the authoritative `ivp_`-prefixed-mnemonic roster is
+> Re-grounding against the encode-thunk table, the authoritative `ivp_`-prefixed-mnemonic roster is
 > **1065** (not 1174) and the Batch-24 membership is **24** opcodes (`8+6+5+2+2+1`), of which **19** are
 > `ivp_`-prefixed. The 1174 figure counts a wider population (e.g. including the non-`ivp_` vector-pipe
 > mnemonics such as `recipqli_s`/`rur*`, or placement-level rather than mnemonic-level entries); the
@@ -603,15 +603,17 @@ nm-grounded this pass]`
 
 ## 8. Coverage / verification ledger
 
+Every row below is `[HIGH/OBSERVED]`.
+
 | claim | grounding | verdict |
 |---|---|---|
-| 1534 mnemonics = 469 scalar + 1065 vector; 12569 placements | `nm` strip of encode thunks | **PASS** `[HIGH/OBSERVED]` |
-| Batch 24 = 24 mnemonics, `8+6+5+2+2+1`, 19 `ivp_` + 5 scalar | `nm` membership sweep | **PASS** `[HIGH/OBSERVED]` |
-| COUNTEQZ = COUNTEQ + bit[9] (`0x200`); LE = selector LSB `0x866→0x867` | encode-thunk byte delta | **PASS** `[HIGH/OBSERVED]` |
-| `IVP_ADDMOD16U` = `(a+b)&0xFFFF` | `module__xdref_add_16_16_16` executed live | **PASS** `[HIGH/OBSERVED]` |
-| addmod in S1 Ld-slot (7×); `WUR.*` bare-narrow (1×, `Slot_inst`) | slot-thunk listing | **PASS** `[HIGH/OBSERVED]` |
-| FCR layout = RoundMode[1:0] ++ 5 enables[6:2] | `opcode__wur_fcr`/`rur_fcr` field lattice | **PASS** `[HIGH/OBSERVED]` |
-| all 24 mnemonics + operand order | `xtensa-elf-as`/`-objdump` round-trip | **PASS** `[HIGH/OBSERVED]` |
+| 1534 mnemonics = 469 scalar + 1065 vector; 12569 placements | `nm` strip of encode thunks | **PASS** |
+| Batch 24 = 24 mnemonics, `8+6+5+2+2+1`, 19 `ivp_` + 5 scalar | `nm` membership sweep | **PASS** |
+| COUNTEQZ = COUNTEQ + bit[9] (`0x200`); LE = selector LSB `0x866→0x867` | encode-thunk byte delta | **PASS** |
+| `IVP_ADDMOD16U` = `(a+b)&0xFFFF` | `module__xdref_add_16_16_16` executed live | **PASS** |
+| addmod in S1 Ld-slot (7×); `WUR.*` bare-narrow (1×, `Slot_inst`) | slot-thunk listing | **PASS** |
+| FCR layout = RoundMode[1:0] ++ 5 enables[6:2] | `opcode__wur_fcr`/`rur_fcr` field lattice | **PASS** |
+| all 24 mnemonics + operand order | `xtensa-elf-as`/`-objdump` round-trip | **PASS** |
 
 **Residuals carried** (named, not gaps): (a) the SQZ innermost prefix-sum adder-tree lane-pairing is one
 function deeper (value-determined; the two-stage structure + popcount + direction are observed) `[MED/INFERRED]`;
