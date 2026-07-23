@@ -10,8 +10,8 @@ inc/dec writes are hardware read-modify-write, so multiple posting engines never
 This page documents the **data plane** (the `tpb_events_semaphores_axi` register file
 that backs the EVT_SEM aperture) and reconciles it with the **control plane** (the
 `events_semaphores` bundle in `tpb.json`) and the NCFW counted-semaphore barrier model.
-Every base/size/offset/count below is re-verified byte-exact against the shipped
-RTL-generated address map and the shipped CSR schema this session.
+Every base/size/offset/count below is byte-exact against the shipped RTL-generated
+address map and the shipped CSR schema.
 
 > **Generation scope.** Everything here is Cayman / NC-v3 byte-grounded. §9 shows the
 > unit is byte-identical across `cayman`, `mariana`, and `mariana_plus`; no v5 artifact
@@ -32,8 +32,8 @@ Primary artifacts (all binary-derived, citeable):
 
 ## 1. The EVT_SEM container — byte-exact address-map geometry
 
-From `address_map_flat.yaml` (the file zero-pads bases to 15 hex digits; leading zeros
-are cosmetic). The `TPB_0` copy is shown; the layout is identical for all 48 instances
+From `address_map_flat.yaml` L903–L910 (the file zero-pads bases to 15 hex digits;
+leading zeros are cosmetic). The `TPB_0` copy is shown; the layout is identical for all 48 instances
 (§3). Cross-checked against the RTL `address_map.vh` `` `define `` macros at L21650+.
 
 | node (`address_map_flat.yaml`) | SoC base | size | off-in-container | window |
@@ -47,8 +47,6 @@ are cosmetic). The `TPB_0` copy is shown; the layout is identical for all 48 ins
 | `TPB_0_EVT_SEM_SEMAPHORE_DEC` | `0x2802701C00` | `0x400` (1 KiB) | `0x1C00` | sem dec |
 | `TPB_0_EVT_SEM_EVENT_RESERVED1` | `0x2802702000` | `0xFE000` (1016 KiB) | `0x2000` | pad to 1 MiB |
 
-`[HIGH/OBSERVED — address_map_flat.yaml L903–L910, byte-exact.]`
-
 RTL `` `define `` cross-check (`address_map.vh` L21650–L21669, 58-bit literals,
 byte-identical to the YAML):
 
@@ -61,17 +59,15 @@ TPB_0_EVT_SEM_SEMAPHORE_INC_BASE  58'h000002802701800   _SIZE 58'h00000000000040
 TPB_0_EVT_SEM_SEMAPHORE_DEC_BASE  58'h000002802701C00   _SIZE 58'h000000000000400
 ```
 
-**Contiguity** (Python verifier this session): the 7 leaves tile
-`[0x2802700000, 0x2802800000)` with zero gaps and zero overlaps; the sum of leaf sizes
+**Contiguity.** The 7 leaves tile `[0x2802700000, 0x2802800000)` with zero gaps and
+zero overlaps; the sum of leaf sizes
 `0x400 + 0xC00 + 0x400 + 0x400 + 0x400 + 0x400 + 0xFE000 = 0x100000` exactly.
-`[HIGH/OBSERVED — arithmetic.]`
 
 **Placement.** The EVT_SEM container sits immediately *before* the TPB's embedded
 Sync-Processor block (`TPB_0_SP` @ `0x2802800000`). EVT_SEM and SP are the only two
 nested-container nodes among the TPB's children — i.e. the per-TPB EVT_SEM is the
 hardware sync unit the TPB's embedded SP (and the PE/ACT/POOL/DVE sequencers) post and
 poll. See [`soc-master-map.md`](soc-master-map.md) for the enclosing TPB region table.
-`[HIGH/OBSERVED location.]`
 
 > **GOTCHA — no `json:` binding on the address-map leaves.** None of the EVT_SEM
 > address-map rows carry a `json:` field; they are pure decode apertures. The
@@ -83,8 +79,7 @@ poll. See [`soc-master-map.md`](soc-master-map.md) for the enclosing TPB region 
 
 ## 2. The EVT_SEM CSR schema — the 256-semaphore register model
 
-From `csrs/tpb/tpb_events_semaphores_axi.json`. Register-file facts (re-decoded with
-`jq` this session):
+From `csrs/tpb/tpb_events_semaphores_axi.json`. Register-file facts:
 
 | field (`RegFile.*`) | value |
 | --- | --- |
@@ -106,16 +101,11 @@ The five bundle arrays (each `ArraySize=256`, `BundleSizeInBytes=0x4`):
 | `tpb_semaphores_inc` | `0x1800` | 256 | 4 B | `WO` (`[31:0]`) | "value to increment semaphore by" |
 | `tpb_semaphores_dec` | `0x1C00` | 256 | 4 B | `WO` (`[31:0]`) | "value to decrement semaphore by" |
 
-`[ALL HIGH/OBSERVED — read straight from the JSON this session: each bundle's`
-`ArraySize=256, BundleSizeInBytes=0x4, the AddressOffsets, the BitFields[0].Position/`
-`AccessType/Description.]`
-
-> **CONFIRMATION — the four windows are now OBSERVED, not CARRIED.** The window offsets
+> **NOTE — the four windows are OBSERVED, not CARRIED.** The window offsets
 > **read @ `+0x1000` / set @ `+0x1400` / inc @ `+0x1800` / dec @ `+0x1C00`** entered this
-> wiki as a CARRIED fact from the collective/sync analysis. This page re-confirms them
+> wiki as a CARRIED fact from the collective/sync analysis. They are confirmed
 > *directly* against `tpb_events_semaphores_axi.json`
-> (`RegistersBundleArrays[1..4].AddressOffset` = `0x1000`/`0x1400`/`0x1800`/`0x1C00`).
-> The schema **confirms** the carried offsets verbatim — they are hereby promoted to
+> (`RegistersBundleArrays[1..4].AddressOffset` = `0x1000`/`0x1400`/`0x1800`/`0x1C00`) —
 > **[HIGH/OBSERVED]**.
 
 ### 2.1 The 256-semaphore array model
@@ -128,7 +118,7 @@ The geometry is **OBSERVED, not inferred**:
   reachable through 4 op windows.
 - Per-window byte span `256 × 4 = 0x400` = exactly the 1 KiB the address map assigns to
   each of `EVENT` / `SEMAPHORE_{READ,SET,INC,DEC}`. The CSR `ArraySize × stride` fills
-  the address-map leaf size exactly. `[HIGH/OBSERVED.]`
+  the address-map leaf size exactly.
 
 The 256 count is independently corroborated by **three 8-bit ISA fields** (`2^8 = 256`):
 the notification record's `event_semaphore_id:8` (see
@@ -136,10 +126,6 @@ the notification record's `event_semaphore_id:8` (see
 `TRIGGER_COLLECTIVE` events block `wait_idx:8` / `update_idx:8` (§4). All three index a
 `0..255` space — exactly the 256 EVT_SEM array entries.
 `[HIGH/OBSERVED each; the three-way tie is INFERRED-STRONG but mutually consistent.]`
-
-> **CORRECTION check vs SX-ADDR-08.** The backing report asserts the 256-count from the
-> schema. Re-decode this session agrees: all 5 bundles `ArraySize=256`. **No correction**
-> — 256 is confirmed.
 
 ### 2.2 The four-window operation model ("same array, op-per-address")
 
@@ -174,8 +160,8 @@ not a host-side read-add-write. `[inc/dec=WO-by-delta OBSERVED HIGH; HW-atomic R
 
 ## 3. The three EVT_SEM families — full census + bases
 
-48 EVT_SEM containers ship (grep-verified `EVT_SEM,` size-`0x100000` rows = **48**, split
-8/20/20 by name):
+48 EVT_SEM containers ship (size-`0x100000` `EVT_SEM` rows = **48**, split 8/20/20 by
+name):
 
 | family | count | what it is |
 | --- | --- | --- |
@@ -184,7 +170,6 @@ not a host-side read-add-write. `[inc/dec=WO-by-delta OBSERVED HIGH; HW-atomic R
 | `PEB_SP_n_TPB_EVT_SEM` | 20 | the **PEB-route alias** of the 20 TOP_SP (bit 53) |
 
 Each of the 48 carries the identical 7-leaf internal layout of §1/§2.
-`[HIGH/OBSERVED — census + per-row layout.]`
 
 **TPB_n_EVT_SEM bases** (the per-tensor-block sync unit):
 
@@ -199,12 +184,11 @@ Each of the 48 carries the identical 7-leaf internal layout of §1/§2.
 | 6 | `0x806802700000` | 1 (= TPB_2 \| bit47) |
 | 7 | `0x807802700000` | 1 (= TPB_3 \| bit47) |
 
-Die mapping (Python-verified this session): `TPB_{4..7}_EVT_SEM = TPB_{0..3}_EVT_SEM XOR
-0x800000000000` exactly — the `DIE[47]` bit. TPBs 0..3 on die0, 4..7 on die1.
-`[HIGH/OBSERVED.]`
+Die mapping: `TPB_{4..7}_EVT_SEM = TPB_{0..3}_EVT_SEM XOR 0x800000000000` exactly — the
+`DIE[47]` bit. TPBs 0..3 on die0, 4..7 on die1.
 
 **TOP_SP_n container** — each is a 4 MiB container of four 1-MiB sub-blocks (TOP_SP_0;
-contiguity verified, sum `0x400000`):
+contiguous, sum `0x400000`):
 
 ```text
 TOP_SP_0_TPB_EVT_SEM   0x8280000000  0x100000   (the EVT_SEM unit, §1/§2 layout)
@@ -219,7 +203,7 @@ TOP_SPs are the cross-engine / collective glue processors (TOP_SP = NEURON_ENGIN
 the lowered collective loop; see
 [`spad-ccop-tsync.md`](../../collectives/ncfw/spad-ccop-tsync.md)). Within a die the
 TOP_SP slot stride is `0x40000000` (1 GiB); `TOP_SP_{10..19} = TOP_SP_{0..9} XOR bit47`
-(die1). `[HIGH/OBSERVED.]`
+(die1).
 
 **PEB_SP_n** — `PEB_SP_{0..19}_TPB_EVT_SEM = TOP_SP_{0..19}_TPB_EVT_SEM XOR
 0x20000000000000` exactly (bit 53). Per the SoC neighbor/staged decoder, bit 53 = the
@@ -402,19 +386,19 @@ EVT_SEM is a **per-TPB / per-SP shared** unit, *not* a per-engine private array:
 
 - The `TPB_n_EVT_SEM` (8) is shared by all engines inside that tensor block — the PE
   array sequencer, ACT, POOL, DVE and the embedded SP all post/poll the **same** 256
-  semaphores. There is **one** EVT_SEM per TPB, not one per engine. `[OBSERVED HIGH.]`
+  semaphores. There is **one** EVT_SEM per TPB, not one per engine.
 - *Who posts* rides the **notification type**, not a separate array. The notification
   record has a distinct `notific_type` per engine for the EVT_SEM event:
   `0x07` PE · `0x0b` ACT · `0x0f` POOL · `0x13` DVE · `0x17` SP · `0x1b` AXI. So the
   256-semaphore array is global within the TPB; the engine identity is in the
   notification, and each engine's evt/sem notif routes to a SW queue via
-  `tpb.notific.sw_queue_num2.events_semaphores_NT_`. `[OBSERVED HIGH — six EVT_SEM`
-  `notific_types, one shared array.]`
+  `tpb.notific.sw_queue_num2.events_semaphores_NT_` — six EVT_SEM `notific_type`s, one
+  shared array.
 - The 20 `TOP_SP` EVT_SEM units are the cross-engine / cross-die global sync arrays the
   collective glue (TOP_SP engine #5) runs on (its `PollSem` reads them).
 - **Per-Q7-core private state is separate** and is *not* in EVT_SEM: each of the 8 Q7
   cores has `run_state_0..7` + `intr_info_0..7` in the SP `LOCAL_REG`
-  (`tpb_xt_local_reg.json`), distinct from the shared EVT_SEM array. `[OBSERVED HIGH.]`
+  (`tpb_xt_local_reg.json`), distinct from the shared EVT_SEM array.
 
 `AXI_EVT_SEM` (`0x1b`) is the AXI-master's semaphore-write path into the *same* array —
 matching the regfile name `tpb_events_semaphores_AXI`. `[structure OBSERVED HIGH;`
@@ -435,8 +419,8 @@ the host-visible `TOP_TPB_TOP_CSR` control aperture, **not** in the EVT_SEM data
 | `sem_threshold_ctrl1.high_NT_` | `0x804` | `0xffffffff` | semaphore HIGH threshold |
 | `notific_ctrl.notifications_en` | `0x808` (bit 0) | `0x0` | master enable for evt/sem notifs |
 
-`[OBSERVED HIGH — tpb.json events_semaphores bundle @ bundle-offset 0x800; the three`
-`registers at intra-bundle 0x0/0x4/0x8 = abs 0x800/0x804/0x808.]`
+The three registers sit at intra-bundle `0x0`/`0x4`/`0x8` inside the `events_semaphores`
+bundle at bundle-offset `0x800` = abs `0x800`/`0x804`/`0x808`.
 
 When a semaphore value crosses a configured threshold (or an event is set), the NOTIFIC
 block builds a 16-byte record with `notific_type` in
@@ -478,7 +462,7 @@ offset with the SoC routing fields — `[54:0]` of the 58-bit decode field (see
 | `CAYMAN_ID_VALID[54]` | route-by-chip-id enable | 1 = target a remote chip; 0 = stay on local chip |
 | `PEB[53]` | (neighbor decoder) PEB route | the `PEB_SP_n` alias (`base \| bit53`) is the PEB-routed view of a TOP_SP's EVT_SEM |
 
-Observed exact XORs (Python this session):
+Observed exact XORs:
 
 ```text
 TPB_{4..7}_EVT_SEM    = TPB_{0..3}_EVT_SEM    XOR 0x800000000000    (bit47 DIE)
@@ -496,7 +480,7 @@ cross-die barrier-semaphore write is just the local EVT_SEM offset with `DIE[47]
 ## 9. Cross-generation: byte-identical (cayman / mariana / mariana_plus)
 
 The EVT_SEM event/semaphore unit is byte-identical across all three shipped
-Trainium-class generations (grep-/jq-verified):
+Trainium-class generations:
 
 - **Address map** — 48 EVT_SEM containers (8 TPB + 20 TOP_SP + 20 PEB_SP) in all three;
   `TPB_0_EVT_SEM = 0x2802700000 / 0x100000` with the identical 7-leaf internal layout;
@@ -507,14 +491,14 @@ Trainium-class generations (grep-/jq-verified):
   set/inc/dec`), each `ArraySize=256` stride-4.
 
 The 256-event / 256-semaphore / read-set-inc-dec model is **stable across these three
-generations** — no cross-gen EVT_SEM geometry difference. `[HIGH/OBSERVED.]` Any NC-v5
-claim would be INFERRED (no v5 artifact consulted). **[NOTE]**
+generations** — no cross-gen EVT_SEM geometry difference. Any NC-v5 claim would be
+INFERRED (no v5 artifact consulted). **[NOTE]**
 
 ---
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED** (grepped/decoded byte-exact this session):
+**HIGH / OBSERVED** (byte-exact):
 
 - EVT_SEM container 1 MiB @ `TPB_0 0x2802700000`; 7-leaf layout EVENT `0x400` + RSVD0
   `0xC00` + READ/SET/INC/DEC each `0x400` + RSVD1 `0xFE000`; gap-free, sum `0x100000`.
@@ -524,7 +508,7 @@ claim would be INFERRED (no v5 artifact consulted). **[NOTE]**
   semaphores. **The four window offsets are confirmed by the schema — promoted from
   CARRIED to OBSERVED.**
 - 48 EVT_SEM containers: 8 TPB + 20 TOP_SP + 20 PEB_SP; identical layout each.
-- `TPB`/`TOP_SP` die1 = die0 `| bit47`; `PEB_SP` = `TOP_SP | bit53` (Python XOR-verified).
+- `TPB`/`TOP_SP` die1 = die0 `| bit47`; `PEB_SP` = `TOP_SP | bit53` (XOR-exact).
 - Control plane = `tpb.json` `events_semaphores` {`sem_threshold_ctrl0/1`, `notific_ctrl`
   @ `0x800/4/8`}, a SEPARATE regfile from the EVT_SEM data plane.
 

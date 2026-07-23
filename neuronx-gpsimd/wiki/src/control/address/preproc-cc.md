@@ -8,9 +8,9 @@ window), the ten `RESERVED_CC` padding regions, and the arithmetic that derives
 every per-core base from a single offset and stride.
 
 Every base/size/stride below is copied byte-exact from the shipped,
-RTL-generated address-map artifact and re-verified numerically in this page
-(tiling proof, stride proof, core-count proof). All node paths are recovered
-from the flat address map and are citeable as binary-derived geometry.
+RTL-generated address-map artifact, with the tiling, stride and core-count
+proofs worked below. All node paths are recovered from the flat address map and
+are citeable as binary-derived geometry.
 
 **Primary artifact** (flat address map, RTL-generated):
 
@@ -34,8 +34,7 @@ on disk; bound via `address_map_json_xref.yaml:499`
 > bind `LOCAL_REG` to the same `tpb_xt_local_reg.json`. Do not assume 8 cores
 > when targeting PREPROC — the address decode aliases only 4. See
 > [§5](#5-4-core-preproc--cc-vs-8-core-tpb-pool) and
-> [tpb-pool.md](tpb-pool.md). *(HIGH / OBSERVED)*
-
+> [tpb-pool.md](tpb-pool.md).
 ---
 
 ## 1. PREPROC_0 window: base, size, child census
@@ -50,7 +49,7 @@ base `0x1200000000`, size `0x40000000`).
 | container base | `0x1200000000` | `address_map_flat.yaml:845` |
 | container size | `0x40000000` (1 GiB) | `address_map_flat.yaml:845` |
 | container end | `0x1240000000` | computed (`base + size`) |
-| child count | **19** (contiguous, L846–L864) | `rg -c '^- \{ name: PREPROC_0_'` = 19 |
+| child count | **19** (contiguous, L846–L864) | `PREPROC_0_*` row count = 19 |
 
 RTL `\`define` cross-check (`address_map.vh:21476–21477`) — the `58'h` literal
 width confirms the 58-bit SoC space:
@@ -94,8 +93,7 @@ Census of leaf kinds inside the 1 GiB window: **1× LOCAL_REG**, **4× Q7 cores*
 (IRAM + DRAM each = 8 memory leaves), **10× RESERVED_CC** padding regions
 (`CC0..CC9`). That is the *entire* contents of PREPROC — see
 [§6](#6-engine-sub-block-census-negative-result) for the negative result on
-engine sub-blocks. *(HIGH / OBSERVED)*
-
+engine sub-blocks.
 ---
 
 ## 2. LOCAL_REG: the cluster control aperture
@@ -145,8 +143,7 @@ per-core **stride** (slot pitch).
 Q7_CORE0_IRAM (0x1203100000)  −  PREPROC_0 (0x1200000000)  =  0x3100000
 ```
 
-→ `q7_base_offset = 0x3100000`. *(HIGH / OBSERVED)*
-
+→ `q7_base_offset = 0x3100000`.
 ### Per-core stride (IRAM→IRAM and DRAM→DRAM)
 
 ```
@@ -157,8 +154,7 @@ CORE3_IRAM − CORE2_IRAM = 0x1203400000 − 0x1203300000 = 0x100000
 
 → stride = `0x100000` = **1 MiB exactly**, constant across all three
 transitions (DRAM-to-DRAM gives the identical 1 MiB). Each Q7 core occupies a
-fixed 1 MiB slot. *(HIGH / OBSERVED)*
-
+fixed 1 MiB slot.
 ### Closed-form per-core bases
 
 ```
@@ -186,18 +182,16 @@ core_i  DRAM_base = 0x1203180000 + i*0x100000   = IRAM_base + 0x80000
 
 So `DRAM_base − IRAM_base = 0x80000` in every slot (= IRAM `0x20000` + the
 following RESERVED `0x60000`). **IRAM = 128 KiB, DRAM = 256 KiB** per core.
-*(HIGH / OBSERVED)*
 
 > **CORRECTION vs naïve "IRAM and DRAM are adjacent".** They are **not**
 > contiguous: a 384 KiB `RESERVED_CC` pad sits between a core's IRAM and its
 > DRAM. Computing `DRAM = IRAM + IRAM_size` (`+0x20000`) is wrong; the correct
-> delta is `+0x80000`. *(HIGH / OBSERVED)*
-
+> delta is `+0x80000`.
 ---
 
 ## 4. Tiling proof (no gaps, no overlaps)
 
-The 19 children exactly tile the 1 GiB window. Verified numerically against
+The 19 children exactly tile the 1 GiB window, against
 `address_map_flat.yaml:845–864`:
 
 - First child (`RESERVED_CC0`) base `0x1200000000` **== container base**.
@@ -206,8 +200,7 @@ The 19 children exactly tile the 1 GiB window. Verified numerically against
   **== container end** (`0x1200000000 + 0x40000000`).
 - `Σ(child sizes) = 0x40000000` **== container size**.
 
-All four invariants hold (`True`). The window is fully decoded with no holes.
-*(HIGH / OBSERVED)*
+All four invariants hold. The window is fully decoded with no holes.
 
 ---
 
@@ -220,7 +213,7 @@ Q7 cores appear in exactly two cluster families in the whole SoC map:
 | `PREPROC_n` (CC) | **4** (`CORE0..3`) | n=0..3 | `+0x3060000` | `+0x3100000` | 1 MiB |
 | `TPB_n_POOL` | **8** (`CORE0..7`) | n=0..7 | `+0x3060000` | `+0x3100000` | 1 MiB |
 
-Verified directly: `PREPROC_0` has 4 `*_IRAM` entries (max core index 3);
+`PREPROC_0` has 4 `*_IRAM` entries (max core index 3);
 `TPB_0_POOL` has 8 (`Q7_CORE0_IRAM` @ `0x2803100000` … `Q7_CORE7_IRAM` @
 `0x2803800000` = `+7*0x100000`, `address_map_flat.yaml:947–975`).
 
@@ -249,8 +242,7 @@ PREPROC collapses all of that front-matter into the single `RESERVED_CC0`
 
 See [tpb-pool.md](tpb-pool.md) for the full 8-core sibling breakdown, and
 [../../abi/q7-elf-vaddr.md](../../abi/q7-elf-vaddr.md) for the per-core IRAM/DRAM
-virtual-address memory model that an ELF must link against. *(HIGH / OBSERVED)*
-
+virtual-address memory model that an ELF must link against.
 ---
 
 ## 6. Engine sub-block census (negative result)
@@ -266,8 +258,7 @@ The entire `0x40000000` window decomposes only into:
 
 The CC is purely a 4-core Vision-Q7 scalar/SIMD compute cluster with one control
 block. Any sequencer / DMA / PE engines live in **other** top-level windows
-(`TPB_n`, `APB_SE_n`, `APB_IO_0`), not under PREPROC. *(HIGH / OBSERVED —
-negative result)*
+(`TPB_n`, `APB_SE_n`, `APB_IO_0`), not under PREPROC. *(negative result)*
 
 > **NOTE — RESERVED_CC9 is decode-reserved, not an engine.** The 972.25 MiB tail
 > pad (`0x3CB40000`) is simply the unused remainder of the 1 GiB allocation slot
@@ -297,20 +288,19 @@ boundaries so the decode logic can use cheap masked-compare matching:
 The repeating intra-slot pattern is `RESERVED_CC{2,4,6,8}` = 384 KiB (IRAM→DRAM)
 and `RESERVED_CC{3,5,7}` = 256 KiB (DRAM→next slot); `RESERVED_CC9` is the
 "DRAM→next slot" pad of core3 extended to absorb the entire unused remainder of
-the 1 GiB window. *(HIGH / OBSERVED)*
-
+the 1 GiB window.
 ---
 
 ## 8. Reimplementation: per-core address derivation
 
 Closed-form C derivation for the per-core IRAM/DRAM bases. The node names below
 are the real flat-YAML paths (`PREPROC_<n>_Q7_CORE<i>_IRAM` /
-`..._DRAM`); the constants are the verified geometry from §3.
+`..._DRAM`); the constants are the geometry from §3.
 
 ```c
 /* Cayman PREPROC / Compute-Cluster (CC) per-core address derivation.
  *
- * Source of truth (byte-exact, re-verified):
+ * Source of truth (byte-exact):
  *   address_map_flat.yaml:845   PREPROC_0                base 0x1200000000 size 0x40000000
  *   address_map_flat.yaml:847   PREPROC_0_LOCAL_REG      base 0x1203060000 size 0x00010000
  *   address_map_flat.yaml:849   PREPROC_0_Q7_CORE0_IRAM  base 0x1203100000 size 0x00020000
@@ -391,7 +381,6 @@ base differs). Each is a separate SoC-fabric instance:
 within-die SE stride (`PREPROC_1 − PREPROC_0`) is `0x4000000000` (bit 38), the
 same SE-instance stride used across the HBM / APB_SE windows in the SoC master
 map. See [soc-master-map.md](soc-master-map.md) for the die/SE decode bits.
-*(HIGH / OBSERVED)*
 
 ---
 

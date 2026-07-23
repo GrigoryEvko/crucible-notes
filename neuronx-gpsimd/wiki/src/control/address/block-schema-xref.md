@@ -8,10 +8,10 @@ instantiate?* It also reconciles the byte-grounded **Cayman** map against the v5
 **Maverick** binding database, and gives an exact coverage tally (unplaced schemas,
 unschema'd blocks, multi-instance shared IP).
 
-All figures below were re-derived this session by directly parsing the shipped
-RTL-generated artifacts (the flat YAML, the `json_xref` side-car, the on-disk `csrs/`
-JSON tree, and the Maverick pkl JSON mirror). Every count is anchored to a node, a
-schema file, or a re-run count. Confidence tags are `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`.
+All figures below come from directly parsing the shipped RTL-generated artifacts (the
+flat YAML, the `json_xref` side-car, the on-disk `csrs/` JSON tree, and the Maverick
+pkl JSON mirror). Every count is anchored to a node or a schema file. Claims that
+depart from the page default `HIGH/OBSERVED` carry an explicit tag.
 
 > **Scope.** Cayman is **NC-v3** and byte-grounded (`OBSERVED`). Maverick is **v5**;
 > its bindings are read from the shipped pkl mirror but the *per-gen reading* over them
@@ -56,9 +56,7 @@ schema identity.
 
 ---
 
-## 2. Cayman inline ↔ side-car reconciliation `[HIGH/OBSERVED]`
-
-Both Cayman artifacts were re-parsed this session.
+## 2. Cayman inline ↔ side-car reconciliation
 
 | metric | flat YAML (inline `json:`) | `json_xref` side-car |
 |--------|----------------------------|----------------------|
@@ -68,7 +66,7 @@ Both Cayman artifacts were re-parsed this session.
 | distinct schemas referenced | **76** | **76** |
 | per-schema binding count | (Counter) | **identical (0 mismatch)** |
 
-Cross-check result (re-run this session):
+Cross-check result:
 
 - `19,012 == 19,012` bindings.
 - `set(xref schemas) == set(flat schemas)` → **True** (identical 76-element set).
@@ -77,17 +75,17 @@ Cross-check result (re-run this session):
 The side-car is a faithful, independently-generated projection of the inline binding.
 Either may be used as the bind oracle; only the flat YAML additionally carries
 `base`/`size`. The `json_xref` file is `19,022` lines = `19,012` bindings + `10` header
-lines (`OBSERVED`).
+lines.
 
 ---
 
-## 3. The block → schema table (the major blocks) `[HIGH/OBSERVED]`
+## 3. The block → schema table (the major blocks)
 
 For each major address-map block: a representative **bound** leaf with its byte-exact
 absolute `base` and `size`, the schema it binds, the **on-disk schema size** (evidence
 that the schema file is real), the total bound-leaf count across all instances, and the
 per-gen applicability (`CARRIED`). Bases/sizes are byte-exact from the flat YAML; schema
-sizes are `stat` of the on-disk file. Escaped `\|` in cells.
+sizes are the on-disk file sizes. Escaped `\|` in cells.
 
 ### 3a. Engine windows — the Q7/SP control cores (bound directly on the engine plane)
 
@@ -191,7 +189,7 @@ sizes are `stat` of the on-disk file. Escaped `\|` in cells.
 
 ---
 
-## 4. Cayman-YAML ↔ Maverick-pkl reconciliation `[HIGH/OBSERVED]`
+## 4. Cayman-YAML ↔ Maverick-pkl reconciliation
 
 Both DBs carry a per-leaf schema binding. The reconciliation is done on schema-file
 **basename** (Cayman uses curated `csrs/<sub>/<unit>.json`; the pkl points at absolute RTL
@@ -202,14 +200,14 @@ Both DBs carry a per-leaf schema binding. The reconciliation is done on schema-f
 | **Cayman** YAML (NC-v3, `OBSERVED`) | **76** | **19,012** |
 | **Maverick** pkl (v5, `INFERRED` reading) | **320** | **323,197** (every non-root record) |
 
-### 4a. Three-way partition of the 76 Cayman schemas `[HIGH/OBSERVED]`
+### 4a. Three-way partition of the 76 Cayman schemas
 
 | class | count |
 |-------|-------|
 | **SHARED** basename (both SoCs bind it — frozen-IP / same-name) | **44** of 76 |
 | **CAYMAN-only** basename (no same-named pkl binding) | **32** of 76 |
 
-The **44 shared** (re-derived this session as `set(cayman) ∩ set(maverick)`):
+The **44 shared** (`set(cayman) ∩ set(maverick)`):
 
 ```
 a2i_model, a2j_model, amzn_remapper, cce, cxela500, ddr_csr_apb, dfx_model, dw_apb_i2c,
@@ -228,7 +226,7 @@ security CAM trust boundary (`amzn_remapper` / `user_remapper`), the QoS/NSM enf
 the CoreSight trace cell (`cxela500`), and the Xtensa debug blocks. A Cayman binding here
 describes the **same IP** on Maverick (numbers may scale, but the schema name does not).
 
-The **32 Cayman-only** basenames (re-derived `set(cayman) − set(maverick)`):
+The **32 Cayman-only** basenames (`set(cayman) − set(maverick)`):
 
 ```
 apbblk, cme, d2d_ctrl_axi_cfg, d2d_ctrl_core_cfg, d2d_mpcs_cfg, d2d_xsr_cfg, dre, hbm_hpr,
@@ -241,7 +239,7 @@ top_sp_ram, tpb, udma_gen, udma_gen_ex, udma_m2s, udma_s2m, urb
 Most of these 32 are **RENAMED-but-same-block** (§4c), not deleted IP — the pkl re-IP'd or
 re-homed the schema while keeping the hardware function.
 
-### 4b. Spot-verified: the `*_LOCAL_REG` node binds the same schema on both `[HIGH/OBSERVED]`
+### 4b. Spot-verified: the `*_LOCAL_REG` node binds the same schema on both
 
 | SoC | node | → schema basename |
 |-----|------|-------------------|
@@ -249,13 +247,13 @@ re-homed the schema while keeping the hardware function.
 | **Maverick** | `…_TPB_0_SP_0_LOCAL_REG` (parent-offset `0x60000`, size `0x10000`) | `tpb_xt_local_reg.json` |
 
 Same basename, same `0x10000` size — the strongest YAML↔pkl binding agreement (the frozen
-Q7-control IP the customop ABI depends on). Confirmed this session: the pkl mirror contains
+Q7-control IP the customop ABI depends on). The pkl mirror carries
 `…/src/csrs/tpb/tpb_xt_local_reg.json` in its `json:` field.
 
-### 4c. The RENAMED-but-same-block mappings `[HIGH/OBSERVED]`
+### 4c. The RENAMED-but-same-block mappings
 
-Verified this session by matching the node-name pattern across both DBs and confirming the
-target basename appears in the pkl mirror.
+Matched by node-name pattern across both DBs; the target basename appears in the pkl
+mirror.
 
 | Block | Cayman schema | Maverick pkl schema | Verified |
 |-------|---------------|---------------------|----------|
@@ -271,10 +269,10 @@ These are the same hardware function with a **GEN-SPECIFIC** schema (re-IP'd / r
 The pkl deliberately carries its **own** 320 bindings rather than reuse the Cayman 76
 *because* of exactly these re-IPs.
 
-### 4d. The EVT_SEM reconciliation — a real divergence `[HIGH/OBSERVED]`
+### 4d. The EVT_SEM reconciliation — a real divergence
 
 > **CORRECTION / QUIRK.** In **Cayman**, the TPB event-semaphore aperture is decomposed
-> into sub-windows — verified per TPB instance:
+> into sub-windows, per TPB instance:
 >
 > | leaf | base (TPB_0) | size |
 > |------|--------------|------|
@@ -286,11 +284,11 @@ The pkl deliberately carries its **own** 320 bindings rather than reuse the Caym
 > | `…_EVT_SEM_SEMAPHORE_DEC` | `0x2802701C00` | `0x400` |
 > | (+ `EVENT_RESERVED0/1` padding) | | |
 >
-> **None of these carries a `json:` field** (`rg 'EVT_SEM' … \| rg -c 'json:'` = **0**). The
+> **None of these carries a `json:` field** (`json:` count over the EVT_SEM rows = **0**). The
 > schema `csrs/tpb/tpb_events_semaphores_axi.json` (6,017 bytes) **exists on disk** but
 > binds **nothing** in the Cayman flat map — it is an **ORPHAN** (§5a).
 >
-> The **Maverick** pkl, by contrast, binds `TPB_EVT_SEM.json` directly (confirmed: the
+> The **Maverick** pkl, by contrast, binds `TPB_EVT_SEM.json` directly (the
 > mirror's `json:` field contains `…/address_map/TPB_EVT_SEM.json`). **Same** op-windowed
 > primitive, **different** binding completeness: Cayman leaves the op layout implicit (decode
 > it from the address arithmetic and the CSR-16 page); Maverick attaches the schema.
@@ -298,8 +296,8 @@ The pkl deliberately carries its **own** 320 bindings rather than reuse the Caym
 ### 4e. What the pkl adds with no Cayman counterpart (276 pkl-only basenames)
 
 The pkl's `320 − 44 = 276` surplus is dominated by raw RTL RAS/log regfiles that the
-curated Cayman `csrs/` view collapses, plus Maverick-NEW IP. Top pkl-only by binding count
-(streamed this session):
+curated Cayman `csrs/` view collapses, plus Maverick-NEW IP. Top pkl-only by binding
+count:
 
 | binding count | pkl-only schema | nature |
 |---------------|-----------------|--------|
@@ -318,13 +316,13 @@ Cayman — its schema *ships* in the Cayman `csrs/ap_intc/` pool but is never in
 
 ---
 
-## 5. Coverage analysis `[HIGH/OBSERVED]`
+## 5. Coverage analysis
 
 ### 5a. Unplaced schemas — on disk but with no binding block (the 9 orphans)
 
 The Cayman `csrs/` tree holds **85** JSON schemas across 29 subdirs; only **76** are
-referenced by any flat-YAML node. The **9 UNREFERENCED** (re-derived
-`set(on_disk) − set(referenced)`, with on-disk byte size as evidence):
+referenced by any flat-YAML node. The **9 UNREFERENCED**
+(`set(on_disk) − set(referenced)`, with on-disk byte size as evidence):
 
 | schema (orphan) | bytes | reading |
 |-----------------|-------|---------|
@@ -344,7 +342,7 @@ The 4 `ap_intc_*` + `intc_1grp_no_msix` are schemas for IP that ships in the sha
 aperture is real, but the generator did not attach the bind.
 `[orphan set HIGH/OBSERVED; "used on later gen" reading MED/INFERRED]`
 
-### 5b. Unschema'd blocks — nodes with no `json:` (15,846 of 34,858) `[HIGH/OBSERVED]`
+### 5b. Unschema'd blocks — nodes with no `json:` (15,846 of 34,858)
 
 These are **not** undocumented CSR regions. Classified by leaf shape, they fall into
 legitimate schema-free classes:
@@ -364,10 +362,10 @@ Top unschema'd families (container/reserved/memory levels): `PEB_APB_IO` ~6,030 
 `PEB_APB_IO_BCAST` ~4,592 · `APB_IO` ~1,970 · `APB_SE` ~1,420 · `TPB` ~864 · `TOP_SP` ~400
 · `PEB_SP` ~400 · `PREPROC` ~76. No "undocumented CSR" class was found among the 15,846.
 
-### 5c. Multi-instance schemas — shared IP describing N families `[HIGH/OBSERVED]`
+### 5c. Multi-instance schemas — shared IP describing N families
 
-**44** of the 76 schemas bind nodes in **>1** top-level family (re-derived this session as
-`{schema : len(families) > 1}`). The widest fan-outs:
+**44** of the 76 schemas bind nodes in **>1** top-level family
+(`{schema : len(families) > 1}`). The widest fan-outs:
 
 | schema | families | total bound |
 |--------|----------|-------------|
@@ -389,14 +387,14 @@ schemas are the apex peripherals (`gpio`, `pll`, `pvt`, `otp`, `ring_io_*`, `i2c
 - Of the **85** schemas **on disk**: **76 placed, 9 unplaced** (§5a).
 - Of the pkl's **320** schemas: every one binds ≥1 node (the pkl has no orphans — its
   schema list is *derived from* the bindings).
-- **0** referenced-but-missing-on-disk (verified `set(referenced) − set(on_disk)` = ∅).
+- **0** referenced-but-missing-on-disk (`set(referenced) − set(on_disk)` = ∅).
 
 ---
 
-## 6. The reverse index — schema → blocks it describes `[HIGH/OBSERVED]`
+## 6. The reverse index — schema → blocks it describes
 
 Every one of the **76** Cayman-referenced schemas, the top-level family/families it binds
-(with per-family instance count, re-derived this session), and the total bound-node count.
+(with per-family instance count), and the total bound-node count.
 Format: `<total>  <schema>  [family × count, …]`. The leading counts **sum to 19,012**.
 
 ```
@@ -579,9 +577,9 @@ size_t schema_blocks(const struct addr_map *m, const char *schema,
 
 ---
 
-## 8. Verification ledger (this session)
+## 8. Verification ledger
 
-**Re-derived `[HIGH/OBSERVED]`** by direct parse of the shipped artifacts:
+**`[HIGH/OBSERVED]`** — direct parse of the shipped artifacts:
 
 - flat YAML: **34,858** nodes; **19,012** with `json:`; **15,846** without; **76** distinct
   schemas; per-schema Counter computed.
@@ -591,15 +589,15 @@ size_t schema_blocks(const struct addr_map *m, const char *schema,
   (each with on-disk byte size, §5a); **0** referenced-but-missing.
 - multi-instance: **44** schemas bind >1 top family (§5c).
 - reverse index (§6): all 76 schemas' per-family breakdown computed; counts **sum to 19,012**.
-- EVT_SEM: `rg 'EVT_SEM' … \| rg -c 'json:'` = **0** (Cayman unbound); Maverick mirror binds
-  `TPB_EVT_SEM.json` (§4d).
+- EVT_SEM: `json:` count over the Cayman EVT_SEM rows = **0** (unbound); Maverick mirror
+  binds `TPB_EVT_SEM.json` (§4d).
 - Maverick pkl mirror: **323,197** `json:`-field records streamed; **320** distinct
   basenames; Cayman∩Maverick = **44** shared, **32** Cayman-only (both enumerated, §4a);
   `*_LOCAL_REG` → `tpb_xt_local_reg.json`, `tpb_top.json`, `al_udma_m2s_regs.json` all
   confirmed present in the mirror (§4b/§4c).
 
 **Carried `[CARRIED HIGH]`:** per-gen applicability cells (INV/SCL/SPC/ABS) from the gen
-survey; the EVT_SEM op-window layout from the CSR-16 / ADDR-08 pages; the SX-CSR schema
+survey; the EVT_SEM op-window layout from the CSR-16 / ADDR-08 pages; the CSR schema
 identities from the CSR-lane page headers.
 
 **`MED/INFERRED`:** "the `ap_intc_*` + `intc_1grp_no_msix` orphans are unplaced *because*
@@ -610,7 +608,6 @@ at **schema-basename** granularity (`HIGH`), not 1:1 node correspondence (which 
 The "(PEB)" representative bases for PEB-only schemas are family-level, not a single
 grepped leaf (`MED`).
 
-> **NOTE.** Nothing here is fabricated and no vendor source snapshot was consulted. Every
-> count, base, size, and binding traces to the shipped flat YAML / `json_xref` / on-disk
-> `csrs/` JSONs / Maverick pkl mirror, parsed this session (lawful interoperability
+> **NOTE.** Every count, base, size, and binding traces to the shipped flat YAML /
+> `json_xref` / on-disk `csrs/` JSONs / Maverick pkl mirror (lawful interoperability
 > reverse engineering, DMCA 17 U.S.C. §1201(f)).

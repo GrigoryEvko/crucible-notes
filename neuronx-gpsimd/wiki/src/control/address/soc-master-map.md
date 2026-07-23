@@ -11,10 +11,9 @@ extracted/nested/cayman-arch-regs_tgz/output/address_map/address_map_flat.yaml
 
 a 34,858-line flat YAML emitted by the arch-regs toolchain (the banner
 `Generated for Cayman by the arch-regs toolchain` appears in the sibling
-`address_map_json_xref.yaml` and `*.vh`). Every base, size, count, and line
-number below was re-parsed and re-checked numerically by this page; nothing is
-carried unverified. Confidence is tagged **HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED**
-per claim. Cayman = NC-v3 is byte-grounded by the artifact's own filename and
+`address_map_json_xref.yaml` and `*.vh`). Claims that depart from the page
+default `HIGH/OBSERVED` carry an explicit tag.
+Cayman = NC-v3 is byte-grounded by the artifact's own filename and
 banner; the one place a different arch (MAVERICK / NC-v5) intrudes is the
 pickled DB, flagged below.
 
@@ -29,8 +28,8 @@ pickled DB, flagged below.
 ## 1. Flat-YAML schema
 
 `address_map_flat.yaml` is a *flat* YAML sequence — one node per line, each a
-flow-mapping. There are exactly two key-sets and no others (verified by
-re-parsing all 34,858 lines with a single regex; 0 non-matching lines):
+flow-mapping. There are exactly two key-sets and no others (all 34,858 lines
+match one of the two; 0 non-matching lines):
 
 ```yaml
 - { name: <STR>, base: 0x<HEX>, size: 0x<HEX> }                          # container / RAM / reserved
@@ -44,7 +43,7 @@ re-parsing all 34,858 lines with a single regex; 0 non-matching lines):
 | `size` | int | Window size in **bytes**. For a container, spans all children; for a leaf, the register/memory block size. |
 | `json` | str | OPTIONAL. Present only on CSR leaves. Path relative to the package root, `csrs/<subsystem>/<unit>.json`. Absence == pure memory / reserved / pure container. |
 
-**HIGH/OBSERVED.** `base` is absolute. There is no parent-relative offset field
+`base` is absolute. There is no parent-relative offset field
 in the flat view; the tree relationship survives only in the name prefix and in
 the un-flattened sources (§4). Stream this file — do not slurp; it is 4.7 MB of
 single-line entries.
@@ -54,8 +53,8 @@ single-line entries.
 ## 2. Top-level region table (absolute bases + sizes)
 
 These are the **partition roots** of the SoC map: nodes whose name has no parent
-prefix among the 34,858 entries. There are **126** of them (re-derived by the
-prefix test, not carried). The named roots tile each die's lower bands; the gaps
+prefix among the 34,858 entries. There are **126** of them (by the prefix
+test). The named roots tile each die's lower bands; the gaps
 between named windows are explicitly filled by `RESERVED_n` roots (22 of them).
 Bases/sizes below are byte-exact from the file, with the file line number cited.
 
@@ -128,7 +127,6 @@ The highest end across all 126 roots is `0x40000000000000` = **2⁵⁴**, so the
 > `base 0x2000000000, size 0x804000000` (L866). `0x2800000000` is the *child*
 > `TPB_0_TPB_RESERVED_SBUF` (`base 0x000002800000000, size 0x2000000`) at L873,
 > sitting inside `TPB_0`. Use `0x2000000000` as the `TPB_0` base.
-> **HIGH/OBSERVED** (grepped unique).
 
 > **GOTCHA — "sprot / D2D / SDMA / INTC" are families, not top-level roots.**
 > The task brief lists these as windows the master map "locates," and it does —
@@ -144,7 +142,6 @@ The highest end across all 126 roots is `0x40000000000000` = **2⁵⁴**, so the
 > If you are looking for a single absolute base for "the sprot block," there
 > isn't one — sprot is replicated per FIS instance. The master map's job is to
 > give you the *enclosing* `APB_SE_n` / `APB_IO_n` base; you walk in from there.
-> **HIGH/OBSERVED.**
 
 ---
 
@@ -174,7 +171,7 @@ locations — they ride above any concrete window.
 > (`0x40000000000000`). Calling the SoC space "58-bit" describes the decoder
 > field width; the reachable map is bits [54:0] with [57:55] as attribute/valid
 > flags rather than address bits. State it as "58-bit decode field, 2⁵⁴-spanning
-> populated map" to avoid the implication of a 2⁵⁸ flat range. **HIGH/OBSERVED.**
+> populated map" to avoid the implication of a 2⁵⁸ flat range.
 
 ---
 
@@ -216,7 +213,7 @@ leaf-or-container reached.
   1534, depth2 = 3168, depth3 = 4324, depth4 = 6778, depth5 = 2010, depth6 = 108).
 - **Naming**: child names are concatenated to the parent path with `_`; array
   instances append `_<index>`. The flat `name` is the full root-to-node path.
-- **Stride/repeat** observed strides (re-derived from the flat map):
+- **Stride/repeat** observed strides (from the flat map):
   `TOP_SP` ×10/die, stride `0x40000000`, size `0x400000`;
   `TPB` ×4/die (TPB_0..3 then 4..7), stride `0x1000000000`;
   `USER_FIS_SDMA` ×32, stride `0x20000`; `TRIG` ×2, stride `0x1000`.
@@ -257,7 +254,7 @@ Each `csrs/<sub>/<unit>.json` is a full register-file definition: top object
 `Includes`, … See [block-schema-xref.md](block-schema-xref.md) for the schema
 walk.
 
-### Binding count by subsystem (re-tallied from the flat map; sum = 19,012)
+### Binding count by subsystem (from the flat map; sum = 19,012)
 
 | subsystem | bindings | subsystem | bindings | subsystem | bindings |
 | --------- | -------- | --------- | -------- | --------- | -------- |
@@ -280,11 +277,10 @@ The Q7 GPSIMD cluster surfaces here as `xtensa_q7` (80 bindings,
 
 ## 6. Coverage tally & tiling check
 
-- **Total nodes:** 34,858 (re-counted: `rg -c '^- { name:'` = `wc -l` = 34,858,
-  100 % well-formed, 0 stray lines). **HIGH/OBSERVED.**
-- **With `json:`** 19,012; **without** 15,846; sum = 34,858. **HIGH/OBSERVED.**
-- **Distinct schemas:** 76, all present on disk. **HIGH/OBSERVED.**
-- **Top-level partition roots:** 126 (22 of them `RESERVED_n`). **HIGH/OBSERVED.**
+- **Total nodes:** 34,858 (100 % well-formed, 0 stray lines).
+- **With `json:`** 19,012; **without** 15,846; sum = 34,858.
+- **Distinct schemas:** 76, all present on disk.
+- **Top-level partition roots:** 126 (22 of them `RESERVED_n`).
 
 **Tiling.** Walking the 126 roots in base order: **0 overlaps**. There are 55
 *gaps* between named windows — these are the intentional holes between
@@ -391,7 +387,7 @@ with HBM at `size 0x2000000000` (128 GiB) and TPB at `size 0x4000000000`
 > Cayman. Treat any MAVERICK-interior base/size as **INFERRED for v5 only** —
 > Cayman (NC-v3) numbers come exclusively from `address_map_flat.yaml`. The pkl
 > is useful as a *forward-looking* cross-walk, not as a Cayman cross-check. See
-> [pkl-db.md](pkl-db.md) for the v5 DB walk. **HIGH/OBSERVED.**
+> [pkl-db.md](pkl-db.md) for the v5 DB walk.
 
 ---
 

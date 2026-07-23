@@ -11,10 +11,10 @@ the address layout across silicon generations (the offsets you hard‑code) vers
 what moves (the absolute bases you must discover at runtime).
 
 It is a **synthesis** page: it reconciles and presents, it does not re‑derive. Every
-headline number below was nonetheless re‑verified this session against the primary
+headline number below is nonetheless grounded in the primary
 artifacts (`address_map_flat.yaml`, `al_address_map_db.pkl`, the nine LSP ldscripts,
-`pcie_host_address_mapping.svh`, `tpb_nx.h`). Confidence is tagged
-**HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED** per claim.
+`pcie_host_address_mapping.svh`, `tpb_nx.h`). Claims that depart from the page
+default `HIGH · OBSERVED` carry an explicit tag.
 
 > **⚠ WALL — read this before trusting any number.**
 > - **CAYMAN / NC‑v3** numbers are **byte‑grounded** in the RTL‑generated
@@ -43,12 +43,12 @@ artifacts (`address_map_flat.yaml`, `al_address_map_db.pkl`, the nine LSP ldscri
 
 ---
 
-## 0. Self‑verify — the five headline claims, re‑challenged this session
+## 0. Self‑verify — the five headline claims
 
-Before authoring, the five strongest claims were re‑challenged directly against the
+The five strongest claims are grounded directly against the
 artifacts (not carried from a sibling). All five pass.
 
-| # | claim | re‑verification | verdict |
+| # | claim | grounding | verdict |
 | --- | --- | --- | --- |
 | 1 | The unified CAYMAN region table | every base re‑grepped from `address_map_flat.yaml` (HBM_0 L1, PREPROC_0 L845, TPB_0 L866, HBM_1 L1094, HBM_2 L4179, HBM_3 L5272, PCIE_A0_0 L4178, EVT_SEM L903, POOL CORE0 L947/949, LOCAL_REG L943) | ✅ byte‑exact |
 | 2 | The 3‑coordinate conversion | host→SoC = per‑window `.svh` table (NOT global add); SoC→Q7 = TCAM `replace[63:20]`, 1 MiB granule; Q7 build = `0x84000000+cpu·0x200000` — all three independently sourced | ✅ round‑trips |
@@ -56,8 +56,8 @@ artifacts (not carried from a sibling). All five pass.
 | 4 | The gen‑invariance set | PREPROC CORE0 offset = POOL CORE0 offset = `+0x3100000` from cluster base; LSP `0x84000000`/2 MiB identical all 9; EVT_SEM windows fixed | ✅ |
 | 5 | dual‑view totals 323,198 / 34,858 | `pickle.load` len = 323,198; `wc -l` flat = 34,858; by‑view 79,104+244,040+24+24+5+1 = 323,198; json bindings 19,012 | ✅ |
 
-> **CORRECTION carried forward (vs the "57‑bit SoC physical" shorthand).** SX‑ADDR‑18
-> and [`soc-q7-translation-windows.md`](soc-q7-translation-windows.md) call the SoC
+> **CORRECTION carried forward (vs the "57‑bit SoC physical" shorthand).**
+> [`soc-q7-translation-windows.md`](soc-q7-translation-windows.md) calls the SoC
 > space "57‑bit." That is loose. The decode **field is 58 bits** (`[57:0]`,
 > `cayman_addr_decode.h`); the **routed** geometry is `[54:0]` (DIE[47] + CAYMAN_ID[53:48]
 > + valid[54]); the **populated** map tops out at 2⁵⁴; bits `[57:55]` are
@@ -104,7 +104,7 @@ reads "*(SENG\_n)*" the block reparented under a Sub‑ENGine layer absent from 
 
 Two **die** copies repeat the entire die‑0 layout OR'd with **bit 47**
 (`0x800000000000`); a 2‑die Cayman thus exposes **4 × 64 GiB = 256 GiB** HBM SPARSE
-in SoC space. `[HIGH · OBSERVED]` — the die‑1 copy is numerically exact for every
+in SoC space. The die‑1 copy is numerically exact for every
 family (`soc-master-map.md` §2). The full 126‑root / 34,858‑node walk lives in
 [`soc-master-map.md`](soc-master-map.md); this table is the *navigable subset* a Q7
 reimplementer actually touches.
@@ -114,7 +114,7 @@ reimplementer actually touches.
 > uses `0x2800000000` only as a **pseudo‑base** for its `+0x3100000` core offset
 > (so `POOL_Q7_CORE0_IRAM = 0x2800000000 + 0x3100000 = 0x2803100000`), which is
 > *also* `TPB_0 + 0x803100000`. Both readings give the same absolute address; do not
-> conflate the pseudo‑base with the container base. `[HIGH · OBSERVED]`
+> conflate the pseudo‑base with the container base.
 > (`soc-master-map.md` CORRECTION / `tpb-pool.md`).
 
 ---
@@ -158,7 +158,7 @@ Two BARs only: **BAR0** = 4 GiB control aperture, **64** windows (every engine C
 compacted into a dense sub‑4 GiB region); **BAR4** = 256 GiB HBM aperture, **4**
 windows (the four 64 GiB stacks flattened back‑to‑back). The host view *flattens* the
 sparse SoC layout: `host_offset ≠ cayman_address` low bits for **every** window
-except `HBM_0` (offset 0 → SoC 0). `[HIGH · OBSERVED]` (`pcie-bars.md`). Worked rows:
+except `HBM_0` (offset 0 → SoC 0) — see [`pcie-bars.md`](pcie-bars.md). Worked rows:
 
 ```
 host_to_cayman(BAR0, 0xD0000000) -> 0x2000000000   ("TPB_0" → TPB_0_STATE_BUF)
@@ -180,7 +180,7 @@ that register:
   `window_NX_base + (soc & ~mask)` (pure arithmetic); on a MISS it evicts a
   round‑robin victim (`%3` over the 3 dynamic slots) and **writes the `{lo,hi}` into
   the hardware `MEM_WINDOWn` register** in one act. The three dynamic 16 MiB slots map
-  HW `MEM_WINDOW3/5/6` at NX `0x100218/228/230`. `[HIGH · OBSERVED]`
+  HW `MEM_WINDOW3/5/6` at NX `0x100218/228/230`.
 - **Cayman (NC‑v3) and after:** a **40‑window TCAM** at NX register offset `0x2000`,
   each a `{control, mask, match, replace}` struct. `match`/`mask` compare address bits
   `[39:20]` (20‑bit, **1 MiB** granule, fully resizeable); `replace[63:20]` is the SoC
@@ -208,10 +208,10 @@ Full machinery in [`soc-q7-translation-windows.md`](soc-q7-translation-windows.m
 
 The customop library is **linked** into the low slice of the `0x84000000` hbm_scratch
 pinned window, per‑core: `sram0_0_seg org = 0x84000000 + cpu_id·0x200000` (2 MiB
-stride; re‑verified all 9 LSPs this session — cpu0 `0x84000000`, cpu3 `0x84600000`,
+stride across all 9 LSPs — cpu0 `0x84000000`, cpu3 `0x84600000`,
 cpu7 `0x84E00000`, single `0x84000000`/32 MiB). The four XEA3 vector sections go in
 `iram0_0_seg org = 0x0, len = 0x1000` (4 KiB). **No stack, no heap in the LSP** —
-both are runtime‑carved. `[HIGH · OBSERVED]` ([`lsp-sram-window-map.md`](lsp-sram-window-map.md)).
+both are runtime‑carved ([`lsp-sram-window-map.md`](lsp-sram-window-map.md)).
 
 ### 2d. A worked **round‑trip** — host driver to Q7 pointer to SoC byte
 
@@ -270,15 +270,14 @@ behaviour **INFERRED**.
 
 The **64‑die mesh** addressing (CAYMAN_ID `[53:48]` = 2⁶ chips) is shared by both
 generations; only the *intra‑chip* layout grows. The v5 HBM/TPB sizes and the 5‑view
-partition were re‑verified this session against the pkl directly (roots on a 2⁶⁰
-stride; `pickle.load` len = 323,198). `[HIGH · OBSERVED]`
+partition come from the pkl directly (roots on a 2⁶⁰ stride; `len` = 323,198).
 
 > **WALL — the "39 UCIE links" and the v5 HBM/TPB GiB sizes are sourced to the
 > right sibling.** They are **not** in [`pkl-db.md`](pkl-db.md). The v5 HBM 128 GiB /
 > TPB 256 GiB sizes are read off the pkl root nodes (also tabulated in
 > [`soc-master-map.md`](soc-master-map.md) §8); the UCIE link count lives in
 > [`pkl-pcie-d2d-fabric.md`](pkl-pcie-d2d-fabric.md) and the HBM detail in
-> `pkl-hbm-subtree.md`. Cite those, not `pkl-db.md`. `[HIGH · OBSERVED]`
+> `pkl-hbm-subtree.md`. Cite those, not `pkl-db.md`.
 
 ---
 
@@ -292,11 +291,11 @@ gen‑variant set. The dividing line is *relative offset (fixed) vs absolute bas
 
 | invariant | value | why it is fixed | confidence |
 | --- | --- | --- | --- |
-| Q7 cluster **engine‑relative core offset** | `+0x3100000` to CORE0 IRAM, `+0x3180000` to DRAM, `+0x3060000` to LOCAL_REG | **identical PREPROC vs POOL vs gen** — same Q7 IP block, re‑verified this session (PREPROC CORE0 = POOL CORE0 = `+0x3100000`) | HIGH · OBS |
+| Q7 cluster **engine‑relative core offset** | `+0x3100000` to CORE0 IRAM, `+0x3180000` to DRAM, `+0x3060000` to LOCAL_REG | **identical PREPROC vs POOL vs gen** — same Q7 IP block (PREPROC CORE0 = POOL CORE0 = `+0x3100000`) | HIGH · OBS |
 | per‑core **slot pitch** | 1 MiB (`0x100000`) | the Q7 cluster IP tiles cores on a fixed pitch | HIGH · OBS |
 | **run‑stall doorbell pattern** | `q7_release_run_stall = LOCAL_REG + 0x3000` (Cayman abs `0x2803063000`) | the release register's offset within the LOCAL_REG CSR file does not move | HIGH · OBS (`tpb-pool.md`) |
 | **EVT_SEM window offsets** | EVENT `+0x0`, SEM_READ `+0x1000`, SET `+0x1400`, INC `+0x1800`, DEC `+0x1C00` | the four‑window aliasing of 256 evt / 256 sem is the data‑plane contract | HIGH · OBS (`evt-sem-regions.md`) |
-| **Q7 NX‑local map** | iram0 `0x0`/4 KiB, dataram `[0x80000,0x90000)`, MEM REG `0x100000`, dyn windows `0x07/09/0a000000`, pins `0x80000000`/`0x84000000` | the 32‑bit NX view is per‑core, per‑cluster, AND per‑gen invariant — only the SoC backing moves | HIGH · OBS (SX‑ADDR‑18 §8) |
+| **Q7 NX‑local map** | iram0 `0x0`/4 KiB, dataram `[0x80000,0x90000)`, MEM REG `0x100000`, dyn windows `0x07/09/0a000000`, pins `0x80000000`/`0x84000000` | the 32‑bit NX view is per‑core, per‑cluster, AND per‑gen invariant — only the SoC backing moves | HIGH · OBS (`soc-q7-translation-windows.md` §8) |
 | **customop link base / stride** | `0x84000000 + cpu·0x200000` (2 MiB) | the hbm_scratch pinned‑window NX base is gen‑stable | HIGH · OBS (`lsp-sram-window-map.md`) |
 | **firmware 3‑band VADDR** | `.text 0x01000000` / data `0x02000000` / `.dynamic 0x03000000` | stable across POOL EXTISA_0..3 and CAYMAN/MARIANA/MARIANA_PLUS/SUNDA | HIGH · OBS |
 | **window‑register TCAM struct** | `WINDOW_COUNT 40`, `WINDOW_SIZE 0x1c`, base `0x2000`, `replace` mask `0x3ffffff` | byte‑identical Cayman→Mariana→Mariana_plus→Maverick `tpb_nx.h` | HIGH · OBS |
@@ -345,14 +344,14 @@ map).
 
 ## 6. Confidence ledger
 
-**HIGH · OBSERVED** (re‑verified this session against the artifacts):
+**HIGH · OBSERVED** (against the artifacts):
 
 - The unified CAYMAN region table — every base re‑grepped from `address_map_flat.yaml`
   (HBM_0/PREPROC_0/TPB_0/HBM_1/2/3/PCIE_A0_0/EVT_SEM/POOL CORE0/LOCAL_REG, line‑cited).
 - 34,858 flat nodes (`wc -l`), 19,012 json bindings; pkl 323,198 records, 5 roots on
-  2⁶⁰ stride, by‑view 79,104 + 244,040 + 24 + 24 + 5 + 1 = 323,198 (both re‑loaded).
+  2⁶⁰ stride, by‑view 79,104 + 244,040 + 24 + 24 + 5 + 1 = 323,198.
 - All 9 LSP origins (iram0 `0x0`/`0x1000`, sram0 `0x84000000 + cpu·0x200000` / 2 MiB,
-  single 32 MiB) — re‑grepped byte‑exact.
+  single 32 MiB) — byte‑exact.
 - PREPROC CORE0 offset = POOL CORE0 offset = `+0x3100000`; LOCAL_REG `+0x3060000`;
   EVT_SEM container `0x2802700000` + windows `+0x1000/1400/1800/1C00` — direct from YAML.
 - The 3‑coordinate conversion chain (host per‑window join / TCAM `replace[63:20]` /
@@ -378,7 +377,7 @@ map).
   in the offset equality + the gen‑stable NX map, but a synthesis, not a traced fact.
 - The run‑stall register **offset within LOCAL_REG** (`+0x3000`) is carried from
   `tpb-pool.md` #900; the register name is obscured to `release_n` in the shipped
-  schema JSON, so the offset is sibling‑anchored, not re‑derived this session.
+  schema JSON, so the offset is sibling‑anchored rather than re‑derived here.
 
 ---
 
