@@ -10,14 +10,14 @@ The single most important structural fact — and the one that corrects a naive 
 
 Both drivers agree on that order: the PGA entry `runVNSplitterOnce` (`@0xd6f440`) also splits (`d6fad2`) before folding (`d6febf`). [INFERRED] The *reason* the fold runs after the split — to collapse the chains the split just produced, along with any residual chains — is not stated anywhere in the binary; only the order is.
 
-The splitter's piece count `N` is not a constant. The Profile-Guided Auto-Tuning loop (`ProfileGuidedAutoTuning::runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`) drives the *same* fold+split body with a tuned `(vn_limit, ratio, perSplitLimit)` triple; the float `ratio` bounds tolerated cross-piece duplication and the two integer caps bound the virtual-node count and pieces-per-node. So the split factor is a **knob the autotuner searches**, not a fixed property of the tensor — documented further in the PGA autotuner page (planned). The `shrink_ml` half is unconditional: it minimizes the per-partition live byte-extent of every shrinkable node, leaving reinterpret-cast and shifted-partition nodes intact.
+The splitter's piece count `N` is not a constant: it is set by the `(vn_limit, ratio, perSplitLimit)` triple the pass is configured with — the float `ratio` bounds tolerated cross-piece duplication, the two integer caps bound the virtual-node count and pieces-per-node. The same triple is the argument list of `ProfileGuidedAutoTuning::runVNSplitterOnce(int, float, int)`, which drives this identical fold+split body over a 64-cell grid of those values. That sweep is **dead code in this build** — nothing calls it and it selects nothing, see [PGA](pga-feedback.md) — so in a real compile `N` is a function of the configured options only, not of a search. The `shrink_ml` half is unconditional: it minimizes the per-partition live byte-extent of every shrinkable node, leaving reinterpret-cast and shifted-partition nodes intact.
 
 For reimplementation, the contract is:
 
 - The **split↔fold dispatch**: `VNSplitterPass::run` → `VNSplitter::runTransform` then `VerticalFusion::runTransform`, the fold gated by `foldIntoPredecessor`.
 - The **split decision**: how `analyze` clusters access-patterns into `ApGroup`s by overlapping partition sets, and the `isValidForSB` partition + byte gate that decides "splittable".
 - The **split rewrite**: how `split` emits `<orig>_VN_<k>` sub-tensors, re-points cloned access-patterns, and rebases offsets (`normalizeOffsetToNewNode`).
-- The **PGA knob**: `(vn_limit, ratio, perSplitLimit)` as the tuned split-factor triple, and the three reject-strings that pin each role.
+- The **split-factor knobs**: `(vn_limit, ratio, perSplitLimit)` — also the `runVNSplitterOnce` argument triple — and the three reject-strings that pin each role.
 - The **footprint shrink**: `ShrinkDN::analyze` probes writers for the true live window, `shrinkDN` re-packs partition stride and trims free dims; the set-level `shrinkTensor` annotates `(shrinkDim, liveN)`.
 - The **invariants** handed to the colorer (SB-fittability, use-def locality, clean graph, minimal footprint).
 
@@ -177,7 +177,7 @@ bool VNSplitter::analyze(MemoryLocation *ml, float ratio, int vn_limit, int perS
 - `vn_limit` — caps the running virtual-node count. Reject-string `"; exceed vn limit = … v.s. limit=<vn_limit>"`.
 - `perSplitLimit` — caps pieces per node. Reject-string `"Do not split the vn if this would result in any of the splits having to be placed in DRAM (due to perSplitLimit exceeded)"`.
 
-These are exactly the three positional arguments of `runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`, which is why the autotuner can sweep the split factor: tightening `ratio` or `perSplitLimit` reduces `N`, loosening them lets the splitter carve more pieces. The split factor `N` is therefore PGA-tuned, not fixed.
+These are exactly the three positional arguments of `runVNSplitterOnce(int vn_limit, float ratio, int perSplitLimit)`, and they are what makes the split factor tunable at all: tightening `ratio` or `perSplitLimit` reduces `N`, loosening them lets the splitter carve more pieces. In this build the tuning is done by whatever configures the pass — the PGA sweep over these three values is present but unreachable ([PGA](pga-feedback.md)).
 
 ### 2.3 The `ApGroup` accumulator and `APAccesses`
 
@@ -374,7 +374,7 @@ The coloring allocator ([`allocator-drivers`](allocator-drivers.md)) and `SBSize
 
 **Ordering rationale.** `vn_splitter`(24) runs before `shrink_ml`(25): the splitter carves each over-sized node so each piece is independently shrinkable; `shrink_ml` then trims each piece to its live extent; then the disjoint, minimal, SB-fitting node set is handed to the colorer. *Within* `vn_splitter` the order is split-then-fold: the virtual-node split runs first, then `VerticalFusion` folds the producer→consumer chains over the splitter's output. [INFERRED] The precise rationale for folding *after* splitting is not stated in the binary.
 
-**The PGA loop closes over this.** Because `runVNSplitterOnce` re-runs the whole split+fold body with a tuned `(vn_limit, ratio, perSplitLimit)`, the autotuner is effectively searching the split factor `N` against the downstream colorer's success/cost — tightening the knobs to fewer, larger pieces or loosening them to more, smaller pieces. The split↔fold duality plus this tuned knob is what makes `vn_splitter` an *adaptive* footprint reshaper rather than a fixed transform.
+**The PGA sweep would close over this — if anything ran it.** `runVNSplitterOnce` re-runs the whole split+fold body with a different `(vn_limit, ratio, perSplitLimit)` per grid cell, which is what a search over the split factor `N` against downstream cost would look like: tighter knobs give fewer, larger pieces, looser ones give more, smaller pieces. In this build the sweep has no caller and no selection step ([PGA](pga-feedback.md) §5), so `vn_splitter` is a **fixed transform under its configured knobs**, not a self-adapting one. The split↔fold duality is real; the adaptation is not present.
 
 ---
 
