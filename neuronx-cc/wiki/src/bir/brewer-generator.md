@@ -129,7 +129,7 @@ function brewer_emit_op(spec):                  // spec = ISAInstructionInfo
         emit serialize_field(p)                  // recurse: p.serialize() | number | 'none'
 
     // --- mode arms keyed on optional spec sections ---
-    if spec.has_structural_eq: emit sameInst(field-compare)   // 17 C++ overrides
+    if spec.has_structural_eq: emit sameInst(field-compare)   // 16 C++ overrides
     else:                      emit sameInst(assert false&&"Not Implemented") // R1
     if spec.perf_est: emit getLatency*(real model)            // 32/121 override
     else:             emit getLatency*(assert "Unimplemented") // R4: 1922-2007
