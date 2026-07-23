@@ -98,7 +98,7 @@ StatusOr<bool> Run(module, threads) {
                          || (et == F16    /*0x0A*/)                          // 0x1f3f1aa
                          || (et == F32    /*0x0B*/ && cast_ok);              // F32 only with an opt-in cast
 
-        // internal target-instance discriminator (HIGH): only fire for "sunda"
+        // internal target-instance discriminator: only fire for "sunda"
         if (enabled
             && module.opts.string[+8].compare("sunda") == 0                 // 0x1f3f1c1, "sunda" in ELF
             && castEligible) {                                              // 0x1f3f1da
@@ -113,7 +113,7 @@ Key facts:
 
 - The **only** kernel wired into `#37` is the matmul-softmax-matmul attention kernel — a single call edge to `lowerMMSoftmaxMMToAttentionKernel`. The *"none of the kernels is enabled"* warning is the no-op branch taken when the global gate `qword_9A39A58` is 0 (warning string in ELF; single callee).
 - BF16 (`0x10`) and F16 (`0x0A`) inputs are eligible unconditionally; **F32 (`0x0B`) is eligible only under an opt-in numeric cast** (`whatToCast` ∈ {matmult, all} ∧ `castType` ∈ {bf16, fp16}) — compare chain @`0x1f3f460`.
-- `"sunda"` gates the lowering as a target-instance discriminator compared against `module.opts[+8]` — HIGH confidence: `compare("sunda")` precedes the call and the `sunda` string is in the ELF.
+- `"sunda"` gates the lowering as a target-instance discriminator compared against `module.opts[+8]`: `compare("sunda")` precedes the call and the `sunda` string is in the ELF.
 
 > **GOTCHA —** the pass name suggests a broad "native kernel router". It is not: it routes exactly one idiom (attention). MLP goes through `#56`; everything else falls out of `castEligible` / the `"sunda"` gate. Do not model a wide dispatch table here.
 
@@ -172,9 +172,9 @@ These are the five tokens in `serializeConfig`; together they tie the `CustomCal
 | …operands swapped | same | `AttentionMMSoftmaxMMWithoutSwap` | HIGH |
 | …causal / LLM, custom softmax, no swap | same | `CausalAttentionMMSoftmaxMMWithoutSwap` | HIGH |
 
-Master gate: global `qword_9A39A58` (in `hlo2penguin`, `xla::enableNativeKernelAttention` @`0x9c6d680`, default FALSE) **AND** target == `"sunda"`. The bf16-only sub-variant adds the `enableNativeKernelAttentionBF16` @`0x9c6d5c0` gate (§4). The gate is read directly; the variant map is HIGH.
+Master gate: global `qword_9A39A58` (in `hlo2penguin`, `xla::enableNativeKernelAttention` @`0x9c6d680`, default FALSE) **AND** target == `"sunda"`. The bf16-only sub-variant adds the `enableNativeKernelAttentionBF16` @`0x9c6d5c0` gate (§4). The gate is read directly; the variant map is **[INFERRED]**.
 
-> **NOTE —** the SBUF shape formula in `computeMMSoftmaxMMToAttentionKernelSbShape` (signature `(m, m, bool, PrimitiveType, bool)` — note **two** `m` dims + a causal bool + dtype + a trailing bool, *not* five dims) is not transcribed here; the `whatToCast=="matmult"` compare inside it toggles a `+2 / +0` term in the partition-byte computation, i.e. casting matmul intermediates to bf16 changes the state-buffer footprint reserved (HIGH; compare site @`0x1fce4b8` in `hlo2penguin`). See [arch/sbuf-psum-geometry](../arch/sbuf-psum-geometry.md) for the SBUF/PSUM tiling model the `psum_shape`/`sb_shape` tuples feed.
+> **NOTE —** the SBUF shape formula in `computeMMSoftmaxMMToAttentionKernelSbShape` (signature `(m, m, bool, PrimitiveType, bool)` — note **two** `m` dims + a causal bool + dtype + a trailing bool, *not* five dims) is not transcribed here; the `whatToCast=="matmult"` compare inside it toggles a `+2 / +0` term in the partition-byte computation, i.e. casting matmul intermediates to bf16 changes the state-buffer footprint reserved (compare site @`0x1fce4b8` in `hlo2penguin`). See [arch/sbuf-psum-geometry](../arch/sbuf-psum-geometry.md) for the SBUF/PSUM tiling model the `psum_shape`/`sb_shape` tuples feed.
 
 ---
 
@@ -286,7 +286,7 @@ else
     goto bail;                                     //   -> skip
 ```
 
-Additional shape gates at the same site: sequence dim `> 0x3ef` (>1007, long-context only); head dim `<= 0x80` (≤128); computed SB bytes `<= 0x30000` (196608, must fit the state buffer). The companion F32 check `cmp r15d, 0xb` (=11=F32) in `…WithConfig` @`0x1ffc8cb` gates the F32 path. (XLA `PrimitiveType`: F16=10, F32=11, BF16=16 — consistent with both immediates.) HIGH.
+Additional shape gates at the same site: sequence dim `> 0x3ef` (>1007, long-context only); head dim `<= 0x80` (≤128); computed SB bytes `<= 0x30000` (196608, must fit the state buffer). The companion F32 check `cmp r15d, 0xb` (=11=F32) in `…WithConfig` @`0x1ffc8cb` gates the F32 path. (XLA `PrimitiveType`: F16=10, F32=11, BF16=16 — consistent with both immediates.)
 
 ### The storage-vs-accumulate split
 
@@ -406,7 +406,7 @@ The structural claims on this page and what pins each:
 
 3. **`AwsNeuronMLPNKI` is the `#56` target.** It does *not* appear as a contiguous ELF string, which is itself the evidence for the byte-build at `0x1f47f88` (`"AwsNeuro"+"NK"+"nMLP"+"I"`, len 15).
 
-4. **`matmult-to-bf16` sets storage, not accumulation.** The default literal `matmult-to-bf16`, the grammar tokens (`matmult`/`all`/`bf16`/`fp16`), and the three independent accumulation strings (`dot_accumulate_type`, `accumulation_mode`, `allow_imprecise_accumulation`) are all present in `hlo2penguin`. The fp32-PSUM accumulation is hardware-fixed (Part 9), and the cast knob has no fp32 branch, so it cannot express the accumulation dtype — structurally separate axes (HIGH).
+4. **`matmult-to-bf16` sets storage, not accumulation.** The default literal `matmult-to-bf16`, the grammar tokens (`matmult`/`all`/`bf16`/`fp16`), and the three independent accumulation strings (`dot_accumulate_type`, `accumulation_mode`, `allow_imprecise_accumulation`) are all present in `hlo2penguin`. The fp32-PSUM accumulation is hardware-fixed (Part 9), and the cast knob has no fp32 branch, so it cannot express the accumulation dtype — structurally separate axes.
 
 5. **The cast-policy symbols live only in `hlo2penguin`.** `SetNativeKernelCastType` @`0x1f93060`, `enableNativeKernelAttention` @`0x9c6d680`, `…BF16` @`0x9c6d5c0` are all in `hlo2penguin`'s symbol table and absent from `hlo-opt`'s, while the pass bodies exist in both (`LowerToCustomNativeKernel::Run` @`0x1ffe750` in `hlo2penguin`, @`0x1f3eeb0` in `hlo-opt`).
 

@@ -136,7 +136,7 @@ optional<BaseKey> GetAllReduceKey(inst, domain_map, bool include_groups):  // @0
     return optional{key};
 ```
 
-> **NOTE —** `GetAllReduceKey` is opcode-polymorphic: it accepts both `kAllReduce` (0x07) and `kReduceScatter` (0x57), which is why one upstream routine serves both Neuron combiners. The AR combiner feeds it all-reduces; the RS combiner feeds it reduce-scatters. The `include_groups` argument controls whether replica groups are *omitted* from the key (XLA's "combine across groups" mode); the Neuron callers pass `false`, so replica groups **are** part of the key (CERTAIN).
+> **NOTE —** `GetAllReduceKey` is opcode-polymorphic: it accepts both `kAllReduce` (0x07) and `kReduceScatter` (0x57), which is why one upstream routine serves both Neuron combiners. The AR combiner feeds it all-reduces; the RS combiner feeds it reduce-scatters. The `include_groups` argument controls whether replica groups are *omitted* from the key (XLA's "combine across groups" mode); the Neuron callers pass `false`, so replica groups **are** part of the key.
 
 ### All-reduce — `NeuronAllReduceCombineKey` @0x1f8fce0
 
@@ -363,7 +363,7 @@ Status CombineAllGathers(Span<HloInstruction*> group, bool combine_by_dim):   //
 
 `FindMostFrequentGatherDim` (@0x1f88080) is a histogram-argmax over the group's `all_gather_dimension` values, with a validity clamp: if the winning index is `>= min_rank` (the smallest tensor rank in the group) it resets to 0 (`cmovge` @0x1f881ef). The combined all-gather runs along that one dimension; mismatched members are transposed in (via `PermuteDimensions`+`Bitcast`) and transposed back out of the GTE.
 
-> **QUIRK —** the `RET_CHECK !combine_by_dim || ag->all_gather_dimension() == most_frequent_dim` (@0x295820) fires **only on the `combine_by_dim==true` path**. With the default `combine_by_dim=true`, the key already partitions by dimension, so every member of a group shares `most_frequent_dim` and the check is a tautology guard. The transpose-normalisation branch is reachable only when `--collective-combine-by-dim` is explicitly disabled. (`combine_by_dim` semantics in the rewrite: MED on the exact permutation index math @0x1f8c1de; CERTAIN on the branch structure.)
+> **QUIRK —** the `RET_CHECK !combine_by_dim || ag->all_gather_dimension() == most_frequent_dim` (@0x295820) fires **only on the `combine_by_dim==true` path**. With the default `combine_by_dim=true`, the key already partitions by dimension, so every member of a group shares `most_frequent_dim` and the check is a tautology guard. The transpose-normalisation branch is reachable only when `--collective-combine-by-dim` is explicitly disabled. The branch structure is read off the disassembly; the exact permutation index math at `0x1f8c1de` is **[INFERRED]**.
 
 ---
 
@@ -381,7 +381,7 @@ The five structural claims and what pins each:
 
 5. **field +0x08 = bytes, +0x10 = count (byte-first).** The factory loads `r14 = [opts+0x9F8]` (the in-bytes flag) → `rsi` → ctor arg1 → `[this+8]`, and `r15 = [opts+0xAB8]` (count) → `rdx` → arg2 → `[this+0x10]` (AG @`0x1e70724`/`0x1e7072b`, AR @`0x1e70617`/`0x1e7061e`), matching the engine's `push [rbx+8]` for the byte arg.
 
-**Limits.** Not byte-traced here: the per-op byte-size accumulator inside the engine, taken to be dense `ShapeUtil::ByteSizeOf` (HIGH); the AG transpose permutation index math @`0x1f8c1de` (MEDIUM); the exact `bool0`/`bool1` identities (`constrain_layout` vs `use_global_device_ids`) in `GetAllReduceKey` (MEDIUM — they are carried opaquely into the key either way); the `PrimitiveType` enum-name set appended after `"dtype="` (HIGH — produced by runtime protobuf reflection, so not statically enumerable in this binary); and the stock `combine_fn` operand-concat rewrite for AR/RS (HIGH that it is unmodified upstream `CombineCollectives`; its exact address is a gap).
+**Limits.** Not byte-traced here — every item below is **[INFERRED]**: the per-op byte-size accumulator inside the engine, taken to be dense `ShapeUtil::ByteSizeOf`; the AG transpose permutation index math @`0x1f8c1de`; the exact `bool0`/`bool1` identities (`constrain_layout` vs `use_global_device_ids`) in `GetAllReduceKey` — they are carried opaquely into the key either way; the `PrimitiveType` enum-name set appended after `"dtype="`, produced by runtime protobuf reflection and so not statically enumerable in this binary; and the stock `combine_fn` operand-concat rewrite for AR/RS, taken to be unmodified upstream `CombineCollectives` (its exact address is a gap).
 
 ---
 

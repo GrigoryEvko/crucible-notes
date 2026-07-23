@@ -94,7 +94,7 @@ function UnrollWhileLoop_Run(module):                       // 0x1f733a0
 | `xla::UnrollWhileLoop::Run` | `0x1f733a0` | 3010 B | scan + full-unroll-via-Call | CERTAIN |
 | `xla::UnrollWhileLoop::name` | `0x1f72f00` | — | `"unroll-while-loop"` (len 17, `mov eax,0x11`) | CERTAIN |
 
-The clone-wire data-flow (which params feed which Call) is **INFERRED** from the call/string anchors above; `hlo-opt` is `NVOPEN_IDA_SKIP_DECOMPILE`, so there is no Hex-Rays for the exact operand stitching (the call *set* and the names `"clone"`/`"callee"`/`"param"` are CERTAIN; the wiring order is MEDIUM).
+The clone-wire data-flow (which params feed which Call) is **INFERRED** from the call/string anchors above; `hlo-opt` is `NVOPEN_IDA_SKIP_DECOMPILE`, so there is no Hex-Rays for the exact operand stitching. The call *set* and the names `"clone"`/`"callee"`/`"param"` are read from the binary; the wiring order is not.
 
 ---
 
@@ -137,7 +137,9 @@ function ComputeWhileLoopTripCount(while_op, max):          // 0x8aaee70  -> opt
     return nullopt                                          // hit the cap without exiting -> unknown
 ```
 
-The parameter access is bounds-checked by `param_no < (int64)param_instructions_.size()` (string @ `0x37ba08`). Every quoted VLOG/diagnostic string above was read verbatim from `.rodata`. (CERTAIN — callee set + every string.)
+The parameter access is bounds-checked by `param_no < (int64)param_instructions_.size()` (string @ `0x37ba08`). Every quoted VLOG/diagnostic string above was read verbatim from `.rodata`.
+
+*Anchors: the callee set plus every quoted string.*
 
 ### Algorithm — `MatchTrivialLoopTripCount` @ `0x8aac420` (closed form)
 
@@ -163,7 +165,7 @@ function MatchTrivialLoopTripCount(while_op, idx, init):    // 0x8aac420
     return tc                                               // else "while condition follows unknown pattern: " @0x356298
 ```
 
-Helper matchers (CERTAIN from demangled callees): `LiteralUtil::LiteralAsScalarInt64`, `TraceThroughCopyAndGteTupleChain` (`0x8aa4930`), `GetUniqueGteInstruction` (`0x8ab18c0`), `ShapeUtil::TrueNumDimensions`, `NonConstantOperand`.
+Helper matchers, from the demangled callees: `LiteralUtil::LiteralAsScalarInt64`, `TraceThroughCopyAndGteTupleChain` (`0x8aa4930`), `GetUniqueGteInstruction` (`0x8ab18c0`), `ShapeUtil::TrueNumDimensions`, `NonConstantOperand`.
 
 ### Function Map
 
@@ -290,8 +292,8 @@ The registration factory constructs the pass (object size `0x38`) and writes the
 | `max_total_instructions` | `[obj+0x20]` | `0xC3500` | **800000** | "...instruction count increase explosion" |
 | `max_body_instructions` | `[obj+0x28]` | `0x186A0` | **100000** | "...Too many instructions in the body" |
 | `wrap_in_trivial_loop` | `[obj+0x30]` | `1` (byte) | partial-vs-full select | — |
-| flag2 | `[obj+0x31]` | `1` (byte) | force / unroll-factor (MED) | — |
-| flag3 | `[obj+0x32]` | `0` (byte) | (MED) | — |
+| flag2 | `[obj+0x31]` | `1` (byte) | force / unroll-factor [INFERRED] | — |
+| flag3 | `[obj+0x32]` | `0` (byte) | [UNRESOLVED] | — |
 
 ```asm
 0x1e7023e: mov qword ptr [rax+18h], 3E8h     ; max_trip_count        = 1000
@@ -299,7 +301,7 @@ The registration factory constructs the pass (object size `0x38`) and writes the
 0x1e7024e: mov qword ptr [rax+28h], 186A0h   ; max_body_instructions = 100000
 ```
 
-> **QUIRK — the explosion gate is trip×body, not trip+body.** A loop with trip count 900 (under the 1000 cap) and a 1000-instruction body passes the trip-count gate and the body gate, but `900 × 1000 = 900000 > 800000` *rejects* on the explosion gate. The three thresholds are not independent ceilings; the third is a product that can veto a loop both of the others would admit. The two `[obj+0x08]`/`[obj+0x10]` fields (sourced from registrar `config->[0x1000]`/`[0x10C0]`) are unidentified (MEDIUM — likely a run-budget/version + a bool).
+> **QUIRK — the explosion gate is trip×body, not trip+body.** A loop with trip count 900 (under the 1000 cap) and a 1000-instruction body passes the trip-count gate and the body gate, but `900 × 1000 = 900000 > 800000` *rejects* on the explosion gate. The three thresholds are not independent ceilings; the third is a product that can veto a loop both of the others would admit. The two `[obj+0x08]`/`[obj+0x10]` fields (sourced from registrar `config->[0x1000]`/`[0x10C0]`) are **[UNRESOLVED]** — plausibly a run-budget/version plus a bool, but neither was pinned.
 
 ### Module Canonicalisation — `PrepareModuleForUnrolling` @ `0x1ffb680`
 
@@ -349,7 +351,7 @@ The while is fully replaced by `trip_count` straight-line iteration bodies (chai
 
 ### Partial / Wrapped — `UnrollInternalWrappedAndReturnReplacement` @ `0x2000020`
 
-The larger variant (4699 B, 233 bb). It unrolls the body by an unroll-factor but **keeps a trivial outer `while`** that iterates `trip_count / factor` times — a partial unroll. It returns the replacement instruction (`StatusOr<HloInstruction*>`) so the driver can OR the change flag. Selected when `wrap_in_trivial_loop` is set; since the ctor default is 1, **this is the default path** unless the flag is cleared. (HIGH — name + size + the dispatch byte are CERTAIN; the exact factor arithmetic is **MEDIUM**, not traced bb-by-bb due to the no-Hex-Rays constraint.)
+The larger variant (4699 B, 233 bb). It unrolls the body by an unroll-factor but **keeps a trivial outer `while`** that iterates `trip_count / factor` times — a partial unroll. It returns the replacement instruction (`StatusOr<HloInstruction*>`) so the driver can OR the change flag. Selected when `wrap_in_trivial_loop` is set; since the ctor default is 1, **this is the default path** unless the flag is cleared. The name, size, and dispatch byte are read from the binary; the exact factor arithmetic is **[INFERRED]**, not traced basic-block by basic-block because of the no-Hex-Rays constraint.
 
 ### Per-Iteration Substitution — `UnrollSingleIterationOfTrivialLoop` @ `0x1ffde80`
 
@@ -365,7 +367,7 @@ function UnrollSingleIterationOfTrivialLoop(while_op, cfg, i):  // 0x1ffde80
     return clone
 ```
 
-(CERTAIN — `Clone`/`ReplaceOperandWith`/`IsOrHasCollectiveWithChannelId`/`set_channel_id`/`NextChannelId` callees. The `init + i*step` value derivation is INFERRED from the `WhileLoopConfig` fields, MEDIUM.)
+*Anchors: the `Clone` / `ReplaceOperandWith` / `IsOrHasCollectiveWithChannelId` / `set_channel_id` / `NextChannelId` callees.* The `init + i*step` value derivation is **[INFERRED]** from the `WhileLoopConfig` fields.
 
 ---
 
@@ -415,7 +417,7 @@ function InstructionMatchesPattern(inst):                      // 0x1fd7300
 ```c
 function ExpandInstruction(inst):                              // 0x1fd7cc0
     ag = Cast<HloAllGatherInstruction>(inst)                   // r14 = ag
-    // Read the all-gather config off its own fields (offsets CERTAIN — confirmed by disasm loads):
+    // Read the all-gather config off its own fields (offsets confirmed by disasm loads):
     ag_dim        = ag[0x258]    // int64 all_gather_dimension    @0x1fd7e5b mov rax,[r14+258h]
     channel_id    = ag[0x48]     // the AG's own channel id       @0x1fd7ee7 mov rax,[r14+48h]
     constrain     = byte ag[0x250]                               // @0x1fd7f03 movzx r15d,byte[r14+250h]
@@ -438,7 +440,7 @@ function ExpandInstruction(inst):                              // 0x1fd7cc0
     return new_rs                                              // OpExpanderPass::Run replaces inst with this
 ```
 
-> **QUIRK — #111 *reuses* the original all-gather's `channel_id`; #25/#112 assign fresh ones.** The expander reads `[ag+0x48]` and threads it straight into `CreateAllGather`'s `std::optional<long>` channel-id parameter (call @ `0x1fd7f8c`). This is correct precisely *because* #111 does not multiply the collective into *N* copies the way the unrollers do — there is still exactly one all-gather, just over a bigger tensor, so the one rendezvous handle stays valid. A reimplementer who blindly "renumbers all unrolled/rewritten collectives" would break the trip-count rewrite. The `imul rax,0xCC…CD; sar` idiom at `0x1fd7f59`–`0x1fd7f6d` is the compiler's division of the replica-group span byte-length into a group count, then `× per-iteration dim` for the full extent (the new-dim arithmetic stitching is MEDIUM; the field reads and create-calls are CERTAIN).
+> **QUIRK — #111 *reuses* the original all-gather's `channel_id`; #25/#112 assign fresh ones.** The expander reads `[ag+0x48]` and threads it straight into `CreateAllGather`'s `std::optional<long>` channel-id parameter (call @ `0x1fd7f8c`). This is correct precisely *because* #111 does not multiply the collective into *N* copies the way the unrollers do — there is still exactly one all-gather, just over a bigger tensor, so the one rendezvous handle stays valid. A reimplementer who blindly "renumbers all unrolled/rewritten collectives" would break the trip-count rewrite. The `imul rax,0xCC…CD; sar` idiom at `0x1fd7f59`–`0x1fd7f6d` is the compiler's division of the replica-group span byte-length into a group count, then `× per-iteration dim` for the full extent. The field reads and create-calls are read off the disassembly; the new-dim arithmetic stitching is **[INFERRED]**.
 
 ### Function Map
 
@@ -464,7 +466,7 @@ The five strongest claims on this page, each re-challenged against the binary:
 
 5. **"The two unrollers are distinct passes sharing only the analysis engine."** Distinct name strings (`unroll-while-loop` len 17 vs `while_loop_unroller` len 19, both present once/twice in the string table), distinct `Run` addresses, and only #112 carries `NEURON_DISABLE_BOUNDARY_MARKER` / `GetUnrollableLoops` / `CallInliner` / `NeuronAddBoundaryMarker` calls — #25 has none of these. Both call `ComputeWhileLoopTripCount` (@ `0x8aaee70`). **CONFIRMED**.
 
-All 13 diagnostic/name string literals cited on this page were confirmed present (exactly once each, except `while_loop_unroller` twice) in the `hlo-opt` string table. Residual gaps, marked in place: the partial-unroll factor arithmetic (`UnrollInternalWrappedAndReturnReplacement`, MEDIUM), the `[obj+0x08]`/`[obj+0x10]` registrar fields (MEDIUM), and the exact clone-wire data-flow in #25/§"Per-Iteration Substitution"/#111 new-dim arithmetic (INFERRED, no Hex-Rays).
+All 13 diagnostic/name string literals cited on this page were confirmed present (exactly once each, except `while_loop_unroller` twice) in the `hlo-opt` string table. Residual gaps, marked in place and all **[INFERRED]**: the partial-unroll factor arithmetic (`UnrollInternalWrappedAndReturnReplacement`), the `[obj+0x08]`/`[obj+0x10]` registrar fields, and the exact clone-wire data-flow in #25 / §"Per-Iteration Substitution" / #111 new-dim arithmetic (no Hex-Rays for any of them).
 
 ---
 
@@ -496,7 +498,7 @@ StatusOr<HloInstruction*> NeuronRewriteAllGatherTripCount::ExpandInstruction(Hlo
 } // namespace xla
 ```
 
-`UnrollConfig` field order is CERTAIN from the constructor (the three int thresholds at `+0x18/+0x20/+0x28`, three bool flags at `+0x30/+0x31/+0x32`). `WhileLoopConfig` field *names* are CERTAIN from the demangled analysis symbols; exact offsets are HIGH/MEDIUM (the pair is passed by value through `GetUnrollableLoops` and carries the trip count `UnrollInternal` consumes).
+`UnrollConfig` field order is read off the constructor (the three int thresholds at `+0x18/+0x20/+0x28`, three bool flags at `+0x30/+0x31/+0x32`). `WhileLoopConfig` field *names* come from the demangled analysis symbols; its exact offsets are **[INFERRED]** — the pair is passed by value through `GetUnrollableLoops` and carries the trip count `UnrollInternal` consumes.
 
 ---
 

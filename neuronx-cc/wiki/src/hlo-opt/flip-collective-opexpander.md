@@ -22,7 +22,7 @@ For reimplementation, the contract is:
 | **Passes** | #92 `aws_neuron_flip_all_gather_dynamic_slice`, #96 `…convert`, #97 `…reshape`, #98 `aws_neuron_flip_all_gathers_binary`, #102 `aws_neuron_flip_reduce_convert_add`, #104 `aws_neuron_flip_reduce_scatter_transpose` |
 | **Base class** | `xla::OpExpanderPass` — shared `Run` @0x29f0bb0 (matcher = vtable+0x28; `ExpandInstruction` non-virtual) |
 | **Source files** | `hilo/hlo_passes/flip_all_gather_unary.cc` (#96/#97/#98 @0x39f600), `…/neuron_flip_all_gather_dynamic_slice.cc` (#92 @0x2c2e38), `…/neuron_flip_reduce_convert_add.cc` (#102 @0x387b38), `…/flip_reduce_scatter_transpose.cc` (#104 @0x3dace8) |
-| **AllGather fields** | `constrain_layout` byte @+0x250 · `all_gather_dimension` int64 @+0x258 (== `dimensions()[0]`) · `use_global_device_ids` byte @+0x260 (HIGH) |
+| **AllGather fields** | `constrain_layout` byte @+0x250 · `all_gather_dimension` int64 @+0x258 (== `dimensions()[0]`) · `use_global_device_ids` byte @+0x260 [INFERRED] |
 | **Fresh-channel flips** | #98 (binary), #102 (reduce/convert/add) — both call `hlo_query::NextChannelId` @0x8ab1ac0 |
 | **Reuse-channel flips** | #96, #97, #92, #104 — no `NextChannelId` callee |
 | **Downstream consumer** | [`NeuronAllGatherCombiner`](collective-combiners.md) Run @0x1f8add0 / `CombineAllGathers` @0x1f8b750 |

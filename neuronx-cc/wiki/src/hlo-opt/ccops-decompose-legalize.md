@@ -186,7 +186,7 @@ StatusOr<bool> LegalizeCpuCCOps_Run(HloModule* module):     // 0x1ef2e90
 
 The key callee is `xla::HloChannelInstruction::set_channel_id(std::optional<long> const&)` invoked with an **empty** optional (`[var_1E8]=0` set immediately before the call at `0x1ef2f9b` / `0x1ef3036`). Channel id is *erased*, not reassigned.
 
-> **NOTE —** this is the inverse of `NeuronUniqueChannelIdEnforcer` (#82, @ `0x1fecb40`), which *assigns* fresh unique channel ids. The CPU pass deletes ids for a runtime that wants none; the enforcer creates them for one that needs them unique. Because #12 runs long before #82 in registration order, the two are ordering-sensitive — an erase here is re-populated only if the enforcer runs afterward on the same path. (MEDIUM — exact runtime pass-list interleave is driver-side, not traced here.)
+> **NOTE —** this is the inverse of `NeuronUniqueChannelIdEnforcer` (#82, @ `0x1fecb40`), which *assigns* fresh unique channel ids. The CPU pass deletes ids for a runtime that wants none; the enforcer creates them for one that needs them unique. Because #12 runs long before #82 in registration order, the two are ordering-sensitive — an erase here is re-populated only if the enforcer runs afterward on the same path. The exact runtime pass-list interleave is driver-side and not traced here, so the interaction is **[INFERRED]**.
 
 There are no diagnostic strings in this body; the only `.rodata` reference is the shared `"nullptr != entry_computation_"` at the cold path.
 
@@ -326,7 +326,7 @@ A two-buffer mixed-dtype all-reduce `{f32, bf16}` (widest common width = 32, so 
 
 > **QUIRK —** the new collective, the convert ops, and the wrapper tuple are all created with an **empty name** (`""`), not `cc-tuple`. Only `DecomposeCCOps` mints the `cc-tuple` name. If you key any later pass off the `cc-tuple` name to recognise a decomposed/legalized collective, you will miss every Tensorizer-up-cast site.
 
-> **GOTCHA —** the operand-count gate reads the *packed* qword at `[inst+0x18]` and compares it raw to `3` (`0x1ef13ba`). With the `>>1` unpacking convention used elsewhere this is effectively "more than one real operand", i.e. it targets variadic collectives. Whether the literal threshold is "3 packed" or exactly "1 real operand" was not byte-verified against a known instruction. (MEDIUM.)
+> **GOTCHA —** the operand-count gate reads the *packed* qword at `[inst+0x18]` and compares it raw to `3` (`0x1ef13ba`). With the `>>1` unpacking convention used elsewhere this is effectively "more than one real operand", i.e. it targets variadic collectives. Whether the literal threshold is "3 packed" or exactly "1 real operand" was not byte-verified against a known instruction, so that reading is **[INFERRED]**.
 
 ---
 
@@ -345,7 +345,7 @@ A two-buffer mixed-dtype all-reduce `{f32, bf16}` (widest common width = 32, so 
 
 Both target the **same native op-set** (4/7/0x57; the CPU pass additionally 0x0A/0x1C/0x1D), which is the only sense in which they "lower the same CC set for CPU vs Tensorizer" — but the work is opposite in kind (id/flag scrub vs dtype unification), not two lowerings of one IR-to-IR transform. `DecomposeCCOps` (#26) sits between them in registration order and is back-end-agnostic, feeding both.
 
-> **NOTE —** in registration order #12 (CPU) runs *before* #26 (Decompose) and #50 (Tensorizer). On the Tensorizer path a variadic collective is therefore potentially up-cast at #50 *after* having been split into unary clones at #26 — so #50's `operand_count>3` gate mostly catches collectives that were still variadic before #26 ran, or that #26 left intact (non-tuple-shaped). The exact *runtime* pass-list interleave is driver-side and not traced here. (MEDIUM.)
+> **NOTE —** in registration order #12 (CPU) runs *before* #26 (Decompose) and #50 (Tensorizer). On the Tensorizer path a variadic collective is therefore potentially up-cast at #50 *after* having been split into unary clones at #26 — so #50's `operand_count>3` gate mostly catches collectives that were still variadic before #26 ran, or that #26 left intact (non-tuple-shaped). The exact *runtime* pass-list interleave is driver-side and not traced here, so this ordering account is **[INFERRED]**.
 
 ---
 
@@ -354,12 +354,12 @@ Both target the **same native op-set** (4/7/0x57; the CPU pass additionally 0x0A
 The structural claims on this page and what pins each:
 
 1. **`DecomposeCCOps::Run` @ `0x1e9f650` (3182 B).** The `functions.json` row `_ZN3xla14DecomposeCCOps3RunE…` gives `addr 0x1e9f650`, `size 3182`; the cold half `…3RunE….cold` is a separate symbol.
-2. **The three pass names are verbatim strings, and the opcode triple is a filter, not a `CHECK`.** `_rodata.bin` carries `decompose-cc-ops`, `legalize-cpu-cc-ops`, `legalize-ccops-for-tensorizer`, `cc-tuple`, `-clone`, and `nullptr != entry_computation_`; no opcode-assert string is present. Filter-not-`CHECK` rests on that absence plus the inline `setz/or` disassembly — HIGH.
-3. **`set_channel_id` is an *erase* (empty optional), not a reassign.** The callee symbol `xla::HloChannelInstruction::set_channel_id(std::optional<long> const&)` exists, and an empty optional is built (`[var_1E8]=0`) immediately before the calls at `0x1ef2f9b`/`0x1ef3036` — HIGH, read off the disassembly.
+2. **The three pass names are verbatim strings, and the opcode triple is a filter, not a `CHECK`.** `_rodata.bin` carries `decompose-cc-ops`, `legalize-cpu-cc-ops`, `legalize-ccops-for-tensorizer`, `cc-tuple`, `-clone`, and `nullptr != entry_computation_`; no opcode-assert string is present. Filter-not-`CHECK` rests on that absence plus the inline `setz/or` disassembly.
+3. **`set_channel_id` is an *erase* (empty optional), not a reassign.** The callee symbol `xla::HloChannelInstruction::set_channel_id(std::optional<long> const&)` exists, and an empty optional is built (`[var_1E8]=0`) immediately before the calls at `0x1ef2f9b`/`0x1ef3036`, read off the disassembly.
 4. **The up-cast helpers exist with the cited DenseMap signatures.** `xla::hilo::(anon)::CreateNewCCOp(HloInstruction*, DenseMap<uint,Shape,…>&)` and `…GenerateNewGTEs(HloInstruction*, HloInstruction*, DenseMap<uint,Shape>&, DenseMap<uint,HloInstruction*>&)` are both in `functions.json`, `WidthForType<kBitWidths>(PrimitiveType)` returns `int`, and `_names.json` gives `CreateNewCCOp` @ `0x1eef970`, `GenerateNewGTEs` @ `0x1eeefe0`.
 5. **The exact float-vs-int promotion rule is [INFERRED].** What is observed is only that the **max bit-width** operand type wins (`WidthForType<kBitWidths>` plus the `CSWTCH_750` class gate). Whether `{s8,f16}` resolves to `f16` or to a wider int is not decoded — do not read the worked `{f32,bf16}→f32` example as proof of anything beyond "widest wins".
 
-**Limits.** The `+0x251`/`+0x260`/`+0x210` flag *identities* are [INFERRED] from the `HloAllReduceInstructionBase` / `HloAllGatherInstruction` / `HloChannelInstruction` class hierarchy rather than verbatim field-name strings (MEDIUM); `HasTokenEqualsTo`'s attribute *key* string was not extracted, only that it probes for token value `"1"` (MEDIUM); and the operand-count threshold packing (`3` vs `1 real`) has not been checked against a concrete instruction (MEDIUM).
+**Limits.** The `+0x251`/`+0x260`/`+0x210` flag *identities* are [INFERRED] from the `HloAllReduceInstructionBase` / `HloAllGatherInstruction` / `HloChannelInstruction` class hierarchy rather than verbatim field-name strings. Also **[INFERRED]**: `HasTokenEqualsTo`'s attribute *key* string was not extracted, only that it probes for token value `"1"`; and the operand-count threshold packing (`3` vs `1 real`) has not been checked against a concrete instruction.
 
 ---
 
