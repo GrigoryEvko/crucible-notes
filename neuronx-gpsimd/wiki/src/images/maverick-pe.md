@@ -13,7 +13,7 @@ cross-read against the shipped clean `neuron_maverick_arch_isa` C headers.
 
 > **CRITICAL WALL — MAVERICK (v5) is HEADER-OBSERVED only.** The container header,
 > the carved blobs, the **PROF-CAM arming**, and the **reset bytes** are all
-> directly **OBSERVED** (decoded this session with stock binutils + `ncore2gp`).
+> directly **OBSERVED** (decoded with stock binutils + `ncore2gp`).
 > But MAVERICK PE ships **NO DEBUG image**, so the named-handler roster carries **no
 > carved `S:` strings to anchor a handler body** — the roster is **INFERRED** from
 > the PROF-CAM arming + the shipped OPCODE enum + the dispatch structure + the
@@ -23,7 +23,7 @@ cross-read against the shipped clean `neuron_maverick_arch_isa` C headers.
 
 > **THE HEADLINE — MAVERICK × PE is a GENUINE NEW v5 GENERATION of the
 > systolic-matmul sequencer, NOT a recompile of MARIANA_PLUS PE.** Five image-level
-> facts prove it, each byte-OBSERVED this session:
+> facts prove it, each byte-OBSERVED:
 >
 > 1. **A NEW v5 reset geometry: `j 0x1d8` (−0x20 vs MARIANA's `j 0x1f8`),
 >    enter_run @`0x94`.** This is a v5 **structural** change — DISTINCT from the v4
@@ -82,16 +82,14 @@ Related pages: [MARIANA_PLUS × PE (the diff base)](./mariana-plus-pe.md) ·
 > **NOTE — the objects used.** Container:
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (sha256
 > `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b`, ELF64 x86-64
-> DYN, **not stripped**; re-hashed this session, MATCH). First R `LOAD` is the
+> DYN, **not stripped**; MATCH). First R `LOAD` is the
 > identity map (`off 0x0 == vaddr 0x0`), so each `<NAME>.data` accessor address is
 > simultaneously the `.rodata` VA and the file offset of its blob — carve =
 > `so[ptr : ptr+size]`. **IRAM file-offset == device IRAM VA** (reset vector at byte
 > 0); **DRAM string-file-offset == device DRAM VA − `0x80000`**. Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
 > (GNU Binutils 2.34.20200201 Xtensa Tools 14.09, `XTENSA_CORE=ncore2gp`, ConfigName
-> `Xm_ncore2gp`, uarch Cairo). All 6 carve sha256, the reset vector, the PROF CAM
-> records, the windowed-ABI census, the ISA enums + struct headers, and the DGE/dtype
-> string counts were reproduced this session (exit 0). `[HIGH/OBSERVED]`
+> `Xm_ncore2gp`, uarch Cairo).
 
 ---
 
@@ -158,7 +156,7 @@ images**; the DEBUG image — the only place the named SEQ handler strings live 
 **dropped** on the v5 PE (only DVE, the MAVERICK NX family head, keeps a DEBUG image
 on v5). Each real getter is the canonical stub `lea <blob>(%rip),%rax ; movq
 $<size>,(%rsi) ; ret` (e.g. `MAVERICK_NX_PE_PERF_IRAM_get @0x9b5720: lea
--0x1021e7(%rip),%rax # 8b3540 ; movq $0xbd60,(%rsi) ; ret`). `[HIGH/OBSERVED]`
+-0x1021e7(%rip),%rax # 8b3540 ; movq $0xbd60,(%rsi) ; ret`).
 
 | VARIANT | REGION | ACCESSOR (.text VA) | IMG-PTR (.rodata VA == file off) | SIZE | sha256 | status |
 |---|---|---|---|---|---|---|
@@ -174,10 +172,10 @@ $<size>,(%rsi) ; ret` (e.g. `MAVERICK_NX_PE_PERF_IRAM_get @0x9b5720: lea
 | **PROF** | **TABLE** | `0x9b5d00` | `0x9a6aa0` | `0x2000` | **`e94d413a…`** | **REAL (re-authored)** |
 
 All 6 real carves (`internal.so[IMG-PTR : IMG-PTR+SIZE]`) reproduce these sha256
-exactly this session. The `(img-ptr,size)` pairs MATCH
+exactly. The `(img-ptr,size)` pairs MATCH
 [image-catalog-index.md](./image-catalog-index.md) rows 747–756 byte-for-byte, and
 the catalog's `MAVERICK_NX_PE_DEBUG_*` row (count `0`) corroborates the no-DEBUG
-finding. `[HIGH/OBSERVED]`
+finding.
 
 > **GOTCHA — single-source carve, NO `.a` byte-reconcile.** `libnrtucode.a` carries
 > **0** MAVERICK members (`ar t … | rg -ic maverick` → 0; the archive tops at
@@ -192,7 +190,7 @@ finding. `[HIGH/OBSERVED]`
 > **NOTE — PE is SECOND in the MAVERICK NX block (DVE → PE → POOL).** With ACT
 > amputated (folded into DVE per the [MAVERICK × ACT](./maverick-act.md) /
 > [MAVERICK × DVE](./maverick-dve.md) pages), DVE is the family head and PE follows
-> it. Contiguity (PERF slot, `.data` sort, this session): DVE_DEBUG_DRAM end
+> it. Contiguity (PERF slot, `.data` sort): DVE_DEBUG_DRAM end
 > `0x8ad5c0+0x5f80 = 0x8b3540` == PE_PERF_IRAM; PE_PERF_IRAM end `0x8b3540+0xbd60 =
 > 0x8bf2a0` == PE_PERF_DRAM; PE_PERF_DRAM end `0x8bf2a0+0x2040 = 0x8c12e0` ==
 > POOL_PERF_IRAM (PE→POOL adjacency). The 4 PE zero-size cursors all resolve
@@ -205,7 +203,7 @@ finding. `[HIGH/OBSERVED]`
 
 This is the v5 **structural** divergence, and it is **NOT** the v4 `+0x1c` shift.
 The MAVERICK PE PERF IRAM head is **byte-distinct from MARIANA_PLUS at byte 1**
-(`xxd -l16`, this session — PERF/TEST head identically):
+(`xxd -l16` — PERF/TEST head identically):
 
 ```
 MARIANA_PLUS PE IRAM:  06 7d 00 00 | 00 00 | 86 7e 00 00 | 00 00 | a0 71 69 80
@@ -217,8 +215,8 @@ MAVERICK     PE IRAM:  06 75 00 00 | 00 00 | 86 76 00 00 | 00 00 | a0 71 69 80
 The `j` immediate byte-1 is `0x7d` on MARIANA(_PLUS) and **`0x75` on MAVERICK** — a
 genuine `−0x20` relocation of the boot entry, **distinct from** the v4 model
 (CAYMAN's `0x76` → MARIANA's `0x7d`, the stable `+0x1c`). Decoded
-instruction-exact with the shipped `ncore2gp` `xtensa-elf-objdump` (exit 0) off the
-MAVERICK PE PERF IRAM carve this session:
+instruction-exact with the shipped `ncore2gp` `xtensa-elf-objdump` off the
+MAVERICK PE PERF IRAM carve:
 
 ```text
 0x000:  06 75 00     j        0x1d8      ; primary reset vector → boot trampoline   (−0x20 vs MARIANA 0x1f8)
@@ -261,9 +259,9 @@ with `ncore2gp`]`
 > relocation off MARIANA's — a different scheme, the same one DVE carries. This is
 > the primary structural signature that MAVERICK is a real gen-step. `[HIGH/OBSERVED]`
 
-DISASSEMBLY PROOF (shipped `ncore2gp`, exit 0): the MAVERICK PE PERF IRAM decodes a
+DISASSEMBLY PROOF (shipped `ncore2gp`): the MAVERICK PE PERF IRAM decodes a
 full Q7/NX windowed-ABI code body — **106 `entry` / 151 `retw` / 339 `call8` / 464
-`call0` / 1085 `const16` / 1057 `l32r`** (this session, FLIX bundle slots counted) —
+`call0` / 1085 `const16` / 1057 `l32r`** (FLIX bundle slots counted) —
 a genuine separately-compiled `cayman/seq` sequencer, **smaller** than
 MARIANA_PLUS's PE (consistent with `PERF_IRAM 0xbd60` vs `0x172c0`). Not a stub.
 `[HIGH/OBSERVED]`
@@ -274,7 +272,7 @@ MARIANA_PLUS's PE (consistent with `PERF_IRAM 0xbd60` vs `0x172c0`). Not a stub.
 
 The clean opcode-arming evidence. The PROF CAM is a `0x400` table of 16-byte
 records `{opcode(u32 LE)@0, mask(u32)@4, enable(u32)@8, rsvd@12}`. Decoded
-byte-for-byte this session; the `op=0/mask=0/en=1` record is the sentinel
+byte-for-byte; the `op=0/mask=0/en=1` record is the sentinel
 ("armed" excludes it):
 
 | PROF_CAM | sha256(8) | enabled records | armed (non-sentinel) |
@@ -335,7 +333,7 @@ per-engine reuse ([MARIANA_PLUS × PE §7](./mariana-plus-pe.md)). `[HIGH/OBSERV
 > **WALL — the handler roster is INFERRED, not carved.** MAVERICK PE has **0 `S:`
 > strings in any of its 6 images** (the named SEQ handler strings — `PeManageSeed`,
 > `S: Matmul`, `S: Ldweights`, `MatmulMX`, `LdweightsMX`, `MatmulSparse`,
-> `ConvLutLoad` — are **0** across all carves this session; they live below the
+> `ConvLutLoad` — are **0** across all carves; they live below the
 > MAVERICK region, in earlier-generation DEBUG DRAMs). MAVERICK ships no PE DEBUG
 > image, so the roster **cannot be diffed by string**. It is established at the
 > **OPCODE-enum + PROF-arming + datapath** level. The roster membership is HIGH (the
@@ -346,7 +344,7 @@ per-engine reuse ([MARIANA_PLUS × PE §7](./mariana-plus-pe.md)). `[HIGH/OBSERV
 
 The 9 PE-specific opcodes are all marked `// Y` (maintained / not-deprecated) in
 the shipped `neuron_maverick_arch_isa/tpb/aws_neuron_isa_tpb_common.h` OPCODE enum,
-byte-for-name identical to the mariana enum (read field-by-field this session):
+byte-for-name identical to the mariana enum (read field-by-field):
 
 | handler | opcode | enum line / marker | origin | v5 status |
 |---|---|---|---|---|
@@ -401,7 +399,7 @@ the PROF — the PE **does** carry the v5 MX/FP8/INT4/SFP8 matmul, realized as a
 as new dispatch handlers.
 
 **(A) The MX fold.** The shipped maverick per-instruction struct headers state it
-verbatim (read this session):
+verbatim:
 
 ```c
 // aws_neuron_isa_tpb_s3d3_mm.h:18-20  (MATMUL operand struct):
@@ -423,7 +421,7 @@ So on v5 the MX matmul is **unified** into the regular `Matmul`/`Ldweights` via 
 but **deprecated**. `[HIGH/OBSERVED — shipped headers]`
 
 **(B) The new MX struct fields.** The maverick `S3D3_MM` (MATMUL) struct now carries
-(field offsets read this session; cross-ref the committed
+(cross-ref the committed
 [pe-matmul.md](../firmware/kernels/pe-matmul.md) `S3_LW_STRUCT` layout):
 
 ```c
@@ -453,8 +451,8 @@ typedef enum NEURON_ISA_TPB_MX_PERF_MODE {
 `[HIGH/OBSERVED — struct + enum read field-by-field]`
 
 **(C) The new MX dtypes.** The maverick `NEURON_ISA_TPB_DTYPE` enum adds, over
-mariana's `FP4_EXP2 0x10` (the mariana enum carries *only* `0x10` in this range —
-verified this session; the other six are MAVERICK-NEW):
+mariana's `FP4_EXP2 0x10` (the mariana enum carries *only* `0x10` in this range;
+the other six are MAVERICK-NEW):
 
 ```c
 // aws_neuron_isa_tpb_common.h:866,874-879
@@ -475,7 +473,7 @@ kernel consumes ([mx-dequant.md](../firmware/kernels/mx-dequant.md) §"the stand
 
 **(D) The NX-sequencer dtype surface stays NUMERIC.** Across all 6 MAVERICK PE
 carves: `FP8`/`INT4`/`SFP8`/`MXTENSOR`/`TILE_SIZE`/`FP4`/`CPTC`/`QuantizeMx`/
-`proc_4bit` = **0** named-string hits (this session — these are enum tokens in the C
+`proc_4bit` = **0** named-string hits (these are enum tokens in the C
 headers, never data strings in the image). The only dtype strings are the
 `move.cpp:41` assertion's `NEURON_ISA_TPB_DTYPE_{UINT32,INT32,FP32}` (byte-identical
 to MARIANA/MARIANA_PLUS PE; source path
@@ -520,7 +518,7 @@ NX-sequencer dtype strings. The PE adds the MX *matmul* (the compute), not MX dt
 
 The MARIANA_PLUS PE page proved the *one* v4→v4+ functional change was a **NEW** DGE
 reshape fast-path (`dge_decode_fast.cpp` + 3 helpers). On MAVERICK that fast-path is
-**dropped** — 0 hits across the 6 PE carves this session:
+**dropped** — 0 hits across the 6 PE carves:
 
 | DGE string | MAVERICK PE (6 carves) | MARIANA_PLUS PE (DEBUG DRAM) |
 |---|---|---|
@@ -573,10 +571,10 @@ dispatch confirm the same SEQ model. `[HIGH/OBSERVED]`
 
 ## 8. Adversarial self-verification
 
-Five strongest claims, re-challenged against the binary this session:
+The five strongest claims, challenged against the binary:
 
 1. **The NEW v5 reset (`j 0x1d8`, `−0x20`, enter_run @`0x94`).** *Challenge:* maybe
-   it is the v4 `+0x1c` shift mis-read, or a single-variant fluke. *Re-verify:* the
+   it is the v4 `+0x1c` shift mis-read, or a single-variant fluke. *Evidence:* the
    head byte-1 is `0x75` (MAVERICK) vs `0x7d` (MARIANA_PLUS) — `ncore2gp` decodes
    `j 0x1d8` / `j 0x1e4`, the trampoline at `0x1d8` is `const16 a0,148 ; jx a0` →
    `0x94` (148 = 0x94), and `enter_run @0x94` lands on a real C prologue; PERF and
@@ -585,7 +583,7 @@ Five strongest claims, re-challenged against the binary this session:
    `−0x20`/`−0x20`/`+4`, the same geometry as DVE — NOT `+0x1c`. **HOLDS.**
 2. **NO PE DEBUG image / handler strings amputated.** *Challenge:* maybe a DEBUG
    getter exists under a different name, or the strings live in PERF/TEST.
-   *Re-verify:* `nm | rg -c 'MAVERICK_NX_PE_.*_get$'` = 10; `rg -c
+   *Evidence:* `nm | rg -c 'MAVERICK_NX_PE_.*_get$'` = 10; `rg -c
    'MAVERICK_NX_PE_DEBUG'` = 0; `strings` over all 6 carves: `PeManageSeed`/`S:
    Matmul`/`S: Ldweights`/`MatmulMX`/`LdweightsMX`/`MatmulSparse`/`ConvLutLoad` all
    **0**, no genuine `S:`-mnemonic strings in any PE byte range (the one incidental
@@ -594,7 +592,7 @@ Five strongest claims, re-challenged against the binary this session:
    INFERRED).
 3. **The DGE fast-path DROPPED.** *Challenge:* the 0-count could be a no-DEBUG
    artifact (the strings only ever lived in DEBUG), or the strings could be gone
-   binary-wide. *Re-verify:* all 4 `dge_decode_fast`-family strings are **0** across
+   binary-wide. *Evidence:* all 4 `dge_decode_fast`-family strings are **0** across
    the 6 carves AND 0 in the MAVERICK region `[0x871300:EOF]` — but they still exist
    in earlier-generation regions of the same `.so` (so the drop is image-scoped, not
    a measurement artifact; see §7 GOTCHA). On MARIANA_PLUS PE they were present in
@@ -602,7 +600,7 @@ Five strongest claims, re-challenged against the binary this session:
    from the PE image is the dropped code, corroborated by the matched DVE drop.
    **HOLDS** (phrasing scoped to the PE image).
 4. **Matmul RETAINED + MX REORGANIZED.** *Challenge:* maybe the MX opcodes are gone
-   and "folded" is wishful. *Re-verify:* the PROF CAM arms `0x01/0x02` AND `0x09/0x0A`
+   and "folded" is wishful. *Evidence:* the PROF CAM arms `0x01/0x02` AND `0x09/0x0A`
    (decoded byte-for-byte, 18 armed, mask 0xff); the enum marks `LDWEIGHTS_MX 0x09 //
    Y` / `MATMUL_MX 0x0A // Y` (RETAINED); the `S3D3_MM`/`S3_LW` headers say MXTensorV2
    "replaces the separate MatmulMX/LdWeightMX"; the `SMX1D3_MM` header is stamped
@@ -611,13 +609,13 @@ Five strongest claims, re-challenged against the binary this session:
    0x12`/`SFP8_E8..E5 0x13..16` (mariana has only `0x10`); 205 `ivp_mul*` confirm the
    MAC datapath. RETAINED-and-folded, not removed. **HOLDS.**
 5. **Independent v5 build (not a recompile).** *Challenge:* same SEQ chassis could
-   mean a recompile with relocated literals. *Re-verify:* first byte divergence at
+   mean a recompile with relocated literals. *Evidence:* first byte divergence at
    index **1**; positional 16-byte block similarity **231/3030 = 7.6%**; total
    footprint `0x1e780` vs `0x56960` (`−0x381e0`); 0 `.a` members. A recompile would
    share a long prefix (as MARIANA_PLUS-vs-MARIANA did at `0x212`) — this shares only
    the 16-byte NX boot-stub body and diverges immediately. **HOLDS.**
 
-**Honesty ledger.** *HIGH/OBSERVED (reproduced this session):* container sha256
+**Honesty ledger.** *HIGH/OBSERVED:* container sha256
 `b7c67e89…` (MATCH); 10 PE getters (0 DEBUG); 6 carves sha-reproduced; 0 `.a`
 members; contiguity DVE→PE→POOL; reset `j 0x1d8`/`j 0x1e4`/enter_run @`0x94`
 (`ncore2gp`, `−0x20`/`+4`); windowed-ABI census 106/151/339/464/1085/1057; 205

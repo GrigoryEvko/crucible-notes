@@ -21,12 +21,13 @@ and POOL grows a Q7 RNG body, SP's 18 handlers are *unchanged byte-for-name*. Th
 deltas are the gen-wide **+0x1c NX reset shift**, the new `addr_bits.hpp` source header, the
 `BEGIN`-name, and the relocations of a full recompile. No model change.
 
-Confidence/evidence tags follow the project
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit tag,
+following the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
-**OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a fresh carve from
+**OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so` (sha256 `b7c67e89…632fc329b`), reconciled against the matching
 `libnrtucode.a` member `.rodata`, and decoded with the shipped `ncore2gp`
-`xtensa-elf-objdump`; the CAYMAN baseline carve was re-hashed this session and **all 6 anchors
+`xtensa-elf-objdump`; the CAYMAN baseline carve hashes and **all 6 anchors
 MATCH** the committed [cayman-sp.md](./cayman-sp.md) — the diff below is against authentic
 CAYMAN SP.
 
@@ -39,11 +40,11 @@ CAYMAN SP.
 > vector at byte 0); **DRAM string-file-offset == device DRAM VA − `0x80000`**. Disassembler:
 > `extracted/nested/gpsimd_tools_tgz/tools/XtensaTools/bin/xtensa-elf-objdump`
 > (GNU Binutils 2.34.20200201, Xtensa Tools 14.09, `XTENSA_CORE=ncore2gp`, ConfigName
-> `Xm_ncore2gp`, uarch Cairo, Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`, FLIX/VLIW 32B;
-> `--version` exit 0, empty stderr). The clean C ISA header
+> `Xm_ncore2gp`, uarch Cairo, Xtensa24, RI-2022.9, `TargetHWVersion=NX1.1.4`, FLIX/VLIW 32B).
+> The clean C ISA header
 > `neuron_mariana_arch_isa/tpb/aws_neuron_isa_tpb_common.h` is cited for the engine enum. The
 > archive `libnrtucode.a` (sha256 `158dadc5…d7bd6130`) supplies the second carve source for the
-> byte-identity reconciliation. `[HIGH/OBSERVED]`
+> byte-identity reconciliation.
 
 ---
 
@@ -55,7 +56,7 @@ CAYMAN SP.
    **+0x1c-shifted** form of CAYMAN's `06 76 00 00` (`j 0x1dc`); the boot trampoline at `0x1f8`
    (`const16 a0,0 ; const16 a0,0x90 ; jx a0 → enter_run @0x90`) decodes *exactly* as CAYMAN's
    (target unchanged); the DRAM `.globstruct` magic is the same `0x6099cb34` and its init block is
-   byte-identical. `[HIGH/OBSERVED]`
+   byte-identical.
 
 2. **THE HEADLINE — the 18-handler set is byte-for-name IDENTICAL across the generation
    (ADDED = 0, REMOVED = 0).** SP's roster is the EXACT 5-way intersection
@@ -63,41 +64,41 @@ CAYMAN SP.
    MOVE, NOP, NOTIFY, POLL_SEM, Redirect, SET_OM, STRONG_ORDER, TensorLoad, TensorStore, WRITE}` —
    the pure sync/control core with zero compute and zero RNG. **Unlike** PE (+4), DVE (+7), ACT
    (+3) or POOL (Q7 RNG body), SP gained nothing and lost nothing. SP has no compute layer to
-   extend and no RNG to expand, so the entire v4 change-set lands elsewhere. `[HIGH/OBSERVED]`
+   extend and no RNG to expand, so the entire v4 change-set lands elsewhere.
 
 3. **The opcode space is gen-stable.** The segmented/Sunda-mode dispatch table is the same ~161-entry
    structure on both gens — same head default/Bad-Opcode trampoline band, same first-8 real-slot
    pattern, **no growth** (contrast DVE 170→187, PE +4). Only the relocations move: table base
    DRAM file `0x814` (CAY) → `0x800` (MAR); default trampoline `0x2ac9` (CAY) → `0x2975` (MAR);
-   `S: Dispatch opcode` string pool `0xaa8` → `0xa98`. `[HIGH/OBSERVED for size/relocation/default;
-   the exact per-opcode→handler row binding is the documented FLIX-desync frontier, MED]`
+   `S: Dispatch opcode` string pool `0xaa8` → `0xa98`. `[size/relocation/default HIGH;
+   per-opcode row binding MED — the FLIX-desync frontier]`
 
 4. **12 image getters (6 real + 6 zero-size cursors), the same shape as CAYMAN SP — no PROF, no
    Q7.** `nm | rg -c MARIANA_NX_SP_PROF` = 0, `MARIANA.*Q7_SP` = 0, `MARIANA.*TOP_SP` = 0. The four
    compute engines each ship 14 NX getters (12 base + 2 PROF `{CAM, TABLE}`); SP ships 12 = base
    only. All 6 real carves are byte-identical (sha256 + `cmp`) to the matching `libnrtucode.a`
-   member `.rodata` — **full 6/6 reconciliation**, not a spot-check. `[HIGH/OBSERVED]`
+   member `.rodata` — **full 6/6 reconciliation**, not a spot-check.
 
 5. **No MARIANA SP image is byte-identical to its CAYMAN counterpart (6/6 distinct).** A
    CAYMAN↔MARIANA SP swap is a full recompile + the +0x1c reset shift + the new `addr_bits.hpp`,
    **not a patch**: the dispatch mechanism, reset-vector *form*, table architecture, ErrorHandler
    arms, `cayman/seq/` source tree, 18-handler control core, and the no-PROF/no-Q7 shape are all
-   invariant. `[HIGH/OBSERVED]`
+   invariant.
 
 > **CORRECTION — "SP is where the MARIANA RNG/sync expansion shows up" is wrong.** The v4 RNG
 > story (the `RandGetState`/`RandSetState` handlers propagating from POOL to ACT/DVE, the POOL Q7
 > RNG body, PE's `PeManageSeed`) has **zero SP footprint.** SP carries no RNG handler on *either*
 > gen, and its sync handlers (`Event_Semaphore`/`POLL_SEM`/`NOTIFY`) are the **shared** EVT_SEM
 > core present on all five engines — not an SP expansion surface. SP is the substrate the other
-> four engines extend; on MARIANA, that substrate is byte-for-name unchanged. `[HIGH/OBSERVED]`
+> four engines extend; on MARIANA, that substrate is byte-for-name unchanged.
 
 ---
 
 ## 2. The cross-gen delta table (CAYMAN → MARIANA SP)
 
-Every row re-verified this session against fresh carves from `libnrtucode_internal.so`. The
+Every row is grounded in a carve from `libnrtucode_internal.so`. The
 CAYMAN column reproduces the committed [cayman-sp.md](./cayman-sp.md) anchors exactly (all 6
-baseline shas re-hashed, MATCH). `[HIGH/OBSERVED unless tagged]`
+baseline shas MATCH).
 
 | property | CAYMAN SP ([baseline](./cayman-sp.md)) | MARIANA SP (this image) | Δ |
 |---|---|---|---|
@@ -128,14 +129,14 @@ baseline shas re-hashed, MATCH). `[HIGH/OBSERVED unless tagged]`
 
 The diff reduces to: **a full recompile, the +0x1c reset shift, the new `addr_bits.hpp`, and the
 `BEGIN`-name.** The SEQ engine model, the handler set, the opcode space, the dtype surface and the
-(absence of) PROF/Q7 are all invariant. `[HIGH/OBSERVED]`
+(absence of) PROF/Q7 are all invariant.
 
 ### 2.1 Carve + sha + 6/6 byte-identity reconciliation
 
 Carve rule (identity map): `blob = so[IMG-PTR : IMG-PTR+SIZE]`. The 6 real MARIANA carves and
-their sha256 (re-hashed this session; **all 6** reconciled byte-identical to the `libnrtucode.a`
+their sha256 (**all 6** reconciled byte-identical to the `libnrtucode.a`
 member `.rodata` via `ar x` + `objcopy -O binary --only-section=.rodata` + `cmp -s` — full 6/6,
-not a spot-check): `[HIGH/OBSERVED]`
+not a spot-check):
 
 | IMAGE | FILE-OFF | MAR SIZE | MAR sha256 (8) | `.a` member sha (8) | CAY sha (8) |
 |---|---|---:|---|---|---|
@@ -149,7 +150,7 @@ not a spot-check): `[HIGH/OBSERVED]`
 All 12 getter `(img-ptr, size)` stubs match the catalog
 ([image-catalog-index.md](./image-catalog-index.md), MARIANA NX_SP rows). The 6 zero-size
 SRAM/EXTRAM getters all execute `movq $0x0,(%rsi)` and resolve to the next-blob layout cursor —
-SP uses **no SRAM/EXTRAM** on MARIANA, exactly as CAYMAN. `[HIGH/OBSERVED]`
+SP uses **no SRAM/EXTRAM** on MARIANA, exactly as CAYMAN.
 
 ---
 
@@ -158,7 +159,6 @@ SP uses **no SRAM/EXTRAM** on MARIANA, exactly as CAYMAN. `[HIGH/OBSERVED]`
 The MARIANA `.rodata` layout is **VARIANT-MAJOR, ENGINE-MINOR**; within each NX variant family the
 engine order is **ACT → DVE → PE → POOL → SP**. Read directly from `nm` `.data` addresses, SP is
 the **terminal NX sequencer** in every family, immediately before the POOL Q7 compute core:
-`[HIGH/OBSERVED]`
 
 ```text
 PERF : … PE_PERF → POOL_PERF → SP_PERF_IRAM @0x362dc0 → … → SP_PERF_EXTRAM↦ACT_TEST_IRAM @0x37afe0
@@ -171,14 +171,14 @@ cursor [mariana-pool.md](./mariana-pool.md)'s POOL PERF SRAM/EXTRAM getters poin
 POOL→SP adjacency that page predicted, **VERIFIED**); **(b)** `SP_DEBUG_DRAM` ends at
 `0x4876a0 + 0x6440 = 0x48dae0` — exactly the VA of `MARIANA_Q7_POOL_PERF_IRAM_get.data`
 (confirmed via `nm`: `48dae0 r MARIANA_Q7_POOL_PERF_IRAM_get.data`). SP's DEBUG block precedes the
-Q7_POOL compute core. `[HIGH/OBSERVED]`
+Q7_POOL compute core.
 
 ---
 
 ## 4. The reset/boot diff — the +0x1c MARIANA NX shift
 
 The SP IRAM head is byte-identical across all three variants (DEBUG/PERF/TEST) and carries the
-gen-wide MARIANA NX reset shift. Read this session: `[HIGH/OBSERVED]`
+gen-wide MARIANA NX reset shift:
 
 ```text
                           CAYMAN SP                       MARIANA SP            Δ
@@ -192,12 +192,12 @@ DRAM head             34 cb 99 60  (header word 0x6099cb34)  ───── byt
 
 The boot targets each moved **+0x1c** (`0x1dc→0x1f8`, `0x1e8→0x204`) — the **identical shift** the
 committed [mariana-act.md](./mariana-act.md) and [mariana-dve.md](./mariana-dve.md) byte-quote, and
-(per the SX wave) the same shift on MARIANA PE and the POOL NX core. The shifted boot trampoline
-decoded **instruction-exact** with the shipped `ncore2gp` objdump (exit 0): `0x1f8 const16 a0,0 ;
+the same shift on MARIANA PE and the POOL NX core. The shifted boot trampoline
+decoded **instruction-exact** with the shipped `ncore2gp` objdump: `0x1f8 const16 a0,0 ;
 0x1fb const16 a0,144 ; 0x1fe jx a0 → enter_run @0x90`; `0x204 halt 0`. The boot **target** is
 unchanged — `jx a0` still lands on `enter_run @0x90` — so the +0x1c is a *vector-table* relocation,
 not a change of the C entry point. The DRAM `.globstruct` init block (`4×0x00001000` @ `0x18`,
-`4×0x00ffffff` @ `0x28`) is byte-identical CAY↔MAR. `[HIGH/OBSERVED]`
+`4×0x00ffffff` @ `0x28`) is byte-identical CAY↔MAR.
 
 > **GOTCHA — the +0x1c is a vector relocation, NOT a boot-path change.** The shift moves the two
 > reset *vectors* and their landing pads by 28 bytes, but the boot trampoline still computes
@@ -205,14 +205,14 @@ not a change of the C entry point. The DRAM `.globstruct` init block (`4×0x0000
 > (`06 76`→`06 7d`) sees a "different boot" that is in fact the same boot path at a shifted vector
 > address. On the POOL engine the Q7 core did **not** shift; only the NX side did — so "+0x1c on
 > MARIANA" is specifically a **per-NX-engine** vector relocation. `[HIGH/OBSERVED for the SP
-> vectors + the unchanged target; the POOL Q7 non-shift is CARRIED from mariana-pool.md.]`
+> vectors + the unchanged target; the POOL Q7 non-shift is CARRIED from mariana-pool.md]`
 
 The DEBUG IRAM decodes a genuine, separately-compiled `cayman/seq/` sequencer — not a stub.
-Census (native `ncore2gp` objdump, exit 0): MARIANA SP DEBUG IRAM **532 `entry` / 735 `retw` /
+Census (native `ncore2gp` objdump): MARIANA SP DEBUG IRAM **532 `entry` / 735 `retw` /
 1539 `call8`** vs CAYMAN **515 / 728 / 1550** — same direction, the small drift reflecting the
 +0x1c shift + the tighter v4 compile. The FLIX-vector datapath is partly bundle-interleaved by the
-linear sweep (the documented SX-FW-00 limitation); the windowed-ABI control spine decodes cleanly.
-`[HIGH/OBSERVED]`
+linear sweep (the documented FLIX-desync limitation); the windowed-ABI control spine decodes
+cleanly.
 
 ---
 
@@ -221,12 +221,12 @@ linear sweep (the documented SX-FW-00 limitation); the windowed-ABI control spin
 Method (identical to the baseline and the sibling pages): extract every single-token
 `S: <OpName>` from each DEBUG DRAM (regex `^S: [A-Za-z][\w/-]*$`), `sort -u`, set-diff. Both gens
 processed identically. The SP DEBUG DRAM carries 142 `S:` lines (== CAYMAN 142); the single-token
-end-anchor isolates the 18 handler names from the multi-token log noise. `[HIGH/OBSERVED]`
+end-anchor isolates the 18 handler names from the multi-token log noise.
 
 > **NOTE — no glued-prefix trap on SP.** Unlike POOL/DVE (where a `.S: Event_Semaphore`-style
 > glued-byte hit could corrupt a naive `sort -u`), SP's leaner string pool yields **clean
 > single-token** `S: <Token>` lines, so the regex isolates the 18 names with no false positives on
-> either gen. `[HIGH/OBSERVED]`
+> either gen.
 
 **RESULT — the headline:**
 
@@ -245,7 +245,6 @@ MOVE  NOP  NOTIFY  POLL_SEM  Redirect  SET_OM  STRONG_ORDER  TensorLoad  TensorS
 `EngineNop` — the clean "control core vs lean compute engine" discriminator — is **absent on SP
 on both gens** (it is present on PE/POOL/DVE). SP's 18 contain `NOP` (scalar no-op) but never
 `EngineNop`; SP remains the only engine with no member outside the all-five intersection.
-`[HIGH/OBSERVED]`
 
 The function grouping (carried unchanged from [cayman-sp.md §5](./cayman-sp.md), since the roster
 itself is unchanged): control-flow/fetch `{BRANCH, BranchPrefetchHint, Redirect, Halt}`;
@@ -255,15 +254,15 @@ scalar-ALU `{AluOp}`; ordering `{SET_OM, STRONG_ORDER}`; **sync/EVT_SEM**
 **shared** EVT_SEM core present on all five engines, with `0xb0 EVENT_SEMAPHORE_RANGE_CLEAR`
 folded into `Event_Semaphore` and `CORE_BARRIER 0xd8` pre-lowered by the compiler into
 `0xa0`/`0xb3` (no dedicated barrier handler on any engine) — the full mechanism is in
-[cayman-sp.md §7](./cayman-sp.md) and is **unchanged on MARIANA**. `[HIGH/OBSERVED that the roster
-is byte-identical; the EVT_SEM/barrier mechanism is CARRIED.]`
+[cayman-sp.md §7](./cayman-sp.md) and is **unchanged on MARIANA**. `[roster HIGH/OBSERVED;
+EVT_SEM/barrier mechanism CARRIED]`
 
 > **QUIRK — SP is the engine that proves the "common chassis" model.** The other four engines each
 > *add* a compute/RNG subset onto the shared 18-handler core, and each *diverges* on MARIANA (ACT
 > +3, DVE +7, PE +4, POOL Q7 body). SP's extension is the **empty set** on *both* gens — so SP is
 > the one engine whose handler image is, by construction, gen-invariant. The chassis with nothing
 > bolted on cannot diverge; SP's stability is therefore the strongest single piece of evidence that
-> the MARIANA engines are the *same* SEQ firmware recompiled, not a new model. `[HIGH/OBSERVED]`
+> the MARIANA engines are the *same* SEQ firmware recompiled, not a new model.
 
 ### 5.1 SEQ dispatch table — segmented/Sunda, opcode space STABLE
 
@@ -271,7 +270,7 @@ SP uses the **segmented / Sunda-mode HW-decode** dispatch flavor (a register-bas
 `sub a2,a2,a3` feeding const16-base `addx4` jump tables) — **not** the `addi a2,a2,-65` ASCII
 normalization of DVE/POOL, nor the raw-compare chain of PE. The `sub a2, a2, a3` (encoding
 `3022c0`) appears **16× on both gens**, with the dispatch-head site at `@0x286c` (MAR) / `@0x29c0`
-(CAY). Read directly from the DEBUG DRAM table base: `[HIGH/OBSERVED]`
+(CAY). Read directly from the DEBUG DRAM table base:
 
 ```text
 MARIANA SP DEBUG @ file 0x800 (device VA 0x80800), first 8 LE trampolines:
@@ -283,20 +282,19 @@ CAYMAN  SP DEBUG @ file 0x814 (device VA 0x80814), first 8 LE trampolines:
 The table **size** (~161 entries), the default-band pattern (most slots → default, matching the
 sparse 18-handler binding), and the first-8 real-slot structure are **gen-stable** — every real
 slot relocated, but the count and pattern are invariant. **No opcode-space growth.** The exact
-per-opcode→handler row decode is the FLIX-desync-limited frontier (SX-FW-00); the tail bleeds into
+per-opcode→handler row decode is the FLIX-desync-limited frontier; the tail bleeds into
 a small adjacent jump table on both gens, so "~161" is the clean trampoline run. The dual-mode
 strings (`S: NX in HW Decode mode` / `S: NX in Sunda mode: HW decode disabled`),
 `sunda_fast_fetch`, and the `ErrorHandler` arms (`Bad Opcode(0x%x)` / `Illegal Instruction` /
 `FP Error` / `Int Div Zero Error`, source `cayman/seq/src/handlers/exception_handler.hpp`) are
-byte-for-name identical both gens. `[HIGH/OBSERVED for table size/relocation/default; per-row
-binding MED]`
+byte-for-name identical both gens. `[table size/relocation/default HIGH; per-row binding MED]`
 
-> **CORRECTION — the MARIANA default-band shape.** SX-IMG-12 §4 listed the MARIANA first-8 run as
-> `0x293c default 0x2975 0x2975 0x2945 …` (one `default` then two `0x2975`). The binary read this
-> session shows **three** `0x2975` in slots 1–3 (`0x293c, 0x2975, 0x2975, 0x2975, 0x2945, …`) — i.e.
+> **CORRECTION — the MARIANA default-band shape.** An earlier draft listed the MARIANA first-8 run
+> as `0x293c default 0x2975 0x2975 0x2945 …` (one `default` then two `0x2975`). The binary shows
+> **three** `0x2975` in slots 1–3 (`0x293c, 0x2975, 0x2975, 0x2975, 0x2945, …`) — i.e.
 > the Bad-Opcode/default trampoline `0x2975` occupies slots 1–3, mirroring CAYMAN's three `0x2ac9`
 > in the same positions. The corrected run is cited above. This does not affect the no-growth /
-> gen-stable conclusion. `[HIGH/OBSERVED]`
+> gen-stable conclusion.
 
 ---
 
@@ -307,15 +305,15 @@ binding MED]`
   `NEURON_ISA_TPB_DTYPE_{UINT32, INT32, FP32}` (the `move.cpp` assertion), byte-identical to
   CAYMAN. SP is the scalar/control core with no MX/dequant surface, so the MARIANA FP4/MX expansion
   — which is numeric on the NX side of every engine and named only on the POOL Q7 core — leaves
-  **no SP footprint.** `[HIGH/OBSERVED]`
+  **no SP footprint.**
 
 * **PROF — none, so no divergence is possible.** SP ships no `PROF_CAM`/`PROF_TABLE` on either gen
   (`nm | rg -c MARIANA_NX_SP_PROF` = 0; the only NX engine without PROF). So the MARIANA per-engine
   PROF divergence (ACT 47→25 / `326bc0dd`, DVE 47→48 per-engine / `ca588683`, vs CAYMAN's single
-  shared `8fd7e422` CAM) simply **has no SP instance.** `[HIGH/OBSERVED]`
+  shared `8fd7e422` CAM) simply **has no SP instance.**
 
 * **size — 6/6 distinct, IRAM shrank / DRAM grew.** Consistent directional delta (the tighter v4
-  compile, same direction as PE/POOL NX): `[HIGH/OBSERVED]`
+  compile, same direction as PE/POOL NX):
 
   | IMAGE | CAY size | MAR size | dSize | identical? |
   |---|---:|---:|---:|---|
@@ -331,7 +329,7 @@ binding MED]`
   `translate_cayman+.hpp` is present on both. The `mariana-4062` errata is **absent** (DVE-only,
   [mariana-dve.md §8](./mariana-dve.md)). The gen self-name is `S: BEGIN on mariana` vs
   `S: BEGIN on cayman`; the source tree is retained as `cayman/seq/src/…` on both gens (a
-  build-string artifact across the generation). `[HIGH/OBSERVED]`
+  build-string artifact across the generation).
 
 * **engine_idx = 4 (TPB_SP), confirmed.** The shipped MARIANA ISA enum
   `neuron_mariana_arch_isa/tpb/aws_neuron_isa_tpb_common.h:141-146` reads
@@ -343,21 +341,20 @@ binding MED]`
   `engine_idx` is runtime-computed: the DRAM carries
   `S: engine_base_addr=%llx tpb_base_addr=%llx -> is_tpb=%u is_die_0=%u engine_idx=%u` — the same
   late-bound identity string as CAYMAN, the architectural reason all five NX engines share the
-  identical reset+boot stub. `[HIGH/OBSERVED — enum + identity string; runtime-compute INFERRED-HIGH]`
+  identical reset+boot stub. `[HIGH/OBSERVED; runtime-compute INFERRED-HIGH]`
 
 > **NOTE — PERF/TEST strip the logs, mechanism invariant.** SP DEBUG DRAM = 142 `S:` lines (==
 > CAYMAN 142); SP PERF/TEST DRAM = 0. The dispatch mechanism (reset vector, table architecture,
 > ErrorHandler/Dispatch arms) is invariant across builds; in PERF the table relocates to ~file
 > `0x100` (the DEBUG-segmented-vs-PERF-clean split the sibling engines show). A DEBUG→PERF swap is
-> a pure observability change. `[HIGH/OBSERVED]`
+> a pure observability change.
 
 ---
 
 ## 7. The 5-engine CAYMAN → MARIANA roll-up (the MARIANA matrix, complete)
 
 With SP carved and diffed, **all five MARIANA NX engines are now cross-gen-diffed.** The
-per-engine divergence, each row anchored to its committed page: `[HIGH/OBSERVED for ACT/DVE/SP
-this wave; PE/POOL MARIANA deltas are the in-flight pages noted below]`
+per-engine divergence, each row anchored to its committed page:
 
 | engine | idx | handlers C→M | opcode space C→M | the MARIANA change vs CAYMAN | page |
 |---|---:|---|---|---|---|
@@ -366,12 +363,6 @@ this wave; PE/POOL MARIANA deltas are the in-flight pages noted below]`
 | **POOL** | 2 | 41 → 41 (NX) | 178 → 178 (NX) | NX SEQ STABLE (richest set, kept); the Q7 compute core gains the RNG body; NX +0x1c shift, Q7 reset UNCHANGED; PROF per-engine. | [pool](./mariana-pool.md) #759 |
 | **DVE** | 3 | 46 → 53 (**+7**) | **170 → 187** | Gains `RandGetState`/`RandSetState`/`Rand2`/`SparsityCompress`/`SparsityCompressTag`/`QuantizeMx`/`Exponential`; normalize base `0x41→0x30`; `mariana-4062` errata; PROF per-engine **47→48** (`ca588683`); +0x1c. | [dve](./mariana-dve.md) |
 | **SP** | 4 | **18 → 18 (+0/−0)** | ~161 → ~161 (segmented) | **NOTHING ADDED.** Handlers + opcode space + dtype + (no)PROF/Q7 all UNCHANGED. ONLY: +0x1c reset shift + `addr_bits.hpp` + `BEGIN`-name + recompile. The pure sync/control substrate, byte-for-name stable. | this page |
-
-> **NOTE — PE/POOL MARIANA deltas are the in-flight pages.** The PE `+4` (`PeManageSeed`/MX) and
-> the POOL Q7 RNG-body figures above are CARRIED from the CAYMAN forward-references in
-> [cayman-pe.md](./cayman-pe.md) / [cayman-pool.md](./cayman-pool.md); the byte-grounded MARIANA
-> PE/POOL diffs land in #758/#759. The ACT/DVE/SP rows are byte-grounded from the committed
-> MARIANA pages this wave. `[HIGH for ACT/DVE/SP; MED-CARRIED for PE/POOL until #758/#759 land]`
 
 ### 7.1 The gen-wide invariants (all five engines)
 
@@ -393,18 +384,17 @@ this wave; PE/POOL MARIANA deltas are the in-flight pages noted below]`
 **No MARIANA engine is a model change vs CAYMAN — each is the same SEQ engine (POOL also the same
 dual-core), recompiled with engine-specific handler/opcode/RNG deltas on a common chassis. SP is
 the degenerate lower bound that anchors the model: the chassis with nothing added.**
-`[HIGH/OBSERVED, drawing on the committed mariana-act/dve + cayman-pe/pool pages + this carve.]`
 
 ---
 
 ## 8. Honesty ledger
 
-**HIGH / OBSERVED (this session):**
+**HIGH / OBSERVED:**
 
 - Container sha `b7c67e89…632fc329b` MATCH; 12 MARIANA NX_SP getters indexed (6 real + 6 zero-size
   cursors); `nm | rg -c` PROF/Q7_SP/TOP_SP = 0/0/0. 6 real carves byte-identical (sha256) to the
   `libnrtucode.a` member `.rodata` — **full 6/6** (`9499fee9`/`fc097ffe`/`4d41211a`/`112914e4`/
-  `10dd1252`/`8cabc82a`). CAYMAN baseline 6/6 re-hashed, MATCH the committed page.
+  `10dd1252`/`8cabc82a`). CAYMAN baseline 6/6 hashed, MATCH the committed page.
 - Reset: MAR `06 7d 00` (`j 0x1f8`) **+0x1c** from CAY `06 76 00` (`j 0x1dc`); secondary `86 7e`
   (`j 0x204`) +0x1c from `86 77` (`j 0x1e8`); both shifts = 28 B. Boot decoded native `ncore2gp`
   (`0x1f8 const16 a0,0 ; 0x1fb const16 a0,144 ; 0x1fe jx a0 → enter_run @0x90`; `0x204 halt 0`).
@@ -427,13 +417,11 @@ the degenerate lower bound that anchors the model: the chassis with nothing adde
 **MED / INFERRED:**
 
 - The exact per-opcode SEQ-table row decode (which opcode binds which trampoline) — the
-  FLIX-desync-limited frontier (SX-FW-00). Table size/relocation/default are HIGH; per-row binding
+  FLIX-desync-limited frontier. Table size/relocation/default are HIGH; per-row binding
   is the documented frontier. The `~161` count: the table tail bleeds into a small adjacent jump
   table on both gens; `~161` is the clean trampoline run.
 - "The MARIANA_NX_SP image runs on the `TPB_SP` (engine 4) NX core" — INFERRED-HIGH from the getter
   name + the ISA enum + the runtime identity string (the image carries no baked `engine_idx`).
-- The PE `+4` / POOL Q7-RNG rollup rows — CARRIED from the CAYMAN forward-references until the
-  byte-grounded #758/#759 MARIANA pages land.
 
 **LOW / NOT CLAIMED:**
 
@@ -454,7 +442,7 @@ the degenerate lower bound that anchors the model: the chassis with nothing adde
 - [MARIANA × ACT](./mariana-act.md) / [MARIANA × DVE](./mariana-dve.md) — the committed v4 sibling
   diffs feeding the §7 roll-up (ACT +3 / PROF 47→25; DVE +7 / 170→187 / `mariana-4062`).
 - [MARIANA × PE](./mariana-pe.md) (#758) / [MARIANA × POOL](./mariana-pool.md) (#759) — the
-  in-flight v4 PE/POOL diffs (PE `PeManageSeed`/MX; POOL Q7 RNG body).
+  v4 PE/POOL diffs (PE `PeManageSeed`/MX; POOL Q7 RNG body).
 - [MARIANA_PLUS × SP](./mariana-plus-sp.md) — the v4+ SP variant (separate task).
 - [Image Catalog Index](./image-catalog-index.md) — the full getter map (MARIANA NX_SP rows).
 - [TOP_SP Lowering](../collectives/ops/top-sp-lowering.md) — the standalone `TOP_SP` (engine 5)

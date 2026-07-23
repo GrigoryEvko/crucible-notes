@@ -31,7 +31,6 @@ ELFs.
 > SW-DGE backend runs device-side on the Q7/POOL cores. So this is the one v4+ page
 > where the fast-path is not a string footprint *reflected in* from elsewhere — it is
 > the **home** of `dge_decode_fast`, with real new code in the NX SEQ core's IRAM.
-> [HIGH/OBSERVED]
 
 This is the *expected* result. MARIANA_PLUS shares the MARIANA ISA — there is no
 `neuron_mariana_plus_arch_isa` dir (the four ISA dirs are
@@ -40,9 +39,10 @@ This is the *expected* result. MARIANA_PLUS shares the MARIANA ISA — there is 
 refresh + a recompile + the DGE optimization, **not** a model or ISA change, and
 POOL absorbs it exactly as [ACT](./mariana-plus-act.md), [DVE](./mariana-plus-dve.md)
 and [PE](./mariana-plus-pe.md) do — with the fast-path *concentrated* on the NX SEQ
-core where DGE decode lives. [HIGH/OBSERVED]
+core where DGE decode lives.
 
-Confidence/evidence tags follow the project
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit
+tag, following the project
 [Confidence & Walls Model](../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**.
 
@@ -89,7 +89,7 @@ identical to MARIANA**, with a single small ripple — the `tensor_reshape_trans
 reshape *kind* — visible only in the DEBUG/symbol-bearing builds. A
 MARIANA ↔ MARIANA_PLUS POOL swap is **a NX-core recompile + the DGE fast-path
 (+ REGWRITE retire) + the Q7 `sb2sb` kind + the `mariana_plus` self-name**, not a
-model change. [HIGH/OBSERVED]
+model change.
 
 > **NOTE — the catalog's "byte-identical POOL ucode" claim, qualified.** The
 > [image catalog](./image-catalog-index.md) records MARIANA and MARIANA_PLUS POOL
@@ -99,7 +99,7 @@ model change. [HIGH/OBSERVED]
 > fast-path), and the DEBUG-class builds differ on Q7 (the `sb2sb` kind). The
 > [MARIANA × POOL §9 footnote](./mariana-pool.md) that forward-referenced this page as
 > "reported byte-identical ucode" is therefore *refined*, not contradicted: the Q7
-> *compute kernels* are byte-identical; the NX *sequencer* is not. [HIGH/OBSERVED]
+> *compute kernels* are byte-identical; the NX *sequencer* is not.
 
 ---
 
@@ -117,8 +117,7 @@ flow `wait_for_credit` throttles against.)
 
 ### 2.1 The presence map — 4 strings present-vs-absent (byte-grounded)
 
-`comm -13` over both DEBUG DRAMs, then re-grepped `rg -a -c` this session:
-[HIGH/OBSERVED]
+`comm -13` over both DEBUG DRAMs, cross-checked with `rg -a -c`:
 
 | String (NX_POOL DEBUG DRAM) | MARIANA | MARIANA_PLUS | kind |
 |---|:---:|:---:|---|
@@ -131,12 +130,12 @@ flow `wait_for_credit` throttles against.)
 
 The four fast-path names are **real compiled symbols, not stray text** — they also
 surface in the symbol-bearing MARIANA_PLUS NX_POOL **TEST** DRAM (`dge_decode_fast`
-× 1, re-confirmed this session), so they correspond to compiled code, not debug-log
+× 1), so they correspond to compiled code, not debug-log
 artifacts. The Q7 side carries exactly one ripple: `tensor_reshape_transpose_sb2sb`
 (MPLUS = 1, MARIANA = 0); `gen_spray_info` (× 6) and `make_gather_pattern` (× 2) are
 unchanged on both — the DGE *decode* front-end is NX-only, the Q7 side just gains the
 SB-to-SB reshape *kind*. This is byte-for-byte the per-gen presence map of
-[DGE Reshape §6.1](../firmware/dge/dge-reshape.md). [HIGH/OBSERVED]
+[DGE Reshape §6.1](../firmware/dge/dge-reshape.md).
 
 ### 2.2 The fast-path, as annotated C (the new NX_POOL code body)
 
@@ -194,13 +193,14 @@ bool dge_reshape_memcopy_transpose_fast(const dge_reshape_state *src,   /* {num[
 The fusion, the SB-to-SB kind, the explicit credit-wait, and the REGWRITE retirement
 are all OBSERVED at the string/symbol level; the per-instruction bodies sit in
 FLIX-desynced IRAM spans and are not byte-recoverable, so the control-flow *shape* is
-INFERRED-HIGH from the names + the shared DGE corpus. [strings OBSERVED; fusion +
-credit-wait semantics INFERRED-HIGH — see [DGE Reshape §6.4](../firmware/dge/dge-reshape.md)]
+INFERRED-HIGH from the names + the shared DGE corpus (see
+[DGE Reshape §6.4](../firmware/dge/dge-reshape.md)).
+`[strings OBSERVED; fusion + credit-wait semantics INFERRED-HIGH]`
 
 ### 2.3 Structural corroboration — IRAM grew, function entries fell
 
-Re-disassembled this session with the native `ncore2gp` `xtensa-elf-objdump` (exit 0),
-counting `entry` prologues (`rg -c '\tentry\t'`): [HIGH/OBSERVED]
+Disassembled with the native `ncore2gp` `xtensa-elf-objdump`, counting `entry`
+prologues (`rg -c '\tentry\t'`):
 
 | NX_POOL DEBUG IRAM | size (B) | sha256[:16] | `entry` prologues |
 |---|---:|---|---:|
@@ -214,8 +214,8 @@ and the REGWRITE retirement implies. This reproduces the
 MARIANA_PLUS-vs-MARIANA NX DEBUG IRAM divergence is at byte `0xa3` — the reset + boot
 trampoline + dispatch region is byte-identical, and the code only diverges at the
 first relocated literal, the same recompile signature the
-[ACT page §3](./mariana-plus-act.md) found. [HIGH/OBSERVED counts; inline-consolidation
-reading INFERRED-HIGH]
+[ACT page §3](./mariana-plus-act.md) found.
+`[counts OBSERVED; inline-consolidation reading INFERRED-HIGH]`
 
 ---
 
@@ -226,7 +226,7 @@ reading INFERRED-HIGH]
 zero-size boundary cursors). Each getter is the canonical 4-instruction `(img-ptr,
 size)` stub: `lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`;
 all 46 `(img-ptr, size)` pairs parse instruction-exact and match the
-[image-catalog index](./image-catalog-index.md). [HIGH/OBSERVED]
+[image-catalog index](./image-catalog-index.md).
 
 ### 3a. `NX_POOL` (CLS = NX) — 14 getters (the SEQ sequencer)
 
@@ -264,21 +264,21 @@ all 46 `(img-ptr, size)` pairs parse instruction-exact and match the
 
 28 real carves; 12/12 spot-reconciled byte-identical (sha256 + `cmp -s`) to the
 matching `libnrtucode.a` member `.rodata` (the archive ships exactly 46 MARIANA_PLUS
-POOL members: 2 `hwdecode_` PROF + 44 `img_`). [HIGH/OBSERVED]
+POOL members: 2 `hwdecode_` PROF + 44 `img_`).
 
 > **GOTCHA — anchor PROF_TABLE on the getter-resolved offset.** The `hwdecode_*_PROF_TABLE`
 > archive member's `.rodata` carries 2 `R_X86_64` relocations (the wrapper's
 > `.text`/`.eh_frame` fixups); a hand-typed offset (`0x871300` instead of the
 > getter-resolved `0x86f300`) produces a spurious boundary mismatch. Carve at the
 > `lea`-decoded `0x86f300` (`movq $0x2000`) and the `cmp -s` is clean and the hash is
-> the byte-identical-to-MARIANA `534f2239`. All other 27 carves were correct on first
-> read. [HIGH/OBSERVED]
+> the byte-identical-to-MARIANA `534f2239`. The other 27 carves resolve directly from
+> their getters with no such correction.
 
 > **NOTE — engine ordering confirms POOL is LAST.** The MARIANA_PLUS block is laid out
 > `ACT → DVE → PE → POOL` (variant-major, engine-minor). PE PERF_DRAM ends at
 > `0x5ee120 + 0x2ec0 = 0x5f0fe0` == MARIANA_PLUS `NX_POOL` PERF_IRAM start — exactly the
 > contiguity cursor the [MARIANA_PLUS × PE](./mariana-plus-pe.md) carve predicted. The NX
-> real blobs are contiguous up to the NX_POOL PROF tables `@0x86ef00`. [HIGH/OBSERVED]
+> real blobs are contiguous up to the NX_POOL PROF tables `@0x86ef00`.
 
 ---
 
@@ -286,7 +286,7 @@ POOL members: 2 `hwdecode_` PROF + 44 `img_`). [HIGH/OBSERVED]
 
 The byte-level signature that `NX_POOL` and `Q7_POOL` are **two separate cores**, and
 that v4+ added **no further shift** to either. Both reset regions are byte-identical to
-their MARIANA counterparts (`od -An -tx1 -N16`, re-read this session). [HIGH/OBSERVED]
+their MARIANA counterparts (`od -An -tx1 -N16`).
 
 **(A) `NX_POOL` — flat, reset SAME +0x1c (no further shift):**
 
@@ -301,7 +301,7 @@ MARIANA_PLUS IRAM:  06 7d 00 00 | 00 00 | 86 7e 00 00 | 00 00 | a0 71 69 80
 The `J` opcode byte-1 is `0x7d` on **both** generations — MARIANA_PLUS inherits
 MARIANA's relocated boot entry (the `+0x1c` forward shift from CAYMAN's `0x76`) with
 **no further shift**. DRAM head `34 cb 99 60` (header word `0x6099cb34`, the
-`.globstruct` dispatcher-state magic) is byte-identical too. [HIGH/OBSERVED]
+`.globstruct` dispatcher-state magic) is byte-identical too.
 
 **(B) `Q7_POOL` (incl. DKL) — flat, reset UNCHANGED:**
 
@@ -315,26 +315,26 @@ IRAM head (all variants): 06 7f 00 00 | 00 00 | 86 80 00 00 | 00 00 | a0 71 69 8
 The Q7 compute core's reset vector is byte-identical across MARIANA and MARIANA_PLUS —
 the `+0x1c` shift was always **NX-only**, and v4+ adds nothing. Both trampolines still
 converge on `enter_run @0x90`. The first cross-gen Q7 DEBUG IRAM divergence is at byte
-`0x21b` (post-boot, the `sb2sb`-kind code). [HIGH/OBSERVED]
+`0x21b` (post-boot, the `sb2sb`-kind code).
 
 **(C) `EXTISA_0..3` SO — real `EM_XTENSA` ELFs**, section geometry **byte-identical** to
 MARIANA: `[0] .text 0x01000000 size 0x6f66`, `[6] kernel_info_table 0x02000380 size 0x88`
 (17 entries), `[7] .globstruct 0x02000408`, `[8] .bss 0x02000450` — and the *whole* SO is
-byte-identical cross-gen (§6). [HIGH/OBSERVED]
+byte-identical cross-gen (§6).
 
 > **GOTCHA — the FLIX desync is a disassembler limit, not a finding.** The flat IRAM
 > blobs carry no `.xt.prop` FLIX property table, so densely-scheduled vector bundles
 > desync under the linear sweep. The `entry`/`retw` counts, reset-vector reads, dispatch
 > sites, and string corpus are robust; per-bundle micro-op recovery inside the fast-path
-> and the Q7 `sb2sb` body is MED and so flagged. [HIGH/OBSERVED for the limit]
+> and the Q7 `sb2sb` body is MED and so flagged.
 
 ---
 
 ## 5. The NX_POOL handler + opcode diff — STABLE (no growth)
 
 MARIANA_PLUS `NX_POOL` uses the **same** `addi`-normalization SEQ dispatch (the DVE/POOL
-form, not PE's raw-compare chain). Decoded instruction-exact at dispatch SITE A this
-session (`ncore2gp`, exit 0):
+form, not PE's raw-compare chain). Decoded instruction-exact at dispatch SITE A
+(`ncore2gp`):
 
 ```text
 2d3f:  l32i     a2, a4, 212
@@ -354,11 +354,11 @@ session (`ncore2gp`, exit 0):
 - **Bound `movi a3,177` — UNCHANGED** → 177-entry table. **NO growth** — contrast PE
   (`25→29`) and DVE (`170→187`) on other engines.
 - **Table base `@DRAM 0x800` — UNCHANGED.** Only the default trampoline relocated,
-  `0x3075`→`0x30ea` (`+0x75`, a clean recompile shift). [HIGH/OBSERVED]
+  `0x3075`→`0x30ea` (`+0x75`, a clean recompile shift).
 
 **Real-vs-default count: 54 real / 123 default on BOTH gens** (parsed from the 177-word
-table this session; MPLUS default `0x30ea` × 123, MARIANA default `0x3075` × 123). Every
-real slot relocated `+0x75`, but the count and pattern are invariant. [HIGH/OBSERVED]
+table; MPLUS default `0x30ea` × 123, MARIANA default `0x3075` × 123). Every
+real slot relocated `+0x75`, but the count and pattern are invariant.
 
 **The handler diff (the structural claim).** Method (carried from the
 [MARIANA baseline §4](./mariana-pool.md)): extract every strict end-anchored single-token
@@ -368,7 +368,7 @@ DEBUG DRAMs. The string-pool glue trap is auto-handled by the end-anchor.
 > **RESULT: MARIANA_PLUS `NX_POOL` = 41 handlers; MARIANA `NX_POOL` = 41 handlers;
 > ADDED = 0; REMOVED = 0; the 41-handler set is byte-for-name IDENTICAL** — and the
 > reproduced roster equals the [MARIANA baseline](./mariana-pool.md)'s published 41-name
-> set exactly (`comm` empty both directions, this session). [HIGH/OBSERVED]
+> set exactly (`comm` empty both directions).
 
 ```text
 AluOp BRANCH BranchPrefetchHint ConvLutLoad CrossLaneReduce EXT_BREAK EmbeddingUpdate
@@ -384,8 +384,7 @@ TensorScalarAddr TensorScalarAffineSelect TensorStore WRITE
 > two-token / glue-trapped form falls outside the end-anchor *equally* on both). Either
 > count gives the **same decisive** result — the cross-gen diff is clean `+0/−0`. The
 > 41-name set above was reproduced with `strings -n2` and matches the
-> committed baseline name-for-name. [HIGH/OBSERVED for the diff; the absolute count is
-> method-dependent, MED]
+> committed baseline name-for-name. `[diff HIGH/OBSERVED; absolute count MED]`
 
 POOL's SEQ handler set is the **richest of the five engines** and already shipped on
 CAYMAN/MARIANA with **all** general-compute + RNG (`RandGetState`/`RandSetState`) +
@@ -395,7 +394,6 @@ the **existing** handlers. Both gens also carry the dual-mode SEQ strings
 (`S: NX in HW Decode mode` / `S: NX in Sunda mode`), the ErrorHandler arms
 (`cayman/seq/src/handlers/exception_handler.hpp`), and no `mariana-4062`/`mariana_plus`
 errata. The only self-name change is `S: BEGIN on mariana` → `S: BEGIN on mariana_plus`.
-[HIGH/OBSERVED]
 
 ---
 
@@ -404,17 +402,17 @@ errata. The only self-name change is `S: BEGIN on mariana` → `S: BEGIN on mari
 ### 6a. The EXTISA SOs are byte-identical v4 ↔ v4+
 
 `EXTISA_0_SO` `9f2ce049` and `EXTISA_3_SO` `8477ff26` (and `EXTISA_1/2_SO` + all 4 JSON)
-are byte-for-byte identical (`cmp -s` clean this session) to the MARIANA POOL EXTISA SOs.
+are byte-for-byte identical (`cmp -s` clean) to the MARIANA POOL EXTISA SOs.
 So the **entire** `kernel_info_table` — keys **and** `funcVA`s — is identical, **not
 merely relocated**: the Q7 compute kernel containers did not change at all between
 MARIANA and MARIANA_PLUS (contrast the `+0x0..+0x44` monotonic relocation MARIANA showed
-going CAYMAN→MARIANA). [HIGH/OBSERVED]
+going CAYMAN→MARIANA).
 
-### 6b. The 17-entry KIT (EXTISA_0), parsed byte-exact this session
+### 6b. The 17-entry KIT (EXTISA_0), parsed byte-exact
 
 `kernel_info_table @ vaddr 0x02000380 / file off 0x7400, size 0x88 = 17 entries`; record
 format `{ u8 0; u8 0; u8 spec(+2); u8 opcode(+3); u32_le funcVA(+4) }`; the KIT bytes are
-identical to MARIANA (`cmp` clean). [HIGH/OBSERVED]
+identical to MARIANA (`cmp` clean).
 
 | idx | opcode | spec | funcVA | routing (== MARIANA) |
 |---|---|---|---|---|
@@ -438,19 +436,19 @@ identical to MARIANA (`cmp` clean). [HIGH/OBSERVED]
 
 `EXTISA_1` = 1 entry (`0x7e`), `EXTISA_2` = 2 (`0x7c`, `0x7d`), `EXTISA_3` = 9 (cptc/MX
 family) — all key + funcVA identical to MARIANA. **No new `opcode→funcVA` rows.** See
-[kernel_info_table Layout](../firmware/pool/kernel-info-table.md). [HIGH/OBSERVED]
+[kernel_info_table Layout](../firmware/pool/kernel-info-table.md).
 
 ### 6c. The Q7 RNG body — UNCHANGED v4 ↔ v4+ (TIE+LFSR retained)
 
-The `Q7_POOL DEBUG DRAM` `'P%i:'` RNG token set is identical across gens (re-grepped
-this session): `Xorwow(TIE)` × 1, `XorwowRng(TIE)` × 1, `LfsrGetSeeds` × 1,
+The `Q7_POOL DEBUG DRAM` `'P%i:'` RNG token set is identical across gens:
+`Xorwow(TIE)` × 1, `XorwowRng(TIE)` × 1, `LfsrGetSeeds` × 1,
 `LfsrSetSeeds` × 1, `Xorwow(SW)` × **0**, `rand_algo` × 2, `RandGetState` × 3,
 `RandSetState` × 3 — on **both** MARIANA and MARIANA_PLUS. The `Xorwow(SW)` → TIE+LFSR
 boundary was the **MARIANA (v4) arrival** (the
 [MARIANA baseline §5](./mariana-pool.md) headline); MARIANA_PLUS (v4+) **retains** it
 byte-for-name. The RNG is **not** a v4+ POOL delta — it landed at v4 and is unchanged at
 v4+ (the same "v4 feature, retained at v4+" pattern the ACT/PE pages show). See
-[RNG — LFSR + `rand_algo` Dispatch](../firmware/kernels/rng-lfsr-dispatch.md). [HIGH/OBSERVED]
+[RNG — LFSR + `rand_algo` Dispatch](../firmware/kernels/rng-lfsr-dispatch.md).
 
 ### 6d. The one Q7-side v4+ delta — `tensor_reshape_transpose_sb2sb`
 
@@ -461,19 +459,17 @@ small kind body is what makes Q7 DEBUG IRAM `+0x1c0` and DKL_DEBUG IRAM `+0x1c0`
 prologues); the Q7 *release* path strips the debug strings and the kernel ELFs did not
 change, so PERF/TEST/DKL_PERF + the EXTISA SOs are byte-identical (§3b). This is the Q7
 leg of the fast-path's NX-vs-Q7 split ([DGE Reshape §6.1](../firmware/dge/dge-reshape.md)).
-[HIGH/OBSERVED]
 
 ---
 
 ## 7. The 0xF0 ExtendedInst bridge — INTACT (both cores)
 
 The `0xF0` two-level escape registers across **both** cores on MARIANA_PLUS, unchanged.
-[HIGH/OBSERVED]
 
 - **SEQ side (`NX_POOL`):** index `0xf0 − 0x41 = 0xaf = 175`; slot `@table 0x800 + 175·4`
   reads **`0x30e2`** (MARIANA_PLUS) / `0x306d` (MARIANA) — **both REAL** handlers, each
   distinct from its default trampoline (MPLUS `0x30ea`, MAR `0x3075`), relocated `+0x75`
-  (parsed from the 177-word table this session). `S: ExtendedInst` present in `NX_POOL`
+  (parsed from the 177-word table). `S: ExtendedInst` present in `NX_POOL`
   DRAM on both gens — **POOL-exclusive** (the only engine with the bridge).
 - **Q7 side (`EXTISA_0`):** the five `0xf0+spec` rows (specs `0,1,2,4,3`, KIT idx 6–10)
   are byte-identical cross-gen — the EXTISA SO is byte-for-byte identical, so the keys
@@ -482,7 +478,7 @@ The `0xF0` two-level escape registers across **both** cores on MARIANA_PLUS, unc
 
 POOL remains the **only** engine with **both** the SEQ `0xf0` bridge **and** a Q7 compute
 core — which is exactly why only POOL has the dual-dispatch. See
-[POOL Extended-Opcode (0xF0) Dispatch](../firmware/pool/pool-ext-0xf0.md). [HIGH/OBSERVED]
+[POOL Extended-Opcode (0xF0) Dispatch](../firmware/pool/pool-ext-0xf0.md).
 
 **dtype / MX footprint.** `NX_POOL`: only `NEURON_ISA_TPB_DTYPE_{UINT32,INT32,FP32}`
 (`move.cpp`), no `FP4`/`CPTC`/`MXTENSOR`/`proc_4bit` strings (0 NX hits) — byte-identical
@@ -490,7 +486,7 @@ to MARIANA; new dtype codes are numeric in the decode path, not named strings (s
 negative as ACT/DVE/PE). `Q7_POOL`: the MX dequant footprint (`proc_4bit_mx` × 1,
 `cptc_decode` × 2, `proc_6bit_non_mx` × 1) **is** present — but the EXTISA SOs are
 byte-identical cross-gen, so this MX path is byte-for-byte the MARIANA one, **pre-existing
-since CAYMAN, not a v4+ add**. [HIGH/OBSERVED]
+since CAYMAN, not a v4+ add**.
 
 ---
 
@@ -501,15 +497,14 @@ DKL_TEST_IRAM` (`8a8c927a`) and `DKL_PERF_DRAM == DKL_TEST_DRAM` (`0aaa01a7`) �
 "DKL has only a DEBUG-vs-release split" property as MARIANA/CAYMAN — and `DKL_PERF` is
 **byte-identical to MARIANA `DKL_PERF`**. `DKL_DEBUG` differs (`47332835`/`fb6ff81e` vs
 MARIANA `22790dbe`/`a01f5d43`; `+0x1c0` IRAM = the `sb2sb` kind + recompile). See
-[External-Library / Prelink Loader](../firmware/pool/external-lib-loader.md). [HIGH/OBSERVED]
+[External-Library / Prelink Loader](../firmware/pool/external-lib-loader.md).
 
 > **QUIRK — `"CustomOps not supported on Cayman"` survived into MARIANA_PLUS.** The
 > CAYMAN-named source string is **still** unchanged on v4+ Q7 DKL — a build-string
 > artifact, exactly as MARIANA; the dynamic custom-op path remains gated off.
-> [HIGH/OBSERVED]
 
 **PROF — byte-identical to MARIANA, disarmed.** Both NX_POOL profiling blobs are `cmp -s`
-clean against the MARIANA POOL tables this session: [HIGH/OBSERVED]
+clean against the MARIANA POOL tables:
 
 - **PROF_CAM** `0951b326f4a40ccd` (`0x400`) — the **same disarmed CAM**: a strict
   `enable==1` count of **1** (a single stray opcode-0 / mask-0 sentinel record), and **0**
@@ -521,12 +516,12 @@ clean against the MARIANA POOL tables this session: [HIGH/OBSERVED]
 This is the gen-wide per-engine PROF reuse the v4+ matrix shows: MARIANA_PLUS reuses
 MARIANA's per-engine PROF_CAM byte-identical on all four PROF-bearing engines (ACT
 `326bc0dd`, DVE `ca588683`, PE `43475cec`, POOL `0951b326`). `Q7_POOL` ships **no** PROF.
-See [PROF CAM/TABLE Formats](./prof-cam-table-formats.md). [HIGH/OBSERVED]
+See [PROF CAM/TABLE Formats](./prof-cam-table-formats.md).
 
 **Size / sha — 10/20 byte-identical, 10/20 differ.** The directional split is the diff's
 signature: **NX_POOL IRAM GREW in every variant** (the v4+ DGE fast-path code — the
 *opposite* of the v4 shrink vs CAYMAN); the Q7 *release* path is byte-identical; Q7
-DEBUG/DKL_DEBUG `+0x1c0` (the `sb2sb` kind). [HIGH/OBSERVED]
+DEBUG/DKL_DEBUG `+0x1c0` (the `sb2sb` kind).
 
 | IMAGE | MAR sz / sha | MPLUS sz / sha | ΔSize | identical? |
 |---|---|---|---|---|
@@ -548,22 +543,22 @@ DEBUG/DKL_DEBUG `+0x1c0` (the `sb2sb` kind). [HIGH/OBSERVED]
 
 The dispatch mechanism, reset-vector form, `0xF0` bridge, KIT (key + funcVA), RNG body,
 ErrorHandler arms, source trees, PROF tables, and the dual-core split are all
-**invariant**. [HIGH/OBSERVED]
+**invariant**.
 
 ---
 
 ## 9. Adversarial self-verification
 
-Five strongest claims, re-challenged against the binary this session:
+The five strongest claims, challenged against the binary:
 
 1. **Per-core byte-for-name / byte-for-key stability.** *Challenge:* could the NX
-   `41==41` be a glue-trap artifact, or the Q7 KIT have silently re-routed? *Re-verify:*
+   `41==41` be a glue-trap artifact, or the Q7 KIT have silently re-routed? *Evidence:*
    strict end-anchored `S:` diff → `41 == 41`, `comm` EMPTY both directions, and the
    reproduced roster equals the committed baseline name-for-name; the EXTISA_0 KIT bytes
    are `cmp`-identical to MARIANA (17 entries, opcodes/specs/funcVAs all match) and the
-   whole EXTISA SO is byte-identical (`9f2ce049`/`8477ff26`). **HOLDS.** [HIGH/OBSERVED]
+   whole EXTISA SO is byte-identical (`9f2ce049`/`8477ff26`). **HOLDS.**
 2. **The DGE fast-path code body (the headline).** *Challenge:* are the 4 strings stray
-   text, or present on MARIANA too? *Re-verify:* `dge_decode_fast` /
+   text, or present on MARIANA too? *Evidence:* `dge_decode_fast` /
    `dge_reshape_memcopy_transpose_fast` / `tensor_reshape_transpose_sb2sb` /
    `wait_for_credit` → MPLUS = 1, MARIANA = 0 (all four); `push REGWRITE` → MPLUS = 0,
    MARIANA = 1 (retired); the shared `dge_reshape.cpp`/`analyze_tensor_reshape`/`Setting up
@@ -571,26 +566,26 @@ Five strongest claims, re-challenged against the binary this session:
    IRAM grew `+0x12c0` while `entry` prologues fell `697 → 675` (inline consolidation).
    **HOLDS** (strings + counts OBSERVED; fusion/credit semantics INFERRED-HIGH).
 3. **SAME +0x1c, no further shift.** *Challenge:* could a later variant hide a second
-   relocation? *Re-verify:* NX IRAM head `06 7d 00 00 … 86 7e … a0 71 69 80` byte-identical
+   relocation? *Evidence:* NX IRAM head `06 7d 00 00 … 86 7e … a0 71 69 80` byte-identical
    to MARIANA across variants (`j 0x1f8`/`j 0x204`); Q7 head `06 7f 00 …` (`j 0x200`)
    unchanged; both → `enter_run @0x90`; first NX divergence at byte `0xa3` (a relocated
-   literal, not a vector move). **HOLDS.** [HIGH/OBSERVED]
+   literal, not a vector move). **HOLDS.**
 4. **The `0xF0` bridge across both cores.** *Challenge:* does the SEQ slot still point to a
-   REAL handler, and do the five Q7 rows survive? *Re-verify:* SEQ slot[175] = `0x30e2`
+   REAL handler, and do the five Q7 rows survive? *Evidence:* SEQ slot[175] = `0x30e2`
    (MPLUS) / `0x306d` (MARIANA), both ≠ default; `S: ExtendedInst` present; Q7 five
-   `0xf0+spec{0,1,2,4,3}` rows byte-for-key (KIT idx 6–10). **HOLDS.** [HIGH/OBSERVED]
+   `0xf0+spec{0,1,2,4,3}` rows byte-for-key (KIT idx 6–10). **HOLDS.**
 5. **PROF byte-identity.** *Challenge:* same size could mask different content.
-   *Re-verify:* `cmp -s` clean for both CAM (`0951b326`) and TABLE (`534f2239`); the CAM
-   decodes to the same 1 stray-sentinel / 0-armed disarmed shape. **HOLDS.** [HIGH/OBSERVED]
+   *Evidence:* `cmp -s` clean for both CAM (`0951b326`) and TABLE (`534f2239`); the CAM
+   decodes to the same 1 stray-sentinel / 0-armed disarmed shape. **HOLDS.**
 
 ---
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED (reproduced this session):** container sha `b7c67e89…632fc329b`; 46
+**HIGH / OBSERVED:** container sha `b7c67e89…632fc329b`; 46
 getters (14 NX + 32 Q7); all carve hashes match (NX DEBUG_IRAM `9b514bb6`, Q7 DEBUG_IRAM
 `1c9c15bc`, EXTISA_0 `9f2ce049`); 12/12 spot-reconciled to `libnrtucode.a`; MARIANA
-baseline re-carved (NX DEBUG_IRAM `41b6c798`, PROF `0951b326`/`534f2239`) → diff vs
+baseline carved (NX DEBUG_IRAM `41b6c798`, PROF `0951b326`/`534f2239`) → diff vs
 authentic MARIANA. Reset NX `06 7d 00` (== MARIANA, no further shift) / Q7 `06 7f 00`
 (unchanged), both → `enter_run @0x90`. Dispatch `addi a2,a2,-65` + `movi a3,177` + table
 `@0x800`, default `0x3075→0x30ea`; 54 real / 123 default both gens. Handler diff `41==41`

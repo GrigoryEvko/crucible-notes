@@ -23,8 +23,8 @@ identity-mapped `.rodata`, with the shipped Cadence Vision-Q7 `ncore2gp`
 > `.rodata` blobs, reset bytes, PROF CAMs, and roster strings are byte-grounded and
 > tagged `OBSERVED`. But v5 *interior* mechanism — the per-opcode→handler row
 > binding on the DVE dispatch table, the activation control-flow under the fold,
-> the wait-mode re-model — is **not** byte-resolved (FLIX-VLIW desync frontier,
-> SX-FW-00) and is tagged **`INFERRED`** wherever it appears. `arch_id 36` is
+> the wait-mode re-model — is **not** byte-resolved (FLIX-VLIW desync frontier)
+> and is tagged **`INFERRED`** wherever it appears. `arch_id 36` is
 > `INFERRED` (`coretype = arch_id + 1`; no NCFW v5 image exists). Do **not** read
 > any v5-interior statement on this page as fact. [WALL]
 
@@ -33,7 +33,7 @@ identity-mapped `.rodata`, with the shipped Cadence Vision-Q7 `ncore2gp`
 >    independent zero-counts (symbols, case-insensitive `maverick`+`act`, `.rodata`
 >    strings). There is **no MAVERICK ACT sequencer binary.** The
 >    [image-catalog-index](./image-catalog-index.md) found `MAVERICK_NX_ACT_*`
->    FILE-ABSENT; re-confirmed here. [HIGH/OBSERVED]
+>    FILE-ABSENT. [HIGH/OBSERVED]
 > 2. **The ACT opcodes moved to DVE.** The MAVERICK DVE PROF CAM (`dbff2b84`) arms
 >    `0x23 ACTIVATION_TABLE_LOAD` + `0x25 ACTIVATE2` — which MARIANA DVE PROF
 >    (`ca588683`) does **not** arm. ACT-class opcodes are now scheduled/profiled on
@@ -43,8 +43,7 @@ identity-mapped `.rodata`, with the shipped Cadence Vision-Q7 `ncore2gp`
 >    replaces `ActivationReadAccumulator`); the MAVERICK DVE handler roster is
 >    **DVE-native, not a DVE+ACT union** (59 handlers; no `Activate*` anywhere
 >    firmware-wide). The fold does not collapse ACT into a vector op. [HIGH/OBSERVED
->    roster; the "rename-not-merge" framing CARRIED from the MARIANA fold-disproof +
->    corroborated here]
+>    roster; the "rename-not-merge" framing CARRIED from the MARIANA fold-disproof]
 
 Contrast the rest of the lineage: SUNDA/CAYMAN/MARIANA/MARIANA_PLUS each ship a
 **standalone** `NX_ACT` image (the MARIANA pages proved **NO fold** in v4/v4+).
@@ -112,8 +111,8 @@ image removed and its opcodes relocated.
 
 **SOURCE (the ONLY binary carrying MAVERICK):**
 `…/custom_op/c10/lib/libnrtucode_internal.so`, sha256
-`b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (re-hashed this
-task, MATCH). ELF64 x86-64 DYN, not stripped; first `R` LOAD maps file `0x0` → VA
+`b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b` (MATCH).
+ELF64 x86-64 DYN, not stripped; first `R` LOAD maps file `0x0` → VA
 `0x0` (identity map → blob file-offset == `.rodata` VA). [HIGH/OBSERVED]
 
 ```text
@@ -144,7 +143,7 @@ Contrast: `nm … | rg -c 'MARIANA_PLUS_NX_ACT_.*_get'` → **14**. The standalo
 image exists on v4+ and is gone on v5. [HIGH/OBSERVED]
 
 > **GOTCHA — MAVERICK is internal-twin-EXCLUSIVE; the carve is single-source.**
-> `libnrtucode.a` (sha256 `158dadc5…`, re-hashed MATCH) ships **0** MAVERICK members
+> `libnrtucode.a` (sha256 `158dadc5…`, MATCH) ships **0** MAVERICK members
 > (**435** total = **420 image** [CAYMAN 124 / MARIANA 124 / MARIANA_PLUS 124 / SUNDA 48 /
 > MAVERICK 0] **+ 15 framework `.c.o`**). MAVERICK lives
 > *only* in the clang-15 `internal.so` twin. So unlike the MARIANA_PLUS carve —
@@ -166,7 +165,7 @@ generations are laid out contiguously (MARIANA_PLUS fully, then MAVERICK), and D
 is the first MAVERICK image — **no ACT image in between**, the byte-level
 fold-disproof inverted. [HIGH/OBSERVED — `nm` `.data` sort + getter `lea`]
 
-The 8 real MAVERICK DVE blobs (single-source carve, sha256 this task):
+The 8 real MAVERICK DVE blobs (single-source carve, sha256):
 
 | IMAGE | off (`.rodata` VA == file off) | size | sha256 |
 |---|---|---|---|
@@ -188,7 +187,7 @@ cursors, as on every gen. `S: BEGIN on maverick` is carried on the DVE DEBUG DRA
 
 MAVERICK DVE PERF IRAM head bytes are `06 75 00 00 00 00 86 76 00 00 00 00`, with
 the shared boot stub `a0 71 69 80` at `[12..15]` byte-identical to every prior gen.
-Decoded with the shipped `ncore2gp` `xtensa-elf-objdump` (exit 0):
+Decoded with the shipped `ncore2gp` `xtensa-elf-objdump`:
 
 ```text
 0x000:  06 75 00     j        0x1d8      ; primary reset vector → boot trampoline   (MPLUS: j 0x1f8)
@@ -205,7 +204,7 @@ is a **new boot-stub geometry**, not the MARIANA `+0x1c` forward shift. The shif
 is uniform: DVE/PE/POOL all reset `j 0x1d8 / j 0x1e4`; SP resets `j 0x1e4 / j 0x1f0`
 (the Top-Sync stub, `+0xc`; SP runs from SRAM, not IRAM). The DRAM head is
 `34 cb 99 60` = `0x6099cb34`, the `.globstruct` dispatcher-state magic **unchanged**
-on v5. [HIGH/OBSERVED — all reset/boot bytes decoded with `ncore2gp`, exit 0]
+on v5. [HIGH/OBSERVED — all reset/boot bytes decoded with `ncore2gp`]
 
 > **NOTE — `engine_idx` is still boot-computed (`= 1` for the logical ACT).** The
 > shipped enum `NEURON_ISA_TPB_NEURON_ENGINE { PE=0, ACT=1, POOL=2, DVE=3,
@@ -224,7 +223,7 @@ on v5. [HIGH/OBSERVED — all reset/boot bytes decoded with `ncore2gp`, exit 0]
 The PROF CAM is a `0x400` table of 16-byte armed records
 `{opcode(u32 LE), mask=0xff, enable, rsvd…}`. The **smoking gun** is differential:
 the ACT opcodes `0x23`/`0x25` are armed on the MAVERICK DVE CAM but **absent** from
-the MARIANA DVE CAM — decoded byte-for-byte this task:
+the MARIANA DVE CAM — decoded byte-for-byte:
 
 | PROF CAM | sha256(8-hex) | armed-opcode-set | `0x23` `ACTIVATION_TABLE_LOAD`? | `0x25` `ACTIVATE2`? |
 |---|---|---|---|---|
@@ -377,9 +376,9 @@ correctly out of the image-string scope. [HIGH/OBSERVED absence]
 ## 7. Code-body evidence + cross-gen size — a genuine v5 build, *smaller* than v4+
 
 The MAVERICK DVE PERF IRAM is a **genuine** Q7/NX windowed-ABI SEQ sequencer
-(decoded with `ncore2gp`, exit 0): `107 entry / 134 retw / 340 call8 / 153 call0 /
+(decoded with `ncore2gp`): `107 entry / 134 retw / 340 call8 / 153 call0 /
 2077 const16 / 1641 l32r` — a real separately-compiled sequencer, not a stub. The
-vector datapath is partly FLIX-bundle-desynced by the linear sweep (SX-FW-00
+vector datapath is partly FLIX-bundle-desynced by the linear sweep (the FLIX-desync
 limitation); the windowed-ABI control spine decodes cleanly. [HIGH/OBSERVED]
 
 Cross-gen DVE size — MAVERICK is **smaller** (the DGE-drop shrink, *opposite* the
@@ -432,35 +431,35 @@ from the DVE instance — to be VERIFIED per-engine.** [INFERRED-HIGH — WALL]
 
 ## 9. Adversarial self-verification
 
-The five strongest claims, re-challenged against the binary this task:
+The five strongest claims, challenged against the binary:
 
 1. **No standalone MAVERICK `NX_ACT` image.** *Challenge:* a carve gap could fake an
-   absence. *Re-verify:* `nm | rg -c 'MAVERICK.*NX_ACT'` = **0**; case-insensitive
+   absence. *Evidence:* `nm | rg -c 'MAVERICK.*NX_ACT'` = **0**; case-insensitive
    `maverick`+`act` symbols = **0**; `.rodata` strings = **0**; the IDA `_names.json`
    sidecar lists **0** `MAVERICK_NX_ACT_*` (independent of `nm`). Four zeros across
    two tools. The 62 getters resolve to DVE/PE/POOL/SP/Q7 with no ACT family.
    **HOLDS.** [HIGH/OBSERVED]
 2. **The ACT opcodes are armed on the DVE PROF CAM.** *Challenge:* `0x23`/`0x25`
-   might be generic DVE opcodes, not the fold. *Re-verify:* the comparison is
+   might be generic DVE opcodes, not the fold. *Evidence:* the comparison is
    **differential** — `0x23`/`0x25` are armed on MAVERICK DVE (`dbff2b84`) and
    **absent** from both MARIANA DVE and MARIANA_PLUS DVE (`ca588683`, byte-identical
    to each other). The shipped enum names them `ACTIVATION_TABLE_LOAD`/`ACTIVATE2` —
    ACT opcodes. Their *appearance* on DVE PROF is the fold. **HOLDS.** [HIGH/OBSERVED]
 3. **The read-accumulator is re-expressed as `DveReadAccumulator` (`0x9b`).**
    *Challenge:* maybe `ActivationReadAccumulator` is just glue-hidden, not renamed.
-   *Re-verify:* glue-tolerant search → `ActivationReadAccumulator` = **0**
+   *Evidence:* glue-tolerant search → `ActivationReadAccumulator` = **0**
    firmware-wide, while `@S: DveReadAccumulator` **is** present, and the shipped enum
    defines `DVE_READ_ACCUMULATOR = 0x9b`. The capability survives under a DVE-native
    name. **HOLDS.** [HIGH/OBSERVED string + enum]
 4. **ACT→DVE is rename / re-expression, NOT a functional merge.** *Challenge:* the
-   fold could mean ACT collapsed into a DVE vector op. *Re-verify:* the MAVERICK DVE
+   fold could mean ACT collapsed into a DVE vector op. *Evidence:* the MAVERICK DVE
    strict roster is **59** DVE-native handlers (vs MARIANA_PLUS DVE 60; only
    `QuantizeMx` differs) — `BatchNorm*`/`Dropout`/`FindIndex8`/`MatchReplace`/
    `Exponential`/`DveRead*`, **not** a DVE+ACT union; no `Activate*` anywhere. The
    datapath is re-homed under DVE dispatch + renamed, not merged into one op.
    **HOLDS** (roster OBSERVED; framing CARRIED + corroborated). [HIGH]
 5. **MAVERICK (v5) interiors are HEADER-OBSERVED only.** *Challenge:* did any
-   v5-interior claim get stated as fact? *Re-verify:* the file-absence, the
+   v5-interior claim get stated as fact? *Evidence:* the file-absence, the
    ACT-opcodes-on-DVE-PROF arming, the `DveReadAccumulator` re-expression, the
    reset bytes, the gen-boundary, and the size/build deltas are all byte-grounded
    `OBSERVED`. The per-opcode→handler row binding, the activation control-flow under
@@ -468,11 +467,11 @@ The five strongest claims, re-challenged against the binary this task:
    declared out of image scope. **HOLDS — the wall is respected.** [WALL]
 
 **Honesty ledger.** *HIGH/OBSERVED:* `internal.so b7c67e89` + `.a 158dadc5`
-re-hashed (MATCH); 0 `MAVERICK_NX_ACT` symbols (×4 zeros incl. IDA sidecar); 0
+hashes (MATCH); 0 `MAVERICK_NX_ACT` symbols (×4 zeros incl. IDA sidecar); 0
 MAVERICK `.a` members (435 = 124×3 + 48 + 0 = **420 image** + **15 framework** = 435); 62 getters (DVE 14 / PE 10 / POOL 10 /
 SP 8 / Q7 20); 8 DVE blobs carved + sha256'd; gen-boundary byte-exact
-(`0x86f300+0x2000 == 0x871300`); reset `j 0x1d8 / j 0x1e4` decoded with `ncore2gp`
-(exit 0), `enter_run@0x94`, base `0x1490`, `−0x20` shift; DRAM magic `0x6099cb34`
+(`0x86f300+0x2000 == 0x871300`); reset `j 0x1d8 / j 0x1e4` decoded with `ncore2gp`,
+`enter_run@0x94`, base `0x1490`, `−0x20` shift; DRAM magic `0x6099cb34`
 unchanged; DVE PROF CAM `dbff2b84` (53 armed) vs MARIANA/MPLUS `ca588683` (46),
 `+10/−3`, `0x23`/`0x25` armed on DVE & absent from MARIANA DVE; ACT-specific
 handlers 0× firmware-wide; `DveReadAccumulator`/`0x9b` present in enum + roster; DVE

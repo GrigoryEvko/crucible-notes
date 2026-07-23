@@ -32,7 +32,7 @@ the **absent compute strings/opcodes**, and the byte-distinct IRAM datapaths —
 > **NOTE — the objects used.** Container:
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (sha256
 > `b7c67e898a116454a8e0ce257b1d6523a23ffa237a6ec21021ecb70632fc329b`, ELF64 x86-64 DYN, **not stripped**,
-> 10,276,288 B — re-hashed this session, MATCH). First R `LOAD` is the identity map (`off 0x0 == vaddr 0x0`),
+> 10,276,288 B, MATCH). First R `LOAD` is the identity map (`off 0x0 == vaddr 0x0`),
 > so each `<NAME>.data` accessor address is **simultaneously** the `.rodata` VA and the file offset of its
 > blob — carve = `so[ptr : ptr+size]`. **IRAM file-offset == device IRAM VA** (reset vector at byte 0);
 > **DRAM string-file-offset == device DRAM VA − `0x80000`**. The byte-identity reconciliation uses
@@ -41,8 +41,7 @@ the **absent compute strings/opcodes**, and the byte-distinct IRAM datapaths —
 > (GNU Binutils 2.34.20200201, `XTENSA_CORE=ncore2gp`, ConfigName `Xm_ncore2gp`, uarch Cairo, Xtensa24,
 > RI-2022.9, `TargetHWVersion=NX1.1.4`, FLIX/VLIW 32B). The clean C ISA headers
 > (`neuron_<gen>_arch_isa/tpb/…`, shipped redistributable) are cited for the engine enum, opcode values and
-> the activation/PWP struct layouts. All carve sha256, reset vectors, the boot trampoline, the dispatch
-> signature and the `.a` split were reproduced this session (objdump exit 0, empty stderr). `[HIGH/OBSERVED]`
+> the activation/PWP struct layouts.
 
 ---
 
@@ -92,9 +91,9 @@ the **absent compute strings/opcodes**, and the byte-distinct IRAM datapaths —
 ### 2.1 The getters (instruction-exact)
 
 Each getter is the 4-instruction `(img-ptr, size)` stub
-(`lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`) disassembled this session from
+(`lea <blob>(%rip),%rax ; mov %rax,(%rdi) ; movq $<size>,(%rsi) ; ret`) disassembled from
 `.text 0x9b2d20..0x9b2f80`. The `.data` VAs (use plain `nm` — they are local `r`/`t` symbols) and the
-`movq $<size>` immediates were both re-read; they match the SX-IMG-02 catalog rows 547–570 exactly. `[HIGH/OBSERVED]`
+`movq $<size>` immediates both match the catalog rows 547–570 exactly. `[HIGH/OBSERVED]`
 
 | ENGINE | REGION | ACCESSOR (.text VA) | IMG-PTR (= file off) | SIZE | STATUS |
 |---|---|---|---|---:|---|
@@ -127,7 +126,7 @@ stubs all `movq $0x0,(%rsi)` and `lea` to the contiguous-layout cursor (the *nex
 ### 2.2 Carve provenance + the 2-source byte-identity reconciliation
 
 Carve rule (identity map): `blob = so[IMG-PTR : IMG-PTR+SIZE]` (python slice). The 8 real non-POOL images
-carved this session; sha256 (full) **reproduces SX-IMG-24 exactly**, and **each carve is byte-identical
+carved; sha256 (full) **reproduces the published anchors exactly**, and **each carve is byte-identical
 (sha256) to the matching `libnrtucode.a` RELEASE member `.rodata`** (`ar x` + `objcopy --only-section=.rodata`):
 `[HIGH/OBSERVED]`
 
@@ -220,11 +219,11 @@ Every adjacency closes exactly (`0x055f0+0x8f20 = 0x0e510`, `0x469d0+0x2220 = 0x
 `ACT → DVE → PE → NX_POOL → NX_SP → Q7_POOL`; **NX_SP is interleaved between the two POOL cores**, and there
 are no gaps. `[HIGH/OBSERVED]`
 
-### 3.2 Decode census — full windowed-ABI + IVP datapath, exit 0
+### 3.2 Decode census — full windowed-ABI + IVP datapath
 
 The shipped `ncore2gp` objdump decodes all four RELEASE IRAMs to real Xtensa windowed-ABI + FLIX/VLIW + IVP
-vector code (exit 0, empty stderr). The window-frame + call spine reproduces **byte-exact** this session; the
-distinct-IVP figures are SX-IMG-24's full FLIX-bundle decode: `[HIGH/OBSERVED spine; IVP per SX-IMG-24]`
+vector code. The window-frame + call spine reproduces **byte-exact**; the
+distinct-IVP figures rest on a full FLIX-bundle decode: `[HIGH/OBSERVED spine; IVP CARRIED]`
 
 | ENGINE | `entry` | `retw` | `call8` | const16 | distinct-IVP | total-IVP |
 |---|---:|---:|---:|---:|---:|---:|
@@ -238,17 +237,17 @@ DVE carries the **highest** distinct-IVP count (232 — the data/vector engine),
 
 > **GOTCHA — the FLIX literal-pool desync caps the IVP linearization.** A naïve linear sweep with stock
 > tooling under-counts IVP ops because the `sub a2,a2,a3` dispatch hub and the IVP datapath decode with
-> `.byte` bundle-boundary markers (the documented SX-FW-00 frontier). The `entry`/`retw`/`call8` window spine
-> reproduces exactly (256/274/336/406 entry, 84/86/86/81 retw, 194/221/236/245 call8 — re-verified this
-> session); the distinct-IVP figures rest on SX-IMG-24's bundle-aware decode. No desync touches the carve
+> `.byte` bundle-boundary markers (the documented FLIX-desync frontier). The `entry`/`retw`/`call8` window spine
+> reproduces exactly (256/274/336/406 entry, 84/86/86/81 retw, 194/221/236/245 call8); the distinct-IVP
+> figures rest on a bundle-aware decode. No desync touches the carve
 > shas, reset bytes, `.a` split or the enum/header reads this page depends on. `[HIGH for the spine; the IVP
-> counts CARRIED from SX-IMG-24's bundle-aware decode.]`
+> counts CARRIED from the bundle-aware decode]`
 
 ---
 
 ## 4. The NX dispatch — the SUNDA base-subtraction segmented flavor
 
-Re-checked per engine in the RELEASE IRAM with the `ncore2gp` objdump (counts this session): `[HIGH/OBSERVED]`
+Checked per engine in the RELEASE IRAM with the `ncore2gp` objdump: `[HIGH/OBSERVED]`
 
 | engine | `sub a2,a2,a3` | `addi a2,a2,-65` | `movi a3,177` | `addx4` | `jx` |
 |---|---:|---:|---:|---:|---:|
@@ -272,7 +271,7 @@ it byte-exact. `[HIGH/OBSERVED for the sub/addi/movi counts on all 5 engines.]`
 //   addx4 idx    : const16-base indexed jump table, addressed by the normalized index
 //   raw-compare leaves : per-segment beqi a2,N arms (e.g. SP beqi a2,64; PE beqi a2,5)
 // NOT the CAYMAN addi-a2,a2,-65 (ASCII '0x41') normalization; NOT a 177-entry table.
-// The exact per-opcode hub is the FLIX-desync frontier (SX-FW-00): the sub-a2,a2,a3
+// The exact per-opcode hub is the FLIX-desync frontier: the sub-a2,a2,a3
 // site decodes with .byte bundle markers, so it is not fully linearizable.
 // ---------------------------------------------------------------------------
 static handler_t seq_dispatch(uint8_t opcode) {
@@ -285,11 +284,11 @@ static handler_t seq_dispatch(uint8_t opcode) {
 }
 ```
 
-> **NOTE — reconciling the "raw-compare" reading.** SX-IMG-23 (the SUNDA POOL page) reported POOL as a
+> **NOTE — reconciling the "raw-compare" reading.** The [SUNDA POOL page](./sunda-pool.md) reported POOL as a
 > "raw-compare chain, no `0x41`-normalization" and observed `movi a3,184 ; beq` sites. Both readings are
 > consistent: the SUNDA dispatch combines a **base-subtraction segmented table** (`sub a2,a2,a3` + `addx4`
 > indexed hub) **with** per-segment **raw-compare leaves** (the `beqi a2,N` arms). The unified, precise
-> reading — across all five engines + the re-checked POOL — is the **segmented base-subtraction flavor with
+> reading — across all five engines + the cross-checked POOL — is the **segmented base-subtraction flavor with
 > raw-compare leaves**. `[HIGH for the sub/addi/movi counts; the unified-flavor synthesis INFERRED-HIGH from
 > the counts + the MARIANA/MAVERICK "Sunda-mode" precedent.]`
 
@@ -463,7 +462,7 @@ on-chip collective, conv-LUT, sequence-bounds, the `0xf0` bridge) is **absent ac
 ### 6.1 dtype — 16-base UINT32/INT32/FP32 floor, == CAYMAN, on all four
 
 The `move.cpp:41` dtype assertion is **byte-identical** across ACT/DVE/PE/SP and to CAYMAN (read verbatim from
-the SUNDA ACT DEBUG DRAM this session): `[HIGH/OBSERVED]`
+the SUNDA ACT DEBUG DRAM): `[HIGH/OBSERVED]`
 
 ```text
 /opt/workspace/NeuronUcode/src/decode/move.cpp:41
@@ -631,12 +630,12 @@ bottom of the image matrix as the v2 baseline; every later gen (CAYMAN/MARIANA/M
 
 ## 9. Honesty ledger
 
-**HIGH / OBSERVED (this session):**
+**HIGH / OBSERVED:**
 
 - 24 SUNDA `*_get` accessors `nm`-listed (6 engine-classes × 4 regions, RELEASE-only) + 2 weak-undef EXTISA;
   the 8 non-POOL getters parsed instruction-exact (img-ptr + `movq $size` immediate); 8 real + 8 zero-size
   cursors. No DEBUG/PERF/TEST/PROF/DKL getter for any SUNDA engine.
-- 8 real carves; sha256 reproduces SX-IMG-24 **exactly**; **8/8 byte-identical** (sha256) to the
+- 8 real carves; sha256 reproduces the published anchors **exactly**; **8/8 byte-identical** (sha256) to the
   `libnrtucode.a` RELEASE member `.rodata` (independent 2-source proof).
 - `.a` split: **435** members = SUNDA **48** + CAYMAN/MARIANA/MARIANA_PLUS **124** each + MAVERICK **0** + 15
   runtime; SUNDA 48 = 24 DEBUG + 24 RELEASE.
@@ -667,11 +666,11 @@ bottom of the image matrix as the v2 baseline; every later gen (CAYMAN/MARIANA/M
 - The per-engine compute role (ACT=activation-LUT / DVE=bn-scan / PE=matmul-array / SP=sync-control):
   INFERRED-HIGH from the CAYMAN baselines + the IVP datapaths + the module spine; **not** re-verifiable by
   handler name on SUNDA (no logs).
-- The unified "base-subtraction segmented + raw-compare-leaves" dispatch reading reconciling SX-IMG-23's
-  "raw-compare" label: the sub/addi/movi **counts** are OBSERVED; the precise per-opcode hub is FLIX-desynced
-  (SX-FW-00). The synthesis is INFERRED-HIGH from the counts + the MARIANA/MAVERICK precedent.
-- The distinct-IVP figures (209–232) are CARRIED from SX-IMG-24's bundle-aware FLIX decode; the
-  `entry`/`retw`/`call8` window spine reproduced byte-exact this session.
+- The unified "base-subtraction segmented + raw-compare-leaves" dispatch reading reconciling the SUNDA POOL
+  page's "raw-compare" label: the sub/addi/movi **counts** are OBSERVED; the precise per-opcode hub is
+  FLIX-desynced. The synthesis is INFERRED-HIGH from the counts + the MARIANA/MAVERICK precedent.
+- The distinct-IVP figures (209–232) are CARRIED from a bundle-aware FLIX decode; the
+  `entry`/`retw`/`call8` window spine reproduced byte-exact.
 - The DUAL `0x87`/`0x88` on-device datapath — header-only (no firmware string; SUNDA DVE RELEASE is
   name-stripped). The fold (op0 then config-fixed multiply, scalar PAIR swap per W) is reported from the SUNDA
   **header** (HIGH for the header contract); its on-device bind is family-level INFERRED.
@@ -687,13 +686,11 @@ bottom of the image matrix as the v2 baseline; every later gen (CAYMAN/MARIANA/M
   un-named).
 - Which silicon part / runtime loads RELEASE vs the (`.a`-present) DEBUG build.
 
-> **CORRECTION applied to SX-IMG-24 framing — none required for the substance.** SX-IMG-24's facts reproduce
-> exactly against the binary (carve shas, `.a` split, reset/boot, dispatch, observability, dtype, the enum
-> floor). One *refinement* this page adds (not a correction): SX-IMG-24 lists `ConvLut` only as a string-level
-> absence (§5b/§7d); at the **enum** level `CONV_LUT_LOAD 0xe4` is **CAYMAN-first** (`common.h:294`), so SUNDA
-> is the floor below it at *both* the enum and firmware levels — consistent with, and sharper than, the report.
-> The `dbdca26b` activation-header divergence (cross-referenced from the ACT PWP analysis) is added here
-> because it is the single most ACT-engine-specific SUNDA delta and was outside SX-IMG-24's engine-image scope.
+> **NOTE — the ConvLut floor is sharper at the enum level, and the activation-header divergence is added.**
+> Beyond the string-level `ConvLut` absence (§5.4), at the **enum** level `CONV_LUT_LOAD 0xe4` is
+> **CAYMAN-first** (`common.h:294`), so SUNDA is the floor below it at *both* the enum and firmware levels.
+> The `dbdca26b` activation-header divergence (cross-referenced from the ACT PWP analysis) is documented here
+> because it is the single most ACT-engine-specific SUNDA delta.
 
 ---
 
