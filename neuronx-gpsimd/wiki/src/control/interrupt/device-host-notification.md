@@ -33,15 +33,15 @@ Related pages (cross-linked, not duplicated):
 [Host model lifecycle + error model](../../runtime/lifecycle-error-model.md) ·
 [ntff trace protobuf + NEFF parse state](../../neff/ntff-trace-parse-state.md).
 
-**Confidence legend.** `HIGH` = byte-exact from disasm / CSR schema / ISA header
-read or re-verified here. `MED` = strong inference from naming + cross-file.
-`LOW` = plausible, flagged. `OBSERVED` = read from a shipped artifact this pass.
-`INFERRED` = reasoned. `CARRIED` = consolidated from a named sibling page, not
-re-derived here.
+**Confidence legend.** The page default is `HIGH · OBSERVED`; claims that depart
+from it carry an explicit tag. `HIGH` = byte-exact from disasm / CSR schema / ISA
+header. `MED` = strong inference from naming + cross-file. `LOW` = plausible,
+flagged. `OBSERVED` = read from a shipped artifact. `INFERRED` = reasoned.
+`CARRIED` = consolidated from a named sibling page, not re-derived here.
 
 ---
 
-## 0. Provenance — what was read `[HIGH · OBSERVED]`
+## 0. Provenance — what was read
 
 Every fact below derives **solely** from static analysis of shipped artifacts:
 
@@ -62,7 +62,7 @@ Every fact below derives **solely** from static analysis of shipped artifacts:
 
 ---
 
-## 1. The three device→host paths — the spine `[HIGH]`
+## 1. The three device→host paths — the spine
 
 The device→host surface is **three** physically distinct paths. They share no
 hardware below the SoC fabric, and conflating them is the standard mistake. The
@@ -82,7 +82,7 @@ distinction the rest of the page elaborates:
 | Host wake | on-core thread unblock | usleep poll → `comp_efd` | ring-drain → `comp_efd` |
 
 `[HIGH · Paths 1/2 device-side CARRIED from XEA3/handler-bodies + peb_intc apex
-keystone; Path 3 host-side OBSERVED this pass.]`
+keystone; Path 3 host-side OBSERVED.]`
 
 > **NOTE — the asymmetry.** `peb_intc → Q7` and the host-MSI-X fork are the
 > **fault/management** spine. The NQ ring + completion-word poll is the
@@ -127,8 +127,8 @@ Q7 — different physical instances on the same leaf. `[HIGH · CARRIED — phys
 INTC instances + intc-4group CSR delta.]`
 
 But the **userspace** completion wait for a bare SDMA transfer is **not** an
-MSI-X wake — it is a polled device-DRAM word. Disassembled this pass
-(`dma_wait_for_completion_handle` @`0x22def0`, verified byte-exact):
+MSI-X wake — it is a polled device-DRAM word
+(`dma_wait_for_completion_handle` @`0x22def0`, byte-exact):
 
 ```
 22df16:  call tdrv_get_platform_type          ; resolve completion-word location
@@ -140,7 +140,7 @@ LOOP {
   22e027:  call dmem_buf_copyin                ; (second reset path)
 ```
 
-`[HIGH · OBSERVED — objdump @0x22df16..0x22e027.]` The allocation side
+The allocation side
 (`dma_alloc_completion_handle` @`0x22de20`) writes the *expected* value into a
 device-DRAM word via `dmem_buf_copyin`; the SDMA engine's completion write-back
 updates it; the host re-reads. **No eventfd, no ioctl-wait, no interrupt** in this
@@ -155,7 +155,7 @@ band + `cayman_sdma_base`).
 > `"wait-on-irq"`. The runtime's mental model of SDMA completion is a poll with a
 > timeout, full stop.
 
-### 1c. Path 3 — NQ-notification (exec/profile rings) `[HIGH · OBSERVED]`
+### 1c. Path 3 — NQ-notification (exec/profile rings)
 
 The device engines and the SDMA completion write 16-byte `NEURON_ISA` records into
 per-engine **Notification Queues** (NQ rings) in SoC RAM; the host **drains** them
@@ -165,7 +165,7 @@ throttle channel. §2–§5 specify it end to end.
 
 ---
 
-## 2. The kernel-driver boundary — `/dev/neuron`, ioctl, mmap `[HIGH · OBSERVED]`
+## 2. The kernel-driver boundary — `/dev/neuron`, ioctl, mmap
 
 `libnrt` is userspace; the PCIe MSI-X vector actually lands in the **kernel**
 `aws-neuron` module, and `libnrt` reaches the device only through the character
@@ -179,16 +179,14 @@ device `/dev/neuron%d`. Observed strings: `"/dev/neuron%d"`, `"/dev/neuron"`,
 | `ndl_notification_init` | `0xc3ce0` | 2× `ioctl()` + `ndl_memory_get_pa` — **allocate + pin** the NQ ring backing DRAM |
 | `ndl_nc_semaphore_increment` | `0xc3ba0` | the host→device `EVT_SEM` increment (host doorbell; inverse of this page) |
 
-`[HIGH · OBSERVED — nm address match for all four.]`
-
 > **CORRECTION — `libnrt` has NO `msi`/`msix`/`irq`/`isr` symbol at all.**
-> Verified this pass: `nm -C libnrt.so | rg -icw 'msi|msix|irq|isr'` returns **0**.
+> `nm -C libnrt.so | rg -icw 'msi|msix|irq|isr'` returns **0**.
 > The *only* imported wakeup primitive is `eventfd@GLIBC_2.7`. A reader who expects
 > a userspace IRQ/MSI-X handler in the runtime will not find one — the MSI-X is
 > consumed by the closed kernel module, and userspace gets either an eventfd it
 > blocks on (Path 3) or a device-DRAM word it polls (Path 2). This is the fact
 > that disambiguates "MSI-X exists" (true, kernel-side) from "userspace takes an
-> interrupt" (false). `[HIGH · OBSERVED — nm + nm -D.]`
+> interrupt" (false).
 
 The one place a device-notification class is wired to a **driver-managed** channel
 is `ndl_enable_throttling_notifications` @`0xc5950` (three `ioctl()` calls behind a
@@ -199,7 +197,7 @@ side, not in `libnrt`.]`
 
 ---
 
-## 3. The 16-byte NEURON_ISA notification record `[HIGH · OBSERVED]`
+## 3. The 16-byte NEURON_ISA notification record
 
 The host-visible completion/event/error record is **16 bytes**
 (`NEURON_ISA_NOTIFICATION_NBYTES = 0x10`, `aws_neuron_isa_notification.h`). The
@@ -219,14 +217,14 @@ generic layout (`NEURON_ISA_GENERIC_NOTIFICATION`):
 > notifications contain a 1 bit phase bit so that software can poll on the phase
 > bit."* The producer toggles `phase` per ring wrap; a consumer can detect a fresh
 > record by the phase flip **without head/tail bookkeeping** — the NQ analogue of
-> the SDMA gen-tag (§5.2). `[HIGH · OBSERVED — header line 23 + `phase:1`.]`
+> the SDMA gen-tag (§5.2).
 
 > **NOTE — timestamp is 1 ps, not clocks.** *"Unlike Tonga, the timestamp counter
 > is in a fixed time unit (1ps) instead of clocks."* It is snapshotted from the
 > 64-bit free-running counter at NOTIFIC `+0x00/+0x04` (`timestamp_lo/hi`); the
 > host scales device ticks → wall time via `cfg_timestamp_inc` (NOTIFIC `+0x04`).
 
-### 3.1 The `notific_type` discriminator — 24 values `[HIGH · OBSERVED]`
+### 3.1 The `notific_type` discriminator — 24 values
 
 The 5-bit `notific_type` (header `[28:24]`) selects the record class. The enum has
 **24 values** in the 5-bit space (`NEURON_ISA_NOTIFICATION_TYPE`):
@@ -244,7 +242,7 @@ The 5-bit `notific_type` (header `[28:24]`) selects the record class. The enum h
 | `0x0a` | `TPB_ACT_EXPLICIT` | `0x1e` | `TPB_HAM` |
 | `0x0b` | `TPB_ACT_EVT_SEM` | `0x1f` | `TPB_ERROR` |
 
-`[HIGH · OBSERVED — enum lines 67–91.]` The stride is **4 codes per engine** in
+The stride is **4 codes per engine** in
 `{INST_START, INST_END, EXPLICIT, EVT_SEM}` order: PE `0x04`, ACT `0x08`, **POOL
 `0x0c`** (the GPSIMD compute engine), DVE `0x10`, SP `0x14`.
 
@@ -262,13 +260,13 @@ The four *functional* NQ classes the runtime subscribes (§4.1), mapped to recor
   `NOTIFY 0x10A6`) reaching the host.
 * **ERROR** — the fault record (`ERROR 0x03` / `TPB_ERROR 0x1f`): see §6.
 
-`[HIGH · OBSERVED — per-class struct bodies, header lines 116–313.]` A distinct
+A distinct
 `NEURON_ISA_INTERRUPT_NOTIFICATION` form `{group:3, block_id:7, cause_bits}` is the
 "sending interrupt" record (vs the "sending notification" data record).
 
 ---
 
-## 4. The device NOTIFIC block — the SW-NQ rings `[HIGH · OBSERVED]`
+## 4. The device NOTIFIC block — the SW-NQ rings
 
 Each TPB engine emits its records through a **NOTIFIC** APB block that coalesces
 them and writes them over AXI into up to **ten** software-owned ring queues
@@ -284,7 +282,7 @@ The facts this page depends on:
 > **QUIRK — NUM_SW_Q is 10-or-1, not a single value.** The block ships in two
 > flavors: `notific_10_queue` (the full TPB engine NOTIFIC, 10 rings, reset mask
 > `0x3ff`) and `notific_1_queue` (a 1-ring variant). Cite the 10-ring block for
-> engine completion/trace; do not assert "10" universally. `[HIGH · OBSERVED.]`
+> engine completion/trace; do not assert "10" universally.
 
 The per-queue ring descriptor (queue *i* at `0x100 + i·0x28`) is the device-side
 counterpart of the host SW-mirror §5 drains:
@@ -299,9 +297,9 @@ counterpart of the host SW-mirror §5 drains:
 
 Overflow policy is per-ring: `sw_backpressure` (lossless stall) vs `nq_sw_overflow`
 (`ignore_full_en` — lossy ring-overwrite). A write to a *disabled* ring is dropped
-and raises `tpb_notific_intr_1`. `[HIGH · OBSERVED — notific_10_queue.json.]`
+and raises `tpb_notific_intr_1`.
 
-### 4.1 Arming the rings — `notification_configure` `[HIGH · OBSERVED]`
+### 4.1 Arming the rings — `notification_configure`
 
 `libnrt` sets up the rings before execution. `notification_init` @`0x2fed70` calls
 `notification_configure` @`0x2fdc40` once per class; the full arm sequence:
@@ -319,8 +317,6 @@ ring_buffer_init(...);                                  // @0x3020b0 — host SW
 notification_enable_v2(...);                            // @0x2fd750 — turn the ring ON
 ```
 
-`[HIGH · OBSERVED — all addresses nm-confirmed; sequence from disasm.]`
-
 The **type → HW-NQ-id** table (`notifications_get_nq_ids_for_type` @`0x2fd160`, a
 10-way jump on `notification_type(0..9)`, byte-decoded from `.rodata`):
 
@@ -332,7 +328,7 @@ The **type → HW-NQ-id** table (`notifications_get_nq_ids_for_type` @`0x2fd160`
 | 3 | INFER_STATUS | `{4, 5, 6, 7}` | | 8 | TOPSP_ERROR |
 | 4 | DMA | (distinct band) | | 9 | TOPSP_CC |
 
-`[HIGH · OBSERVED — .rodata byte-decode.]` These NQ ids index the per-engine
+These NQ ids index the per-engine
 SW-queue numbering: **NUM2** = events/semaphores, **NUM3** = errors, **NUM4** =
 `hw_power_monitor`/HAM/throttle.
 
@@ -341,19 +337,19 @@ SW-queue numbering: **NUM2** = events/semaphores, **NUM3** = errors, **NUM4** =
 @`0x4514d0` → `aws_hal_sdma_notification_queue_en` @`0x4513a0`, which tail-calls
 `aws_reg_write_tdma_model_notific_cfg_per_queue_m2s_trigger` — **the register that
 makes an SDMA queue's completion write a notification record into the NQ ring.**
-So: SDMA done ⇒ NQ-ring write ⇒ host drains. `[HIGH · OBSERVED.]`
+So: SDMA done ⇒ NQ-ring write ⇒ host drains.
 
 ---
 
-## 5. The host ring drain — `aws_hal_notific_nq_read_cayman` `[HIGH · OBSERVED]`
+## 5. The host ring drain — `aws_hal_notific_nq_read_cayman`
 
 The host learns of a completion by **reading** the ring; there is no device
 interrupt in this path. `notification_read_exec_queue` @`0x2ff170` (a thin gate)
 calls `aws_hal_notific_nq_read` @`0x451040`, an arch-vtable trampoline
 (`lea kaena_khal; jmp *0x438(%rax)`) dispatching to `_cayman` @`0x470ec0`.
 
-The cayman drain operates on the `aws_hal_ens_nq` SW-mirror. The field offsets were
-**re-verified byte-exact this pass** against the disasm at `0x470ec0`:
+The cayman drain operates on the `aws_hal_ens_nq` SW-mirror. The field offsets are
+byte-exact against the disasm at `0x470ec0`:
 
 | Off | Field | Disasm evidence (`%r13 = ens_nq`) |
 |---|---|---|
@@ -398,16 +394,16 @@ size_t nq_read_cayman(ens_nq_t *nq, void *out_buf, uint32_t cap_bytes,
 ```
 
 A "read" is therefore a pure shared-memory ring dequeue — head advance + `memcpy` +
-an optional DMA-coherency flush. **No syscall, no interrupt.** `[HIGH · OBSERVED.]`
+an optional DMA-coherency flush. **No syscall, no interrupt.**
 
 > **GOTCHA — `head_ptr` is the SOFTWARE-owned drain-ACK.** The device advances
 > `tail_ptr` (`+0x10`, RO); the host advances `head_ptr` (`+0x0c`, RW) *and writes
 > it back to the device descriptor* to re-arm the threshold interrupt (§4). The
 > SW-mirror's `+0x04 HEAD` above is the host's private copy; the device-side
 > `head_ptr` write is the explicit ACK. Confusing the two leads to a "head never
-> moves" misread. `[HIGH · OBSERVED — notific_nq `+0x0c` + cayman disasm.]`
+> moves" misread.
 
-### 5.1 The reap loop + the thread wake — `comp_efd` `[HIGH · OBSERVED]`
+### 5.1 The reap loop + the thread wake — `comp_efd`
 
 The steady-state completion loop is `exec_request_progress_one_step` @`0x263330`:
 it reads the engine count (`al_hal_tpb_get_tpb_eng_count`) and calls
@@ -461,7 +457,7 @@ the `memw; memw` doorbell publication fence are detailed in §7.
 
 ---
 
-## 6. The error / overflow edge — the only interrupt that crosses `[HIGH · OBSERVED]`
+## 6. The error / overflow edge — the only interrupt that crosses
 
 The steady-state record write is shared-memory (host polls). The **interrupt** is
 the overflow/error edge. From `intc/tpb_triggers.yaml`, the NOTIFIC block exposes
@@ -497,7 +493,6 @@ calls `exec_check_intc_sw_notif_queue_overflow` @`0x2613c0` →
 `aws_hal_intc_read_cause` @`0x450990`; an NQ full ⇒ `EXEC_FATAL_STATUS_SW_NQ_OVERFLOW`
 ⇒ `NRT_EXEC_SW_NQ_OVERFLOW` (1204). So the overflow edge is *both* an interrupt
 (kernel-side) and a readable cause (host-side), complementing the ring drain.
-`[HIGH · OBSERVED — symbol addresses.]`
 
 ### 6.1 The watchdog — a hung kernel surfaces as a MISSING record `[HIGH · CARRIED]`
 
@@ -546,7 +541,7 @@ each core's mutable data lives in a PRID-keyed hardware-disjoint DRAM aperture
 the XEA3 `L32EX`/`S32EX` exclusive monitor exists but is essentially unexercised.
 `[HIGH · CARRIED — data-side memory model + concurrency/isolation.]`
 
-### 7.2 Cross-engine: the EVT_SEM fabric `[HIGH · OBSERVED]`
+### 7.2 Cross-engine: the EVT_SEM fabric
 
 Each TPB exposes a **1-MiB `EVT_SEM` unit of 256 events + 256 semaphores** with
 separate MMIO windows. For `TPB_0` (the on-die view):
@@ -569,7 +564,7 @@ increment is a single `write32` to `inc_base + 4·sem`. Full register model:
 > different base. The window layout (`EVENT@+0x0 / READ@+0x1000 / SET@+0x1400 /
 > INC@+0x1800 / DEC@+0x1C00`) is shared, but the **base** differs, and Cayman's
 > TOP_SP EVT_SEM has **no `SEMAPHORE_CNTR_INC` port**. Mixing the two bases is a
-> real regression hazard. `[HIGH · OBSERVED — both bases.]`
+> real regression hazard.
 
 The sequencer drives `EVT_SEM` with a small op family: `WAIT_GE_AND_DEC`
 (op `0x10A0`, sub-op `0x14` — block until `sem ≥ value`, then atomically
@@ -580,7 +575,7 @@ before the next). Every TPB instruction also carries an 8-byte EVENTS block
 per-instruction producer/consumer handshake. `[HIGH · CARRIED — EVT_SEM substrate +
 per-instruction EVENTS block.]`
 
-### 7.3 The full completion chain (one diagram) `[HIGH]`
+### 7.3 The full completion chain (one diagram)
 
 ```
 device op done
@@ -612,7 +607,7 @@ half of this chain (`0x263330` → `0x2ff170` → `0x470ec0`) is all OBSERVED ab
 
 ## 8. Confidence ledger & what is inferred `[self-audit]`
 
-**HIGH / OBSERVED (verified this pass against `libnrt.so` BuildID `8bb57aba…`):**
+**HIGH / OBSERVED (against `libnrt.so` BuildID `8bb57aba…`):**
 
 * every host symbol address matches `nm`: `notification_read_exec_queue 0x2ff170`,
   `aws_hal_notific_nq_read 0x451040`, `_cayman 0x470ec0`,

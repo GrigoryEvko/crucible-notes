@@ -37,8 +37,9 @@ are [`../../firmware/seq/error-handler.md`](../../firmware/seq/error-handler.md)
 > (`libnrtucode_internal.so`, `CAYMAN_NX_POOL_DEBUG_{IRAM,DRAM}` blobs, disassembled with
 > the shipped Cadence `xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`).
 >
-> Confidence tags: `[HIGH · OBSERVED]` = literal value read from a shipped JSON/YAML/disasm,
-> re-verified this pass; `[MED · INFERRED]` = semantic reconstruction from naming +
+> Confidence tags: the page default is `[HIGH · OBSERVED]` = literal value read from a
+> shipped JSON/YAML/disasm; claims that depart from it carry an explicit tag —
+> `[MED · INFERRED]` = semantic reconstruction from naming +
 > cross-file corroboration; `[LOW]` = plausible reading, flagged; `[· CARRIED]` =
 > consolidated from a named sibling page, not re-derived. **Generation scope:** the `Sunda`
 > bundle's bitfields (positions, names, resets, access) are **byte-identical** across
@@ -49,7 +50,7 @@ are [`../../firmware/seq/error-handler.md`](../../firmware/seq/error-handler.md)
 
 ---
 
-## 0. The mechanism at a glance `[HIGH · OBSERVED]`
+## 0. The mechanism at a glance
 
 The abort/emergency-stop is a **4-register `Sunda` freeze bundle** sitting above the four
 per-group control blocks inside the `no_msix` error-trigger:
@@ -75,7 +76,7 @@ image).
 
 ---
 
-## 1. The `abort_cntl` register set — the `Sunda` freeze bundle `[HIGH · OBSERVED]`
+## 1. The `abort_cntl` register set — the `Sunda` freeze bundle
 
 ### 1a. `abort_cntl0` @ `0x300` — scan-dump + clock-stop select
 
@@ -131,7 +132,7 @@ abort, and does so **separately for a local vs a remote abort**.
 > in this schema. The "8 bits = 8 targets" reading is `[MED · INFERRED]` (width + plural
 > description); the concrete bit→domain assignment is `[LOW]`, a non-claim.
 
-### 1d. The `no_msix`-only property — abort-freeze is privileged `[HIGH · OBSERVED]`
+### 1d. The `no_msix`-only property — abort-freeze is privileged
 
 The host-facing `msix` error-trigger twin **also** has a bundle named `Sunda` at `0x300`,
 but it contains **only one register** — `MSIX_TC` (bundle-relative `0xe0` → absolute
@@ -156,11 +157,10 @@ to read-only**:
 > only** — the `msix` `Sunda` bundle holds no abort control. The abort / scan-dump /
 > clock-stop mechanism is **exclusively the privileged on-die aggregation path**; a host is
 > structurally locked out (its abort mask is RO and its `Sunda` tail is the MSI-X apparatus).
-> `[HIGH · OBSERVED — direct jq diff of the two units' `Sunda` bundles.]`
 
 ---
 
-## 2. The scan-dump mechanism — what captures state on abort `[HIGH · OBSERVED]`
+## 2. The scan-dump mechanism — what captures state on abort
 
 ### 2a. The capture hardware = ARM CoreSight ELA-500 (`cxela500`)
 
@@ -203,7 +203,7 @@ groups into a local trace SRAM, read back via `RRAR`/`RRDR`. When an abort fires
 > abort-trigger → ELA-`PTACTION`/`TSSR` wiring is the RTL netlist's `[MED · INFERRED]` (see
 > §6 O2), not register-encoded here.
 
-### 2b. The per-block ELA placement — scan dump is distributed `[HIGH · OBSERVED]`
+### 2b. The per-block ELA placement — scan dump is distributed
 
 The 1,318 ELA instances attach by block type. The **terminal `_ELA` leaf token** census of
 every `cxela500` leaf partitions **exactly** into four categories:
@@ -222,7 +222,7 @@ every `cxela500` leaf partitions **exactly** into four categories:
 > `..._HBM_DEBUG_FIS_ELA_0_INTERNAL_ELA`); its actual ELA leaf is the `_INTERNAL_ELA`/
 > `_SPROT_ELA` *under* it, already counted above. A regex for any `cxela500` leaf whose
 > **terminal** token is `FIS_ELA` returns **empty**. Treating `FIS_ELA_0..9` as a fifth
-> "8-each" category double-counts. `[HIGH · OBSERVED — terminal-token census, this pass.]`
+> "8-each" category double-counts.
 
 ### 2c. The Q7-core-level state capture (the on-core complement) `[HIGH · CARRIED]`
 
@@ -247,7 +247,7 @@ reads is the tool's choice — MED.]`
 
 ---
 
-## 3. Clock-stop + SRAM-write-protect — gating + locking on fatal `[HIGH · OBSERVED]`
+## 3. Clock-stop + SRAM-write-protect — gating + locking on fatal
 
 ### 3a. Clock-stop (`abort_cntl0[23:16]` local / `[31:24]` remote)
 
@@ -283,8 +283,7 @@ per-IP teardown/drain) — e.g. a DMA/AXI master quiescing its outstanding trans
 > In the Sunda baseline, enabling block-level abort logic **implicitly forced SRAM
 > write-protect**; from Cayman on the two are **decoupled** — `sram_write_protect` is its own
 > explicit bitmap. The **bit layout did not change** (the explicit fields existed in Sunda
-> too); only the side-effect coupling text was removed. `[HIGH · OBSERVED — literal string
-> diff; bit positions byte-identical all gens.]`
+> too); only the side-effect coupling text was removed.
 
 ### 3d. The freeze ordering (post-mortem coherence) `[MED · INFERRED]`
 
@@ -328,7 +327,7 @@ void on_abort_wire_or(errtrig_t *e, bool is_remote) {
 
 ## 4. The Q7 halt / break connection — abort vs the in-core debug path `[HIGH · MED]`
 
-### 4a. The firmware does NOT drive abort — abort is a fabric/HW mechanism `[HIGH · OBSERVED]`
+### 4a. The firmware does NOT drive abort — abort is a fabric/HW mechanism
 
 The carved GPSIMD NX (SEQ) firmware contains **zero** `abort` / `scan_dump` / `clock_stop` /
 `freeze` / `sram_write` / `write_protect` strings — a `strings -n4` + `grep -i` over the
@@ -363,7 +362,7 @@ The Q7/NX halt/break is the **separate** `tpb_xt_local_reg` + OCD surface — do
 | Xtensa OCD | `PWRCTL` @ `0x3020` | `CoreReset[16]`, `DebugReset[28]` | per-core reset / debug-module reset |
 | architectural | `DBREAKA0/C0`, `IBREAKA0/C0` (SRs `0x90/0xa0`, `0x80/0xc0`) | — | in-core data/instruction HW breakpoints |
 
-### 4c. The firmware tie — EXT_BREAK reads `instr_halt_ctrl` `0x14` `[HIGH · OBSERVED]`
+### 4c. The firmware tie — EXT_BREAK reads `instr_halt_ctrl` `0x14`
 
 The SEQ surprises handler `sunda_handle_surprises` (entry `entry a1,48` @ IRAM `0x6cf4`;
 [`q7-surprises-binding.md`](q7-surprises-binding.md),
@@ -387,8 +386,7 @@ On an external-breakpoint surprise the firmware logs `"S: EXT_BREAK"` (DRAM-loca
 checks the halt-request CSR, and escalates (FATAL) if not armed. The `0x14` here is the
 per-register dword offset within the NX `xt_local_reg` block — the same register the schema
 places at `instr_halt_ctrl @ 0x14` (the Sunda HAL YAML's full local-reg-space address for it
-is `0x808`; both consistent). `[HIGH · OBSERVED — re-disassembled this pass, bytes
-`22 a4 00 / 24 14 00 / 28 02 / dc 32`.]`
+is `0x808`; both consistent).
 
 ### 4d. The relationship — abort FREEZES, break/halt STEERS `[MED · INFERRED, well-grounded]`
 
@@ -419,7 +417,7 @@ binding is instantiation-time, not register-encoded — §6 O3.]`
 
 ---
 
-## 5. The `Sunda` bundle across generations `[HIGH · OBSERVED]`
+## 5. The `Sunda` bundle across generations
 
 | gen | `Sunda` bitfields | `no_msix` instances | notes |
 |---|---|---|---|
@@ -429,7 +427,7 @@ binding is instantiation-time, not register-encoded — §6 O3.]`
 | `mariana_plus` | byte-identical to Cayman | **1,358** | fleet grows; mechanism frozen |
 | `maverick` (v5) | byte-identical to Cayman *(schema header-OBSERVED)* | header-present | decentralized INTC fleet, abort stays central |
 
-* **Cross-gen byte-identity** `[HIGH · OBSERVED]`: `jq -S` diff of the `Sunda` bundle gives
+* **Cross-gen byte-identity**: `jq -S` diff of the `Sunda` bundle gives
   Cayman == Mariana == Mariana+ == Maverick (**IDENTICAL**); `sunda` **differs only** in the
   one Description string of §3c. Positions, names, resets and access are byte-identical
   everywhere.
@@ -452,7 +450,7 @@ binding is instantiation-time, not register-encoded — §6 O3.]`
   > is exactly **one** abort-freeze unit, not a replicated per-IP fleet. v5-*interior*
   > behavior is INFERRED (header-OBSERVED only).
 
-### 5b. The cross-die (remote) abort substrate = D2D `[HIGH · OBSERVED]`
+### 5b. The cross-die (remote) abort substrate = D2D
 
 The local/remote split in `abort_cntl0/1` is physically realized by the **D2D (die-to-die)**
 subsystem. The Cayman address map has **288** D2D AMZN (`no_msix`) error-trigger instances
@@ -563,7 +561,7 @@ ABORT / SCAN-DUMP / CLOCK-STOP CONTROL
 
 ## 7. Confidence / provenance ledger
 
-**`[HIGH · OBSERVED]`** (byte-read this pass via jq / rg / objdump):
+**`[HIGH · OBSERVED]`** (byte-read via jq / rg / objdump):
 
 * The `Sunda` bundle @ `0x300` (`BundleSizeInBytes 0xf0`, `ArraySize 1`,
   `HalExists NON_EX_ONLY`) inside `intc_4grp_no_msix_unit`; `abort_cntl0` @ `0x300`

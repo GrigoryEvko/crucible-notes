@@ -19,8 +19,8 @@ It does **not** re-derive its sources from scratch. Every register, offset, and
 reset value is already byte-grounded on a committed sibling; this page reconciles
 them into one coherent chain and resolves the cross-page divergences. Each claim
 is tagged `[conf · prov]` with `conf ∈ {HIGH, MED, LOW}` and
-`prov ∈ {OBSERVED, INFERRED, CARRIED}`. New claims introduced here were
-re-verified against the shipped Cayman arch-regs artifacts this session
+`prov ∈ {OBSERVED, INFERRED, CARRIED}`. New claims introduced here are grounded
+in the shipped Cayman arch-regs artifacts
 (`csrs/sprot/{nsm,qos_prot,amzn_remapper,user_remapper}.json`,
 `intc/{pcie,peb_intc}_triggers.yaml`) and are marked OBSERVED; reconciliations of
 sibling facts are CARRIED.
@@ -89,13 +89,13 @@ fuses [`../csr/nsm.md`](../csr/nsm.md) §2, [`../csr/remapper.md`](../csr/remapp
 §3/§5, and [`./errtrig-fis-routing.md`](./errtrig-fis-routing.md) §2 into one
 taxonomy, then verifies the counts.
 
-### 1A. NSM — AXI transaction-integrity violations (the watchdog) `[HIGH · OBSERVED]`
+### 1A. NSM — AXI transaction-integrity violations (the watchdog)
 
 NSM is an **inline per-PCIe-master AXI response watchdog**. It inspects protocol
 *shape* and *timing* only — it never checks `AxPROT`, master-ID, VMID, or address
 (verified by absence across all 74 bitfields; [`../csr/nsm.md`](../csr/nsm.md)).
 Its sticky status enumerates exactly **9** malformed-transaction shapes — 4 write +
-5 read, byte-read from `nsm.json` and re-verified this session:
+5 read, byte-read from `nsm.json`:
 
 | side · reg | bit | field | the malformed shape |
 |------------|-----|-------|---------------------|
@@ -116,9 +116,8 @@ response mapping to no tracked request is the `no_match`/spurious cause. Two tim
 per direction (request-stall + response-latency), each = `cfg_*_tick`
 (32-bit prescaler) × `cfg_*_threshold` (12-bit ticks); threshold `0` disables.
 All nine roll up into `control.report.{error_wr[0], error_rd[4]}`.
-`[HIGH · OBSERVED]`
 
-### 1B. Remapper — access-control violations (the deny) `[HIGH · OBSERVED]`
+### 1B. Remapper — access-control violations (the deny)
 
 The [`amzn_remapper`](../csr/remapper.md) (privileged, fail-CLOSED) and
 `user_remapper` (guest, fail-OPEN) catch the access-control faults via a TCAM on
@@ -136,7 +135,6 @@ checkers:
 A deny captures the offending physical address into
 `addr_denied_lo[31:0]`@0x60 + `addr_denied_hi[25:0]`@0x64, increments the 48-bit
 deny/err/timeout counters, and raises `fis_sprot_intr[0]` (§7).
-`[HIGH · OBSERVED]`
 
 > **NOTE — the remapper DECIDES, qos_prot RESPONDS.** The remapper schema encodes
 > **no** AXI response field (no `read_response`/`write_response`). A denied or
@@ -146,11 +144,11 @@ deny/err/timeout counters, and raises `fis_sprot_intr[0]` (§7).
 > §2.5 finding, re-stated here as a coherence keystone:
 > **remapper = decide, NTS = respond.** `[HIGH split; MED · INFERRED deny-uses-NTS]`
 
-### 1C. PCIe link events + NTS no-target (the isolation-SM inputs) `[HIGH · OBSERVED]`
+### 1C. PCIe link events + NTS no-target (the isolation-SM inputs)
 
 The DWC pcie5 x8 controller and the FIS NTS surface the link/no-target events that
 drive the isolation SM. Verbatim from `intc/pcie_triggers.yaml`
-`reset_handshake_intr` (re-read this session; the **detection** events are
+`reset_handshake_intr` (the **detection** events are
 `[8..13]`, the SM **outputs** are `[14]/[15]`):
 
 | idx | trigger name (verbatim) | meaning |
@@ -174,20 +172,20 @@ plus two standalone NTS scalars at `pcie_triggers.yaml:1818/1824`:
 > "isolatio". It is the **only** index in `[8..15]` using the misspelled prefix;
 > `[8..10]` and `[12..15]` all use the correct `isolation_sm`. A reimplementation
 > matching the binary symbol table must reproduce the typo on this one source.
-> Confirmed this session (`pcie_triggers.yaml:61`). `[HIGH · OBSERVED]`
+> Confirmed at `pcie_triggers.yaml:61`.
 
-### 1D. SCOPE — host-PCIe ONLY (the negative claim) `[HIGH · OBSERVED]`
+### 1D. SCOPE — host-PCIe ONLY (the negative claim)
 
 The isolation SM is a **host-PCIe** construct. `d2d_triggers.yaml` carries **none**
 of `reset_handshake_intr` / `isolation_sm_*` / `nts_iso_*_timeout` (rg "isolation"
 = 0 hits; [`./physical-intc-instances.md`](./physical-intc-instances.md), INT-06).
 D2D faults on its own per-link ECC/RASDP/wdt set and does **not** present the
 linkdown → isolation FSM. §2–§6 below are therefore the host-PCIe path
-(`PCIe_A`/`U`/`M` + per-SEngine `PCIe_S`), not a fabric-wide one. `[HIGH · OBSERVED]`
+(`PCIe_A`/`U`/`M` + per-SEngine `PCIe_S`), not a fabric-wide one.
 
 ---
 
-## 2. Detection → latch — the sticky state each block holds `[HIGH · OBSERVED]`
+## 2. Detection → latch — the sticky state each block holds
 
 Each block latches its own violation state, which the Q7 ISR reads to classify the
 fault:
@@ -197,16 +195,16 @@ fault:
   state in `{wr,rd}.sta_state` `[2:0]` where **bits `[1:0]`=`iso_state`,
   bit `[2]`=`short_resp_state`** (verbatim `.h` comment). Boundary telemetry:
   `sta_up_cnt_*` (pcie→NSM), `sta_dn_cnt_*` (NSM→iofabric), `sta_pop_cnt`
-  (linked-list pops). `[HIGH · OBSERVED]`
+  (linked-list pops).
 * **Remapper** (`amzn_remapper.json`): `addr_denied_lo[31:0]`@0x60 +
   `addr_denied_hi[25:0]`@0x64 = the `[57:0]` physical address of the most-recent
   DENIED txn (the ISR's violation latch); 48-bit pass/deny/err/timeout counters per
   direction; `delta_mon.error.{aw_minus_b_underflow[0], ar_minus_r_underflow[4]}`
-  latch B>AW / R>AR ("more responses than requests") anomalies. `[HIGH · OBSERVED]`
+  latch B>AW / R>AR ("more responses than requests") anomalies.
 * **NTS** (`qos_prot.json nts_amzn.status` @0x404, RO): a small drain FSM
   `no_target_mode[0]` → `flushing[1]` → `flushed[2]`, with `mode[3]` selecting the
   post-flush state (0=NO-TARGET, 1=BLOCK). Distinct from the PCIe isolation SM —
-  this is the NTS responder's *own* drain machine. `[HIGH · OBSERVED]`
+  this is the NTS responder's *own* drain machine.
 
 ---
 
@@ -217,12 +215,12 @@ and emits `isolation_mode_enter[14]` / `exit[15]`. Entry is **gated** by the NSM
 per-cause enables + a debounce, and runs a **chip-reset quiesce handshake**
 (`reset_handshake_intr[0..7]`) on entry.
 
-### 3a. Entry gating — the NSM arming posture `[HIGH · OBSERVED]`
+### 3a. Entry gating — the NSM arming posture
 
 A violation forces isolation only if an enable is set, with a debounce:
 
 * **Per-cause `enter_isolation_mode_on_*` in `{wr,rd}.cfg_1`** — **6 bits total**
-  (2 write + 4 read; re-counted this session = exactly 6):
+  (2 write + 4 read):
 
   | reg | field | bit | reset |
   |-----|-------|-----|-------|
@@ -251,10 +249,10 @@ A violation forces isolation only if an enable is set, with a debounce:
 > and `nts_isolation.rd_timeout_en=1` boot postures: the whole `sprot` family boots
 > transparent/disarmed and is locked up by secure boot.
 
-### 3b. The reset handshake — the chip-reset quiesce protocol `[HIGH · OBSERVED]`
+### 3b. The reset handshake — the chip-reset quiesce protocol
 
-`reset_handshake_intr[0..7]` (verbatim `pcie_triggers.yaml:6..42`, re-read this
-session) is the handshake the SM runs on isolation entry, signalling the rest of
+`reset_handshake_intr[0..7]` (verbatim `pcie_triggers.yaml:6..42`) is the
+handshake the SM runs on isolation entry, signalling the rest of
 the SoC when it is safe to reset:
 
 | idx | name | verbatim meaning |
@@ -390,7 +388,7 @@ void iso_sm_tick(iso_sm_t *sm, NsmDir *d, iso_detect_t ev, bool event_fired) {
 
 ---
 
-## 4. Synthetic error-response injection — what the master gets back `[HIGH · OBSERVED]`
+## 4. Synthetic error-response injection — what the master gets back
 
 When a txn is aborted, a synthetic AXI response is returned so the offending master
 unblocks rather than wedging the on-die AXI fabric. **Two injectors, identical
@@ -401,11 +399,11 @@ poison convention, different trigger** — this is the **NTS terminator family**
   (`@0x118`, reset `0x2` = SLVERR; `0x3` = DECERR), `RRESP = rd.cfg_1.axi_rresp`
   (`@0x218`, reset `0x2`), plus a **256-bit** `RDATA` from `rd.error_data_0..7`
   (`@0x21c..0x238`, each reset `0xdeadbeef` — verbatim "dummy return AXI_RDATA
-  after error"). Confirmed this session: **exactly 8× `0xdeadbeef`** in `nsm.json`.
+  after error") — **exactly 8× `0xdeadbeef`** in `nsm.json`.
 * **(B) NTS** (`qos_prot.nts_amzn`, absent target during isolation/power-down):
   `read_response`@0x408 / `write_response`@0x410 (reset `0x2` SLVERR; `0x3` DECERR;
   `0x0` OK), `read_data`@0x40c (reset `0xdeadbeef`, "replicated across the bus").
-  Confirmed this session: **exactly ONE** materialized `read_data` register in
+  **Exactly ONE** materialized `read_data` register in
   `qos_prot.json` holds the poison word (`rg -ci deadbeef qos_prot.json` = 2, but
   the second hit is that register's own **Description** text "default=deadbeef" @line
   1820, *not* a second register). `control.mode` selects NO-TARGET vs BLOCK
@@ -428,14 +426,14 @@ matches the `udma_gen_ex` DEADBEEF convention.
 > `DEADBEEF DEADBEEF …` on the wire; only the CSR materialization differs (8-reg vs
 > 1-reg-replicated). The remapper holds **zero** — it delegates to NTS. Census =
 > **8 / 1 / 0** (nsm / qos_prot-NTS / remapper). When you see `0xDEADBEEF` on the
-> read-data bus, the master hit one of these three FIS guards. `[HIGH · OBSERVED]`
+> read-data bus, the master hit one of these three FIS guards.
 
 ---
 
 ## 5. Recovery — the documented fifo-drain teardown order `[HIGH · OBSERVED order]`
 
 The shipped field descriptions name the teardown sequence explicitly. NSM
-`control.reset_staging_fifo` (verbatim, re-read this session) and the NTS
+`control.reset_staging_fifo` (verbatim) and the NTS
 `nts_isolation.ctrl` together define it:
 
 **NSM staging-FIFO drain** (`reset_staging_fifo` @0x008):
@@ -521,7 +519,7 @@ stack that *generates* much of the traffic. It fuses
 [`./physical-intc-instances.md`](./physical-intc-instances.md), and
 [`./io-fabric-triggers.md`](./io-fabric-triggers.md).
 
-### 6a. The per-FIS sprot enforcement stack (the source) `[HIGH · OBSERVED]`
+### 6a. The per-FIS sprot enforcement stack (the source)
 
 Every privileged master's AXI egress passes through a FIS `sprot` container in
 series: **remapper FIRST** (`..._SPROT_AMZN_REMAPPER` @+0x0000, `0x1000`),
@@ -531,7 +529,7 @@ series: **remapper FIRST** (`..._SPROT_AMZN_REMAPPER` @+0x0000, `0x1000`),
 **not** inside the `FIS_0_SPROT` container.
 
 The trust-boundary invariant (the central security primitive, FROZEN across
-Sunda/Cayman/Mariana; re-verified this session):
+Sunda/Cayman/Mariana):
 
 | block · field | `amzn` (privileged) | `user` (guest) |
 |---------------|---------------------|----------------|
@@ -541,10 +539,9 @@ Sunda/Cayman/Mariana; re-verified this session):
 
 > **WALL — invert either `pass_on_miss` reset and you break the chip.** `amzn`
 > fail-open removes the firmware whitelist entirely; `user` fail-closed deadlocks
-> every un-provisioned guest master. Confirmed byte-exact this session
+> every un-provisioned guest master. Confirmed byte-exact
 > (`amzn rd/wr=0x0`, `user rd/wr=0x1`). The guest is *contained* by the surrounding
 > privileged firewall + the NTS error path, not by its own default-deny.
-> `[HIGH · OBSERVED]`
 
 ### 6b. The errtrig routing fabric (the router) `[HIGH · CARRIED]`
 
@@ -562,18 +559,18 @@ Cause-register semantics (the Annapurna convention): `int_cause_grp` is **W0C**
 `int_cause_set_grp` is **W1S**; `int_mask_grp` resets `0xffffffff` (all masked at
 reset, safe). `[HIGH · CARRIED from errtrig-fis-routing.md / physical-intc-instances.md]`
 
-### 6c. The 128-input apex + the 32 critical fast-path (the delivery) `[HIGH · OBSERVED]`
+### 6c. The 128-input apex + the 32 critical fast-path (the delivery)
 
 The `peb_intc` apex is a **flavor pair** `{PEB_INTC_TRIG_0 (no_msix, 128-input
 summary) + PEB_INTC_MSIX (host-delivery twin)}`, replicated per PEB (×2). The 128
 inputs = 96 leaf `nmi_out` summaries + **32** direct PEB-local critical sources
-(re-verified this session: exactly **32** `critical: 1` in
+(exactly **32** `critical: 1` in
 `peb_intc_triggers.yaml`). `critical:1` = "*not a summary*" (verbatim
 `intc_info_struct.h`) — an event firmware reacts to without decoding a per-domain
 summary register.
 
 The fault-and-recovery cluster of the NSM chain sits at fixed, **co-located** apex
-indices (file order = bit order; re-verified this session — `apb_outstding_flushed`
+indices (file order = bit order; `apb_outstding_flushed`
 at trigger-positions 110/111 = idx109/110, NSM at 112 = idx111):
 
 | apex input | idx | critical | edge/level | role |
@@ -588,7 +585,7 @@ Confirmed verbatim from `peb_intc_triggers.yaml`: `intr_peb_nsm_axi_timeout`,
 `edge_triggered: false` (LEVEL), `nmi_mask: 0`, `nmi_msix_mask: 0`, `critical: 1`,
 description "PEB SPROT NSM timeout or error interrupt".
 
-### 6d. The NSM TWO-PATH delivery (the meeting point) `[HIGH · OBSERVED]`
+### 6d. The NSM TWO-PATH delivery (the meeting point)
 
 The NSM AXI timeout reaches Pacific by **two simultaneous paths**:
 
@@ -598,7 +595,7 @@ The NSM AXI timeout reaches Pacific by **two simultaneous paths**:
   `pcie_se{0,1}_b_combined_nmi`(idx5/6) apex summary. The isolation SM has **no
   dedicated apex bit** of its own. `[HIGH · OBSERVED; fan-in MED · INFERRED]`
 * **(b) DIRECT**: NSM violation → `intr_peb_nsm_axi_timeout`, the DIRECT critical:1
-  LEVEL apex bit (idx111). This is the security fast-path. `[HIGH · OBSERVED]`
+  LEVEL apex bit (idx111). This is the security fast-path.
 
 The other isolation-SM sources (`reset_handshake_intr[8..15]`) live one level
 *down* in `pcie_triggers.yaml`, **not** in the apex — they summarize via the PCIe
@@ -682,7 +679,7 @@ register schemas. The multi-gen enum binding is stable (Sunda NSM=96 due to its
 
 ---
 
-## 7. The fis_sprot vector — the access-control IRQ tie `[HIGH · OBSERVED]`
+## 7. The fis_sprot vector — the access-control IRQ tie
 
 The remapper deny, delta-monitor underflows, and TMU/qos events surface as the
 6-entry `fis_sprot_intr` vector, present in every leaf (verbatim, idx118 = "amzn
@@ -710,7 +707,7 @@ per leaf in the io-fabric map; [`./io-fabric-triggers.md`](./io-fabric-triggers.
 > holds only the trigger *arming* controls (`trigger_on_{bresp,rresp}`,
 > `nts_isolation.{rd,wr}_timeout_en`) and the LFSR shaper. Both files are in the
 > sprot chain, so the routing is correct, but the **register-family attribution**
-> is the remapper. `[HIGH · OBSERVED]`
+> is the remapper.
 
 > **NOTE — there is no separate `user_remapper` deny IRQ.** A guest-CAM deny
 > surfaces through the **same** `amzn_remapper`-named `fis_sprot_intr[0]` line, so
@@ -727,8 +724,8 @@ byte-structurally identical across Sunda/Cayman/Mariana/Maverick; the 9 NSM caus
 the 8× deadbeef, `axi_bresp/rresp=0x2`, the 6 isolation enables, and the remapper
 fail-closed/open + `AxPROT 0x2` are all frozen.
 
-> **NOTE — Maverick (v5) NSM is OBSERVED on disk, not header-only.** Confirmed this
-> session: the Maverick `nsm.json` itself ships
+> **NOTE — Maverick (v5) NSM is OBSERVED on disk, not header-only.** The Maverick
+> `nsm.json` itself ships
 > (`…/arch-headers/maverick/vpc-mirror/arch-regs/src/csrs/sprot/nsm.json`) and is
 > byte-identical to Cayman. So the **NSM register map specifically** is
 > `[HIGH · OBSERVED]` on v5 — but the v5-**interior** behaviour (the AXI dataflow,
@@ -771,7 +768,7 @@ a per-die apex (119 entries, 79 criticals vs Cayman's 32), and FIS parity source
 
 ## 10. Confidence / provenance ledger
 
-| claim | conf · prov | grounding (re-verified this session unless CARRIED) |
+| claim | conf · prov | grounding |
 |-------|-------------|-----------------------------------------------------|
 | NSM 9 protocol-shape causes (4 wr + 5 rd) | HIGH · OBSERVED | `nsm.json wr/rd.status` |
 | `0xDEADBEEF` register census **8 / 1 / 0** (NSM / qos NTS / remapper) | HIGH · OBSERVED | NSM 8× `error_data_*` regs; qos_prot 1 `read_data` reg (the `rg -ci deadbeef`=2 second hit is the Description text, not a 2nd reg); remapper delegates |

@@ -37,7 +37,7 @@ v5-interior claim is flagged **INFERRED · CARRIED**.
 
 ---
 
-## 0. The three observability stacks + the gating verdict `[HIGH]`
+## 0. The three observability stacks + the gating verdict
 
 GPSIMD's debug/profiling surface is **three physically-distinct stacks**, each
 with its own substrate, its own consumer, and — the part that matters for
@@ -81,11 +81,11 @@ to the host; the host `nrt_profile_*` surface drains it and reformats it into th
 
 ---
 
-## 1. Stack 1 — the Xtensa silicon debug module (OCD / TRAX / PMU) `[HIGH/OBSERVED]`
+## 1. Stack 1 — the Xtensa silicon debug module (OCD / TRAX / PMU)
 
 The Cadence debug module is **present and fully featured** in `ncore2gp`, but it
 is a **JTAG/external-probe** facility: **no `libnrt` symbol or string references
-`trax`/`ocd`/`jtag`** (grep-negative, this session). It is the silicon's own
+`trax`/`ocd`/`jtag`** (grep-negative). It is the silicon's own
 debugger, never reachable from the production host runtime.
 
 This page does **not** reproduce the register map — the byte-exact `xtensa_q7`
@@ -122,7 +122,6 @@ INT 34  PROFILING     (XCHAL_PROFILING_INTERRUPT)      perf-counter overflow
 > APB slave port**. These are **different buses**. The debug module is reachable
 > over `{ERI, debug-APB, JTAG}`; the core itself has no system-APB. Conflating the
 > two mis-reads the device as having a system-APB it does not have.
-> `[HIGH/OBSERVED]`
 
 > **XEA3 NOTE — no XEA2 debug specregs.** `specreg.h` has `IBREAKA/IBREAKC ×2`,
 > `DBREAKA/DBREAKC ×2`, `DDR=104`, `ERACCESS=95`, but **no `DEBUGCAUSE`, no
@@ -132,7 +131,6 @@ INT 34  PROFILING     (XCHAL_PROFILING_INTERRUPT)      perf-counter overflow
 > by the device emitting `RER`/`WER` in the DEBUG-image disasm. The core is proven
 > XEA3-single-dispatch (not XEA2-leveled) by the register file in
 > [xea3-interrupt-architecture.md](../interrupt/xea3-interrupt-architecture.md).
-> `[HIGH/OBSERVED]`
 
 The HAL ships **software-breakpoint helpers** in `libhal.a debug.o`
 (`Xthal_debug_configured=1`, `num_ibreak=2`, `num_dbreak=2`):
@@ -150,11 +148,10 @@ in the IRAM disasm. So a **software** breakpoint = patch a `BREAK` into IRAM; a
 > dispatch (one `waiti` idle loop only). The firmware's debug response is the
 > **polled surprises path** (§4), not an INT-34 ISR. So the silicon debug module
 > can *raise* INT 31–34, but those wires terminate at a core that polls.
-> `[HIGH/OBSERVED]`
 
 ---
 
-## 2. Stack 2 — the on-core KDB decode-profiler + breakpoint machine `[HIGH]`
+## 2. Stack 2 — the on-core KDB decode-profiler + breakpoint machine
 
 This is the **firmware-visible** debug/profile unit: the `hw_decode` register
 bundle of `tpb_xt_local_reg`, **base `0x4000`**. It is a **custom hardware block**
@@ -176,9 +173,8 @@ that watches the *micro-op / ucode PC* the SEQ executes (not the Xtensa PC) — 
 > is a *bundle base*. The firmware-built absolute `0x04004000` seen in the SEQ
 > image is `hw_decode.base(0x4000) + breakpoint_ctrl(0x4004)`-class arithmetic on
 > bundle #2 — see [uarch-debugger.md §5](../../firmware/seq/uarch-debugger.md#5-reconciling-the-firmware-built-0x04004000-against-the-shipped-map).
-> `[HIGH/OBSERVED]`
 
-### 2a. The `hw_decode` CSR bundle (base `0x4000`) `[HIGH/OBSERVED]`
+### 2a. The `hw_decode` CSR bundle (base `0x4000`)
 
 Key registers (full per-field map in
 [tpb-xt-local-reg.md](../csr/tpb-xt-local-reg.md); reset values shown):
@@ -196,7 +192,7 @@ Key registers (full per-field map in
 
 The DEBUG POOL IRAM contains 6× `const16 0x4000` (loading this bundle base for
 the RMW accesses), and the EXT_BREAK path reads+clears `nx.instr_halt_ctrl(0x14)`
-before Setup-Halt (§4). `[HIGH/OBSERVED]`
+before Setup-Halt (§4).
 
 ### 2b. The profiler event model — `PROF_CAM` match → `PROF_TABLE` record → IC count
 
@@ -265,7 +261,7 @@ So the profiler is **both** a per-opcode event **counter** (IC0/IC1) **and** a
 per-opcode conditional **breakpoint** source. `[HIGH CSR+blob / MED exact
 count-vs-snapshot timing · OBSERVED]`
 
-### 2c. Per-engine / per-gen arming — the profiler's reach `[HIGH/OBSERVED]`
+### 2c. Per-engine / per-gen arming — the profiler's reach
 
 | Engine | Arming (Mariana v4) | Role |
 |---|---|---|
@@ -294,7 +290,7 @@ count-vs-snapshot timing · OBSERVED]`
 
 ---
 
-## 3. Stack 3 + the THREE "perf counter" substrates — disambiguated `[HIGH/OBSERVED]`
+## 3. Stack 3 + the THREE "perf counter" substrates — disambiguated
 
 "Performance counter" is **overloaded** on GPSIMD. There are **three** distinct
 things; conflating them is a category error:
@@ -325,15 +321,14 @@ things; conflating them is a category error:
 > different hardware: the 8 Xtensa counters are inside the *silicon debug module*
 > and count micro-events; IC0/IC1 are **2** counters inside the *`hw_decode` KDB
 > bundle* and count **opcode matches**. Only IC0/IC1 are host-reachable.
-> `[HIGH/OBSERVED]`
 
 ---
 
-## 4. The breakpoint / single-step path from the polled surprises handler `[HIGH/OBSERVED]`
+## 4. The breakpoint / single-step path from the polled surprises handler
 
 The §2 KDB hardware's **firmware consumer** is the **polled** surprises handler —
 **not** a vectored ISR. This is the determination of
-[q7-surprises-binding.md §1](../interrupt/q7-surprises-binding.md#1-the-determination--polled-not-interrupt-driven-high--observed)
+[q7-surprises-binding.md §1](../interrupt/q7-surprises-binding.md#1-the-determination--polled-not-interrupt-driven)
 ("POLLED, not interrupt-DRIVEN"); the per-instruction FSM bodies are in
 [surprises-irq.md](../../firmware/seq/surprises-irq.md). The
 **security-relevant taxonomy** (read verbatim from the Cayman DEBUG POOL image):
@@ -371,7 +366,7 @@ taxonomy at a different halt aperture (`0x00100808` vs `0x04000014`).
 > **NOTE — the "debug exception" on a SEQ is not an Xtensa DEBUG-level
 > exception.** It is a *polled software break* routed through the run-state FSM's
 > Setup-Halt. The only true Xtensa exception in this loop is the fatal path
-> (illegal op / OOB / div0), a different surface entirely. `[HIGH/OBSERVED]`
+> (illegal op / OOB / div0), a different surface entirely.
 
 > **GOTCHA — the HW-IBREAK → `INS_BREAK` wiring is INFERRED.** The surprise *bits*
 > are OBSERVED; that an HW `IBREAKA` address-match funnels into the **same**
@@ -380,14 +375,14 @@ taxonomy at a different halt aperture (`0x00100808` vs `0x04000014`).
 
 ---
 
-## 5. The trace egress — device notification ring → `ntff::` file `[HIGH/OBSERVED]`
+## 5. The trace egress — device notification ring → `ntff::` file
 
 Both faults and profiling/trace events leave the device as the **same 16-byte
 `NEURON_ISA` notification record**. The **wire format** of that record
 (`NEURON_ISA_NOTIFICATION_NBYTES = 0x10`; byte `+0x03` = `header
 {notific_type:5, sw_ovf:1, hw_ovf:1, phase:1}`; `+0x08` = 64-bit 1-ps timestamp)
 and the **full `notific_type` enum** (POOL = `0x0c..0x0f`) are documented in
-[device-host-notification.md §3](../interrupt/device-host-notification.md#3-the-16-byte-neuron_isa-notification-record-high--observed)
+[device-host-notification.md §3](../interrupt/device-host-notification.md#3-the-16-byte-neuron_isa-notification-record)
 — this page does **not** restate them. What matters for the observability spine:
 
 * the GPSIMD/POOL engine's records are device ISA `notific_type` **12–15**
@@ -401,7 +396,7 @@ and the **full `notific_type` enum** (POOL = `0x0c..0x0f`) are documented in
 * both faults and trace use the **one ring** — `tpb_notific sw_queue_num3
   errors_NT` — and **one MSI-X**.
 
-### 5a. The host drain → reformat → serialize (libnrt) `[HIGH/OBSERVED]`
+### 5a. The host drain → reformat → serialize (libnrt)
 
 The host end is the `nrt_profile_*` device-NQ trace family (one of four
 disambiguated observability families in `libnrt` — see §6 and
@@ -504,7 +499,7 @@ numbers live in
 > `EXPLICIT(3)` is reachable only from the lower-level device instruction type and
 > is **never** produced by this host normalizer. The `block_type` is what
 > separates a NeuronCore-engine record (`NC` — including the **GPSIMD/POOL** engine)
-> from a DMA record and a Top-SP record. `[HIGH/OBSERVED — jump table read byte-exact]`
+> from a DMA record and a Top-SP record.
 
 > **NOTE — the GPSIMD identity is carried by `block`+engine, not by `trace_type`.**
 > A POOL instruction record (device ISA `0x0c..0x0f`) normalizes to host
@@ -514,17 +509,17 @@ numbers live in
 > [ntff-trace-parse-state.md §2](../../neff/ntff-trace-parse-state.md#2-ntff-trace-file-format--message-schema-highobs).
 > `[HIGH/OBSERVED tie]`
 
-### 5b. The Q7 stdout is a separate path — `sys_trace`, not `ntff` `[HIGH/OBSERVED]`
+### 5b. The Q7 stdout is a separate path — `sys_trace`, not `ntff`
 
 The Q7 `printf`/stdout the host drains (`exec_consume_gpsimd_stdio` /
 `exec_consume_pool_stdio`) is **NOT** a `NEURON_ISA` record — it is the
 `pool_stdio` ring, and it enters the **host CPU timeline** via the **separate**
 `nrt_sys_trace_*` subsystem (Rust, `neuron_rustime::sys_trace`, 46 event types),
-**not** the `ntff` notification path. Do not conflate the two. `[HIGH/OBSERVED]`
+**not** the `ntff` notification path. Do not conflate the two.
 
 ---
 
-## 6. The four host observability families — disambiguated `[HIGH/OBSERVED]`
+## 6. The four host observability families — disambiguated
 
 `libnrt` exposes **four overlapping** host-facing families. They are **not one
 path**:
@@ -542,7 +537,7 @@ and [libnrt-surface.md §5](../../runtime/libnrt-surface.md#5--the-gpsimd-custom
 
 ---
 
-## 7. The gating — "is debug/profiling LOCKED in production?" `[HIGH/OBSERVED]`
+## 7. The gating — "is debug/profiling LOCKED in production?"
 
 There is **no silicon OCD-lock fuse** (`XCHAL_HAVE_SECURE=0`, no FlexLock, no
 `PSO_CDM`, `MPU_LOCK=0`). "Locked in production" = **three soft, independent gates
@@ -550,7 +545,7 @@ There is **no silicon OCD-lock fuse** (`XCHAL_HAVE_SECURE=0`, no FlexLock, no
 **integrity-rooted, armed-not-default-secure** posture of the firmware trust chain
 (see [trust-chain-threat-model.md](trust-chain-threat-model.md)).
 
-### G1 — firmware FLAVOR (the decisive production gate) `[HIGH/OBSERVED]`
+### G1 — firmware FLAVOR (the decisive production gate)
 
 The device firmware ships per `(arch, engine)` in flavors
 (`nrtucode_flavors_t {DEFAULT=0, RELEASE=1, DEBUG=2, TEST=3, CHICKEN=8,
@@ -596,8 +591,8 @@ THREE-FLAVOR SEMANTICS (what ships):
 > exists on the **v3/v4 HW-decode front-end**. Sunda's SW-fetch FSM never had it.
 > So on Sunda, "production" (RELEASE) differs from DEBUG only in **func-name/assert
 > presence** (DEBUG keeps build-path function-name strings), **not** in a
-> verbose-trace layer that was never there. DX-SEC-04's "187 `'S:'` → 0" is a
-> **v3/v4 story**; do not project it onto Sunda. `[HIGH/OBSERVED]`
+> verbose-trace layer that was never there. The G1 "187 `'S:'` → 0" delta above is a
+> **v3/v4 story**; do not project it onto Sunda.
 
 The host selects the flavor: `nrtucode_get_memory_image` calls
 `getenv("NEURON_UCODE_FLAVOR")` and `strcmp`s vs `"debug"`/`"DEBUG"`/`"test"`/
@@ -605,9 +600,9 @@ The host selects the flavor: `nrtucode_get_memory_image` calls
 PERF/RELEASE (production) one. A field device with **no env override loads the
 stripped production image**; an operator must explicitly set
 `NEURON_UCODE_FLAVOR=debug` to get the verbose firmware. **This is gate G1, located
-host-side.** `[HIGH/OBSERVED]`
+host-side.**
 
-### G2 — fabric region enable `[HIGH/OBSERVED]`
+### G2 — fabric region enable
 
 The privileged `fis_control.apb_user_decode` word carries two independent region
 enables: `user_fis_en[16]` (rst 1) gates the USER FIS region (the always-on
@@ -618,9 +613,8 @@ without touching the always-on monitor or the compute path. And `qos_pmu` itself
 **boots disabled** (all-0 reset; SW must arm `event_select` + matchers +
 thresholds). So the fabric PMU is **OFF until explicitly armed AND its region is
 enabled** — see [qos-pmu-hostvisible.md §8](../csr/qos-pmu-hostvisible.md#8-interrupt-wiring--how-qos_pmu-reaches-the-intc-high--observed).
-`[HIGH/OBSERVED]`
 
-### G3 — host runtime policy `[HIGH/OBSERVED]`
+### G3 — host runtime policy
 
 There are **two independent host "arms"**, both gated by host policy:
 
@@ -637,7 +631,7 @@ if device-profile is on (`"Please disable inspect device profiling to use
 continuous profiling. Unset NEURON_RT_INSPECT_DEVICE_PROFILE or set to 0."`) — the
 two are **mutually exclusive**. With profiling disabled, `hw_decode_table_init`
 still stages the CAM/TABLE on v3/v4 as part of bring-up, but **the trace ring is
-not subscribed, so no trace egresses**. `[HIGH/OBSERVED]`
+not subscribed, so no trace egresses**.
 
 ### The HARD perimeter (one level out) `[CARRIED HIGH]`
 
@@ -823,7 +817,7 @@ scope).
 * [The `nrt` Host API Surface Reference](../../runtime/public-api-table.md) /
   [The libnrt Surface Map](../../runtime/libnrt-surface.md) — the host export
   catalog.
-* Security siblings (pending authoring):
+* Security siblings:
   [The SoC-Fabric Perimeter](soc-fabric-perimeter.md),
   [Firmware Trust Chain + Threat Model](trust-chain-threat-model.md),
   [Custom-Op Reachability / Isolation Model](reachability-isolation.md),

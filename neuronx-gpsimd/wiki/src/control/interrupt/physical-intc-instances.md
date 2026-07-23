@@ -33,7 +33,7 @@ quirk are the two facts a reimplementer must internalize.
 
 ---
 
-## 0. The census at a glance `[HIGH · OBSERVED]`
+## 0. The census at a glance
 
 The flat map contains **exactly 1,932** physical INTC instances — every node whose `json:` binds
 to an `intc` schema (`rg -c 'json: csrs/intc/' address_map_flat.yaml` = 1932). They resolve to
@@ -67,7 +67,7 @@ Cayman flat map** (`rg -c 'intc_1grp_no_msix' = 0`, `rg -c 'ap_intc.*unit.json' 
 
 ---
 
-## 1. The instance table — instance · base · size · schema · domain · msix? `[HIGH · OBSERVED]`
+## 1. The instance table — instance · base · size · schema · domain · msix?
 
 The structural anchors below are read verbatim from `address_map_flat.yaml`. Bases are the file's
 own hex strings. *(`\|` escapes a literal pipe inside a cell.)*
@@ -97,17 +97,16 @@ own hex strings. *(`\|` escapes a literal pipe inside a cell.)*
 > (both `intc_4grp`, the latch pair) + `NOTIFIC @+0x2000` (`notific_1_queue`, the doorbell/drop
 > path). The container, `TRIG_0/1`, and `NOTIFIC` offsets are byte-verbatim from SDMA_0 and are
 > the layout behind the errtrig generator of [`errtrig-fis-routing.md`](errtrig-fis-routing.md).
-> `[HIGH · OBSERVED]`
 
 > **NOTE — apex doorbell mailboxes.** Distinct from the per-errtrig `NOTIFIC` queue, the apex
 > carries its own notification surface: `PEB_INTC_{0,1}_NOTIFIC_MB_0..7` (8 mailbox regions of
 > `0x200` each per PEB, base band `0x…8580000400`) plus `PEB_INTC_{0,1}_MSIX_MB` (`0x200`
 > @ `0x…8580000200`). These are mailbox MEM regions, **not** `intc`-schema nodes, and are not
-> part of the 1,932. `[HIGH · OBSERVED]`
+> part of the 1,932.
 
 ---
 
-## 2. The `msix` / `no_msix` instance split `[HIGH · OBSERVED]`
+## 2. The `msix` / `no_msix` instance split
 
 The flavor partition is the host-path / on-die-path axis. Cross-tabbed by side and structural role
 (all counts from `rg` over `address_map_flat.yaml`):
@@ -137,16 +136,16 @@ on-die-privileged), **not** by the trigger domain — every domain appears in *b
 > are 856 USER errtrig leaves + **exactly 2** AMZN `PEB_INTC_MSIX`. The apex is
 > privileged-but-host-delivered: it rolls the on-die summary tree up and emits an MSI-X to the
 > management core. `rg 'intc_4grp_msix_unit' | rg -c 'PEB_INTC_MSIX'` = **2**, the only
-> non-USER msix. `[HIGH · OBSERVED]`
+> non-USER msix.
 
 > **NOTE — MSI-X is never broadcast.** All 640 BCAST aliases are `no_msix`
 > (`rg 'BCAST' | rg -c 'intc_4grp_msix_unit'` = **0**). Broadcast is an on-die aggregation
 > concern (one privileged-APB CSR write fans to many FIS instances); MSI-X targets a specific
-> host vector and is never fanned out. `[HIGH · OBSERVED]`
+> host vector and is never fanned out.
 
 ---
 
-## 3. The per-domain instance table (errtrig pairs, by domain) `[HIGH · OBSERVED]`
+## 3. The per-domain instance table (errtrig pairs, by domain)
 
 Direct errtrig `TRIG` instances (BCAST excluded), tabulated by the DOMAIN token in the name
 (`rg -c "_<DOMAIN>_"` over the USER-msix and AMZN-no_msix errtrig sets). The DOMAIN token sits
@@ -181,9 +180,9 @@ count of the matching `*_triggers.yaml`.
 > because the errtrig generator always emits **two** `intc_4grp` units regardless of how many
 > trigger bits the domain actually fills. The only single-`4grp` instances in the whole map are
 > the PEB apex `TRIG_0` (§4) and the `1grp_msix` RDM root. Verified: both `TRIG_0` *and* `TRIG_1`
-> are present for all 11 domains. `[HIGH · OBSERVED]`
+> are present for all 11 domains.
 
-### 3a. SDMA — the 4-SEngine / 2-PEB asymmetry `[HIGH · OBSERVED]`
+### 3a. SDMA — the 4-SEngine / 2-PEB asymmetry
 
 SDMA is the largest domain: 528 USER-msix TRIG (= 264 generators), split by region:
 
@@ -208,7 +207,7 @@ bits = **2 SEngines**. Plus 8 `SDMA_D2H`/`SDMA_H2D` host-path TRIG (= 2 PEB × 2
 > PEB-omitted) is **not register-encoded** — the SE_0/SE_1-only PEB coverage is the only
 > observable. `[count HIGH · mechanism MED · INFERRED]`
 
-### 3b. PCIe — four sub-domains, two carry the apex source path `[HIGH · OBSERVED]`
+### 3b. PCIe — four sub-domains, two carry the apex source path
 
 `PCIE_S0..S4` (5 per-SEngine slices, 16 TRIG each = 40 generators) are the bulk; `PCIE_A`
 (admin, IO), `PCIE_U` (user, IO), `PCIE_M` (master, PEB) are 4 generators each. Only `PCIE_A0`
@@ -221,9 +220,9 @@ pcie_a0_nmi  ←  pcie_nmi_out
 ```
 
 The `pcie_m0` path names the **AMZN (no_msix) errtrig's `nmi_out` wire** feeding the apex — the
-physical AMZN `PCIE_M` generator *is* that `u_amzn_errtrig`. `[HIGH · OBSERVED]`
+physical AMZN `PCIE_M` generator *is* that `u_amzn_errtrig`.
 
-### 3c. The compute/memory leaves `[HIGH · OBSERVED]`
+### 3c. The compute/memory leaves
 
 HBM / TPB / D2D / PREPROC(CC) / TOP_SP each get their USER+AMZN pair set (§3 table). The AMZN
 `no_msix` `nmi_out` feeds the matching apex summary bit: `hbm_{0,1}_nmi`, `se{0,1}_tpb_nmi`,
@@ -239,7 +238,7 @@ HBM / TPB / D2D / PREPROC(CC) / TOP_SP each get their USER+AMZN pair set (§3 ta
 
 ---
 
-## 4. The PEB apex — the physical `peb_intc` `[HIGH · OBSERVED]`
+## 4. The PEB apex — the physical `peb_intc`
 
 The 128-input apex (the root of [`peb-cc-topsp-triggers.md`](peb-cc-topsp-triggers.md)) is **not**
 an errtrig capacity pair. It is a `no_msix + msix` **flavor pair** of one 128-input `4grp`,
@@ -260,7 +259,7 @@ the PEB-instance select (PEB_0 / PEB_1).
   of `peb_intc_triggers.yaml` (128 active `trigger:` lines). Of those 128, only **2** carry a
   `source_path` (`pcie_m0`/`pcie_a0`, §3b) and **114 of 128** carry an `nmi_mask` field — leaving
   **14** unmaskable (the `pcie_m0`/`pcie_a0` pair + the 12 `se0_sdma_nmi[0..11]` head; the
-  always-on criticals). `[HIGH · OBSERVED]`
+  always-on criticals).
 - **`PEB_INTC_MSIX` (`msix`)** @ `+0x1000` delivers the rolled-up apex interrupt to the management
   core via MSI-X — the host-delivery twin of the same 128 inputs.
 
@@ -268,9 +267,9 @@ the PEB-instance select (PEB_0 / PEB_1).
 > its twin is `PEB_INTC_MSIX`, **not** a `PEB_INTC_TRIG_1`. There is no `TRIG_1` for the apex
 > (`rg -c PEB_INTC_TRIG_1` = 0). Do not read the apex's `TRIG_0` suffix as half of a
 > `trig_0/trig_1` 256-cap pair — it is one 128-input `4grp` exposed in two flavors, replicated
-> per PEB. `[HIGH · OBSERVED]`
+> per PEB.
 
-### 4a. The `IO_INTC_RDM` root (the 4 `1grp_msix`) `[HIGH · OBSERVED]`
+### 4a. The `IO_INTC_RDM` root (the 4 `1grp_msix`)
 
 The four `intc_1grp_msix` instances are the RDM (interrupt Root-Domain) MSIX root, one per
 `APB_IO` / `PEB_APB_IO` at the verbatim `0x…6C82000` offset:
@@ -286,7 +285,7 @@ Each is a 32-input (1-group) host-facing MSIX with the **128-entry over-provisio
 (`INTC_NUM_GROUPS=1` but `NUM_OF_TRIGS=128` — verified in the schema, see
 [`intc-1group-apintc.md`](../csr/intc-1group-apintc.md) §3a). The RDM fabric master owns *both*
 a `1grp_msix` root **and** a full errtrig pair (the `INTC_RDM` domain in §3, 4 USER + 2 AMZN
-generators). `[HIGH · OBSERVED]`
+generators).
 
 ---
 
@@ -381,7 +380,7 @@ static bool apex_pending(uint64_t apex_trig0_base /* no_msix */) {
 
 ---
 
-## 6. Instance-count reconciliation — the full 1,932 audit `[HIGH · OBSERVED]`
+## 6. Instance-count reconciliation — the full 1,932 audit
 
 ```
 TOTAL intc instances (json: csrs/intc/*)            : 1,932
@@ -489,7 +488,7 @@ C_DIE/H_DIE/IO_DIE split (the multi-die package) makes the apex a per-die aggreg
 
 ---
 
-## 8. Where INTC sits behind the security remapper `[HIGH · OBSERVED]`
+## 8. Where INTC sits behind the security remapper
 
 The errtrig fabric splits along the same USER/AMZN trust boundary the `sprot` remapper enforces.
 Read byte-exact from `csrs/sprot/{amzn,user}_remapper.json`:
@@ -502,7 +501,7 @@ Read byte-exact from `csrs/sprot/{amzn,user}_remapper.json`:
 So a CAM miss on the **AMZN** (privileged, on-die-summary) perimeter denies by default
 (`pass_on_miss = 0`), while a miss on the **USER** (host-reachable) perimeter passes through
 (`pass_on_miss = 1`). The privileged summary/apex path is the hardened one; the host leaf path is
-permissive. `[HIGH · OBSERVED]` (full treatment in
+permissive. (Full treatment in
 [`../csr/remapper.md`](../csr/remapper.md) / [`../address/pkl-intc-sprot-security.md`](../address/pkl-intc-sprot-security.md).)
 
 ---

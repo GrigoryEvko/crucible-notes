@@ -43,7 +43,7 @@ text. No external source tree is referenced.
 ## 0. The four counts and the schema-variation matrix
 
 All four primary counts re-derived with `yq 'length'` against the
-`cayman-arch-regs_tgz/intc/*_triggers.yaml` files. `[HIGH/OBSERVED]`
+`cayman-arch-regs_tgz/intc/*_triggers.yaml` files.
 
 | Domain | Count | Distinct buses | Key-union size | Schema family |
 |--------|------:|---------------:|---------------:|---------------|
@@ -53,7 +53,7 @@ All four primary counts re-derived with `yq 'length'` against the
 | **D2D** | **216** | 7 | **5** | **minimal** (SDMA/IO-fabric family) |
 
 The **schema-variation matrix** — the central insight — is the per-key presence
-across the four domains. `[HIGH/OBSERVED]` (each cell `yq '[.[]|keys[]]|unique'`):
+across the four domains (each cell `yq '[.[]|keys[]]|unique'`):
 
 | key | PCIe | HBM | TPB | D2D | note |
 |-----|:----:|:---:|:---:|:---:|------|
@@ -87,7 +87,7 @@ Four key conclusions sit in that matrix:
 > **QUIRK — `msix_mask` is NOT a package-wide invariant.** The SDMA/IO-fabric and
 > HBM/PCIe enumerations report `msix_mask` as *absent*. TPB **carries it on all 131
 > of its TPB-internal sources** (value `0` throughout). Any tool that assumes
-> `msix_mask` is never present will silently mis-parse the TPB table. `[HIGH/OBSERVED]`
+> `msix_mask` is never present will silently mis-parse the TPB table.
 
 ---
 
@@ -110,7 +110,7 @@ Four key conclusions sit in that matrix:
 > on-die events (ELA, scrubber-done, HPR-done, corr/uncorr OR-pulse, FIS-control
 > pulse, xbar-error pulse) are **edge** one-shot completion/error pulses. A
 > reimplementation that hard-codes "controller interrupts are edge" (true for PCIe)
-> will mis-configure every HBM channel cause. `[HIGH/OBSERVED]`
+> will mis-configure every HBM channel cause.
 
 The `edge_triggered` bit binds **directly** to the INTC `int_posedge_grp` register
 (per-bit: `1` ⇒ posedge/edge, `0` ⇒ level) — see
@@ -129,12 +129,12 @@ firmware must program `int_posedge_grp` for each domain's bit range. `[HIGH/OBSE
 - **PCIe**: the 95 `needs_cdc==true` are *exactly* the 95 `intc_triggers_core_out`
   bus (the DWC-controller-clock sources that must cross into the INTC core clock);
   the 16 `needs_cdc`-absent entries are *exactly* the 16 `reset_handshake_intr` (the
-  isolation FSM, already in the INTC clock domain). `[HIGH/OBSERVED]`
+  isolation FSM, already in the INTC clock domain).
 - **HBM**: the 196 `needs_cdc==true` = the 192 controller + 4 ELA (DFI-clock origin);
-  the 27 `false` are the on-die aggregators (scrubber/HPR/per-ch-OR/FIS/xbar). `[HIGH/OBSERVED]`
+  the 27 `false` are the on-die aggregators (scrubber/HPR/per-ch-OR/FIS/xbar).
 - **TPB**: `source_clock` present on 126 of the 130 CDC sources; the 4 missing carry
   `tog2pul_only` instead (the PE-array FP-summary edge-detect path replaces the simple
-  CDC sampler). `[HIGH/OBSERVED]`
+  CDC sampler).
 - **D2D**: `needs_cdc` is **present on idx 0..66 only (the 67 FIS sources, all `false`)
   and absent on idx 67..215**. *No* D2D source is marked CDC-needed. The artifact's
   own verbatim NOTE comments explain why — *"although on core domain CDC happens at
@@ -142,7 +142,6 @@ firmware must program `int_posedge_grp` for each domain's bit range. `[HIGH/OBSE
   clock domain CDC happens at MPCS (rather than FIS) so no CDC needed here"*. The D2D
   blocks do their **own** clock-domain crossing internally and present pre-synchronised
   triggers, so the INTC needs no per-trigger CDC metadata (and hence no `source_clock`).
-  `[HIGH/OBSERVED]`
 
 ---
 
@@ -151,7 +150,7 @@ firmware must program `int_posedge_grp` for each domain's bit range. `[HIGH/OBSE
 `pcie_triggers.yaml` (banner `# Sunda PCIe Triggers`), 228 entries on 10 buses.
 Controller IP = `pcie5_x8_DWC_pcie_ctl` (DWC PCIe5 **x8**), PHY =
 `dwc_e32mp_phy_x4_ns` (DWC e32mp x4, ×2 → x8 lanes) — see
-[CSR §III](../csr/hbm-d2d-pcie-blocks.md). `[HIGH/OBSERVED]`
+[CSR §III](../csr/hbm-d2d-pcie-blocks.md).
 
 | bus | count | idx | function |
 |-----|------:|-----|----------|
@@ -173,17 +172,17 @@ err-messages, 3 vendor/unlock, 3 outbound err-message-sent, 4 link-mgmt/BW/EQ, 1
 completion-timeout, 3 core-RAM parity, 1 surprise-down, 3 LTSSM, 2 rate/preset, 1
 CDM-ack, 3 link up/down, 2 core-reset, 3 hot-plug, 1 AER-hdr-log, 13 `cfg_*` AER
 detail, and **4 Core-ELA GP outputs** (`core_ela_output_0..3` at idx 91..94, the
-only LEVEL core_out entries — ARM CXELA500 ELA-500 outputs). `[HIGH/OBSERVED]`
+only LEVEL core_out entries — ARM CXELA500 ELA-500 outputs).
 
 > **NOTE — no doorbells, no PTM.** `pcie_triggers.yaml` is the PCIe
 > *controller/PHY/isolation* interrupt map. DMA-completion doorbells live in
 > [`sdma_triggers.yaml`](sdma-triggers.md), not here. PTM triggers are absent
-> (`rg` → 0). State this explicitly; do not fabricate doorbell sources for PCIe. `[HIGH/OBSERVED]`
+> (`rg` → 0). State this explicitly; do not fabricate doorbell sources for PCIe.
 
 PCIe verbatim-artifact quirks: `serdes` index gaps at 2,3,23,24 (omitted, mirrored
 across the phy0/phy1 split); one **null description** at `core_out[46]` =
 `msg_unlock`; a name typo `isolatio_sm_nsm_axi_timeout_detected` (missing the final
-`n`); a section-comment typo `# All available FIS_ERRRIG triggers` (triple-R). `[HIGH/OBSERVED]`
+`n`); a section-comment typo `# All available FIS_ERRRIG triggers` (triple-R).
 
 ---
 
@@ -192,7 +191,7 @@ across the phy0/phy1 split); one **null description** at `core_out[46]` =
 `hbm_triggers.yaml` (banner `# Sunda HBM Triggers`), 223 entries on 8 buses.
 Controller = `ddr_csr_apb`, PHY = `dwc_hbmphy_top` — see
 [CSR §I](../csr/hbm-d2d-pcie-blocks.md). HBM3 is confirmed in-text (the on-die-ECC
-cause descriptions name "HBM3 on-die ECC logic"). `[HIGH/OBSERVED]`
+cause descriptions name "HBM3 on-die ECC logic").
 
 | bus | count | idx | function |
 |-----|------:|-----|----------|
@@ -208,7 +207,7 @@ cause descriptions name "HBM3 on-die ECC logic"). `[HIGH/OBSERVED]`
 The dominant bus is a **dense 16×12 matrix** (`yq` confirms exactly 12 entries per
 channel for all 16 channels). The second index `M` selects one of **12 controller
 error-types**, with descriptions identical across channels modulo the `_chN`
-substitution `[HIGH/OBSERVED]`:
+substitution:
 
 | M | cause | class |
 |--:|-------|-------|
@@ -231,12 +230,12 @@ individually wired out, with all remaining bits collapsed into the catch-all.
 **RAS coverage = 7 of the 12 causes per channel** (M=0,1 DQ-parity; M=2,3 SBE;
 M=4 DBE; M=9,10 on-die SBE/DBE), i.e. 7 × 16 = 112 RAS leaf bits, plus scrubber(3)
 + HPR(1) + per-channel-OR(16) + xbar(2) = **134 of 223 HBM triggers are
-RAS/ECC/parity/repair/scrub**. `[HIGH/OBSERVED]`
+RAS/ECC/parity/repair/scrub**.
 
 The supporting silicon-side registers are in `ddr_csr_apb`: `CFG_ECC_1BIT_INT_THRESH`
 (cited verbatim by M=3), `STAT_DFI_CATTRIP` (M=5), `STAT_DFI_TCR_TEMP` (M=6), and
 the `INIT_INTERRUPT_MASK_0`/`INIT_INTERRUPT_GEN_0`/`STAT_INTERRUPT_0` register family
-that the bus name `hbm_ctrl_interrupt_gen` mirrors. `[HIGH/OBSERVED]`
+that the bus name `hbm_ctrl_interrupt_gen` mirrors.
 
 > **CORRECTION vs the CSR sibling — DFI completion is sideband, not a PHY register.**
 > The M=7 (`dfi_training_complete`) and M=8 (`dfi_init_complete`) triggers come from
@@ -244,12 +243,12 @@ that the bus name `hbm_ctrl_interrupt_gen` mirrors. `[HIGH/OBSERVED]`
 > [CSR §I-2](../csr/hbm-d2d-pcie-blocks.md) the PHY exposes **no trigger CSR** — the
 > DFI sideband is latched in `ddr_csr_apb`'s `STAT_DFI_*` registers, which is where
 > these two triggers actually originate. The controller-vs-PHY source binding here is
-> therefore `ddr_csr_apb` (latch), not `dwc_hbmphy_top` (signal). `[HIGH/OBSERVED]`
+> therefore `ddr_csr_apb` (latch), not `dwc_hbmphy_top` (signal).
 
 HBM data-quality: all 31 non-controller entries (idx 192..222) carry **placeholder
 descriptions** (`description == name`, no prose); the `OR_pseudo_ch0_ch1_` name prefix
 is a frozen 2-pseudo-channel template artifact (the real channel is the trailing
-`_chN`); `fis_cntrl_intr_hbm_top_stg` uses bracketed `trigger` but unbracketed `name`. `[HIGH/OBSERVED]`
+`_chN`); `fis_cntrl_intr_hbm_top_stg` uses bracketed `trigger` but unbracketed `name`.
 
 ---
 
@@ -258,7 +257,7 @@ is a frozen 2-pseudo-channel template artifact (the real channel is the trailing
 `tpb_triggers.yaml` (banner `# Sunda TPB Triggers`), 216 entries on **only 4** buses.
 The defining structural difference from HBM/PCIe: the **131 TPB-internal sources are
 all carried on a single flat `errtrig_in[N]` bus** — the per-source identity lives in
-the `name` field, and the bus index `N` is the INTC trigger-bit position. `[HIGH/OBSERVED]`
+the `name` field, and the bus index `N` is the INTC trigger-bit position.
 
 | bus | count | idx | function |
 |-----|------:|-----|----------|
@@ -284,23 +283,22 @@ on the 85 FIS entries — a clean schema split at idx 130/131. **`tog2pul_only`*
 present on exactly the 4 `fp_state_*_array_summary` entries (idx 53..56), value `true`,
 and these 4 are the *only* `needs_cdc==true` entries that omit `source_clock` (the
 toggle-to-pulse edge-detect path replaces the simple CDC sampler — they are forced
-`edge` while their 16 per-engine FP-status siblings are `level`). `[HIGH/OBSERVED]`
+`edge` while their 16 per-engine FP-status siblings are `level`).
 
 The lone `clk_mem_top`/`pe_reset_extended_n` source-clock entry is `ham_intr`
 (idx 130) — every other CDC source samples into `clk_core_gated`/`core_reset_extended_n`.
-`[HIGH/OBSERVED]`
 
 > **GOTCHA — the NX-IRQ description copy-paste bug.** All 20 `dve_/act_/pool_/pe_
 > nx_interrupt_0..4` entries carry the **wrong** description text — *"SP NX Interrupt
 > 0..4"* was duplicated from the SP block without renaming. Only the 5
 > `sp_nx_interrupt_*` (idx 12..16) descriptions match their names. The `name` field is
-> authoritative; the `description` is wrong for 20 of the 25 NX-IRQ entries. `[HIGH/OBSERVED]`
+> authoritative; the `description` is wrong for 20 of the 25 NX-IRQ entries.
 
 Routing of the TPB internals binds tightly to TPB CSRs: the 9 NOTIFIC bits map 1:1
 to `notific_10_queue` bit0..8 (see [notific-queue](../csr/notific-queue.md)),
 `fake_error` (idx 0) ↔ `tpb.fake_error_ctrl/_data`, and the **256-bit
 `tpb.intc_bypass` map** (`8 × 32`, base `0xE00`) gives the firmware mask for every
-trigger and proves the 256-bit (= one errtrig pair) capacity (see [tpb CSR](../csr/tpb.md)). `[HIGH/OBSERVED]`
+trigger and proves the 256-bit (= one errtrig pair) capacity (see [tpb CSR](../csr/tpb.md)).
 
 ---
 
@@ -311,7 +309,7 @@ apart: (a) the file **leads** with the FIS shim (idx 0..66) rather than tailing 
 and (b) the 148 D2D-subsystem sources use a **structured hierarchical trigger path**
 `subsys_intr.<block>[<inst>].<domain>.<signal>` (e.g.
 `subsys_intr.ctrl[0].axi.core_rst_n_assert`) — not a flat `errtrig_in[N]` (TPB) nor
-per-block named buses (HBM). `[HIGH/OBSERVED]`
+per-block named buses (HBM).
 
 | family | count | idx | IP / source |
 |--------|------:|-----|-------------|
@@ -330,7 +328,7 @@ coding instances + 1 Marvell XSR PHY**. The controller IP is `snps_ctrl` — the
 DWC PCIe controller family as the host PCIe bridge (§2), **repurposed as the
 die-to-die link controller**; its trigger surface is therefore PCIe-controller
 link/LTSSM/RASDP/TLP/DLLP/parity signals plus Marvell SerDes PHY health signals. See
-[CSR §II](../csr/hbm-d2d-pcie-blocks.md). `[HIGH/OBSERVED]`
+[CSR §II](../csr/hbm-d2d-pcie-blocks.md).
 
 The D2D controller error/link surface (level, all CDC-absent): per-`ctrl` link-state
 (`smlh_link_up/down`, `rdlh_link_up/down`, `link_down`, `link_req_rst_assert`,
@@ -339,7 +337,7 @@ The D2D controller error/link surface (level, all CDC-absent): per-`ctrl` link-s
 PCIe-protocol set, `mstr/slv_rasdp_err_mode`), and the **8 late-tail** sources
 (`replay_timer_timeout` + `msg_send_{corr,nf,f}` per ctrl, appended at idx 208..215).
 The XSR PHY contributes eye-quality, HS-PLL-lock, port-ready, PHY-MCU-int, memory-ECC,
-and the **MCU watchdog** (`mcu_wdt`, a hung PHY MCU forcing a full PHY reset/reinit). `[HIGH/OBSERVED]`
+and the **MCU watchdog** (`mcu_wdt`, a hung PHY MCU forcing a full PHY reset/reinit).
 
 > **NOTE — the late-tail proves YAML-order == INTC-bit-order.** The file's verbatim
 > comment at the 8 late-tail sources reads *"these were added late in Cayman so adding
@@ -347,19 +345,19 @@ and the **MCU watchdog** (`mcu_wdt`, a hung PHY MCU forcing a full PHY reset/rei
 > indexes changing"*. This is the artifact author confirming that the YAML order **is**
 > the INTC bit index and that the index ordering is a stable contract — new sources are
 > appended, never inserted. The same ordering inference for the other three domains is
-> corroborated by this NOTE. `[HIGH/OBSERVED]`
+> corroborated by this NOTE.
 
 > **GOTCHA — D2D carries NO isolation-SM surface.** Unlike PCIe (§2), the D2D file
 > has **no** `reset_handshake_intr`, **no** `isolation_sm_*`, **no** `nts_iso_*_timeout`
 > (`rg "isolation"` → 0 hits). The PCIe-style isolation/quiesce state machine is a
 > host-PCIe-interface concern; the die-to-die link presents only the controller's own
 > level reset/link-fault signals (`core_rst_n_assert/deassert`, `sticky_rst_n`,
-> `link_down`, `link_req_rst_assert`). Do not expect a linkdown→isolation FSM on D2D. `[HIGH/OBSERVED]`
+> `link_down`, `link_req_rst_assert`). Do not expect a linkdown→isolation FSM on D2D.
 
 D2D verbatim typos: name-field typos mirrored on both ctrls (`core_reset_dassertion`,
 `breap_queue_error`, `surpise_down_error`, `corrected_interna_eerror`) — the `trigger`
 *path* is correctly spelled in every case, so the path is the more reliable identifier;
-plus the same `# All available FIS_ERRRIG triggers` section-comment typo seen in PCIe. `[HIGH/OBSERVED]`
+plus the same `# All available FIS_ERRRIG triggers` section-comment typo seen in PCIe.
 
 ---
 
@@ -383,7 +381,7 @@ Each domain instantiates **both** INTC flavors — `intc_4grp_msix_unit` (host-r
 MSI-X leaves) and `intc_4grp_no_msix_unit` (on-die aggregators whose severity wire-ORs
 feed **upward** into the apex). The 4-group leaves then roll up into the
 **128-entry PEB_INTC apex** (`peb_intc_triggers.yaml`), where the per-domain
-aggregation shape — re-read verbatim — is itself a per-domain signature `[HIGH/OBSERVED]`:
+aggregation shape is itself a per-domain signature:
 
 | Domain | apex entries | shape | `critical:1` fast-path? |
 |--------|------|-------|:----:|
@@ -401,7 +399,6 @@ aggregation shape — re-read verbatim — is itself a per-domain signature `[HI
 > link-down) rolls up only into the generic per-tile / combined summary, and firmware
 > must decode the leaf errtrig to find the cause. This is a real, exploitable
 > structural difference: a CATTRIP gets a hardware fast-path; a D2D link-down does not.
-> `[HIGH/OBSERVED]`
 
 Apex copies of these summaries carry `nmi_mask=0`/`nmi_msix_mask=0` (the apex-gated
 form), whereas the leaf HBM/PCIe entries carry `=1` — i.e. the mask polarity differs
@@ -411,7 +408,7 @@ between leaf and apex (HIGH that the values differ; the YAML does not define whe
 **D2D CDC routing detail.** Because the D2D blocks do their own CDC internally (§1),
 no D2D trigger declares a `source_clock` — contrast HBM (`dfi_hdr_clk_occ_out`) and
 PCIe (`intc_core_clk`), which name the INTC-side CDC destination. D2D presents
-pre-synchronised triggers. `[HIGH/OBSERVED]`
+pre-synchronised triggers.
 
 ---
 
@@ -437,7 +434,7 @@ triggers** (`xbar_intr_trig_corerr`, `xbar_intr_trig_uncerr`, `fis_intr_trig_unc
 keeps the same 131-internal core but renames `fp_state_*`→`fp_stat_*` and replaces the
 entire 85-entry FIS family with a single flat `sprot_intr[0..54]` bus (55 entries):
 216 − 85 + 55 = 186. So the TPB *compute* interrupt surface is stable; only the
-fabric-shim tail varies. `[HIGH/OBSERVED]`
+fabric-shim tail varies.
 
 > **The D2D Maverick degeneration — a completely different model.** The Maverick D2D
 > file is **not** a tail-diff; it is **7 entries** of an *abstract "D2D IP"* form that
@@ -462,18 +459,18 @@ A Vision-Q7 control plane consuming these four tables must:
 1. **Parse each domain against its own schema** — PCIe/HBM 9-key rich, TPB 9-key
    `msix_mask`+`tog2pul_only`, D2D 5-key minimal. Do not assume a shared key set;
    `msix_mask` and `tog2pul_only` exist *only* in TPB, `nmi_*` exists *only* in
-   PCIe/HBM. `[HIGH/OBSERVED]`
+   PCIe/HBM.
 2. **Program `int_posedge_grp` from `edge_triggered` per bit** — and remember the
-   **HBM inversion**: HBM's 192 controller causes are LEVEL, not edge. `[HIGH/OBSERVED]`
+   **HBM inversion**: HBM's 192 controller causes are LEVEL, not edge.
 3. **Configure CDC from `needs_cdc`/`source_clock`** — sample HBM's 196 CDC sources
    into `dfi_hdr_clk_occ_out`, PCIe's 95 into `intc_core_clk`, TPB's 126 into
    `clk_core_gated` (+ the lone `ham_intr` into `clk_mem_top`); for D2D do nothing —
-   CDC is internal to the controller/MPCS. `[HIGH/OBSERVED]`
+   CDC is internal to the controller/MPCS.
 4. **Fill the INTC errtrig pair in YAML order** (≤ 256 per pair for all four domains);
    treat the per-group cut as unknown. `[HIGH aggregate; LOW exact cut]`
 5. **Hook the HBM `critical:1` apex fast-paths** (`cattrip`/`temp_change` per stack)
    separately from the generic summaries; TPB/D2D have no such fast-path and require
-   leaf decode on any apex assertion. `[HIGH/OBSERVED]`
+   leaf decode on any apex assertion.
 
 ---
 

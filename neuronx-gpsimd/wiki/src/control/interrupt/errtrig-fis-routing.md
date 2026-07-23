@@ -11,8 +11,8 @@ All facts below are derived from static analysis of the shipped, RTL-generated
 **Cayman** arch-regs artifacts (`cayman_golden_tapeout_candidate_2`,
 `reg_map`-generated 2023): the `intc_4grp` schema JSONs, `notific_1_queue.json`,
 the `sprot`/`fis` schema JSONs, the flat address-map YAML, and the per-domain +
-apex trigger YAMLs. Confidence is tagged per claim as
-`[HIGH/MED/LOW · OBSERVED/INFERRED/CARRIED]`.
+apex trigger YAMLs. The page default is `[HIGH · OBSERVED]`; claims that depart
+from it carry an explicit `[HIGH/MED/LOW · OBSERVED/INFERRED/CARRIED]` tag.
 
 > **Scope boundary.** This page covers the *error path*: source → latch →
 > severity classify → summary → apex → IRQ. The **Abort-severity output** — the
@@ -25,7 +25,7 @@ apex trigger YAMLs. Confidence is tagged per claim as
 
 ---
 
-## 0. Executive summary — the routing in one paragraph `[HIGH · OBSERVED]`
+## 0. Executive summary — the routing in one paragraph
 
 The `errtrig` is the SoC's universal error/RAS interrupt-aggregation primitive.
 It is **not a single CSR** — it is an address-map *generator* that instantiates,
@@ -53,7 +53,7 @@ vector hop is firmware/HW-owned and **INFERRED**.
 
 ## 1. The `errtrig` block format — the per-master generator
 
-### 1.1 A generator, not an `errtrig` CSR `[HIGH · OBSERVED]`
+### 1.1 A generator, not an `errtrig` CSR
 
 `fd`/`rg` over `csrs/` for `*errtrig*` returns **zero** register-file JSONs. The
 errtrig is an address-map *generator* leaf (`apb/intc_rdm/errtrig_{user,amzn}.yaml`)
@@ -64,8 +64,7 @@ trig    count:2  ->  csrs/intc/intc_4grp_{msix|no_msix}_unit.json   (the PAIR)
 notific          ->  csrs/notific/notific_1_queue.json
 ```
 
-**SPOT — USER errtrig under an SDMA `FIS_0` (`address_map_flat.yaml`)
-`[HIGH · OBSERVED]`:**
+**SPOT — USER errtrig under an SDMA `FIS_0` (`address_map_flat.yaml`):**
 
 | sub-block | rel. offset | size | backing schema |
 | --- | --- | --- | --- |
@@ -74,7 +73,7 @@ notific          ->  csrs/notific/notific_1_queue.json
 | `..._USER_ERRTRIG_TRIG_1` | `+0x1000` | `0x1000` | `intc_4grp_msix_unit.json` |
 | `..._USER_ERRTRIG_NOTIFIC` | `+0x2000` | `0x1000` | `notific_1_queue.json` |
 
-**SPOT — AMZN errtrig under the privileged `FIS_0` `[HIGH · OBSERVED]`:**
+**SPOT — AMZN errtrig under the privileged `FIS_0`:**
 
 | sub-block | abs. `FIS_0` offset | size | backing schema |
 | --- | --- | --- | --- |
@@ -89,14 +88,13 @@ So the USER errtrig stands alone (`0x3000`), and the AMZN errtrig is the
 `+0x1000`; the absolute `FIS_0` framing (`CTL` first at `+0x0000`) makes the AMZN
 `TRIG_0` land at `+0x2000`.
 
-> **NOTE — two offset framings, reconciled `[HIGH · OBSERVED]`.** The *relative*
+> **NOTE — two offset framings, reconciled.** The *relative*
 > stride inside any `ERRTRIG` container is `+0` / `+0x1000` / `+0x2000`
 > (`TRIG_0`/`TRIG_1`/`NOTIFIC`). The *absolute* `FIS_0` offsets differ for AMZN
 > because the `0x2000`-wide `CTL` precedes the errtrig. Both framings describe the
 > same byte-exact flat map; do not read them as a contradiction.
 
-> **CORRECTION — the Cayman PAIR count is 962, not 642
-> `[HIGH · OBSERVED]`.** An earlier sibling decode (the pkl-subtree
+> **CORRECTION — the Cayman PAIR count is 962, not 642.** An earlier sibling decode (the pkl-subtree
 > cross-check, report #908) listed **"642 pairs"** for Cayman. That figure is
 > **wrong** and was corrected to **962** in the
 > [FIS-errtrig-spad CSR decode](../csr/fis-errtrig-spad.md) (report #930). The
@@ -113,7 +111,7 @@ So the USER errtrig stands alone (`0x3000`), and the AMZN errtrig is the
 > with `rg -c ERRTRIG_TRIG_0` on the very same file. Cite **962**. (The Maverick
 > `1,372` figure is a *different SoC* and is not in conflict.)
 
-### 1.2 The `intc_4grp` register set — the per-group error-trigger regfile `[HIGH · OBSERVED]`
+### 1.2 The `intc_4grp` register set — the per-group error-trigger regfile
 
 `intc_4grp_no_msix_unit.json`: `UnitName=intc_4grp_no_msix_unit`, `Type=REGFILE`,
 `AddrWidth=12` (`0x1000` window), `DataWidth=32`, `InterfaceType=APB`,
@@ -160,14 +158,14 @@ bit in the Interrupt Cause register, the specific bit is set to ensure the
 interrupt indication is not lost.
 ```
 
-> **GOTCHA — W0C, not W1C `[HIGH · OBSERVED]`.** The Annapurna `int_cause`
+> **GOTCHA — W0C, not W1C.** The Annapurna `int_cause`
 > convention is **Write-0-to-Clear**: an ISR clears a serviced bit by writing
 > **0** to it (and **1** to the bits it wants to leave alone), or relies on
 > `clear_on_read` / `auto_clear`-on-MSI-X-ack. A naive "write 1 to clear"
 > (the ARM GIC habit) does **nothing** here. The HW-set-wins conflict rule
 > guarantees no edge is lost across the read-modify-write.
 
-### 1.3 `int_control_grp` — the per-group behavior knobs `[HIGH · OBSERVED]`
+### 1.3 `int_control_grp` — the per-group behavior knobs
 
 Twelve fields, byte-read from the schema:
 
@@ -190,7 +188,7 @@ The cause bit's lifecycle (set-on-fire; clear-on-MSI-X-ack / clear-on-read /
 W0C) and the edge/level + moderation are **all per-group programmable**. This is
 the exact latch/clear policy the firmware ISR depends on.
 
-### 1.4 The `msix` vs `no_msix` flavor — delivery axis, not domain `[HIGH · OBSERVED]`
+### 1.4 The `msix` vs `no_msix` flavor — delivery axis, not domain
 
 Bundle diff (byte-read):
 
@@ -223,13 +221,13 @@ regardless of whether the source count fills 256. The only single-`4grp`
 instances are the `peb_intc` apex (one `TRIG_0`) and the `intc_1grp_msix` RDM
 root. The `+2` over the bare-PAIR multiple is the apex flavor-pair.
 
-> **QUIRK — flavor tracks privilege, not block `[HIGH · OBSERVED]`.** An SDMA, a
+> **QUIRK — flavor tracks privilege, not block.** An SDMA, a
 > PCIe master, and an HBM controller each get **both** a USER errtrig (`msix`,
 > host-visible) and an AMZN errtrig (`no_msix`, on-die summary). The split is
 > "who is allowed to see this interrupt" — the host (USER) vs the privileged Q7
 > (AMZN) — never "which IP block raised it".
 
-### 1.5 The notific source backing — `notific_1_queue` `[HIGH · OBSERVED]`
+### 1.5 The notific source backing — `notific_1_queue`
 
 `notific_1_queue.json` (`AddrWidth 12` / `0x1000` / APB / POSEDGE). Two bundles:
 `notific` (`+0x0000`, arr=1) and `notific_nq` (`+0x100`, arr=`NUM_SW_Q`); **47
@@ -266,7 +264,7 @@ sub-region (`CTL` / `ERRTRIG` / `SPROT`). On the canonical leaves they are
 `needs_cdc:false`, `edge_triggered:true` (SPOT-verified). This is the "FIS shim"
 source family found in every leaf.
 
-### 2.1 `fis_cntrl_intr[0..4]` (5) — EP posted-write SLVERR (from `FIS_0_CTL`) `[HIGH · OBSERVED]`
+### 2.1 `fis_cntrl_intr[0..4]` (5) — EP posted-write SLVERR (from `FIS_0_CTL`)
 
 SPOT (`cc_triggers.yaml` / `top_sp_triggers.yaml`, verbatim; `needs_cdc:false`,
 `edge_triggered:true` on all five):
@@ -284,15 +282,14 @@ Produced by the `FIS_0_CTL` `apb_timeout.ctrl.limit` watchdog (reset `0x2000`;
 posted APB write to a hung EP that never completes expires the watchdog →
 SLVERR → these 5 triggers.
 
-> **CORRECTION — HW-only in Cayman, registered in Mariana
-> `[HIGH · OBSERVED]`.** In Cayman these 5 exist **only as HW triggers** — there
+> **CORRECTION — HW-only in Cayman, registered in Mariana.** In Cayman these 5 exist **only as HW triggers** — there
 > is *no* cause/mask/status register backing them. Mariana promotes them into a
 > first-class `fis_cntrl_intr` register bundle (mask / clr_on_read / status /
 > `apb_blk_error_addr`). Do not look for a Cayman `fis_cntrl_intr` CSR — it does
 > not exist (`fis_control` grows from 7 bundles in Cayman to 8 in Mariana). See
 > [the cross-gen delta](../csr/fis-errtrig-spad.md).
 
-### 2.2 `fis_sprot_intr[0..5]` (6, per sprot sub-block) — firewall / isolation / security `[HIGH · OBSERVED]`
+### 2.2 `fis_sprot_intr[0..5]` (6, per sprot sub-block) — firewall / isolation / security
 
 SPOT (`top_sp_triggers.yaml`, the canonical 6-entry single-index set, verbatim;
 all `needs_cdc:false`, `edge_triggered:true`):
@@ -306,8 +303,7 @@ all `needs_cdc:false`, `edge_triggered:true`):
 | `[4]` | `qos pmu interrupt (OR of all 16 PMU counter interrrupts)` *(typo verbatim)* | QoS PMU OR |
 | `[5]` | `fis_sprot_spare_0` | spare |
 
-> **GOTCHA — the sprot vector is replicated per sprot sub-block
-> `[HIGH · OBSERVED]`.** In `cc_triggers.yaml` / `d2d_triggers.yaml` /
+> **GOTCHA — the sprot vector is replicated per sprot sub-block.** In `cc_triggers.yaml` / `d2d_triggers.yaml` /
 > `io_fabric_triggers.yaml` the vector is a **2-D** `fis_sprot_intr[0..1][0..5]`
 > (descriptions prefixed `sprot 0 …` / `sprot 1 …`) — `6 causes × 2 sprot
 > sub-blocks = 12` entries per leaf, which is why the routing leaf count is
@@ -339,7 +335,7 @@ all `needs_cdc:false`, `edge_triggered:true`):
 Verbatim from `amzn_remapper.json`: *"0 - Reads that miss in the AMZN CAM are
 marked Deny / 1 - Reads that miss in the AMZN CAM are marked Pass"*, reset `0x0`.
 
-> **QUIRK — privileged fails closed, guest fails open `[HIGH · OBSERVED]`.** The
+> **QUIRK — privileged fails closed, guest fails open.** The
 > AMZN remapper defaults to **deny-on-miss** (`pass_on_miss = 0x0`): an address
 > the privileged firmware never whitelisted is blocked. The USER remapper
 > defaults to **pass-on-miss** (`= 0x1`): the guest's address space is open
@@ -347,18 +343,18 @@ marked Deny / 1 - Reads that miss in the AMZN CAM are marked Pass"*, reset `0x0`
 > through the **same** AMZN-named `fis_sprot_intr[0]` line — the privileged ISR
 > sees both `[MED · INFERRED]`.
 
-### 2.3 The 50-cause `fis_errtrig_intr` vector (NOTIFIC mirror) `[HIGH · OBSERVED]`
+### 2.3 The 50-cause `fis_errtrig_intr` vector (NOTIFIC mirror)
 
 The `ERRTRIG` sub-region's own vector is `fis_errtrig_intr[0..49]` = **50**
 entries, split **25 USER + 25 AMZN** (the two NOTIFIC error paths mirrored). All
 `edge_triggered:true`, `needs_cdc:false`.
 
-> **GOTCHA — count hazard `[HIGH · OBSERVED]`.** A naive
+> **GOTCHA — count hazard.** A naive
 > `rg -c 'fis_errtrig_intr'` returns **100**, not 50 — each YAML entry carries
 > *both* a `trigger:` and a `name:` line. The correct count anchors on the entry
 > head: `rg -c '^- trigger: fis_errtrig_intr\['` = **50**.
 
-### 2.4 The NSM AXI-integrity source — a separate PEB leaf `[HIGH · OBSERVED]`
+### 2.4 The NSM AXI-integrity source — a separate PEB leaf
 
 `nsm.json` is an inline per-PCIe-master watchdog (schema-dir `sprot`, but a
 standalone `AMZN_PEB_NSM` leaf; bundles `control`/`wr`/`rd`/`spare`). It does
@@ -379,7 +375,7 @@ SLVERR"*) + 256-bit RDATA (**8× `0xDEADBEEF`** — byte-confirmed: `rd/error_da
 `enter_isolation_mode_on` causes). **NSM reaches the apex by a DIRECT critical
 bit (§3.3), not through a `fis_sprot_intr` line** — it is the security fast-path.
 
-### 2.5 The qos NTS no-target responder `[HIGH · OBSERVED]`
+### 2.5 The qos NTS no-target responder
 
 `qos_prot.json`: `no_target_mode` + `read_response` + `write_response` +
 `nts_isolation` present; **2× `0xDEADBEEF`** (byte-confirmed). When a target
@@ -390,7 +386,7 @@ verbatim *"10-SLVERR"*) + a `0xDEADBEEF` `read_data.val` via a
 response path (it has no own error-response field) `[MED · INFERRED]`. NTS
 timeout → `fis_sprot` pathway / isolation-SM input.
 
-> **NOTE — the NTS terminator family `[HIGH · OBSERVED]`.** Three blocks
+> **NOTE — the NTS terminator family.** Three blocks
 > terminate AXI faults with the **same signature — `SLVERR (0x2)` + `0xDEADBEEF`
 > read-data**: `qos_prot` (NTS no-target, 2× deadbeef), `amzn_remapper` /
 > `user_remapper` (deny, reusing the NTS path), and `nsm` (8× deadbeef). When
@@ -413,7 +409,7 @@ components, MED aggregate.)*
 
 The error path is the L0→L3 cascade, made concrete here for **error** sources.
 
-### 3.1 L0 source → L1 errtrig latch (per-master) `[HIGH · OBSERVED]`
+### 3.1 L0 source → L1 errtrig latch (per-master)
 
 A hardware error (FIS deny / NTS / delta-mon / tmu / qos-PMU / EP-posted-wr /
 notific buffer-full/AXI / RAS/ECC) sets a bit in the master's errtrig
@@ -451,7 +447,7 @@ static inline void errtrig_clear(ErrtrigUnit *u, unsigned g, uint32_t serviced) 
 }
 ```
 
-### 3.2 L1 errtrig → severity classify → `nmi_out` (no_msix) OR MSI-X (msix) `[HIGH · OBSERVED]`
+### 3.2 L1 errtrig → severity classify → `nmi_out` (no_msix) OR MSI-X (msix)
 
 The `no_msix` errtrig produces **four independent classified summary lines**,
 each a wire-OR of `(Cause & !per-severity-Mask)`: `Error` (`int_error_msk`),
@@ -499,7 +495,7 @@ bool errtrig_nmi_out(const ErrtrigUnit *pair, int n_units) {
 > reading. The cause/severity-mask polarity is not stated in-schema; this reading
 > is well-corroborated but flagged.
 
-### 3.3 L2 apex (`peb_intc`) — 96 summaries + 32 criticals fill 128 inputs `[HIGH · OBSERVED]`
+### 3.3 L2 apex (`peb_intc`) — 96 summaries + 32 criticals fill 128 inputs
 
 The `peb_intc` apex is itself an `intc_4grp` flavor-pair —
 `{PEB_INTC_TRIG_0 (no_msix, the 128-input summary apex) + PEB_INTC_MSIX (the
@@ -530,8 +526,7 @@ uncerr (uncorrectable RAS) are the error-path criticals. **All other errors
 (including uncorrectable leaf RAS in TPB/CC/d2d/TOP_SP) ride the generic `*_nmi`
 summary** — only SoC-survival errors earn a direct critical bit.
 
-> **GOTCHA — the apex NSM index matches the firmware cause enum
-> `[HIGH · OBSERVED]`.** `intr_peb_nsm_axi_timeout` sits at apex idx **111**,
+> **GOTCHA — the apex NSM index matches the firmware cause enum.** `intr_peb_nsm_axi_timeout` sits at apex idx **111**,
 > which is exactly the firmware NSM critical cause id (`intc_peb_intc_enums.h`
 > NSM = 111, `.critical=true`). It is `edge_triggered:false` (**LEVEL**) and
 > `nmi_mask:0` — a sticky, always-armed security input. (On the narrower Sunda
@@ -539,7 +534,7 @@ summary** — only SoC-survival errors earn a direct critical bit.
 > conflict.) At the apex only the **5** single-index `fis_sprot_intr[0..4]`
 > entries appear (118–122); the 6th, `fis_sprot_spare_0`, is a leaf-only entry.
 
-### 3.4 The Abort-severity output → scan-dump (the boundary) `[HIGH · OBSERVED]`
+### 3.4 The Abort-severity output → scan-dump (the boundary)
 
 The `no_msix` errtrig's **`Sunda` bundle @`0x0300`** carries the abort-freeze
 controls the `Abort` wire-OR drives (byte-exact fields):
@@ -590,7 +585,7 @@ apex MSI-X raises
 > cause/info dispatch *tables* ship. Everything down to the apex MSI-X is
 > OBSERVED; the vector hop and the ISR bodies are inferred.
 
-### 3.6 The error-trigger routing diagram `[HIGH · OBSERVED]`
+### 3.6 The error-trigger routing diagram
 
 ```text
  [FIS deny/NTS/delta/tmu]  [nsm AXI integrity]  [notific buf/AXI]  [per-blk RAS/ECC]
@@ -670,7 +665,7 @@ siblings; HIGH for the named components.)*
 
 ## 5. Per-generation deltas (Cayman authoritative)
 
-### 5.1 The frozen primitive `[HIGH · OBSERVED]`
+### 5.1 The frozen primitive
 
 The `intc_4grp` errtrig (`TRIG_0`+`TRIG_1`, the 12-register per-group set, the 4
 severity wire-ORs, W0C/W1S) is **byte-structurally identical** across

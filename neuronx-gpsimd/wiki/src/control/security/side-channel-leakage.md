@@ -71,7 +71,7 @@ it is:
 > `XCHAL_HAVE_IDENTITY_MAP = 1` / `XCHAL_HAVE_PTP_MMU = 0`
 > (`ncore2gp/.../config/core-isa.h`). One ring, identity-mapped, no page-table MMU.
 > An op's code and the on-core runtime share the *same* privilege level. This is
-> the root cause of §4. `[HIGH·OBSERVED]`
+> the root cause of §4.
 
 ---
 
@@ -101,20 +101,20 @@ Everything else on the destroy path is **`free()` with no preceding memset**:
 `nrtucode_context_destroy` (`free` @`0x150`, `@0x158`), `nrtucode_core_destroy`
 (`free` @`0x1a7`), `nrtucode_ll_destroy` (`free` @`0x541`). The unload-sequence
 generator `nrtucode_loadable_library.c.o` references **no** memset/bzero at all
-(only `memcpy`). `[HIGH·OBSERVED]`
+(only `memcpy`).
 
 The PI-scratch loader is the same: `xtlib_load_pi_scratch`
 (`libnrtucode_internal.so` @`0x9b7830`; `xtlib_pi_scratch_size` @`0x9b75a0`; same
 code in `pi_library_load.c.o` @`0x9f0`) only verifies the magic, parses header
 words via `xtlib_host_word`/`xtlib_host_half`, and records the scratch placement.
 It issues **no** memset/memcpy/bzero — `nm` shows the object has **no** undefined
-`memset`/`bzero`/`calloc`. The op runs against **residual scratch**. `[HIGH·OBSERVED]`
+`memset`/`bzero`/`calloc`. The op runs against **residual scratch**.
 
 > **GOTCHA — the only "zeroing" in the loader is BSS, and it is scoped to
 > `memsz − filesz`.** That is the classic crt-style zero-fill of an ELF segment's
 > uninitialized tail for *the image being loaded* — it does not touch the shared
 > SBUF data plane, the HBM scratch heap, or a previous op's leftover bytes. Do not
-> mistake `prelink_load_lib`'s `memset` for a tenant scrub. `[HIGH·OBSERVED]`
+> mistake `prelink_load_lib`'s `memset` for a tenant scrub.
 
 ### 1.2 Cross-model teardown is a *destroy*, not an in-place scrub
 
@@ -137,7 +137,7 @@ makes prior writes globally visible; it clears nothing. `[HIGH·OBSERVED·CARRIE
 > **CORRECTION — `memw` is not a sanitization step.** A reader skimming the
 > teardown could mistake the closing `memw` for "the op cleans up." It is purely a
 > memory-ordering fence so the host's post-`DRAIN` reads see the op's writes. No
-> register file, `.bss`, heap, TLS, or SBUF byte is zeroed by it. `[HIGH·OBSERVED]`
+> register file, `.bss`, heap, TLS, or SBUF byte is zeroed by it.
 
 ### 1.3 Residual-data exposure assessment
 
@@ -185,21 +185,20 @@ free-running cycle counter read with `RSR.CCOUNT`. Because the core has
 **one ring** (§0 NOTE: `XCHAL_MMU_RINGS = 1`), there is **no privilege level at
 which an op runs that could be denied the `RSR.CCOUNT` read** — op code and runtime
 share the same ring. A custom op therefore has a high-resolution, monotonically
-increasing on-core timestamp available to it. `[HIGH·OBSERVED]`
+increasing on-core timestamp available to it.
 
 > **NOTE — the shipped custom-op wrapper does not itself read CCOUNT.** A sweep of
 > `libneuroncustomop.a` (10 members) finds **no** `rsr.ccount` / `rsr a,234` and no
 > perf-SR read; the SR usage is limited to context-save SRs and the two
 > `rsr.prid`. So the platform neither uses the cycle counter for timing nor fences
 > it away from op code — its availability is a *consequence of the single-ring ISA
-> config*, not of any runtime policy. `[HIGH·OBSERVED]`
+> config*, not of any runtime policy.
 
 > **GOTCHA — a defender cannot revoke CCOUNT without an ISA reconfig.** Unlike a
 > ring-3 OS where `RDTSC` can be trapped via `CR4.TSD`, the one-ring Q7 has no
 > "disable cycle counter in user mode" knob. CCOUNT-based timing is a structural
 > property of this core. Mitigation must be at the *scheduling* layer (do not
 > co-schedule mutually distrustful ops on the same core), not at the read site.
-> `[HIGH·OBSERVED]`
 
 ### 2.2 The SBUF 2-stage arbiter — on-chip bandwidth contention
 
@@ -246,7 +245,7 @@ USER side**: DWRR per-queue `deficit_cnt[23:0]` via `sel_dwrr_status @0x244`
 `sel_rate_limit_status @0x240`. These expose the scheduler's view of *recent
 traffic*, which is a function of all tenants sharing that engine. Combined with
 `qos_host_visible`'s per-channel backpressure counters (§3), a USER observer can
-infer a co-tenant's DMA intensity without reading its data. `[HIGH·OBSERVED]`
+infer a co-tenant's DMA intensity without reading its data.
 
 ---
 
@@ -271,7 +270,7 @@ double-buffered 48-bit snapshots `snap0_lo/hi @+0x10/0x14`, `snap1_lo/hi
 transaction matchers (`axi_txn_matcherM_reg0..19`, base `0x200 + M·0x50`) feed the
 counters. All fields reset 0 (counters boot disabled; SW must arm). I verified the
 count directly: `jq` over `csrs/sprot/qos_pmu.json` returns exactly 8
-`pmu_counterN_event_select` fields. `[HIGH·OBSERVED]` —
+`pmu_counterN_event_select` fields. See
 [per-counter block](../csr/qos-pmu-hostvisible.md#3b-per-counter-block-i-in-07-base-0x100--i0x20).
 
 What an **unprivileged USER op CAN read/do** (the side-channel-relevant surface):
@@ -286,13 +285,13 @@ What an **unprivileged USER op CAN read/do** (the side-channel-relevant surface)
   `0x80..0xcc`) plus the signed 9-bit `read/write_channel_delta` outstanding
   monitors and `nts_user` live occupancy (`outstanding_reads[7:0]`,
   `outstanding_writes[5:0]`). This is direct stall/occupancy accounting readable
-  from USER. `[HIGH·OBSERVED]` —
+  from USER. See
   [host-visible vs debug split](../csr/qos-pmu-hostvisible.md#9-host-visible-vs-debug-split-and-what-each-observes-high--observed).
 
 What an unprivileged op **CANNOT** do: change any shaping parameter (every
 outstanding-cap, rate/byte limiter, fairness staller, NTS responder lives in
 `qos_prot`, **secure-only**), nor read the window/snapshot trigger config (it lives
-in privileged `csrs/fis/fis_control.json`, not in the `qos_*` files). `[HIGH·OBSERVED]`
+in privileged `csrs/fis/fis_control.json`, not in the `qos_*` files).
 
 > **NOTE — the PMU event-source semantics are NOT shipped.** `event_select` is a
 > 32-bit one-hot, but the *enum* (which bit = read txn / write txn / stall cycles /
@@ -317,7 +316,7 @@ But two facts neutralize this as an *op-readable* channel:
 1. **The ncore2gp build disables the perf-counter ISA path:**
    `IsaUsePerfCounters = 0` in `ncore2gp/.../config/default-params` (even though
    `perfCounterCount = 8`). The hardware counters exist; the standard `RSR`-based
-   perf-counter *instructions* are not enabled in this config. `[HIGH·OBSERVED]`
+   perf-counter *instructions* are not enabled in this config.
 2. **The memory-mapped PMU block is an APB/JTAG debug aperture**, programmed by a
    debug host or privileged perf driver — not the unprivileged-op-facing register
    surface. Whether it is host/op-visible at all is decided at the **fabric
@@ -334,7 +333,7 @@ core PMU.
 > gated, ISA path disabled by `IsaUsePerfCounters = 0`) are **different facilities
 > at different privilege tiers**. The op-reachable one is the fabric PMU; the core
 > PMU is profiler-gated. Mixing them up over-states what an op can measure on-core.
-> `[HIGH·OBSERVED]` — gating policy lives at
+> Gating policy lives at
 > [Profiling / Trace / Debug + Access Gating](profiling-trace-debug-gating.md).
 
 ---
@@ -375,7 +374,7 @@ switch** between an op and the runtime, or between two ops, on the same core. Th
 mechanism, and it partitions a flat identity-mapped space — it is not a
 privilege-tiered isolator and it does not scrub. So **op *B* on core *c* inherits op
 *A*'s register file contents, `.bss`, heap, and TLS verbatim** unless op *A* or the
-op author zeroed them. `[HIGH·OBSERVED]`
+op author zeroed them.
 
 > **QUIRK — even fault handling does not sanitize.** A compute-core fault is caught
 > by the Q7-POOL firmware's own `exception.hpp` (`"GENERIC GPSIMD EXCEPTION"`,

@@ -8,13 +8,14 @@ and re-grounds every central fact against the shipped binaries, then folds the
 **BOOT → ATTEST → FAULT → RECOVER** chain into one page with an honest verdict on
 what protects what.
 
-Every primary claim is attributed to the sibling that decoded it and re-confirmed
-here. Where a count or offset matters, it was re-verified this pass with `nm` /
+Every primary claim is attributed to the sibling that decoded it. Where a count or
+offset matters, it is grounded with `nm` /
 `readelf` / a byte scan against the shipped artifact (the decompile is **never**
-used for counts — it inflates 2–12×). Confidence tags: **HIGH** = byte-read from a
-shipped artifact and re-verified; **MED** = a security characterisation that
+used for counts — it inflates 2–12×). The page default is **HIGH/OBSERVED**; claims
+that depart from it carry an explicit tag. **HIGH** = byte-read from a
+shipped artifact; **MED** = a security characterisation that
 follows from observed facts; **LOW** = plausible, flagged. Evidence:
-**OBSERVED** = read directly this pass; **INFERRED** = reasoned over observed
+**OBSERVED** = read directly; **INFERRED** = reasoned over observed
 bytes; **CARRIED** = consolidated from a named sibling without re-deriving the
 disasm here. v5 / Maverick interiors are flagged **INFERRED**.
 
@@ -108,7 +109,7 @@ Sunda → Cayman → Mariana (Maverick **INFERRED**).
 > `rg -ci deadbeef qos_prot.json` returns 2, but the second hit is the field
 > *description* text, not a second register — **the qos `0xDEADBEEF` count is ×1,
 > not ×2.** Any input asserting "×2 qos" is grep-inflation of the description and
-> is corrected here to **×1**. [HIGH/OBSERVED]
+> is corrected here to **×1**.
 
 The byte-exact errtrig surface for **Cayman = 962 total (428 USER + 534 AMZN)**
 trigger entries is established in the perimeter sibling and carried here without
@@ -116,7 +117,7 @@ re-derivation. [HIGH/CARRIED — [`soc-fabric-perimeter.md`](soc-fabric-perimete
 
 ### 1B — The on-core XEA3-MPU (deliberately minimal)
 
-Re-verified this pass against `ncore2gp` `core-isa.h`:
+From `ncore2gp` `core-isa.h`:
 
 | Config knob | Value | Line | Consequence |
 |---|---:|---:|---|
@@ -135,21 +136,21 @@ holes. **What it stops:** an on-core out-of-rights access → fail-stop. **What 
 does not do:** it does not separate a custom kernel from base firmware or a
 co-resident op — single ring, MPU not re-keyed per op, shared identity-mapped
 space. On-core isolation **between** ops is software (serialization + a
-well-formed image), not a HW ring. [HIGH/OBSERVED — re-verified this pass;
-[`reachability-isolation.md`](reachability-isolation.md)]
+well-formed image), not a HW ring.
+[HIGH/OBSERVED — [`reachability-isolation.md`](reachability-isolation.md)]
 
 > **QUIRK — `CCOUNT` is op-readable and cannot be revoked.** `XCHAL_HAVE_CCOUNT=1`
 > (core-isa.h L455): a free-running cycle counter (SR 234) readable by `rsr ccount`
 > from **any** code in the single-ring model. There is no privileged gate to deny
 > an op the cycle counter — this is what turns shared-arbiter contention into a
-> measurable timing channel (§5 MED-1). [HIGH/OBSERVED]
+> measurable timing channel (§5 MED-1).
 
 ### 1C — The firmware-load integrity gate (no signing)
 
 The custom-op admission path is **integrity + structural + version only** — no
 cryptographic signature anywhere on the device load path. The seven stages are
 decoded in [`trust-chain-threat-model.md`](trust-chain-threat-model.md); the three
-load-path keystones were re-verified this pass in `libnrtucode_internal.so`:
+load-path keystones in `libnrtucode_internal.so` are:
 
 ```c
 /* All three are local (t) symbols in libnrtucode_internal.so — nm-confirmed
@@ -163,13 +164,13 @@ int  prelink_relocate_lib(load_ctx *c);         /* 0x9b6160 — applies R_XTENSA
 Integrity is therefore **ELF magic + phdr-shape + the self-relative
 `R_XTENSA_RELATIVE` (type 5) relocation that aborts-on-fail**. The MD5/SHA-256 over
 the gzip image is **unkeyed and optional** (skipped unless a per-load verify flag
-is set). [HIGH/OBSERVED — `nm libnrtucode_internal.so` this pass]
+is set). [HIGH/OBSERVED — `nm libnrtucode_internal.so`]
 
 > **NOTE — `nm -D libnrtucode_internal.so | rg -ci 'RSA_verify|ECDSA|X509|EVP_|ed25519|HMAC' = 0`,
 > and `readelf -d` NEEDED = `libc.so.6` only.** The device-image load path links
 > nothing cryptographic. The bundled OpenSSL under `c10/lib` is a PyTorch *host*
 > build dependency (self-referential: only `libssl` + the afalg/padlock engine
-> plug-ins consume `libcrypto`), linked-but-unreached. [HIGH/OBSERVED]
+> plug-ins consume `libcrypto`), linked-but-unreached.
 
 **What Layer C stops:** corruption (the hash), a forward-incompatible artifact
 (the `feature_bits` trapdoor), a malformed ELF / wrong core-count. **What it does
@@ -307,10 +308,10 @@ sub-causes (**the one recoverable class**), `0x422 CROSS_MEM_ACCESS`,
 `0x117/0x217/0x317 UNDEFINED_ATTR_{1,2,3}`, `0x064 STACK_LIMIT` (ISL/KSL),
 `0x346/0x546` uncorrectable ECC. [HIGH/CARRIED — [`boot-fault-overview.md`](boot-fault-overview.md)]
 
-### 3b. The ISS realization — the 61 `*_exc` handlers, re-counted
+### 3b. The ISS realization — the 61 `*_exc` handlers
 
 The host-side cycle-accurate model `libcas-core.so` realizes the complete fault
-vocabulary as exactly **61** exception handlers — re-grounded this pass:
+vocabulary as exactly **61** exception handlers:
 
 ```text
 $ nm libcas-core.so | rg -c '_exc$'
@@ -349,7 +350,6 @@ exceptions merge into **one** XEA3 `DispatchVector`; per-source control is via
 `RER`/`WER` over the ER block at `0x122000`, not the legacy `INTENABLE`/`INTSET`
 SRs. `XCHAL_NUM_INTERRUPTS = 37`, `XCHAL_NUM_EXTINTERRUPTS = 25` (L457/L459). The
 NSM → apex-IRQ flow is in [`../interrupt/nsm-flow-unified.md`](../interrupt/nsm-flow-unified.md).
-[HIGH/OBSERVED — re-verified this pass]
 
 ### 3d. The firmware override — the SEQ ErrorHandler
 
@@ -380,7 +380,7 @@ MSI/MSIX/IRQ/ISR** in `libnrt` (zero such symbols); the host drains the ring.
 > **QUIRK — the host wake is `comp_efd` 2-stage, not an interrupt.** `libnrt` has
 > **zero** `msi`/`msix`/`irq`/`isr` symbols; the device → host notification is a
 > ring write + the 2-stage `comp_efd` eventfd wake the host polls. Do not model the
-> host fault path as a hardware interrupt. [HIGH/OBSERVED]
+> host fault path as a hardware interrupt.
 
 The record discriminator `header.notific_type` uses `ERROR (0x03)` and
 `TPB_ERROR (0x1f)`; the host-facing `error_id` (`NEURON_ISA_TPB_ERROR_TYPE`) runs
@@ -421,11 +421,11 @@ are [`../../runtime/reachability-cuts.md`](../../runtime/reachability-cuts.md).
   enforces "all args/outputs of a customop must be located in SBUF". PSUM is closed
   **at the ABI**, not merely at the aperture. The subtle point:
   **"reachability-of-address ≠ reachability-of-data"** — even where a PSUM address
-  decodes, there is **no AXI aperture to read PSUM data**. [HIGH/OBSERVED]
+  decodes, there is **no AXI aperture to read PSUM data**.
 * **The capability gate is composed of two tables:** a **14-region capability
   table** plus the **5-region `neuron_translate` software TLB**. Every framework
   pointer is run through `neuron_translate` before any access; an op **cannot
-  manufacture reach** to a region whose SoC base it was not handed. [HIGH/OBSERVED]
+  manufacture reach** to a region whose SoC base it was not handed.
 
 | Target | Reachable? | Fence |
 |---|---|---|
@@ -476,7 +476,7 @@ host reads; perf counters sit behind `ERACCESS` → an unprivileged read faults
 [`profiling-trace-debug-gating.md`](profiling-trace-debug-gating.md); **no data
 cache** eliminates the data-cache side-channel class for free; **per-core DRAM is
 disjoint**; **dispatch is serialized** (residue channels, not live Prime+Probe);
-and the model is **fail-stop**. [HIGH/OBSERVED]
+and the model is **fail-stop**.
 
 ---
 
@@ -606,7 +606,7 @@ Legend:  ===  HARDWARE / STRUCTURAL boundary (device-enforced, no host trust)
 
 ## 8. Provenance ledger
 
-**HIGH / OBSERVED (re-verified this pass against a shipped artifact):**
+**HIGH / OBSERVED (against a shipped artifact):**
 
 * `xtlib_verify_magic 0x9b6d40` / `validate_dynamic_load 0x9b71f0` /
   `prelink_relocate_lib 0x9b6160`; zero crypto-auth dynsyms; NEEDED = `libc.so.6`

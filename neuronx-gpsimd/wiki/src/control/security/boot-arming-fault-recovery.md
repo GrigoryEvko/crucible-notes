@@ -23,13 +23,13 @@ Two facts drive everything below, and they are *opposite* in spirit:
   fault-tolerant continuation, no watchdog-driven restart of the faulting engine —
   the engine spins until reset, having published *why* it died.
 
-Everything below is **byte-pinned to a shipped artifact this session**. The firmware
+Everything below is **byte-pinned to a shipped artifact**. The firmware
 anchor is the carved `CAYMAN_NX_POOL_DEBUG` device image extracted from
 `libnrtucode.a` (`iram.bin` SHA-256 `8e4412b9…`, `dram.bin` `7bdf6ed7…` — the same
 hashes the [error-handler](../../firmware/seq/error-handler.md) page anchors to),
 disassembled with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, Cairo
 µarch, Xtensa24, `IsaMaxInstructionSize=32` FLIX/VLIW). The perimeter register facts
-are re-read this session by `jq`/`rg` straight from the shipped Cayman arch-regs
+are read by `jq`/`rg` straight from the shipped Cayman arch-regs
 (`csrs/sprot/{nsm,amzn_remapper,user_remapper,qos_prot}.json`,
 `sprot/block_{host,internal}_access.yaml`, `intc/{pcie,peb_intc}_triggers.yaml`).
 
@@ -69,7 +69,7 @@ structure** — carried from the layered model in
 
 ## 2. The lax reset posture — what is NOT armed at power-on
 
-`jq` over the Cayman `csrs/sprot/*.json` this session, every reset value re-read:
+`jq` over the Cayman `csrs/sprot/*.json`, every reset value byte-read:
 
 | Block / register | Offset | Reset | Posture at power-on |
 | --- | --- | --- | --- |
@@ -84,8 +84,7 @@ structure** — carried from the layered model in
 
 So **exactly one** of the five perimeter blocks (`amzn_remapper`) boots secure;
 NSM, qos/NTS, and the guest `user_remapper` are all open/off. The device is born
-permissive and hardened by firmware. **HIGH/OBSERVED** — every reset value
-re-verified by `jq` this session.
+permissive and hardened by firmware — every reset value byte-read by `jq`.
 
 > **QUIRK — fail-closed amzn boots a deny-all that firmware must *open*.** Because
 > `amzn_cam_pass_on_miss = 0` *and* the CAM is empty at reset, the privileged plane
@@ -93,7 +92,7 @@ re-verified by `jq` this session.
 > amzn block (it is already closed) but to **program its whitelist** so the
 > privileged paths firmware itself needs are allowed. The amzn block is the one that
 > arms *itself* by reset; the rest of arming opens controlled holes in it and closes
-> the other four blocks. **HIGH/OBSERVED.**
+> the other four blocks.
 
 ---
 
@@ -102,7 +101,7 @@ re-verified by `jq` this session.
 The arming agent is the **privileged firmware controller** reaching the sprot CSRs
 on the secure PEB_APB_IO plane — i.e. the "Pacific" Q7 **management** core / its
 boot firmware, **not** the PCIe host and **not** a guest. The trust boundary that
-keeps the host out is enforced **twice over**, both re-read this session:
+keeps the host out is enforced **twice over**:
 
 1. **PLANE gating.** The host's PCIe AXI master traffic reaches only the
    APB_IO(user) plane the `user_remapper` gates; the privileged sprot *control*
@@ -114,7 +113,7 @@ keeps the host out is enforced **twice over**, both re-read this session:
    `p_0.apb.misc_ram._sprot_allow: True`. So the host's CSR protocol reaches **only
    MISC_RAM**; the perimeter's own control registers are register-bus-gated away
    from the host. The arming writes therefore originate from the privileged internal
-   controller. **HIGH/OBSERVED** — the verbatim YAMLs this session.
+   controller.
 
 The **supervisor hooks** confirm the asymmetry: the `amzn_remapper` holds
 management hooks *over* the guest CAM — `user_cam_ctl` `@+0x20` (`cam_clr` WIPE),
@@ -123,7 +122,7 @@ AXI-ID whose traffic bypasses the guest policy), `addr_denied_lo/hi` `@+0x60/+0x
 (the `[57:0]` denied-address violation latch), `axi_rd/wr_timeout` `@+0x50/+0x54`.
 The privileged twin **supervises** the guest twin: the guest may program
 `user_cam`, but firmware holds the wipe + the bypass-ID + the
-fail-open→fail-closed switch over it. **HIGH/OBSERVED** — `jq amzn_remapper.json`.
+fail-open→fail-closed switch over it.
 
 > **CORRECTION — there is NO global perimeter-lock bit.** A reimplementer expecting
 > a write-once `MPU_LOCK`-style latch will not find one. `rg` over the sprot JSONs
@@ -240,7 +239,7 @@ distinct install paths arm two distinct fault surfaces:
 | `register_signal_handlers` `@0x13fa8` | the **POSIX-signal** catch-all `0x14014` | the 6-signal table `{6,2,4,8,0xb,0xf}` |
 | `enable_fp_exceptions` `@0x13e98` | the **FP exception-enable** bits (`wur.fcr`) | FP arithmetic traps → `HandleFPError` |
 
-The HW-exception install at `0x26ac`, re-disassembled this session:
+The HW-exception install at `0x26ac`:
 
 ```text
 000026ac <register_exception_handlers>:
@@ -259,7 +258,7 @@ The HW-exception install at `0x26ac`, re-disassembled this session:
     271e:  900000      retw                     ; only THREE causes registered
 ```
 
-**HIGH/OBSERVED** — re-disassembled this session: exactly **causes 1, 3, 4** are
+Exactly **causes 1, 3, 4** are
 overridden with the SEQ handler `0x1a64`; the function `retw`s after cause 4. The
 SEQ handler `0x1a64` reads the 12-bit `EXCCAUSE` and tail-calls the early-FATAL
 emitter:
@@ -280,7 +279,7 @@ emitter:
 ```
 
 So an Xtensa HW exception in cause class **{1,3,4}** raises code **`'B'` (0x42)** and
-hard-faults. **HIGH/OBSERVED** — `0x1a80` ends at `call8 0x13e00`, the FATAL raise
+hard-faults. `0x1a80` ends at `call8 0x13e00`, the FATAL raise
 wrapper, exactly as the [error-handler](../../firmware/seq/error-handler.md) page's
 `0x1a80` "early emitter, code `'B'`" row records.
 
@@ -299,14 +298,14 @@ wrapper, exactly as the [error-handler](../../firmware/seq/error-handler.md) pag
 The **POSIX-signal** install and the FP-enable install are owned by the
 [error-handler](../../firmware/seq/error-handler.md) page (§4e / boot wiring) and not
 re-derived here; the signal table `{6,2,4,8,0xb,0xf}` @ DRAM `0x83b70` (SIGABRT,
-SIGINT, SIGILL, SIGFPE, SIGSEGV, SIGTERM) was re-verified byte-exact this session.
+SIGINT, SIGILL, SIGFPE, SIGSEGV, SIGTERM) is byte-exact.
 
 ### 5b. The six entry points → the binary policy
 
 All six fault entry points converge on the same three-stage pipeline (log → build →
 raise) and then split on a **single severity immediate**: `movi a10,1` (recoverable,
 `0x13e30`, `retw.n`) vs `movi a10,2` (fatal, `0x13e00`, infinite `j 0x13e14`).
-Re-verified this session at `0x13e00`:
+At `0x13e00`:
 
 ```text
 00013e00 <raise_FATAL sev=2>:
@@ -338,13 +337,13 @@ The six classes and their policy — the **only** recoverable class is FP arithm
 > **distinct** emitters that build the *same* record shape via the *same*
 > `get_block_id` packing and both terminate at the *same* FATAL wrapper `0x13e00`.
 > They differ only in the code byte — `'A'` = signal-delivered, `'B'` = HW-exception
-> early-emit. A host runtime distinguishes them by that byte. **HIGH/OBSERVED.**
+> early-emit. A host runtime distinguishes them by that byte.
 
 The fatal egress, after raise: `0xa2e0` Halt-dispatch → `0x1cf8` Setup-Halt (saves
 the resume PC, logs `"S: Setup Halt"`) → `0x3a44` Entering HALT (logs `"S: Entering
 HALT"`, writes the halt CSR `@0x80400`) → return to `j 0x13e14` spin. The engine is
-**dead until reset**, with the resume PC saved for post-mortem. **HIGH/OBSERVED** —
-the instruction-exact bodies are on the
+**dead until reset**, with the resume PC saved for post-mortem.
+The instruction-exact bodies are on the
 [error-handler](../../firmware/seq/error-handler.md) page (§6).
 
 ### 5c. The COMPUTE Q7 self-halt path (distinct TU)
@@ -361,10 +360,10 @@ record with a `Q7_ERROR_SUBTYPE` `{BAD_VERSION 0x08, ASSERT 0x40, UNKNOWN 0x7f}`
 subtype byte.
 
 Both planes depend on the **boot sentinel**: the POOL ucode self-identifies by
-writing `0x6099CB34` to `DRAM[0]` — re-verified this session as LE `34 cb 99 60` at
+writing `0x6099CB34` to `DRAM[0]` — LE `34 cb 99 60` at
 offset 0 of the carved DRAM blob; the host claims the core via
 `nrtucode_core_on_ucode_booted @0x9b0ab0`. The fault machine cannot run until this
-boot-ready handshake completes. **HIGH/OBSERVED.**
+boot-ready handshake completes.
 
 ### 5d. The device→host record + the three channels
 
@@ -412,7 +411,7 @@ runs once a host master trips the now-armed perimeter.
 
 ### 6a. The PCIe isolation state machine
 
-`intc/pcie_triggers.yaml` → `reset_handshake_intr`, re-read this session:
+`intc/pcie_triggers.yaml` → `reset_handshake_intr`:
 
 | Bit | Trigger |
 | --- | --- |
@@ -451,7 +450,7 @@ This recovery path is **host-PCIe only** — d2d carries none of these triggers.
 ### 6b. The critical apex IRQ to "Pacific"
 
 NSM's AXI timeout reaches the management core by two paths; the direct one is the
-critical fast-path. `intc/peb_intc_triggers.yaml`, re-read this session:
+critical fast-path. `intc/peb_intc_triggers.yaml`:
 
 ```yaml
 - trigger: intr_peb_nsm_axi_timeout
@@ -480,7 +479,7 @@ number.
 ### 6c. The recovery teardown order (the one VERBATIM ordering)
 
 The single place the firmware order is documented **verbatim** in the artifact is the
-NSM recovery drain. `jq` `reset_staging_fifo` descriptions this session:
+NSM recovery drain. The `jq` `reset_staging_fifo` descriptions:
 
 ```text
 control.reset_staging_fifo [0]aw [1]w [2]ar   (each rst=0, RW)
@@ -491,8 +490,7 @@ control.reset_staging_fifo [0]aw [1]w [2]ar   (each rst=0, RW)
 So the recovery order is **fixed by the hardware contract**: (1) enter isolation,
 (2) drain the AW/W/AR staging FIFOs via `reset_staging_fifo`, (3) reset the
 iofabric, (4) `cfg_clear.errors` clears the sticky causes, (5) re-arm (§4). This is
-the teardown the isolation SM (§6a) hands off to. **HIGH/OBSERVED** — the verbatim
-register descriptions this session.
+the teardown the isolation SM (§6a) hands off to.
 
 ### 6d. The most-severe fabric outcome — abort freeze
 
@@ -557,7 +555,6 @@ freeze — **distinct** from the Q7/SEQ self-halt of §5. **CARRIED HIGH** — o
 **Two cores, two fault planes.** The COMPUTE Q7 + NX SEQ self-halt and self-report
 **their** job faults to the host (top); the perimeter faults target the management
 "Pacific" Q7 (bottom). The §4 arming is what makes the bottom plane live.
-**HIGH** structure.
 
 ---
 
@@ -588,10 +585,9 @@ freeze — **distinct** from the Q7/SEQ self-halt of §5. **CARRIED HIGH** — o
 
 ## 9. Confidence ledger
 
-**HIGH / OBSERVED** (re-verified by `jq`/`rg`/disasm/`xxd` over the shipped artifacts
-this session):
+**HIGH / OBSERVED** (read by `jq`/`rg`/disasm/`xxd` over the shipped artifacts):
 
-- Carve reproduced: `iram.bin 8e4412b9…` / `dram.bin 7bdf6ed7…` match the SX-FW
+- Carve reproduced: `iram.bin 8e4412b9…` / `dram.bin 7bdf6ed7…` match the FW
   anchors exactly.
 - Perimeter reset posture: `nsm bypass.enable @+0x4[0] rst=0x1`;
   `amzn pass_on_miss rd[4]/wr[0] = 0x0` (fail-closed); `user pass_on_miss = 0x1`
