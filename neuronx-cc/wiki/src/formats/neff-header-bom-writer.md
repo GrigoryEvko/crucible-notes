@@ -43,19 +43,19 @@ The POD is built on the stack in `initializeNeffHeader` (`0x1540a00`). The first
 
 | Field | Offset | Type | Meaning | Confidence |
 |---|---|---|---|---|
-| `version` | `+0` | `u64` | NEFF format version = **`2`** (rodata OWORD `0x1DD7900`, xxd-confirmed) | CONFIRMED |
-| `region_size` | `+8` | `u64` | **`0x400`** (1024) region/header size (same OWORD) | CONFIRMED |
-| *(reserved)* | `+16` | `u64` | `0` | STRONG |
-| `section_flag` | `+24` | `u64` | `= NeffFileWriter+0xC8 (=1)` — module/section count flag | STRONG |
-| `version_major` | `+168` | `u32` | `1` (override) or `info.json` uint (normal) | STRONG |
-| `feature_flags` | `+192` | `u64` | 64-bit feature mask (built by `writeNEFFFeatures` `0x15294b0`; bit catalog is [12.5](neff-feature-flags.md)) | CONFIRMED |
-| `schema_min` | `+200` | `u32` | schema min version; bumped ≥ 2 when functions/ext-feats and arch > 39 | STRONG |
-| `uuid` | `+204` | `byte[16]` | RFC-4122 **v4** UUID, ChaCha20-12 CSPRNG | CONFIRMED |
-| `filename` | `+220` | `char[255]` | `"file.neff"` (override) or `info.json` (normal) | CONFIRMED |
-| `version_minor` | `+476` | `u32` | `1` (override) or `info.json` uint | STRONG |
-| `engine_present` | `+480` | `byte[64]` | per-engine "has instructions" bitmap (`+480..+544`) | CONFIRMED |
-| `cc_field` | `+544` | — | `= NeffFileWriter+192` (collective rank / world-size) | STRONG |
-| `arch_mode` | `+552` | — | `= NeffFileWriter+88` (arch-mode word) | STRONG |
+| `version` | `+0` | `u64` | NEFF format version = **`2`** (rodata OWORD `0x1DD7900`, xxd-confirmed) | CERTAIN |
+| `region_size` | `+8` | `u64` | **`0x400`** (1024) region/header size (same OWORD) | CERTAIN |
+| *(reserved)* | `+16` | `u64` | `0` | HIGH |
+| `section_flag` | `+24` | `u64` | `= NeffFileWriter+0xC8 (=1)` — module/section count flag | HIGH |
+| `version_major` | `+168` | `u32` | `1` (override) or `info.json` uint (normal) | HIGH |
+| `feature_flags` | `+192` | `u64` | 64-bit feature mask (built by `writeNEFFFeatures` `0x15294b0`; bit catalog is [12.5](neff-feature-flags.md)) | CERTAIN |
+| `schema_min` | `+200` | `u32` | schema min version; bumped ≥ 2 when functions/ext-feats and arch > 39 | HIGH |
+| `uuid` | `+204` | `byte[16]` | RFC-4122 **v4** UUID, ChaCha20-12 CSPRNG | CERTAIN |
+| `filename` | `+220` | `char[255]` | `"file.neff"` (override) or `info.json` (normal) | CERTAIN |
+| `version_minor` | `+476` | `u32` | `1` (override) or `info.json` uint | HIGH |
+| `engine_present` | `+480` | `byte[64]` | per-engine "has instructions" bitmap (`+480..+544`) | CERTAIN |
+| `cc_field` | `+544` | — | `= NeffFileWriter+192` (collective rank / world-size) | HIGH |
+| `arch_mode` | `+552` | — | `= NeffFileWriter+88` (arch-mode word) | HIGH |
 
 > **NOTE — two different "versions" live in one NEFF.** `neff_header.version == 2` is the binary container-format version (the rodata OWORD). It is **not** the same as the `info.json` `version` major/minor (a `1.x` pair, default `1.1` in the override path), nor the `def.json` schema string `"0.6"` / `neff.json` `"0.5"`. A reimplementer who reads `info.json["version"]` gets the `1.x` document version, not the `2`. The `2` is structural and lives in `neff_header+0`.
 
@@ -118,11 +118,11 @@ The BOM (Bill-Of-Materials) is the writer's manifest of every file that will bec
 
 | Sense | Object | Where | What it is | Confidence |
 |---|---|---|---|---|
-| **(1) NEFF BOM** | `std::map<path,string>` | `NeffFileWriter+0x90` | file manifest: on-disk path → in-tar member name; built by `addToBom` `0x153fb80` | CONFIRMED |
-| **(2) UTF-8 BOM** | `0xEF 0xBB 0xBF` | rodata `0x1d1bfb8`/`0x1dc8da0` | JSON byte-order-mark; checked by nlohmann `skip_bom` `0x853a50`/`0x181f3e0` | CONFIRMED |
-| **(3) `bom` object** | `bir::ModuleArtifactInfo` | `libBIR` (`U` in libwalrus) | per-module engine→file `DenseMap` holder (`getEngInstrFile`/`getEngDMADescFile`) | CONFIRMED |
+| **(1) NEFF BOM** | `std::map<path,string>` | `NeffFileWriter+0x90` | file manifest: on-disk path → in-tar member name; built by `addToBom` `0x153fb80` | CERTAIN |
+| **(2) UTF-8 BOM** | `0xEF 0xBB 0xBF` | rodata `0x1d1bfb8`/`0x1dc8da0` | JSON byte-order-mark; checked by nlohmann `skip_bom` `0x853a50`/`0x181f3e0` | CERTAIN |
+| **(3) `bom` object** | `bir::ModuleArtifactInfo` | `libBIR` (`U` in libwalrus) | per-module engine→file `DenseMap` holder (`getEngInstrFile`/`getEngDMADescFile`) | CERTAIN |
 
-> **CORRECTION (S2-10 / task premise) —** the task premise stated "the BOM marker is `0xEF 0xBB 0xBF` (UTF-8 BOM bytes, reused as a file-manifest marker)." This is false. The `0xEF 0xBB 0xBF` bytes are **not** a NEFF manifest marker, are not stored in the BOM, and are not per-entry. They are the literal UTF-8 byte-order-mark that the nlohmann lexer tolerates at the head of any JSON sidecar. The only code touching `0xEF/0xBB/0xBF` in `libwalrus` is `skip_bom` (string `"invalid BOM; must be 0xEF 0xBB 0xBF if given"`, present twice — the two lexer instantiations). The NEFF BOM (sense 1) has no byte marker whatsoever.
+> **GOTCHA — `0xEF 0xBB 0xBF` is not a NEFF manifest marker.** The name collision makes it tempting to read those bytes as the BOM's on-disk marker. They are the plain UTF-8 byte-order-mark that the nlohmann lexer tolerates at the head of any JSON sidecar; they are never stored in the BOM and are not per-entry. The only code in `libwalrus` touching `0xEF/0xBB/0xBF` is `skip_bom` (string `"invalid BOM; must be 0xEF 0xBB 0xBF if given"`, present twice, once per lexer instantiation). The NEFF BOM in sense 1 has no byte marker at all.
 
 ### Entry Format
 
@@ -163,11 +163,13 @@ function addToBom(path file, optional<string> entryNameOverride):  // 0x153fb80
 
 > **GOTCHA — last-write-wins on the path key.** Re-adding the same on-disk path overwrites its member name. The `.dbg` debug-info files are registered twice — once by `writeDefJson` under `"<eng>_dbg"`/`"<eng>_asm_dbg"`, and again by `writePackageFile` (`0x15200e0:551`) under the literal override `"debug_info"`. A `.dbg` file's *final* tar member name is whichever registration ran last. Either way its basename contains `.dbg`, so it enters the MD5 IR-sig set regardless.
 
-> **CORRECTION (J34 G1 / J36 "Sig?" column) —** the MD5 IR-signature subset is **not** ".bin streams + signature JSON," as earlier strands guessed. The byte-proven `addToBom` predicate is: a member enters the IR-sig set iff its on-disk basename **equals `".npy"`** OR **contains `".dbg"`** — plus, **[STRONG, not byte-proven]**, the `"info.json"` pre-seed contributed by the `NeffFileWriter` constructor. So the signed set is `{info.json} ∪ {*.dbg debug-info} ∪ {*.npy const/weight}`. The per-engine `.bin` instruction streams are **not** signed. (Predicate at `0x153fc6f`/`0x153fc9b`; targets `0x1c8b929=".npy"`/`0x1c86c5b=".dbg"` — both byte-resolved.)
+### Which members are MD5-signed
 
-> **CORRECTION (M3 — info.json ctor seed) —** the `info.json` pre-seed is downgraded from CONFIRMED to **STRONG / INFERRED**, and the prior source-line anchor `0x1543eb0:228` is dropped. `0x1543eb0` is genuinely the `NeffFileWriter` constructor, and it **does** reference `"info.json"` (the string is loaded inside the ctor at `0x15440cf`, via `aKernelDebugInfoJson+0Dh`), so the seed claim is well-supported. But the entry `0x1543eb0` itself is the ctor's `__cxa_demangle`→`strlen`→`strstr` preamble, **not** the insert-into-IR-sig-set instruction; and a `:NNN` source line cannot be verified against a stripped `.so`. The seed is therefore plausible-and-corroborated but not single-stepped to the `_M_get_insert_hint_unique_pos` call. The `.npy`/`.dbg` predicate halves remain byte-proven.
+The `addToBom` predicate admits a member into the IR-signature set iff its on-disk basename **equals `".npy"`** or **contains `".dbg"`**. Adding the `"info.json"` pre-seed the `NeffFileWriter` constructor contributes, the signed set is `{info.json} ∪ {*.dbg debug-info} ∪ {*.npy const/weight}`. The per-engine `.bin` instruction streams are **not** signed.
 
-> **NOTE (Gap G1, STRONG) —** the `.npy` branch is `compare(".npy")==0` — a *full-string* equality, firing only when a basename is literally `".npy"` (an extension-only name). A real weight named `"<w>.npy"` would **fail** the `==0` test. If const files are named `<weight>.npy`, the `.npy` branch is vestigial and the signature is carried by `info.json` + the `.dbg` files. The byte-truth is `compare()==0`, not `endsWith`.
+*Anchors: the predicate sits at `0x153fc6f`/`0x153fc9b`, with targets `0x1c8b929=".npy"` and `0x1c86c5b=".dbg"`, both byte-resolved. The `info.json` seed is well-corroborated but [INFERRED]: `0x1543eb0` is the `NeffFileWriter` constructor and it does load `"info.json"` at `0x15440cf` (via `aKernelDebugInfoJson+0Dh`), but the entry itself is the ctor's `__cxa_demangle`→`strlen`→`strstr` preamble, not the insert into the IR-sig set, and the path to `_M_get_insert_hint_unique_pos` was not single-stepped.*
+
+> **GOTCHA — the `.npy` branch is `compare(".npy")==0`, a full-string equality.** It fires only when a basename is literally `".npy"` — an extension-only name. A real weight named `"<w>.npy"` **fails** the test. If const files carry `<weight>.npy` names, the `.npy` branch is vestigial and the signature rests on `info.json` plus the `.dbg` files. The comparison is `compare()==0`, not `endsWith`.
 
 ---
 
@@ -275,19 +277,19 @@ A `*.neff` is one PAX tar of these members (one on-disk file each), emitted in B
 
 ---
 
-## Verification and Re-Verify Ceiling
+## Evidence Anchors and Limits
 
-The five strongest claims were re-checked against the cp312 `libwalrus.so` this session:
+The page's structural claims trace to the cp312 `libwalrus.so`:
 
-| Claim | Evidence | Result |
+| Claim | Evidence | Confidence |
 |---|---|---|
-| NEFF is PAX tar, not ELF | `nm -DC`: `archive_write_set_format_pax` present `U`; zero ELF-writer symbols | CONFIRMED |
-| `neff_header` is a real named struct, built (not on-disk) | `initializeNeffHeader(neff_header&)` exported `T`; no leading record | CONFIRMED |
-| Three "BOM" senses | `addToBom`/`writeArchiveFile` exports; `"invalid BOM…"` ×2; `bir::EngineInfo2string` `U` | CONFIRMED |
-| UUID via ChaCha20 | `"expand 32-byte k"` present at file offset `31284944` | CONFIRMED |
-| Shipped consumer is name-keyed | `analyze_neff_artifacts.py:74` `['Pool','SP','DVE','PE','Activation']` | CONFIRMED |
+| NEFF is PAX tar, not ELF | `nm -DC`: `archive_write_set_format_pax` present `U`; zero ELF-writer symbols | CERTAIN |
+| `neff_header` is a real named struct, built (not on-disk) | `initializeNeffHeader(neff_header&)` exported `T`; no leading record | CERTAIN |
+| Three "BOM" senses | `addToBom`/`writeArchiveFile` exports; `"invalid BOM…"` ×2; `bir::EngineInfo2string` `U` | CERTAIN |
+| UUID via ChaCha20 | `"expand 32-byte k"` present at file offset `31284944` | CERTAIN |
+| Shipped consumer is name-keyed | `analyze_neff_artifacts.py:74` `['Pool','SP','DVE','PE','Activation']` | CERTAIN |
 
-> **NOTE — re-verify ceiling.** The cp312 `.so` exports the full writer/packager symbol roster (every method signature matches the reports verbatim), and all the rodata strings (`file.neff`, the `NeffPacakger BOM` typo, the IR-signature logs, the engine tokens, the member-name literals, the ChaCha sigma) are present. What this session could **not** independently re-walk is the *in-function byte offsets* inside `initializeNeffHeader` (e.g. `+168`/`+480`/`+204`) and the `addToBom` IR-sig predicate addresses, because the shipped `.so` carries no local symbols and the offsets were read from the cp310 IDA decompile. Those rows are tagged STRONG/CONFIRMED-per-decompile rather than re-derived here; the cp312 addresses shift by a small delta (`addToBom` `0x153fae0` vs cp310 `0x153fb80`), so the *relative* layout is consistent but the absolute cp310 addresses are the report's, not re-walked byte-for-byte this session.
+**Limits.** The cp312 `.so` exports the full writer/packager symbol roster, and every rodata string cited here is present — `file.neff`, the `NeffPacakger BOM` typo, the IR-signature logs, the engine tokens, the member-name literals, the ChaCha sigma. What cannot be re-walked from the shipped `.so` are the *in-function byte offsets* inside `initializeNeffHeader` (`+168`, `+480`, `+204`, and their neighbours) and the `addToBom` IR-sig predicate addresses: that binary carries no local symbols, so those offsets come from the cp310 IDA decompile. The cp312 addresses shift by a small delta (`addToBom` `0x153fae0` versus cp310 `0x153fb80`), so the *relative* layout is consistent across wheels while the absolute cp310 addresses are decompile-derived rather than re-walked byte for byte.
 
 ---
 

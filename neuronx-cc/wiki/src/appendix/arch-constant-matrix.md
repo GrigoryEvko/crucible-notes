@@ -1,6 +1,6 @@
 # Appendix — The Arch-Model Constant Matrix
 
-> *All immediates, offsets, and addresses on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp310/cp311/cp312 carry the geometry byte-identically — the `ctm` source is recompiled per wheel but the constructor immediates are the same). For `.text`/`.rodata` of `libwalrus.so` / `libBIR.so`, virtual address equals file offset. Other wheels drift; treat every address as version-pinned. Backing reports: **D-M13** (per-generation constants), **D-M12** (EngineInfo / Core sub-object layout), **D-T08** (target / cost-model constants).*
+> *All immediates, offsets, and addresses on this page apply to `neuronx_cc 2.24.5133.0+58f8de22` (cp310; cp310/cp311/cp312 carry the geometry byte-identically — the `ctm` source is recompiled per wheel but the constructor immediates are the same). For `.text`/`.rodata` of `libwalrus.so` / `libBIR.so`, virtual address equals file offset. Other wheels drift; treat every address as version-pinned.*
 
 ## Abstract
 
@@ -8,12 +8,12 @@ This is the single consolidated ledger of every per-generation hardware constant
 
 The model spans **five** generations on its ordinal ladder (`10/20/30/40/50` = CoreV1…CoreV5) but ships geometry for **four**. `getArchModel` dispatches ten codename aliases onto four `Board` singletons — gen1 Inferentia (`tonga`/`inferentia`/`inf1`), gen2 Sunda (`sunda`/`trainium`/`trn1`/`inf2`), gen3 Cayman (`cayman`/`gen3`), gen4 CoreV4 / "mariana" (`core_v4`) = 3+4+2+1 = **10** compare arms (`core_v5` is *not* an arm; its literal follows the `__assert_fail` string). The fifth rung, gen5 `core_v5`, is a forward-declaration stub: a reserved ordinal with **no** `Board`, so `getArchModel` falls through to `__assert_fail("0 && Unknown architecture")`. Its row in the master table below is therefore almost entirely INFERRED — projected from the `CoreV4 ▸ CoreV3 ▸ CoreV2` single-inheritance ladder and the dormant `< ArchLevel::core_v5` feature gates, never read from a constructor. The codename↔generation decode (which internal name maps to which marketed part) is owned by [1.02](../arch/codename-taxonomy.md); this page names the codename per column and otherwise stays numeric.
 
-Every cell here was **re-derived from the binary** — read off the `<Arch>` constructor immediate or the literal getter body — rather than hand-copied from the Part-1 prose, so any drift between the prose pages and the constructors surfaces as a `> **CORRECTION**` note. Two such drifts are flagged below (an "MX = a gen4 PE dtype slot" claim that does not exist in the geometry tree, and the Inferentia per-core-vs-device HBM arithmetic). The confidence ladder is the standard four-tier ([methodology](../methodology.md)); the `Conf` column tags each row, and the vestigial CoreV5 column carries its own per-cell tags.
+Every cell here is read off the `<Arch>` constructor immediate or the literal getter body rather than copied from the Part-1 prose. Two places where the natural reading diverges from the constructors are flagged inline: the idea that MX occupies a gen4 PE dtype slot (it does not exist in the geometry tree), and the Inferentia per-core-versus-device HBM arithmetic. The confidence ladder is the standard four-tier ([methodology](../methodology.md)); the `Conf` column tags each row, and the vestigial CoreV5 column carries its own per-cell tags.
 
 | | |
 |---|---|
 | **Geometry source** | `ctm.cpython-3xx.so` + the byte-identical copy in `libwalrus.so` / `libBIR.so` — per-arch `<Arch>{Core,Statebuf,Psumbuf,Pe,Pool,Act,Dve}` ctors |
-| **Field-name source-of-truth** | `data/include/hwm/ctm/ctm.hpp` (shipped C++ header — field names CONFIRMED, not inferred) |
+| **Field-name source-of-truth** | `data/include/hwm/ctm/ctm.hpp` — a shipped C++ header, so the field names are exact |
 | **Dispatch entry** | `getArchModel(const string&)` @ `libwalrus 0x17344c0` / `libBIR 0x478f90` — alias → `Board*` (4 arms + assert) |
 | **Object graph** | `Board +0x8→Device +0x10→Core +{0x00..0x28 engines, 0x30 dramSizeGb}` |
 | **Cost model (cross-check)** | `TrainiumHwm` / `Gen3Hwm` / `CoreV4Hwm` in `walrus_driver` — independent re-derivation of bank size + clocks |
@@ -53,78 +53,78 @@ The deliverable. Rows are the geometry/parameter axes; the five columns are the 
 
 | Constant | gen1 Inferentia | gen2 Sunda | gen3 Cayman | gen4 CoreV4 | gen5 CoreV5 | Source (ctor → arg) | Conf |
 |---|---|---|---|---|---|---|---|
-| ArchLevel ordinal | 10 | 20 | 30 | 40 | 50 | `ArchLevel2string` switch | CONFIRMED |
-| Internal codename | `inferentia` | `sunda` | `gen3` | `core_v4` | `core_v5` | `getArchModel` aliases | CONFIRMED |
-| Runtime codename | inferentia | sunda | **cayman** | **mariana** | core_v5 | `ArchLevel2RuntimeTarget` | CONFIRMED |
-| Marketed device | Inf1 | Trn1 | Trn2 | Trn3 | (Trn4)ᵍ | `ArchLevel2ExternalString` | CONFIRMED (g1–4) |
-| CoreVN / codegen | CoreV1 (legacy) | CoreV2 | CoreV3 | CoreV4 | CoreV5 (stub) | `initCodegen` / `Codegen::codegen` | CONFIRMED |
-| Codegen target? | analysis-only | **yes** | **yes** | **yes** | no (throws) | `Codegen::codegen` arms `{20,30,40}` | CONFIRMED |
-| **SBUF B/partition** | 0x18000 = 96 KiB | 0x30000 = 192 KiB | 0x38000 = 224 KiB | 0x40000 = 256 KiB | ≥256 KiBⁱ | `Statebuf` arg0 `partitionSize` | CONFIRMED |
-| **SBUF total** (×128) | 12 MiB | 24 MiB | 28 MiB | 32 MiB | ≥32 MiBⁱ | arg0 × 128 | CONFIRMED |
-| SBUF partitions | 128 | 128 | 128 | 128 | (128)ⁱ | `Statebuf` arg2 = 0x80 | CONFIRMED |
-| SBUF SOC step | 0x20000 | 0x40000 | 0x40000 | 0x40000 | (0x40000)ⁱ | `Statebuf` arg1 `SOCStepSize` | CONFIRMED |
-| SBUF midPartition | 64 | 64 | 64 | 64 | (64)ⁱ | `Statebuf` arg3 | CONFIRMED |
-| SBUF reservedSize | 0x4000 | 0x4000 | 0x4008 | 0x4008 | (0x4008)ⁱ | `Statebuf` arg5 | CONFIRMED |
-| **PSUM bank count** | 4 | 8 | 8 | 8 | (8)ⁱ | `Psumbuf` arg0 `numBanks` | CONFIRMED |
-| **PSUM bank size** | 2048 B | 2048 B | 2048 B | 2048 B | (2048)ⁱ | `Psumbuf` arg2 = 0x800 | CONFIRMED |
-| PSUM partitions | 64 | 128 | 128 | 128 | (128)ⁱ | `Psumbuf` arg1 | CONFIRMED |
-| PSUM phys/partition | 8 KiB | 16 KiB | 16 KiB | 16 KiB | (16 KiB)ⁱ | banks × partSize | CONFIRMED |
-| PSUM phys total | 0.5 MiB | 2 MiB | 2 MiB | 2 MiB | (2 MiB)ⁱ | banks × partSize × parts | CONFIRMED |
-| **PE array rows × cols** | 128 × 64 | 128 × 128 | 128 × 128 | 128 × 128 | (128 × 128)ⁱ | `PeDimensionsForDtype` arg0×arg1 | CONFIRMED |
-| PE maxWeightStep | 2 | 2 | 2 | 2 | (2)ⁱ | `PeDimensionsForDtype` arg2 | CONFIRMED |
-| PE minWave | 128 | 128 | 128 | 128 | (128)ⁱ | `PeDimensionsForDtype` arg3 = 0x80 | CONFIRMED |
-| Pool channels | 64 | 128 | 128 | 128 | (128)ⁱ | `Pool` arg0 `numChannels` | CONFIRMED |
-| Act channels | 64 | 128 | 128 | 128 | (128)ⁱ | `Act` arg0 `numChannels` | CONFIRMED |
-| Act/Dve reorder win | 8 | 8 | 8 | **16** | (16)ⁱ | `<Arch>{Act,Dve}::getReorderWindowSize` | CONFIRMED |
-| Pool reorder win | 8 | 8 | 8 | 8 | (8)ⁱ | `<Arch>Pool::getReorderWindowSize` | CONFIRMED |
-| **Semaphores / core** | 256 | 256 | 256 | 256 | (256)ⁱ | `CoreParamSet.NumSemaphores` = 0x100 | CONFIRMED |
-| MaxRegNumPerEngine | 62 | 62 | 62 | 62 | (62)ⁱ | `NUM_REGISTERS − 2` | CONFIRMED |
-| **Per-core HBM** | 16 GiB | 16 GiB | 24 GiB | 36 GiB | ≥36 GiBⁱ | `Core::dramSizeGb` (`Core+0x30`) | CONFIRMED |
-| Device HBM | 32 GiB | 32 GiB | 24 GiB | 36 GiB | (≥36)ⁱ | `Device::dramSizeGb` (arg2) | CONFIRMED |
-| NeuronCores / device | 4 | 2 | 2 | 2 | (2)ⁱ | `Device` arg1 `numCores` | CONFIRMED |
-| Devices / board | 2 | 2 | 2 | 2 | (2)ⁱ | `Board` arg1 `numDevices` | CONFIRMED |
-| Per-engine count | 1 each | 1 each | 1 each | 1 each | (1)ⁱ | `CoreParamSet.*EngineCount` | CONFIRMED |
-| **Cost-model freq** PE/Pool/Act | (140)¹ | 140 | 120 | 120 | —ⁱ | `<Hwm>::getEngineFrequency` ord 1–3 | CONFIRMED |
-| **Cost-model freq** SP | (112)¹ | 112 | 96 | 120 | —ⁱ | `<Hwm>::getEngineFrequency` ord 5 | CONFIRMED |
-| DVE default opcodes | —² | 46 | 52 | 59 | —ⁱ | `dve_bin_gen{2,3,4}` opcode_table | CONFIRMED |
-| Sparse matmul | yes³ | yes³ | yes³ | yes³ | (yes)ⁱ | `InstMatmultSparse` opcodes 6/7 | STRONG |
-| MX / FP4 microscaling | no | no | no | **yes⁴** | (yes)ⁱ | `CoreV4Hwm::getLatency(InstMatmultMx)` | STRONG |
+| ArchLevel ordinal | 10 | 20 | 30 | 40 | 50 | `ArchLevel2string` switch | CERTAIN |
+| Internal codename | `inferentia` | `sunda` | `gen3` | `core_v4` | `core_v5` | `getArchModel` aliases | CERTAIN |
+| Runtime codename | inferentia | sunda | **cayman** | **mariana** | core_v5 | `ArchLevel2RuntimeTarget` | CERTAIN |
+| Marketed device | Inf1 | Trn1 | Trn2 | Trn3 | (Trn4)ᵍ | `ArchLevel2ExternalString` | CERTAIN (g1–4) |
+| CoreVN / codegen | CoreV1 (legacy) | CoreV2 | CoreV3 | CoreV4 | CoreV5 (stub) | `initCodegen` / `Codegen::codegen` | CERTAIN |
+| Codegen target? | analysis-only | **yes** | **yes** | **yes** | no (throws) | `Codegen::codegen` arms `{20,30,40}` | CERTAIN |
+| **SBUF B/partition** | 0x18000 = 96 KiB | 0x30000 = 192 KiB | 0x38000 = 224 KiB | 0x40000 = 256 KiB | ≥256 KiBⁱ | `Statebuf` arg0 `partitionSize` | CERTAIN |
+| **SBUF total** (×128) | 12 MiB | 24 MiB | 28 MiB | 32 MiB | ≥32 MiBⁱ | arg0 × 128 | CERTAIN |
+| SBUF partitions | 128 | 128 | 128 | 128 | (128)ⁱ | `Statebuf` arg2 = 0x80 | CERTAIN |
+| SBUF SOC step | 0x20000 | 0x40000 | 0x40000 | 0x40000 | (0x40000)ⁱ | `Statebuf` arg1 `SOCStepSize` | CERTAIN |
+| SBUF midPartition | 64 | 64 | 64 | 64 | (64)ⁱ | `Statebuf` arg3 | CERTAIN |
+| SBUF reservedSize | 0x4000 | 0x4000 | 0x4008 | 0x4008 | (0x4008)ⁱ | `Statebuf` arg5 | CERTAIN |
+| **PSUM bank count** | 4 | 8 | 8 | 8 | (8)ⁱ | `Psumbuf` arg0 `numBanks` | CERTAIN |
+| **PSUM bank size** | 2048 B | 2048 B | 2048 B | 2048 B | (2048)ⁱ | `Psumbuf` arg2 = 0x800 | CERTAIN |
+| PSUM partitions | 64 | 128 | 128 | 128 | (128)ⁱ | `Psumbuf` arg1 | CERTAIN |
+| PSUM phys/partition | 8 KiB | 16 KiB | 16 KiB | 16 KiB | (16 KiB)ⁱ | banks × partSize | CERTAIN |
+| PSUM phys total | 0.5 MiB | 2 MiB | 2 MiB | 2 MiB | (2 MiB)ⁱ | banks × partSize × parts | CERTAIN |
+| **PE array rows × cols** | 128 × 64 | 128 × 128 | 128 × 128 | 128 × 128 | (128 × 128)ⁱ | `PeDimensionsForDtype` arg0×arg1 | CERTAIN |
+| PE maxWeightStep | 2 | 2 | 2 | 2 | (2)ⁱ | `PeDimensionsForDtype` arg2 | CERTAIN |
+| PE minWave | 128 | 128 | 128 | 128 | (128)ⁱ | `PeDimensionsForDtype` arg3 = 0x80 | CERTAIN |
+| Pool channels | 64 | 128 | 128 | 128 | (128)ⁱ | `Pool` arg0 `numChannels` | CERTAIN |
+| Act channels | 64 | 128 | 128 | 128 | (128)ⁱ | `Act` arg0 `numChannels` | CERTAIN |
+| Act/Dve reorder win | 8 | 8 | 8 | **16** | (16)ⁱ | `<Arch>{Act,Dve}::getReorderWindowSize` | CERTAIN |
+| Pool reorder win | 8 | 8 | 8 | 8 | (8)ⁱ | `<Arch>Pool::getReorderWindowSize` | CERTAIN |
+| **Semaphores / core** | 256 | 256 | 256 | 256 | (256)ⁱ | `CoreParamSet.NumSemaphores` = 0x100 | CERTAIN |
+| MaxRegNumPerEngine | 62 | 62 | 62 | 62 | (62)ⁱ | `NUM_REGISTERS − 2` | CERTAIN |
+| **Per-core HBM** | 16 GiB | 16 GiB | 24 GiB | 36 GiB | ≥36 GiBⁱ | `Core::dramSizeGb` (`Core+0x30`) | CERTAIN |
+| Device HBM | 32 GiB | 32 GiB | 24 GiB | 36 GiB | (≥36)ⁱ | `Device::dramSizeGb` (arg2) | CERTAIN |
+| NeuronCores / device | 4 | 2 | 2 | 2 | (2)ⁱ | `Device` arg1 `numCores` | CERTAIN |
+| Devices / board | 2 | 2 | 2 | 2 | (2)ⁱ | `Board` arg1 `numDevices` | CERTAIN |
+| Per-engine count | 1 each | 1 each | 1 each | 1 each | (1)ⁱ | `CoreParamSet.*EngineCount` | CERTAIN |
+| **Cost-model freq** PE/Pool/Act | (140)¹ | 140 | 120 | 120 | —ⁱ | `<Hwm>::getEngineFrequency` ord 1–3 | CERTAIN |
+| **Cost-model freq** SP | (112)¹ | 112 | 96 | 120 | —ⁱ | `<Hwm>::getEngineFrequency` ord 5 | CERTAIN |
+| DVE default opcodes | —² | 46 | 52 | 59 | —ⁱ | `dve_bin_gen{2,3,4}` opcode_table | CERTAIN |
+| Sparse matmul | yes³ | yes³ | yes³ | yes³ | (yes)ⁱ | `InstMatmultSparse` opcodes 6/7 | HIGH |
+| MX / FP4 microscaling | no | no | no | **yes⁴** | (yes)ⁱ | `CoreV4Hwm::getLatency(InstMatmultMx)` | HIGH |
 
 `ⁱ` gen5 cells are INFERRED — projected from the `CoreV4` ladder; **no `CoreV5` constructor exists** (`getArchModel` asserts). `(parenthesized)` = inheritance projection; `≥` = a plausible non-regressing bound, not a binary literal.
-`ᵍ` `Trn4` for arch 50 is the `ArchLevel2ExternalString` projection; the string itself is present but the part is unannounced — treat as STRONG, not a hardware fact.
+`ᵍ` `Trn4` for arch 50 is the `ArchLevel2ExternalString` projection; the string is present in the binary but the part is unannounced — a compiler-side name, not a hardware fact.
 `¹` gen1 ships no distinct `Hwm` subclass; the `140/112` figures belong to `TrainiumHwm` (the gen2 cost model). gen1 latency uses the base perf-sim path (see §Cost-model frequencies).
 `²` Inferentia carries `InferentiaDve` geometry but no separate `dve_bin_gen1` opcode table in this build.
-`³` sparse matmul (`InstMatmultSparse`, PE phase opcodes `6` LoadTags / `7`) is present on the codegen generations; not pinned to a per-gen geometry immediate, hence STRONG not CONFIRMED.
+`³` sparse matmul (`InstMatmultSparse`, PE phase opcodes `6` LoadTags / `7`) is present on the codegen generations, but is not pinned to a per-gen geometry immediate.
 `⁴` MX is a **feature**, not a geometry dimension — see §"MX / FP4 / sparse is not a PE column".
 
 > **QUIRK — Inferentia is the only half-width part.** SBUF is 128-partition on *every* generation, gen1 included. But gen1's PSUM partitions, PE columns, Pool channels, and Act channels are all **64** — half the gen2+ width. "128 everywhere" holds for SBUF and PE *rows*, but the PSUM/Pool/Act/PE-cols second dimension is 64 on Inferentia. A reimplementer who hard-codes 128 across the board over-sizes every gen1 engine that is not SBUF or PE-rows.
 
 ---
 
-## Five adversarial self-verifications
+## The Five Safety-Critical Cells
 
-The five most safety-critical cells — the ones a wrong value silently corrupts an allocator or encoder — re-checked against the constructor bodies, not the prose.
+Five cells silently corrupt an allocator or encoder if you get them wrong. Each is traced here to its constructor body and to the consumer that reads it.
 
-**1 — SBUF size per partition.** `<Arch>Statebuf` arg0 (`esi`, stored at `Statebuf+0x00`): `0x18000 / 0x30000 / 0x38000 / 0x40000` = **96 / 192 / 224 / 256 KiB**. Cross-checked at the consumer: `SB_Allocator::SB_Allocator` (@`0xa97750`) reads `getArchModel → Board+0x8 → Device+0x10 → Core+0x28(Statebuf) → Statebuf+0` and caches it at `allocator+0x2b8` (@`0xa97bbd`). The cache slot holds **bytes**, not a partition count — the 128 is the separate `Statebuf+0x8` field. **Confirmed, matches 1.05.**
+**1 — SBUF size per partition.** `<Arch>Statebuf` arg0 (`esi`, stored at `Statebuf+0x00`): `0x18000 / 0x30000 / 0x38000 / 0x40000` = **96 / 192 / 224 / 256 KiB**. Cross-checked at the consumer: `SB_Allocator::SB_Allocator` (@`0xa97750`) reads `getArchModel → Board+0x8 → Device+0x10 → Core+0x28(Statebuf) → Statebuf+0` and caches it at `allocator+0x2b8` (@`0xa97bbd`). The cache slot holds **bytes**, not a partition count — the 128 is the separate `Statebuf+0x8` field.
 
-**2 — PSUM bank count.** `<Arch>Psumbuf` arg0 (`esi`, `Psumbuf+0x00`): `4 / 8 / 8 / 8`. Read directly, not inferred from the 16 KiB window (the D-K10 inference that the prose corrects). Consumer: `PSUM_Allocator::PSUM_Allocator` (@`0xad9970`) walks to `Core+0x20(Psumbuf) → Psumbuf+0` and caches at `allocator+0x0` (@`0xada13b`). **Confirmed — Inferentia is the only 4-bank part.**
+**2 — PSUM bank count.** `<Arch>Psumbuf` arg0 (`esi`, `Psumbuf+0x00`): `4 / 8 / 8 / 8`. This is read directly from the constructor immediate, not back-derived from the 16 KiB window. Consumer: `PSUM_Allocator::PSUM_Allocator` (@`0xad9970`) walks to `Core+0x20(Psumbuf) → Psumbuf+0` and caches at `allocator+0x0` (@`0xada13b`). Inferentia is the only 4-bank part.
 
-**3 — PE array dimensions.** `<Arch>Pe` builds one `PeDimensionsForDtype(numRows, numCols, maxWeightStep, minWave)`: `InferentiaPe = (0x80, 0x40, 2, 0x80)` = **128 × 64**; `Sunda/Cayman/CoreV4Pe = (0x80, 0x80, 2, 0x80)` = **128 × 128**, byte-identical across gen2/3/4. `ctm.hpp` declares exactly **one** `const PeDimensionsForDtype &m16` — there is no per-dtype array. **Confirmed — no gen4 third dtype slot (see correction below).**
+**3 — PE array dimensions.** `<Arch>Pe` builds one `PeDimensionsForDtype(numRows, numCols, maxWeightStep, minWave)`: `InferentiaPe = (0x80, 0x40, 2, 0x80)` = **128 × 64**; `Sunda/Cayman/CoreV4Pe = (0x80, 0x80, 2, 0x80)` = **128 × 128**, byte-identical across gen2/3/4. `ctm.hpp` declares exactly **one** `const PeDimensionsForDtype &m16` — there is no per-dtype array, and no gen4 third dtype slot (see below).
 
-**4 — SBUF partition count.** `<Arch>Statebuf` arg2 (`ecx`, `Statebuf+0x08`) = `0x80` = **128 on all four generations**, including Inferentia. This is the half-width trap's exception: SBUF stays full-width while gen1's PSUM/PE-cols/Pool/Act drop to 64. `Statebuf.numPartitions` (128) and `Psumbuf.numPartitions` (64 on gen1) are *different fields* — never conflated. **Confirmed, matches 1.05's QUIRK.**
+**4 — SBUF partition count.** `<Arch>Statebuf` arg2 (`ecx`, `Statebuf+0x08`) = `0x80` = **128 on all four generations**, including Inferentia. This is the half-width trap's exception: SBUF stays full-width while gen1's PSUM/PE-cols/Pool/Act drop to 64. `Statebuf.numPartitions` (128) and `Psumbuf.numPartitions` (64 on gen1) are *different fields* — never conflate them.
 
-**5 — DRAM split (per-core vs per-device HBM).** `Core::dramSizeGb` (`Core+0x30`, from `CoreParamSet+0x60`) = **16 / 16 / 24 / 36 GiB**; `Device::dramSizeGb` (`Device+0x08`, arg2) = **32 / 32 / 24 / 36 GiB**. They are independent immediates: on gen1, `numCores=4 × 16 = 64 ≠ 32` device — the device figure is its own constant, not a product. The budget gate `HBMUsage::run` (@`0x16b94b0`) reads `Core+0x30 << 30` (per-core, @`0x16ba327`), **never** `Device+0x8`. **Confirmed — gate uses the smaller per-core window.**
+**5 — DRAM split (per-core vs per-device HBM).** `Core::dramSizeGb` (`Core+0x30`, from `CoreParamSet+0x60`) = **16 / 16 / 24 / 36 GiB**; `Device::dramSizeGb` (`Device+0x08`, arg2) = **32 / 32 / 24 / 36 GiB**. They are independent immediates: on gen1, `numCores=4 × 16 = 64 ≠ 32` device — the device figure is its own constant, not a product. The budget gate `HBMUsage::run` (@`0x16b94b0`) reads `Core+0x30 << 30` (per-core, @`0x16ba327`), **never** `Device+0x8` — the gate enforces the smaller per-core window.
 
 ---
 
 ## MX / FP4 / sparse is not a PE column
 
-> **CORRECTION (D-M13) —** an earlier report read a *third* `PeDimensionsForDtype` dtype slot on gen4 (an extra `0x10 = 16` immediate from a libBIR-side PE ctor) and concluded "MX / microscaling is a gen4-only PE geometry dimension." The authoritative `ctm.hpp` declares exactly one `const PeDimensionsForDtype &m16`, and `CoreV4Pe` builds exactly **one** `PeDimensionsForDtype(128, 128, 2, 128)` — byte-identical to `SundaPe`/`CaymanPe`. The CTM PE geometry shows **no** gen4-specific dtype slot. Give gen4 the same 128×128 PE as gen2/gen3.
+> **GOTCHA — there is no gen4 third PE dtype slot.** A libBIR-side PE constructor carries an extra `0x10 = 16` immediate that reads like a third `PeDimensionsForDtype` entry on gen4, suggesting MX/microscaling is a gen4-only PE geometry dimension. It is not. `ctm.hpp` declares exactly one `const PeDimensionsForDtype &m16`, and `CoreV4Pe` builds exactly **one** `PeDimensionsForDtype(128, 128, 2, 128)` — byte-identical to `SundaPe`/`CaymanPe`. Give gen4 the same 128×128 PE as gen2/gen3.
 
 MX / FP4 microscaling and sparse matmul are real per-generation capabilities, but they live at the HLO / BIR / cost-model layers, **not** in the geometry tree:
 
 - **MX / FP4** is the OCP-MXFP path: 32-element blocks (`block_size = 32`) sharing one E8M0 scale byte, lowered to BIR `InstMatmultMx` (opcode 95) / `InstQuantizeMx`, encoded as the `LdWeightMx` (`0x1009`) / `MatmultMx` (`0x100A`) bundle pair. Its gen4-specificity surfaces as a *cost-model override*: `CoreV4Hwm::getLatency(const bir::InstMatmultMx&)` exists (@`0x483de0`) with **no** matching `Gen3Hwm` / `TrainiumHwm` override, so MX matmul has a per-gen latency handler only on gen4. Legality is enforced by `checkMatmultMxInputs` (@`0x1007420`) and `checkMatmultMxInstruction` (@`0x10139a0`) — including the hard `K_weights ≤ 512` bound and PSUM-bank capacity check. Full numeric contract: [MX matmul legality](../numerics/mx-matmul-legality.md).
-- **Sparse** matmul (`InstMatmultSparse`) rides the dense PE path with extra phase opcodes `6` (LoadTags) and `7`, present on the codegen generations. It is not pinned to a geometry immediate, hence STRONG.
+- **Sparse** matmul (`InstMatmultSparse`) rides the dense PE path with extra phase opcodes `6` (LoadTags) and `7`, present on the codegen generations. It is not pinned to any geometry immediate.
 
 The "MX = gen4" / "sparse on the codegen gens" associations are correct; their mechanism is the legalize-pass + BIR + `Hwm` pipeline, not an extra systolic-array column. A reimplementer building the geometry tree gives every gen2+ part the same 128×128 PE and looks for MX/sparse support in the legalize passes and `Hwm` overrides.
 

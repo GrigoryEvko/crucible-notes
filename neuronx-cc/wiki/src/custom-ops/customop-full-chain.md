@@ -215,7 +215,7 @@ Three parts of the header layout are easy to get wrong from a casual read of the
 
 ### A — `num_payloads` sits at `+0x0C`, in a contiguous `[0x0C..0x10]` count-band
 
-`num_payloads` is a `u16` at byte offset `+0x0C`, inside the header's count/id block.
+`num_payloads` is a `u16` at byte offset `+0x0C`, so it spans `[0x0C..0x0D]` inside the header's count/id block.
 
 ```c
 // CoreV2GenImpl::visitInstCustomOp @0x12613c0 — the header stamps
