@@ -759,6 +759,47 @@ Internal opcode IDs used by the math templates, mapped to SASS mnemonics:
 | `sub_1701140` | 8,690 bytes | Template scaffolding helper | Code object construction, called by all coordinators |
 | `sub_172A090` | 3,095 bytes | Conditional move emission | Scheduling barrier fixup |
 
+## Single-Precision div.rn / sqrt.rn (the f32 fast-path templates)
+
+The FP64 templates above are the heavyweight case; the **single-precision** `div.rn.f32`,
+`rcp.rn.f32` and `sqrt.rn.f32` templates are far shorter — one `MUFU` seed plus a single
+Newton (reciprocal) or Heron (square-root) step in the coupled FMA pipe, with a weak
+`*_slowpath` function for denormal/zero/Inf/NaN operands. Disassembling the emitted SASS
+on sm_89 recovers the exact bodies; each is reproduced bit-for-bit by the FP functional
+model (`decoded/sass-tools/sass_sem_fp.py`, verified on the device over a value sweep —
+120 `div.rn` and 30 `sqrt.rn` cases, all exact):
+
+```
+; rcp.rn.f32 -- one Newton step
+MUFU.RCP   R5, R0           ; y0 ~ 1/x  (~0.65-ULP MUFU.RCP seed)
+FFMA       R4, R0, R5, -1   ; e  = x*y0 - 1
+FADD.FTZ   R4, -R4, -RZ     ; -e
+FFMA       R5, R5, R4, R5   ; y1 = y0 + y0*(-e) = y0*(2 - x*y0)
+
+; div.rn.f32 -- refine 1/d, then a fused-residual quotient correction
+MUFU.RCP   R2, R3           ; y0 ~ 1/d
+FFMA       R7, -R3, R2, 1   ; e  = 1 - d*y0
+FFMA       R7, R2, R7, R2   ; y1 = y0 + y0*e
+FFMA       R2, R0, R7, RZ   ; q0 = n*y1
+FFMA       R6, -R3, R2, R0  ; r  = n - d*q0   (single-rounding residual)
+FFMA       R7, R7, R6, R2   ; q  = q0 + y1*r
+
+; sqrt.rn.f32 -- MUFU.RSQ + one Heron step
+MUFU.RSQ   R5, R0
+FMUL.FTZ   R7, R0, R5       ; s = x*rsqrt ~ sqrt(x)
+FMUL.FTZ   R5, R5, 0.5      ; h = 0.5*rsqrt
+FFMA       R0, -R7, R7, R0  ; d = x - s^2
+FFMA       R5, R0, R5, R7   ; s + d*h
+```
+
+The `.FTZ` on the correction ops is the iteration's own flush-to-zero, emitted
+regardless of the kernel's global FTZ flag. The slow path is a 2⁶⁴ pre-scale bracket
+gated by `FSETP` range predicates plus an `FCHK` division-validity test, which yields
+the IEEE-correct result for the operands the fast path cannot handle. The unit-level
+companion (`MUFU` placement, the measured bare-seed ULP, and the FP64 `RCP64H`/`RSQ64H`
+seeds) is in the [Special-Function Units](../sass-isa/special-function-units.md) page,
+§1.3–1.4.
+
 ## Cross-References
 
 - [Code Generation Overview](overview.md) — pipeline context showing templates as step 5 of 7

@@ -158,7 +158,7 @@ below, and the per-arch SASS instruction tables carry only the grammar/encoding
 | WAR | *no field* — zero-but-ordered | implicit | implicit | implicit |
 | Control | band-13 on `BRA`/`BSYNC`/`BAR`/`RTT` + pred/CC in scoreboard | 13 cyc | same | same |
 | Scoreboard config (rows/config; `mask` = pipe bitset) | 88-B cfg via selector `sub_ABF590`, `count` @ `+0x54` | 1 | 1 | sm_100 ≤6 / sm_103 1 |
-| Decoupled barrier | rule `barrier_latency` / `barrier_throughput` (−1 ⇒ none) | 473 active | 250 / 256 | 420 |
+| Decoupled barrier | rule `barrier_latency` / `barrier_throughput` (−1 ⇒ none) | 473 active | 250 / 256 | 420 / 301 |
 | Long-latency gate | `sub_8CCF80` ⇒ `latency > 19` | 19 | same | same |
 
 - **`rule_type == 4 ⇔ latency == 255`** (unit absent on this arch) — zero violations across all 11 per-SM tables.

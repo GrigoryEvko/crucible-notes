@@ -16,4 +16,5 @@ table_index	code_hex	code_dec	sm_num	variant	sm_string	note
 83	0x9003	36867	90	3	sm_90c	
 90	0x9001	36865	90	1	sm_90a	duplicate of 0x9001(sm_90a) at distinct arch-index
 100	0x9004	36868	90	4	sm_90?4	0x9004 -> sm_90a (variant 4 also maps to 'a' suffix arch-side)
-101	0x9005	36869	90	5	sm_90f	
+101	0x9005	36869	90	5	sm_90f	highest entry; table ends here
+#	-	-	-	-	-	legacy 16-bit hash-slot table @VMA 0x2020620 (stride 2) ENDS here at 0x9005; the (sm/10<<12)|variant scheme cannot encode sm_103/sm_121 (non-multiples of 10), so sm_100+ use the __CUDA_ARCH__ decimal codes instead — see sm_target_properties.tsv (sm_100=1000, sm_103=1030, sm_110=1100, sm_120=1200, sm_121=1210)

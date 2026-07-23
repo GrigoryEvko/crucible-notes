@@ -1,0 +1,64 @@
+# decoupled-scalar completion latency on sm_89 (CUDA-13 ptxas binary analysis + sm_89 GPU measurement)
+#
+# SCOREBOARD MECHANISM
+# A decoupled scalar op does not deliver its result a fixed number of cycles after issue. It runs in a side
+# pipe (SFU for the transcendentals/bit-ops, the MIO datapath for S2R/LDC, the FMA64 pipe for the 64-bit
+# conversions) and arms one of the warp's six write scoreboards SB0..SB5. The result becomes visible only
+# once that side pipe retires and clears the scoreboard. ptxas pairs the producer with its dependent
+# consumer purely through that handshake: the producer's control word sets dst_wr_sb=n (bits 110-112); the
+# consumer's control word carries a read-barrier wait on bit n of req_bit_set (bits 116-121) and stalls at
+# the warp scheduler until SBn clears. The producer's own usched field (bits 105-109) is only its issue
+# throughput, never the completion latency -- the completion time is whatever the side pipe takes, surfaced
+# to the compiler solely as the scoreboard wait. So the per-op latency is the producer's pipe completion
+# time, not a fixed result band.
+#
+# Which scoreboard a given producer arms is whichever of SB0..SB5 is free at that point (SB0 by default; a
+# probe whose input setup already used SB0 makes the next producer arm SB1, etc.). The pairing is invariant:
+# producer sets SBk -> the consumer that reads its result waits SBk.
+#
+# COUPLED EXCEPTIONS (no scoreboard)
+# Two ops the fixed-band model treated as decoupled are emitted COUPLED on sm_89: CS2R (clock read) and the
+# 32-bit integer->float conversion (lowered to I2FP). They arm no write scoreboard; ptxas resolves their RAW
+# with a fixed issue stall instead, so a dependent use needs no scoreboard wait. The decoupled I2F path is
+# the 64-bit conversion (I2F.F64.S64, FMA64 pipe); the 32-bit form is the coupled I2FP.
+#
+# METHOD
+#  source_model        the prior heuristic fixed result band (cycles) the scalar model assigned.
+#  sets_scoreboard     SBn the producer arms in ptxas -arch sm_89 output (-coupled if it arms none).
+#  ptxas_emitted_wait  how ptxas makes a dependent consumer wait: "wait SBn" (scoreboard read-barrier) for a
+#                      decoupled producer, or "coupled/stall=N" (no scoreboard; fixed issue stall) otherwise.
+#  gpu_measured_latency  sm_89 GPU clock-delta: one producer->consumer pair bracketed by two SR_CLOCKLO reads
+#                      (S2UR then CS2R), single warp of 32 lanes, with the scoreboard wait intact; the
+#                      per-lane (clock_after - clock_before) minus the back-to-back clock-read overhead
+#                      (36 cyc, measured empty-body). This is the producer's completion latency as seen by a
+#                      dependent use: producer pipe completion + the dependent op's own issue. The coupled
+#                      floor (a coupled producer feeding the same consumer) is 11 cyc -- the CS2R/I2FP rows
+#                      pin it directly -- so the pure scoreboard premium is gpu_measured_latency - 11 for the
+#                      same-consumer (int/fp) ops. Deterministic across repeated launches.
+#
+# All cycle figures are sm_89 (RTX Ada, compute capability 8.9), CUDA 13.1 ptxas/nvdisasm. The 64-bit
+# conversions (F2F.F64.F32, I2F.F64.S64) feed an FP64 consumer (DADD), which inflates their measured number
+# by the FP64 add latency. LDC's number is an uncached indirect constant-bank fetch (cold const cache); a
+# cache-resident LDC resolves far faster (the source band's 30 is the warm-hit figure).
+#
+# Reproduce: probe_decoupled_scalar.py (no args -> ptxas-emitted pairings; --gpu -> the clock-delta sweep).
+#
+op	sets_scoreboard	source_model	ptxas_emitted_wait	gpu_measured_latency	note
+MUFU.RCP	SB0	24	wait SB0	35	SFU transcendental; reciprocal
+MUFU.RSQ	SB0	24	wait SB0	39	SFU transcendental; reciprocal sqrt
+MUFU.SQRT	SB0	24	wait SB0	39	SFU transcendental; sqrt
+MUFU.SIN	SB0	24	wait SB0	38	SFU transcendental; sine
+MUFU.COS	SB0	24	wait SB0	38	SFU transcendental; cosine
+MUFU.EX2	SB0	24	wait SB0	34	SFU transcendental; base-2 exp
+MUFU.LG2	SB0	24	wait SB0	39	SFU transcendental; base-2 log
+MUFU.TANH	SB0	24	wait SB0	34	SFU transcendental; tanh
+POPC	SB0	13	wait SB0	29	MIO bit-count; faster side pipe than SFU
+FLO	SB0	13	wait SB0	29	MIO find-leading-one (bfind)
+BREV	SB0	24	wait SB0	29	MIO bit-reverse
+F2F	SB0	13	wait SB0	57	f32->f64 via FMA64 pipe; FP64 consumer inflates
+F2I	SB0	13	wait SB0	34	f32->s32 decoupled conversion
+I2F	SB0	13	wait SB0	71	s64->f64 via FMA64 pipe; FP64 consumer inflates
+S2R	SB0	24	wait SB0	30	special-register read (laneid/tid); MIO
+LDC	SB0	30	wait SB0	953	indirect const-bank load; uncached (cold const cache)
+CS2R	-coupled	24	coupled/stall=4	11	clock read; COUPLED on sm_89, no scoreboard
+I2FP	-coupled	6	coupled/stall=1	11	32-bit s32->f32 lowered to coupled I2FP; no scoreboard

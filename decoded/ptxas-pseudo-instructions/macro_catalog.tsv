@@ -587,3 +587,58 @@ NUM	1319900574	0x4EAC159E	sub_568430	__cuda_sm10x_tcgen05_guardrails_check_datap
 NUM	626988249	0x255F14D9	sub_56D000	__cuda_sm10x_tcgen05_guardrails_check_physical_bounds	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
 NUM	3246921673	0xC18817C9	sub_5162F0	__cuda_sm10x_tcgen05_guardrails_check_allocation_granularity	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
 NUM	1681331703	0x643715F7	sub_57CA50	__cuda_sm10x_tcgen05_guardrails_check_datapath_alignment	tcgen05	sm10x	TMEM guardrail check (bounds/cols/granularity/datapath) -> trap on fail
+HELPER	236523224	0x0E190ED8	(weak/template)	__cuda_cp_async_bulk_multicast_dummy	cp.async/bulk	sm1xx	cp.async.bulk multicast template param-pack anchor
+HELPER	3707638656	0xDCFE1380	(weak/template)	__cuda_cp_async_bulk_multicast_param_cachePolicy	cp.async/bulk	sm1xx	cp.async.bulk multicast template param: cachePolicy
+HELPER	2445939168	0x91CA11E0	(weak/template)	__cuda_cp_async_bulk_multicast_param_ctaMask	cp.async/bulk	sm1xx	cp.async.bulk multicast template param: ctaMask
+HELPER	1290145895	0x4CE61067	(weak/template)	__cuda_cp_async_bulk_multicast_param_dst	cp.async/bulk	sm1xx	cp.async.bulk multicast template param: dst
+HELPER	2764116592	0xA4C11270	(weak/template)	__cuda_cp_async_bulk_multicast_param_mbarrier	cp.async/bulk	sm1xx	cp.async.bulk multicast template param: mbarrier
+HELPER	1574703319	0x5DDC10D7	(weak/template)	__cuda_cp_async_bulk_multicast_param_size	cp.async/bulk	sm1xx	cp.async.bulk multicast template param: size
+HELPER	1291849828	0x4D001064	(weak/template)	__cuda_cp_async_bulk_multicast_param_src	cp.async/bulk	sm1xx	cp.async.bulk multicast template param: src
+HELPER	3809873309	0xE3160D9D	(weak/template)	__cuda_cp_async_bulk_tensor_dummy	cp.async/bulk	sm1xx	cp.async.bulk tensor template param-pack anchor
+HELPER	2739278405	0xA3461245	(weak/template)	__cuda_cp_async_bulk_tensor_param_cachePolicy	cp.async/bulk	sm1xx	cp.async.bulk tensor template param: cachePolicy
+HELPER	1015156728	0x3C820FF8	(weak/template)	__cuda_cp_async_bulk_tensor_param_coord	cp.async/bulk	sm1xx	cp.async.bulk tensor template param: coord
+HELPER	1560154277	0x5CFE10A5	(weak/template)	__cuda_cp_async_bulk_tensor_param_ctaMask	cp.async/bulk	sm1xx	cp.async.bulk tensor template param: ctaMask
+HELPER	486936364	0x1D060F2C	(weak/template)	__cuda_cp_async_bulk_tensor_param_dst	cp.async/bulk	sm1xx	cp.async.bulk tensor template param: dst
+HELPER	3042513565	0xB559129D	(weak/template)	__cuda_cp_async_bulk_tensor_param_im2col_coord	cp.async/bulk	sm1xx	cp.async.bulk tensor template param: im2col_coord
+HELPER	1857687861	0x6EBA1135	(weak/template)	__cuda_cp_async_bulk_tensor_param_mbarrier	cp.async/bulk	sm1xx	cp.async.bulk tensor template param: mbarrier
+HELPER	2166493626	0x812211BA	(weak/template)	__cuda_cp_async_bulk_tensor_param_tensormap	cp.async/bulk	sm1xx	cp.async.bulk tensor template param: tensormap
+HELPER	4034924025	0xF0800DF9	(weak/template)	__cuda_cp_async_bulk_unicast_dummy	cp.async/bulk	sm1xx	cp.async.bulk unicast template param-pack anchor
+HELPER	3036680865	0xB50012A1	(weak/template)	__cuda_cp_async_bulk_unicast_param_cachePolicy	cp.async/bulk	sm1xx	cp.async.bulk unicast template param: cachePolicy
+HELPER	736104328	0x2BE00F88	(weak/template)	__cuda_cp_async_bulk_unicast_param_dst	cp.async/bulk	sm1xx	cp.async.bulk unicast template param: dst
+HELPER	2137002385	0x7F601191	(weak/template)	__cuda_cp_async_bulk_unicast_param_mbarrier	cp.async/bulk	sm1xx	cp.async.bulk unicast template param: mbarrier
+HELPER	1006047224	0x3BF70FF8	(weak/template)	__cuda_cp_async_bulk_unicast_param_size	cp.async/bulk	sm1xx	cp.async.bulk unicast template param: size
+HELPER	737808261	0x2BFA0F85	(weak/template)	__cuda_cp_async_bulk_unicast_param_src	cp.async/bulk	sm1xx	cp.async.bulk unicast template param: src
+HELPER	3556576536	0xD3FD0D18	(weak/template)	__cuda_sm1xx_bulk_copy_multicast	cp.async/bulk	sm1xx	TMA non-tensor bulk copy template (cluster multicast); expanded by cp.async.bulk handler
+HELPER	3122072633	0xBA170C39	(weak/template)	__cuda_sm1xx_bulk_copy_unicast	cp.async/bulk	sm1xx	TMA non-tensor bulk copy template (unicast); expanded by cp.async.bulk handler
+HELPER	338236584	0x142914A8	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_1d_tile_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 1D tile, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.1D
+HELPER	3943961545	0xEB1413C9	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_1d_tile_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 1D tile, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.1D
+HELPER	339350697	0x143A14A9	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_2d_tile_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 2D tile, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.2D
+HELPER	3944944586	0xEB2313CA	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_2d_tile_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 2D tile, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.2D
+HELPER	995300674	0x3B531542	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_3d_im2col_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 3D im2col, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.3D
+HELPER	286856291	0x11191463	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_3d_im2col_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 3D im2col, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.3D
+HELPER	340464810	0x144B14AA	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_3d_tile_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 3D tile, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.3D
+HELPER	3945927627	0xEB3213CB	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_3d_tile_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 3D tile, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.3D
+HELPER	996545859	0x3B661543	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_4d_im2col_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 4D im2col, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.4D
+HELPER	287970404	0x112A1464	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_4d_im2col_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 4D im2col, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.4D
+HELPER	341578923	0x145C14AB	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_4d_tile_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 4D tile, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.4D
+HELPER	3946910668	0xEB4113CC	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_4d_tile_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 4D tile, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.4D
+HELPER	997791044	0x3B791544	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_5d_im2col_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 5D im2col, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.5D
+HELPER	289084517	0x113B1465	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_5d_im2col_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 5D im2col, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.5D
+HELPER	342693036	0x146D14AC	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_5d_tile_multicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 5D tile, multicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.5D
+HELPER	3947893709	0xEB5013CD	(weak/template)	__cuda_sm1xx_cp_async_bulk_tensor_5d_tile_unicast	cp.async/bulk	sm1xx	TMA tensor bulk-copy template: 5D tile, unicast; expanded by cp.async.bulk.tensor handler -> UTMALDG.5D
+HELPER	1559565763	0x5CF515C3	(weak/template)	__cuda_sm10x_create_mask_from_bit_idx_and_alloc_size_v1	tcgen05	sm10x	TMEM helper: build 64-bit column-allocation mask from (base_bit_idx,num_bits); used by alloc/dealloc
+HELPER	1083251163	0x409119DB	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_access_out_of_physical_bounds	tcgen05	sm10x	trap: TMEM column access beyond physical bounds (args: oob_col_no, instr_kind)
+HELPER	1546590805	0x5C2F1A55	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_allocation_granularity_invalid	tcgen05	sm10x	trap: alloc/dealloc column count violates granularity (arg: nCols)
+HELPER	2429165202	0x90CA1E92	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_col_being_dealloced_not_returned_by_alloc	tcgen05	sm10x	trap: dealloc of column not in current allocation
+HELPER	4166064324	0xF85118C4	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_current_warp_owner_invalid	tcgen05	sm10x	trap: warp not owner of accessed TMEM lane range (ld/st)
+HELPER	4080605315	0xF3391883	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_invalid_datapath_alignment	tcgen05	sm10x	trap: MMA datapath-lane alignment invalid for matrix_kind
+HELPER	4092991617	0xF3F61881	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_phase_invalid_during_alloc	tcgen05	sm10x	trap: TMEM phase invalid during alloc (arg: phase)
+HELPER	2907708266	0xAD501B6A	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_sparse_mismatch_between_idesc_mod	tcgen05	sm10x	trap: sparsity flag mismatch between idesc and modifier
+HELPER	4157544657	0xF7CF18D1	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_sp_used_in_unsupported_env	tcgen05	sm10x	trap: sparse MMA used in unsupported target/family-portable env
+HELPER	4109637781	0xF4F41895	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_unallocated_columns_access	tcgen05	sm10x	trap: access to unallocated TMEM columns (args: col, alloced_mask, instr_kind)
+HELPER	3823311908	0xE3E31C24	(weak/template)	__cuda_sm10x_tcgen05_guardrail_trap_unallocated_columns_being_dealloced	tcgen05	sm10x	trap: dealloc of unallocated columns
+HELPER	3966242078	0xEC680D1E	(weak/template)	__cuda_sm10x_tcgen05_mma_scaleTmemA	tcgen05	sm10x	tcgen05.mma operand: A-scale (block-scale) TMEM region (MXFP)
+HELPER	3966307615	0xEC690D1F	(weak/template)	__cuda_sm10x_tcgen05_mma_scaleTmemB	tcgen05	sm10x	tcgen05.mma operand: B-scale (block-scale) TMEM region (MXFP)
+HELPER	3967225151	0xEC770D3F	(weak/template)	__cuda_sm10x_tcgen05_mma_spMetaTmem	tcgen05	sm10x	tcgen05.mma operand: sparsity-metadata TMEM region
+HELPER	2926250806	0xAE6B0B36	(weak/template)	__cuda_sm10x_tcgen05_mma_tmemA	tcgen05	sm10x	tcgen05.mma operand: A-matrix TMEM region pointer
+HELPER	2926447417	0xAE6E0B39	(weak/template)	__cuda_sm10x_tcgen05_mma_tmemD	tcgen05	sm10x	tcgen05.mma operand: D-accumulator TMEM region pointer

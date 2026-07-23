@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code; the scheduling
-# model is recovered from static + differential analysis of the CUDA 13.1
+# nvopen-tools -- SASS reverse-engineering tooling.  The scheduling model is
+# recovered from static + differential analysis of the CUDA 13.1
 # ptxas / nvdisasm binaries plus live-GPU measurement.
 """
 Reorder-patcher + GPU-gated orchestration for the constraint-optimal scheduler.
@@ -12,7 +12,7 @@ Two public entry points the CLI exposes:
                            reorder the fixed 16-byte instruction words IN PLACE
                            within the block's byte range, recompose control words
                            for the new order (preserving cross-block scoreboard
-                           waits verbatim), then GPU-GATE the result bit-identical
+                           waits unchanged), then GPU-GATE the result bit-identical
                            to ptxas.  A block is accepted ONLY if bit-identical;
                            otherwise it falls back to ptxas's original order.
                            Finally measure cycles (ncu) V(ptxas) vs V(ours).
@@ -21,23 +21,21 @@ Two public entry points the CLI exposes:
                            our model proves are slack, GPU-gated bit-identical via
                            the same surgical + bisection logic as --perf-diff.
 
-WHY IN-PLACE REORDER NEEDS NO PC FIXUP
---------------------------------------
+In-place reorder needs no PC fixup:
 Every SASS instruction on this ISA is a fixed 16 bytes.  Permuting instructions
 WITHIN one basic block does not change the block's total byte length and does not
 move any branch TARGET (a block has no internal targets -- asserted by the
 splitter), so no PC-relative branch displacement changes.  The only field that
 must be recomputed is each word's scheduling control (bits 105-124): the new
 order has different producer->consumer distances, hence different stalls and
-scoreboard pairings.  We recompose those from the reordered DAG.
+scoreboard pairings, recomposed from the reordered DAG.
 
-THE CORRECTNESS GATE (absolute)
--------------------------------
-For each kernel we patch the reordered+recomposed cubin, run it on the GPU with
-the same seeded inputs as ptxas's original, and require BIT-IDENTICAL output.
-Per block: accept our order iff the whole-kernel output stays identical with that
-block reordered; else revert that block to ptxas.  The final kernel is therefore
-provably never wrong (bit-identical) and never slower (each block is the min of
+The correctness gate:
+For each kernel the reordered+recomposed cubin is patched, run on the GPU with
+the same seeded inputs as ptxas's original, and required to be BIT-IDENTICAL.
+Per block: accept the new order iff the whole-kernel output stays identical with
+that block reordered; else revert that block to ptxas.  The final kernel is
+therefore never wrong (bit-identical) and never slower (each block is the min of
 ptxas and an accepted faster order).
 """
 from __future__ import annotations
@@ -152,42 +150,40 @@ def reorder_patch(src: str, dst: str, entry: str, perm: list[int],
     new position k holds the raw 16-byte word of old instruction perm[k], with its
     scheduling-control AND operand-reuse bits (105-125) replaced by
     pack_control(cr.fields[k]); the opcode / operands / predicate are preserved
-    verbatim.  Words beyond n_instr (trailing NOP padding) are left untouched.
+    unchanged.  Words beyond n_instr (trailing NOP padding) are left untouched.
 
-    WHY THE OPERAND-REUSE FLAG IS CLEARED, NOT PRESERVED
-    ----------------------------------------------------
+    The operand-reuse flag is cleared, not preserved:
     The per-operand `.reuse` flag is a POSITION-DEPENDENT hint: it tells the
     hardware to hold this instruction's operand in the collector so the NEXT
     instruction that reads the same register port skips the register-file fetch.
-    Its correctness depends on which instruction follows -- so a verbatim-preserved
-    reuse flag is STALE the moment we permute words (it would feed the new
+    Its correctness depends on which instruction follows -- so a preserved
+    reuse flag is STALE the moment words permute (it would feed the new
     successor a value cached for a different one).  The dependency DAG does not
-    model the reuse cache, so we cannot re-derive a correct reuse bit; instead we
-    CLEAR it on every reordered word (recompose emits batch_t/reuse = 0).  Clearing
+    model the reuse cache, so the reuse bit cannot be re-derived; it is instead
+    CLEARED on every reordered word (recompose emits batch_t/reuse = 0).  Clearing
     reuse is always correctness-safe (the operand is simply re-fetched), it only
     forgoes a micro-optimisation.  On this ISA the reuse flags live in bits 122-125
     (the field the composer calls batch_t plus the 4th slot at 125), so the clear
     mask spans 105-125 -- one bit wider than pack_control writes -- to wipe the
     top reuse slot too.  Returns words written.
 
-    TRUE FALLBACK FOR NON-REORDERED POSITIONS
-    -----------------------------------------
+    Fallback for non-reordered positions:
     `active` is the set of NEW positions that belong to an accepted-reorder block.
-    Our recomposed control words only reproduce ptxas EXACTLY for blocks the GPU
+    The recomposed control words only reproduce ptxas EXACTLY for blocks the GPU
     gate accepted; recomposing an UN-reordered block would substitute the model's
     stalls/scoreboards for ptxas's (and the model is conservative-but-not-exact:
     on a tight FP chain it can emit a shorter stall than ptxas, which corrupts the
     result).  So a position NOT in `active` (a block that fell back to ptxas, or
     trailing padding) is copied BYTE-FOR-BYTE from ptxas -- its control word is
-    ptxas's verbatim, not recomposed.  This makes "fall back to ptxas" a true
+    ptxas's unchanged, not recomposed.  This makes "fall back to ptxas" a true
     byte-level fallback: when no block is accepted the output is bit-identical to
-    the original cubin.  `active=None` rewrites every position (legacy behaviour).
+    the original cubin.  `active=None` rewrites every position.
     """
     data = bytearray(Path(src).read_bytes())
     off, size = S._text_section_span(Path(src), entry)
     nwords = size // 16
-    # snapshot the original words so a permutation that reads a slot it will also
-    # overwrite is correct (we read from the snapshot, write to `data`).
+    # copy the original words so a permutation that reads a slot it will also
+    # overwrite is correct (we read from the copy, write to `data`).
     orig = [int.from_bytes(data[off + k * 16: off + k * 16 + 16], "little")
             for k in range(nwords)]
     # zero bits 105..125: the scheduling-control word (105-124) AND the top

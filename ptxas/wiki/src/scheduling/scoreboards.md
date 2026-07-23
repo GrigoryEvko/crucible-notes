@@ -111,9 +111,11 @@ ptxas ships **7** of these tables. The split is architectural:
 - **sm_80 / sm_86 / sm_89 / sm_90 / sm_90a / sm_103** — a **single** triplet per config with a pipe
   mask (e.g. sm_90 config 0 = `{sb_id 0, threshold 56, mask 8}`). Pre-Blackwell hardware tracks one
   barrier per scheduling class at a time.
-- **sm_100 (Blackwell)** — up to **6** triplets per config, all with `threshold 56` and `mask -1`,
-  modelling the multi-scoreboard async dependency-barrier hardware. This wider config is the
-  primary motivation for the phase-114 texture-barrier fixup.
+- **sm_100 (Blackwell)** — up to **6** triplets per config (130 triplets across 75 configs),
+  modelling the multi-scoreboard async dependency-barrier hardware. `threshold 56` / `mask -1`
+  dominate (98/130 and 85/130 respectively) — the wide multi-scoreboard configs all use them —
+  but lower thresholds (0–54) and pipe-specific masks (`1,2,4,6,8,16,32,64`) also appear. This
+  wider config is the primary motivation for the phase-114 texture-barrier fixup.
 
 The wait depth and interval that go with each triplet come from the **dependency-rule** columns
 `barrier_latency` / `barrier_throughput` (40-byte rule record, see
@@ -143,7 +145,7 @@ See [sync-barriers.md](../passes/sync-barriers.md#phase-114----fixuptexdepbarand
 Texture fetches (Ori opcodes 60, 62, 78, 79) have latencies of 200–400+ cycles, exceeding the 4-bit stall-count range. The phase works as follows:
 
 - Phase 91 (`OriCalcDependantTex`) pre-computes texture dependency metadata; phase 114 consumes it to validate write-barrier indices, wait-masks on consumers, and stall/yield settings.
-- The per-SM scoreboard configs use a threshold of 56 cycles uniformly, with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class — the primary motivation for this pass.
+- The per-SM scoreboard configs use a barrier-count threshold dominated by 56 (with lower values on a minority of configs), with sm_100 (Blackwell) supporting up to 6 simultaneous scoreboard triplets per scheduling class — the primary motivation for this pass.
 - The default vtable entry is `nullsub_43` (`0x680170`), making the pass a no-op on architectures that fold texture barrier fixup into phase 115.
 
 ## Phase 115: AdvancedScoreboardsAndOpexes
@@ -511,7 +513,7 @@ The allocator uses several heuristics to maximize barrier reuse:
 
 2. **Type affinity**: The pipe class of the producer is compared against `barrier[i].last_pipe_class`. A match (e.g., two TEX operations, or two LDGSTS operations sharing unit IDs 4-10) wins over first-free. This is visible in `sub_A356A0` at the branch where opcode class 10 routes through the separate `sub_A31F80` path that preserves texture barrier grouping.
 
-3. **Distance-based freeing**: `sub_A318F0` computes paired forward/backward instruction distances from each active barrier's producer to the current instruction. For each operand pair it calls `sub_92F520` with opcodes 0x8B (forward) and 0x8F (backward), then reduces the four distance values via `sub_9331F0` (opcode 5, signed minimum). A barrier is freed without an explicit wait when this distance exceeds `dep_rules[pipe_class].barrier_latency` (56 cycles on sm_100, consistent across all 430 entries in the table).
+3. **Distance-based freeing**: `sub_A318F0` computes paired forward/backward instruction distances from each active barrier's producer to the current instruction. For each operand pair it calls `sub_92F520` with opcodes 0x8B (forward) and 0x8F (backward), then reduces the four distance values via `sub_9331F0` (opcode 5, signed minimum). A barrier is freed without an explicit wait when this distance exceeds `dep_rules[pipe_class].barrier_latency` (56 cycles for the dominant class on sm_100 — 349 of the 430 entries; the remaining 81 carry shorter per-class barrier latencies 0–54).
 
 4. **Conflict avoidance**: When `ctx+1415` bit 5 is set, `sub_A31390` performs a 4-register intersection test between the candidate barrier's operand set and each other live barrier. It builds two operand-pair vectors per barrier (source and destination), runs bank-conflict detection (`sub_92FEB0`, opcode 0xC9), threshold selection (`sub_9300A0`, opcode 0x24 with constant 0x6000000D), and overlap tests (`sub_92E850`, opcode 0x82). The output is a 4-element conflict vector written back to the consumer's scoreboard state at `a10[0..3]`. Any nonzero element forces a wait bit for the conflicting barrier.
 

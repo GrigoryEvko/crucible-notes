@@ -185,10 +185,10 @@ All SM 75–88 targets fall into the 7-warp / 208-slot bucket. After the warp co
 | 24576, 32768, 36864 | 0 | sm_60, sm_90, sm_100 (base) |
 | 8193, 20481, **28674** | 2 | sm_30, sm_50, **sm_86** |
 | **28675**, 36867 | 3 | **sm_87**, sm_103 |
-| **28676**, 36868 | 4 | **sm_88**, sm_110 |
+| **28676**, 36868 | 4 | **sm_88**, **sm_120** |
 | 28677, 36869 | 5 | sm_89, sm_121 |
 
-sm_75 (24577) and sm_80 (28673) are absent from the variant table and fall through to the default variant (0 or 1). This means sm_75 and sm_80 use the baseline latency model, while sm_86–88 get tuned sub-architecture parameters.
+sm_75 (24577) and sm_80 (28673) are absent from the variant table and fall through to the default variant (0 or 1). This means sm_75 and sm_80 use the baseline latency model, while sm_86–88 get tuned sub-architecture parameters. **Note:** gen-9 code `0x9004` (36868) is **sm_120** (chip ordinal 4), *not* sm_110 — `sub_8E4400` matches `$0x9004`→sm_120 and `$0x9005`→sm_121 on distinct branches. sm_110 carries code `0x9001` (36865, ordinal 1, shared with the phantom sm_101 slot) and is handled on the low-code path with sm_80, not in this gen-9 variant-4 row.
 
 ## HW Latency Tables
 

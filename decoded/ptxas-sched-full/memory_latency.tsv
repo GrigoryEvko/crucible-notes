@@ -1,0 +1,47 @@
+# sm_89 (Ada) memory-op load-use latency, per space and global cache tier.
+#
+# Method.  Single-warp clock64 pointer-chase: each memory op's address is a
+# strict data-dependency on the prior op's loaded value, so the SM cannot hide
+# the latency behind ILP and the per-op cycle count IS the load-use latency.
+# clock64 (SR_CLOCKLO) counts SM cycles independent of the boost clock, so the
+# figures are clock-invariant.  Global cache tiers are isolated by sizing the
+# chase working set against the Ada hierarchy (L1 <= 128 KiB/SM, L2 = 24 MiB on
+# this part): 2 KiB set -> L1-hit, 1 MiB -> L2, 96 MiB -> DRAM miss.  Each value
+# is the median of 7 launches x 4096 dependent ops (run-to-run spread < 1%).
+#
+# Scoreboard mechanism (decoded from ptxas-emitted SASS, CUDA 13.1).  Every load
+# is DECOUPLED: it issues, arms a WRITE scoreboard (the SASS dst_wr_sb field,
+# bits 110-112), and retires asynchronously.  The dependent consumer carries
+# that scoreboard id in its read-barrier wait mask (req_bit_set, bits 116-121)
+# and blocks until the load's write scoreboard clears.  ptxas alternates the two
+# long-scoreboards (SB2/SB5 in the sm_89 scoreboard config) across back-to-back
+# loads.  The instruction's static usched stall (bits 105-109) is an ISSUE-
+# THROUGHPUT hint only -- NOT the load latency: patching a consumer load's
+# usched stall down to 1 while keeping its scoreboard wait leaves the result
+# bit-identical and the measured stall unchanged, because the Volta-class SM
+# hardware-interlocks the dependent register read on the producer's write
+# scoreboard regardless of the static stall value.  The flat worst-case "300"
+# band ptxas assumes for a global load is purely a critical-path WEIGHT for
+# scheduling; the runtime stall is whatever the scoreboard takes to clear, which
+# is the cache-tier-dependent latency tabulated below.
+#
+# source_model = the CUDA-13 ptxas scheduler-model figure for the op: the MIO/
+# AGU pipe issue-occupancy (mio_pipe = 18) for the throughput term, the ptxas
+# L2-miss-path latency input (~150 cycles) for the L2 tier, and the worst-case
+# scoreboard band (300) ptxas weights an un-analyzable global load with.  These
+# are static model inputs; the gpu_measured_latency column is the silicon truth.
+#
+# Columns: op  space  cache_tier  sets_scoreboard  source_model  gpu_measured_latency  note
+op	space	cache_tier	sets_scoreboard	source_model	gpu_measured_latency	note
+LDG	global	L1_hit	write_sb	mio_pipe=18(occ);band=300(weight)	35	dependent LDG.E.64 chase, 2 KiB working set resident in L1
+LDG	global	L2	write_sb	L2_miss_path~150;band=300(weight)	152	1 MiB set overflows L1, resident in 24 MiB L2; tracks the ~150-cycle L2-miss latency ptxas models
+LDG	global	DRAM_miss	write_sb	band=300(weight)	606	96 MiB set overflows L2; true DRAM miss is ~2x the 300 worst-case weight ptxas assumes
+LDL	local	L1_hit	write_sb	mio_pipe=18(occ);band=300(weight)	35	dependent LDL chase, local frame resident in L1; same path as global L1
+LDS	shared	smem	write_sb	mio_pipe=18(occ);band=30(weight)	24	dependent LDS chase in shared memory; far below the 30-cycle weight ptxas uses
+LDC	const	const_cache_hit	write_sb	mio_pipe=18(occ);band=24(weight)	35	dependent LDC chase, constant-cache hit (uniform const-bank read)
+STG	global	L1_writeback	write_sb	mio_pipe=18(occ);band=1(weight)	7	STG->dependent-LDG same-address RAW: store hits L1 and forwards to the load in ~7 cycles
+STS	shared	smem	write_sb	mio_pipe=18(occ);band=1(weight)	24	store throughput to shared tracks LDS; fire-and-forget, scoreboard for ordering/WAR only
+ATOMG	global	L2_rmw	rd_wr_sb	mio_pipe=18(occ);band=300(weight)	276	atom.global.add.u32 returning old value, dependent round-trip through the L2 ROP RMW
+ATOMS	shared	smem_rmw	rd_wr_sb	mio_pipe=18(occ);band=30(weight)	38	atom.shared.add.u32 single-lane dependent round-trip; uncontended smem read-modify-write at the SM (lane contention adds on top)
+RED	global	L2_rmw	write_sb	mio_pipe=18(occ);band=1(weight)	16	reduction (no return value), back-to-back same address: fire-and-forget at MIO issue throughput; not on any RAW critical path
+LDGSTS	global	async_copy_L2	dep_bar	mio_pipe=18(occ);band=300(weight)	254	cp.async.cg global->shared (LDGSTS.E.BYPASS) + commit + wait_group 0; completion gated by LDGDEPBAR/DEPBAR.LE group-wait, L2-resident round trip

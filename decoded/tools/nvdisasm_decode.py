@@ -31,6 +31,7 @@ The encrypt twin (fn 0x87590) uses a different SBOX at 0xF4780.
 Descriptor table (one per architecture), captured at runtime:
     {blob_offset, comp_size, key}
 """
+import os
 import struct
 import lz4.block
 
@@ -95,6 +96,7 @@ def main():
     blob = open(BLOB, "rb").read()
     assert sorted(sbox) == list(range(256)), "SBOX not a permutation"
     total_plain = 0
+    os.makedirs("/tmp/rp", exist_ok=True)
     for arch, (off, csz, key) in TABLES.items():
         lz4b, plain = decode_table(blob, off, csz, key, sbox)
         head = plain[:40].split(b"\n", 1)[0].decode("latin1")

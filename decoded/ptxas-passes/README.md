@@ -1,7 +1,7 @@
 # ptxas v13.0.88 Optimization Phase Pipeline (binary-derived)
 
 All facts recovered from the ptxas binary (CUDA 13.0.88), independently verified
-via objdump/readelf/struct-unpack. On any mismatch with prior docs, the binary wins.
+via objdump/readelf/struct-unpack.
 
 ## phase_pipeline.tsv
 
@@ -32,16 +32,14 @@ Columns:
 | Timing gate | option 17928 (config +0x4608) | `cmpb $0x0,0x4608(%rax)` in sub_C62720 |
 | NvOptRecipe gate | option 391 (`mov $0x187,%esi`) | sub_C62720; nvopt-level<=5 check at config +0x6DF8 |
 
-## Correction vs prior wiki
+## Default order
 
-The wiki `passes/index.md` "Default Order / DUMPIR#" column presents the default
-order as a non-trivial PERMUTATION of the 159 indices (e.g. bin 8 -> order 8 but
-displaced, bin 9 -> order 10, etc.). The binary REFUTES this: `0x22BEEA0` is a
-plain identity array `[0,1,2,...,156]`. The default pipeline executes name-table
-indices 0..156 in their natural order. Indices 157 (`DebuggerBreak`) and 158
-(`NOP`) are constructed by the factory but NOT in the default order — they run
-only when a recipe string (option 298) places them, and 158 doubles as the
-phase-lookup-failure sentinel and the recipe `order[]` fill value.
+`0x22BEEA0` is a plain identity array `[0,1,2,...,156]`: the default pipeline
+executes name-table indices 0..156 in their natural order. Indices 157
+(`DebuggerBreak`) and 158 (`NOP`) are constructed by the factory but are not in
+the default order — they run only when a recipe string (option 298) places them,
+and 158 doubles as the phase-lookup-failure sentinel and the recipe `order[]`
+fill value.
 
 Confidence: HIGH for all rows' identity/name/VA; MEDIUM-HIGH for category and
 opt_gate (category is analytical; gate values harvested from wrapper analysis).

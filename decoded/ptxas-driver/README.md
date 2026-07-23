@@ -2,8 +2,7 @@
 
 Binary-derived reverse-engineering of NVIDIA `ptxas` (CUDA 13.0.88). Every
 claim is pinned to a binary address and byte-checked. `.text`/`.rodata` use
-`VMA == file_offset + 0x400000`. **The binary is ground truth**; any external
-reference that disagrees is flagged as drift.
+`VMA == file_offset + 0x400000`.
 
 ## What this directory documents
 
@@ -18,12 +17,11 @@ NvOptRecipe / named-phases** override mechanism.
 |---|---|
 | `driver_callgraph.md` | Full call chain `start -> main -> sub_446240 -> ... -> sub_7FB6C0`; OCG-knob mechanism; PhaseManager build; recipe path. |
 | `opt_level_model.md` | The `-O`/`--opt-level` model: external 0..3 -> internal {1,2,4}; per-function nvopt 0..5; accessor `sub_7DDB50`; knob-499 override; gating sites. |
-| `phase_dispatch_157_vs_159.md` | Definitive 157-vs-159 resolution (159 registered, 157 dispatched by default). |
+| `phase_dispatch_157_vs_159.md` | The 157-vs-159 split (159 registered, 157 dispatched by default). |
 | `phase_index.tsv` | All 159 phase IDs/names/VAs/is_default. Verified vs `phase_names.json` + `ptxas-passes/phase_pipeline.tsv` (zero mismatches). |
 | `ocg_knobs.tsv` | The OCG-knob model: 72-byte entries at `config+0x48`, offset = `id*72`; the 6 driver-relevant knobs (249/297/298/391/499). |
 | `recipe_override_dsl.tsv` | The named-phases / recipe override DSL parsed by `sub_9F4040` (17 tokens). |
 | `phase_order_table.txt` | The default-order table at `0x22BEEA0` (identity [0..156] + 2 sentinels). |
-| `wiki_outline_and_corrections.md` | Corrections + outline for the wiki pipeline/passes pages. |
 
 ## The one-paragraph model
 

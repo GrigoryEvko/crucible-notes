@@ -951,7 +951,7 @@ merge_ranges(alloc, a2, a3, budget_lo, budget_hi, stats, ...):
   *budget_hi = stats->total_cost
 ```
 
-The interference BST uses 31-bit program-point keys with 256-bit bitvectors at each node, enabling O(log N) conflict checks. Constraint records are indexed via `register_class_constraints.json` (72 records per SM generation, 64-byte stride); auxiliary class metadata from `register_class_aux.json` (97 records for sm_10x, 64-byte stride with flag distribution: 88 flag=1, 9 flag=2) provides the sub-variant pairs used during merge eligibility checks.
+The interference BST uses 31-bit program-point keys with 256-bit bitvectors at each node, enabling O(log N) conflict checks. Constraint records are indexed via `register_class_constraints.json` (72 records per SM generation, 64-byte stride); auxiliary class metadata from `register_class_aux.json` (the 97-record table at `0x224FE80` — **Hopper sm_90**, 64-byte stride, flag distribution 88 flag=1 / 9 flag=2) provides the sub-variant pairs used during merge eligibility checks. (The three per-arch register-class tables are `0x2274180`=24 rec Ampere/Ada sm_8x, `0x224FE80`=97 rec Hopper sm_90, `0x21FB680`=150 rec Blackwell family sm_100/103/120/121 — the disasm-proven `sub_ABF590` binding; an earlier sm_7x/sm_10x labelling of these tables was inverted.)
 
 ## Allocator State Object Layout
 

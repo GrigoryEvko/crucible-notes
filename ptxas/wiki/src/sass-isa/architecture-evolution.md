@@ -129,12 +129,12 @@ sources agree: the decoded-table presence of each family, and the SASS opcode
 (`LDTM`/`STTM`/`LDT`/`STT`) exist only on the datacenter line; consumer Blackwell
 substitutes `OMMA`:
 
-| Arch | `UTC*` (tcgen05) | TMEM (`LDTM`/…) | `OMMA` | `*GMMA` |
+| Arch | `UTC*` (tcgen05) | TMEM (`LDTM`/`STTM`) | `OMMA` | `*GMMA` |
 |---|:---:|:---:|:---:|:---:|
 | SM90 (Hopper) | — | — | — | ✅ (21 classes) |
-| SM100 (Bk-DC) | ✅ (60) | ✅ (4) | — | — |
-| SM103 (Bk-Ultra) | ✅ (52) | ✅ (5) | — | — |
-| SM110 (Thor) | ✅ (60) | ✅ (5) | — | — |
+| SM100 (Bk-DC) | ✅ (36) | ✅ (2) | — | — |
+| SM103 (Bk-Ultra) | ✅ (28) | ✅ (3) | — | — |
+| SM110 (Thor) | ✅ (32) | ✅ (3) | — | — |
 | SM120 (Bk-consumer) | **—** | **—** | ✅ (2) | — |
 
 `UTCIMMA` (integer tensor) is present on SM100 and SM110 but **absent on SM103** —

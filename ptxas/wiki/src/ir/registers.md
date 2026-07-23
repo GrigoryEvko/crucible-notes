@@ -194,7 +194,7 @@ Putting all of the above together:
 
 1. **The allocator's distribution and per-class passes are class-agnostic** (modulo the class-3/class-6 retry coupling). Classes 1/2/3/4/5/6 are six independent parallel buckets.
 2. **The constructor's class-dependent state is minimal**: flags bits 3–4 (active vs dormant), class-7's fixed `physical_reg = 0`, and class-4's function-level sticky flag.
-3. **The semantic split is target-descriptor-defined.** `vtable[896]` is called once per class 1..6 with the class id, and the target returns whatever register file descriptor it wants. In the current sm_10x target, classes 1 and 2 correspond to two distinct R-domain descriptors and classes 3 and 4 to two distinct UR-domain descriptors. The creation call sites confirm this role split:
+3. **The semantic split is target-descriptor-defined.** `vtable[896]` is called once per class 1..6 with the class id, and the target returns whatever register file descriptor it wants. In the current Blackwell-family target (sm_100/103/120/121, register-class table `0x21FB680`), classes 1 and 2 correspond to two distinct R-domain descriptors and classes 3 and 4 to two distinct UR-domain descriptors. The creation call sites confirm this role split:
    - **Class 1 (3 static sites)** is the *rare* "direct wide-init R" path, used only by three specialised emitters (`sub_BE3B90`, `sub_BEF110`, `sub_19D7470`) that need a fully-initialised R with `flags = 0x1018` from the outset — no post-creation promotion step.
    - **Class 2 (10 static sites)** is the *dormant "R-bridge"* class, created as a shadow for non-R sources: the predicate→R conversion in `sub_86D0D0:83` (case 5u), the ABI sentinel slot 44 in `sub_7D82E0:33`, and the generic R replacement at `sub_A22D00:149, 166`. It starts inactive (flags bit 3–4 clear), waiting for a promotion pass to light it up.
    - **Class 3 (37 static sites)** is the corresponding dormant "UR-bridge" class: the tensor→UR conversion in `sub_86D0D0:75` (case 6u), the ABI sentinel slot 43 in `sub_7D82E0:39`, and bridge paths in `sub_819150`/`sub_85D770`/`sub_876080`.
@@ -425,9 +425,9 @@ Each instruction operand is encoded as a 32-bit packed value in the operand arra
 ```text
  31   30  29  28  27            24  23  22  21  20  19                  0
 +----+---+---+---+---------------+---+---+---+---+---------------------+
-|sign|     type  |  modifier (8) |                index (20)           |
+|def |     type  |  modifier (8) |                index (20)           |
 +----+---+---+---+---------------+---+---+---+---+---------------------+
- bit 31: sign/direction flag          bits 0-19: register/symbol index
+ bit 31: OPD_DEF is-destination flag  bits 0-19: register/symbol index
  bits 28-30: operand type (3 bits)    bit 24: pair extension flag
 ```
 
@@ -435,10 +435,10 @@ Extraction pattern (50+ call sites):
 
 ```c
 uint32_t operand = *(uint32_t*)(instr + 84 + 8 * i);
-int type    = (operand >> 28) & 7;     // bits 28-30
+int type    = (operand >> 28) & 7;     // bits 28-30 (DAG-IR kind)
 int index   = operand & 0xFFFFF;       // bits 0-19
 int mods    = (operand >> 20) & 0xFF;  // bits 20-27
-bool is_neg = (operand >> 31) & 1;     // bit 31
+bool is_def = (operand >> 31) & 1;     // bit 31 = OPD_DEF (destination), NOT sign/negate
 ```
 
 | Type value | Meaning |

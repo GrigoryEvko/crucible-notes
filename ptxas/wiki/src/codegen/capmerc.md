@@ -810,7 +810,7 @@ Two EIATTR codes carry Mercury finalizer state into `.nv.info`:
 | `0x5A` (90) | `EIATTR_MERCURY_FINALIZER_OPTIONS` | SVAL | structured length-prefixed finalizer option blob |
 | `0x5F` (95) | `EIATTR_MERCURY_ISA_VERSION` | SVAL | the combined Mercury ISA version stamp |
 
-A plain sm_90 kernel already emits the Mercury ISA version in both `.nv.info` (`EIATTR_MERCURY_ISA_VERSION`) and `.nv.compat` (`EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION`, `0x0101` = v1.1); both are absent on sm_75, which still uses the direct SASS path.
+A plain sm_90 kernel emits the Mercury ISA version in both `.nv.info` (`EIATTR_MERCURY_ISA_VERSION` = `0x0101`) and `.nv.compat` (`EICOMPAT_ATTR_MERCURY_ISA_MAJOR_MINOR_VERSION`, `0x0101` = v1.1). On sm_75 the `EIATTR_MERCURY_ISA_VERSION` element is **still present** in the per-entry `.nv.info` but its value is `0x0000`, and the entire `.nv.compat` section is **absent** — sm_75 still uses the direct SASS path. The arch split is therefore in the `.nv.compat` container and the EIATTR *value*, not in the EIATTR's presence (cuobjdump- and raw-byte-confirmed on 13.0.88).
 
 ## Off-Target Finalization
 

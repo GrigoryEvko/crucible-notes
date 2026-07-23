@@ -677,8 +677,10 @@ class (or config index), and cover all 26 SMs the binary supports.
 | **Scoreboard config** | 88 B | config index | 7 | sm_100 uses ≤ 6 scoreboards; pre-Blackwell use 1 |
 
 The latency descriptor tables are **shared per family**: `0x2297C00` (sm_8x — shared by
-sm_80/86/89/90/90a), `0x226C880` (sm_10x — sm_100/103), `0x2245060` (sm_7x — sm_60/70/72/75).
-Dependency-rule tables are **per-SM**.
+sm_80/86/89/90/90a), `0x226C880` (sm_10x — sm_100/103 **and the rest of the Blackwell lineup
+sm_110/120/121**, which install this exact table via the per-SM selector `sub_ABF590`),
+`0x2245060` (sm_7x — sm_60/70/72/75). Dependency-rule tables are **per-SM** (sm_110/120/121
+resolve to the sm_103 rule + scoreboard tables; sm_120 ≡ sm_121, byte-identical).
 
 #### Latency / sched-class descriptor (72 B)
 
@@ -714,8 +716,8 @@ unit_id · rule_type · latency · throughput_inv · barrier_latency · barrier_
 | `stall_cycles` | static stall hint |
 | `issue_slots` | dual-issue slot count |
 
-`read_latency` / `write_latency` are populated for a minority of classes (e.g. sm_70 sets
-`read_latency` on ~50 classes) and are the binary's explicit per-class RAW/WAW hazard cells — the
+`read_latency` / `write_latency` are populated for a subset of classes (e.g. sm_70 sets
+`read_latency` on 190 classes and `write_latency` on 34) and are the binary's explicit per-class RAW/WAW hazard cells — the
 shipped equivalent of a producer×consumer matrix, but stored per scheduling class rather than as a
 dense N×N grid.
 

@@ -197,6 +197,24 @@ The encoder back-end does not have one dispatch table; it has **four function-po
 | `per_sm_handler_dispatch` | `0x22E7AD0`–`0x23B99D0` | 5 × `{u64 op, u64 ptr, u64 pad}` arrays | `(format_id<<8) \| minor` | 2,421 | **per-arch specialized override** (sm50_7x / sm75 / sm100 / sm80_8x / sm86_89) |
 | *(correction)* `off_22AD230`, `off_23B3A80` | `0x22AD230`, `0x23B3A80` | C++ vtables (virtual slot) | virtual slot | 3,707 | **ISel node vtables — NOT encoder dispatch** (the prior catalog mislabel) |
 
+> ⚡ **The `per_sm` region holds *seven* arch encoder blocks, not five.** The
+> five arrays above (`sm50_7x / sm75 / sm100 / sm80_8x / sm86_89`, region
+> `0x22E7AD0`–`0x23B99D0`) are the *classic* family: every block reuses the same
+> lead handler `0xEA7440` and draws its per-opcode emitters from one shared
+> low-`.text` pool (`0xC693D0+`), and their union is **2,408** distinct emitters.
+> Two further blocks extend the region to `0x23EFB60`: block 6 (`0x23BA8A0`, 657
+> slots, lead `0x18F0540`) and block 7 (`0x23DB120`, 682 slots, lead `0x1AEE1D0`).
+> Each begins with the same `[0x200, lead_handler]` header but is backed by an
+> entirely **disjoint** `.text` emitter window — block 6 in `0x18Dxxxx`–`0x18Fxxxx`
+> (~71 KB), block 7 in `0x1A0xxxx`–`0x1AFxxxx` (~1 MB) — sharing **zero** emitter
+> handlers with the classic family or with each other (b6∩classic = b7∩classic =
+> b6∩b7 = ∅). They are the two genuinely-new Blackwell-generation encoding
+> families: block 6 the lean Jetson-Thor (`sm_110`) ISA, block 7 the richer
+> consumer-Blackwell (`sm_120`/`sm_121`, byte-identical) ISA with its own ~1 MB
+> emitter for RT/TTU and consumer-tensor classes. `sm_103` has no dedicated block —
+> it shares block 3 with `sm_90`/`sm_100`. See the full per-block table in
+> [reference/data/sass-encoding-dispatch.md](../reference/data/sass-encoding-dispatch.md).
+
 Overlap (handlers shared between layers, from the reconciliation matrix):
 
 | | encoding_tree | sass_dispatch_1 | sass_dispatch_2 | per_sm_dispatch | isel_vtable |
@@ -233,7 +251,7 @@ See [reference/data/sass-encoding-dispatch.md](../reference/data/sass-encoding-d
 
 Each row of the `sass_handler_dispatch_*` and `per_sm_handler_dispatch` arrays is 24 bytes: `{u64 handler, u64 pad=0, u32 variant, u32 category}`, looked up by the composite key `(category << 8) | variant`. The two fields are independent axes:
 
-- **`category` = the encoding-format / opcode-CLASS family** (one per functional-unit / op-class), **not** an SM-generation bucket. The SM split is carried entirely by *which* `per_sm` array is indexed (sm50_7x / sm75 / sm80_8x / sm86_89 / sm100) — orthogonal to `category`. The encoding width (64- vs 128-bit) selects the format-descriptor width; the per-SM arrays hold byte-identical handler clusters that differ only in their `setBits` triples.
+- **`category` = the encoding-format / opcode-CLASS family** (one per functional-unit / op-class), **not** an SM-generation bucket. The SM split is carried entirely by *which* `per_sm` array is indexed — the five classic arrays (sm50_7x / sm75 / sm80_8x / sm86_89 / sm100) plus the two new Blackwell-generation blocks (sm_110, and sm_120/sm_121) noted above — orthogonal to `category`. The encoding width (64- vs 128-bit) selects the format-descriptor width; within the classic family the per-SM arrays hold byte-identical handler clusters that differ only in their `setBits` triples (the two new blocks instead carry their own disjoint emitter code).
 - **`variant` = a sequential, modifier-driven sub-opcode** within a category (dense enumeration `0x02`..`0x1b`, running sequentially per category group). The *alternate-encoding* choice (the second physical encoding some instructions accept) is a **separate runtime flag** on the operand struct (`*(u8*)(op+0x28) != 0`, which reads an extra source from `op+0x34`) — **not** the table `variant`.
 
 > ⚡ **QUIRK — `category` is an op-class, `variant` is a sub-opcode, and "which SM" is a third, orthogonal axis**

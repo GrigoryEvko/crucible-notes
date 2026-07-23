@@ -5,9 +5,7 @@ Table-driven 128-bit SASS instruction decoder.
 Decodes a raw 128-bit NVIDIA SASS instruction word (Volta..Blackwell) into
 opcode + operands + the scheduling-control word, using the BITS_* field model
 recovered from the per-architecture instruction tables in nvdisasm V13.1.115.
-
-The decoder is purely our own code; it derives its field map from the parsed
-encoding tables (sass_isa_parser.py) -- it does not embed any vendor table text.
+The field map is derived from the parsed encoding tables (sass_isa_parser.py).
 
 Encoding model (128-bit little-endian word = lo64 | hi64<<64):
 
@@ -31,7 +29,7 @@ Usage:
     sass_decode.py --word 0xHI 0xLO  [--arch SM90]             # decode one raw word
     sass_decode.py --selftest <dir-with-sass_isa_SM*.txt>      # round-trip harness
 
-(c) nvopen-tools. MIT-style: facts + tooling only, no vendor table text.
+(c) nvopen-tools.
 """
 from __future__ import annotations
 

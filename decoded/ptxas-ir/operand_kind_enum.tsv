@@ -1,16 +1,16 @@
 kind	helper_va	helper	meaning_inferred	confidence
-1	0xB28E20	sub_B28E20	register	high (cross-checked: >>28==1 register path)
-2	0xB28E10	sub_B28E10	predicate register	high
-3	0xB28E80	sub_B28E80	(operand class 3)	med
-4	0xB28E70	sub_B28E70	(operand class 4)	med
-5	0xB28E60	sub_B28E60	(operand class 5)	med
-6	0xB28E30	sub_B28E30	guard predicate (last operand)	high (sub_7E0650:29 last-op ==6)
-7	0xB28ED0	sub_B28ED0	(operand class 7)	med
-8	0xB28EF0	sub_B28EF0	(operand class 8)	med
-9	0xB28E50	sub_B28E50	(operand class 9)	med
-10	0xB28E40	sub_B28E40	(operand class 10)	med
-11	0xB28EE0	sub_B28EE0	(operand class 11)	med
-13	0xB28EA0	sub_B28EA0	(operand class 13)	med
-14	0xB28EB0	sub_B28EB0	(operand class 14)	med
-15	0xB28E90	sub_B28E90	(operand class 15)	med
-16	0xB28EC0	sub_B28EC0	(operand class 16)	med
+1	0xB28E20	sub_B28E20	register (cmp $1)	med (gap-closure F1: 1<->2 anchor OPEN; helper says 1=register but emitter sentinel widths may be swapped)
+2	0xB28E10	sub_B28E10	predicate register (cmp $2)	med (gap-closure F1: 1<->2 anchor OPEN; naming unresolved vs emitter sentinel)
+3	0xB28E80	sub_B28E80	Immediate / literal (cmp $3)	high (gap-closure F1-ISel: ctor sub_9B3E90, sign-ext sub_9B3C00)
+4	0xB28E70	sub_B28E70	dest/register-form variant (match-only, never emitted)	low (gap-closure F1-ISel)
+5	0xB28E60	sub_B28E60	bare-operand variant (match-only, never emitted)	low (gap-closure F1-ISel)
+6	0xB28E30	sub_B28E30	guard predicate (last operand) (cmp $6)	high (sub_7E0650:29 last-op ==6)
+7	0xB28ED0	sub_B28ED0	dest twin of kind-2 lane (match-only)	med (gap-closure F1-ISel)
+8	0xB28EF0	sub_B28EF0	bare-operand variant (match-only, never emitted)	low (gap-closure F1-ISel)
+9	0xB28E50	sub_B28E50	enumerated/condition predicate (3-bit from opcode subfield)	high (gap-closure F1-ISel)
+10	0xB28E40	sub_B28E40	register operand alt-source slot (RZ=1023 sentinel)	high (gap-closure F1-ISel)
+11	0xB28EE0	sub_B28EE0	dest twin of kind-10 lane (match-only)	med (gap-closure F1-ISel)
+13	0xB28EA0	sub_B28EA0	address-base / small-index (5-bit)	med (gap-closure F1-ISel: ctor sub_9B3FA0)
+14	0xB28EB0	sub_B28EB0	mem addr offset form A	med (gap-closure F1-ISel)
+15	0xB28E90	sub_B28E90	immediate twin of kind 3	med (gap-closure F1-ISel)
+16	0xB28EC0	sub_B28EC0	mem addr offset form B	med (gap-closure F1-ISel)

@@ -1,0 +1,24 @@
+field	sm_110	sm_120	sm_121	notes
+e_flags	0x06006e02	0x06007802	0x06007902	full 32-bit e_flags; differs only in bits8-15 (real SM byte)
+e_flags bits8..15 (real SM)	0x6e (110)	0x78 (120)	0x79 (121)	real-SM = SM_num; the one byte that distinguishes the three
+e_flags bits0..7 (variant nibble)	0x02	0x02	0x02	all Blackwell-class -> 0x02 (vs 0x04 for sm_<=90)
+e_flags bits16..23 (virtual SM)	0	0	0	0 when virtual==real (matched -arch); EF_CUDA_VIRTUAL_SM
+e_flags bits24..31	0x06	0x06	0x06	high format byte; constant 0x06 across all three
+e_ident[EI_OSABI]	0x41	0x41	0x41	unchanged across arch (13.0.88 OSABI tag)
+e_ident[EI_ABIVERSION]	0x08	0x08	0x08	unchanged across arch
+e_machine	190	190	190	EM_CUDA
+.note.nv.cuinfo virtualSM	110	120	121	u16 in cuinfo desc = the -arch SM number (sm_110->110, sm_120->120, sm_121->121); cuobjdump "CUDA Virtual SM" confirms on both 13.0.88 and 13.1.115. raw desc u16[1]: 0x6e/0x78/0x79
+.note.nv.cuinfo CUDA-API-version	130	130	130	u32; CUDA 13.0.88 -> 130 (toolkit-keyed, not arch-keyed); system 13.1.115 emits 131
+.note.nv.cuinfo noteVer	2	2	2	cuinfo note version
+EICOMPAT ISA_CLASS (attr 2)	0x01	0x01	0x01	BVAL; arch-variant selector (carries a/f distinction)
+EICOMPAT TCGEN05_MMA (attr 5)	0x05	0x05	0x05	all three are tcgen05-class (Blackwell tensor core)
+EICOMPAT MERCURY_ISA_MAJOR_MINOR (attr 7)	0x0101	0x0101	0x0101	HVAL; Mercury ISA v1.1 on all three
+EICOMPAT TENSORMAP_V1 (attr 3)	0x00	0x00	0x00	requirement level 0 for the sample kernel; emitted on all three
+EICOMPAT OPPORTUNISTIC_FINALIZATION (attr 6)	0x01	0x01	0x01	BVAL; opportunistic-finalization enable
+EICOMPAT ACCELERATOR_TARGET (attr 9)	0x00	0x00	0x00	BVAL; accelerator target id (none); FIRST element emitted
+EICOMPAT CAN_FASTPATH_FINALIZE (attr 11, 8B)	0x0000000000000000	0x0000000000000050	0x0000000000000000	SVAL 8-byte descriptor. *** sm_120 = 0x50, sm_110 & sm_121 = 0x00 *** stable across O0/O3; sm_120a == sm_120 (0x50)
+GB10B reserved-SMEM workaround symbol	__nv_reservedSMEM_gb10b_war_var (PRESENT)	(absent)	(absent)	Thor/GB10-class silicon WAR; literal string in ptxas .rodata
+.nv.shared.reserved.0 SYMTAB entry	PRESENT	(absent)	(absent)	The .nv.shared.reserved.0 *section* exists on ALL three archs; only sm_110 emits a symbol-table entry for it (it backs the gb10b WAR var). So the arch split is in the .symtab, not the section list.
+symtab symbol count (minimal kernel)	12	10	10	sm_110 carries 2 extra symbols: __nv_reservedSMEM_gb10b_war_var + the .nv.shared.reserved.0 section symbol (binary-verified diff)
+SASS encoding	identical*	identical	identical	sm_120≡sm_121 byte-identical in .text (general; sm_120a==sm_120, all SHA-verified). *sm_110 matches only for trivial samples — arith/isel kernels diverge (different register allocation/encoding; same mnemonics, different .text bytes)
+min PTX .version to target	9.0	8.8	8.8	sm_110 requires PTX 9.0; sm_120/121 accept 8.8+

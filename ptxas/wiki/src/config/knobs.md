@@ -2,16 +2,16 @@
 
 > *All addresses in this page apply to ptxas v13.0.88 (CUDA 13.0). Other versions will differ.*
 
-The knobs system is ptxas's internal configuration mechanism — a separate layer beneath the public CLI flags that exposes 1,294 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob.
+The knobs system is ptxas's internal configuration mechanism — a separate layer beneath the public CLI flags that exposes 1,099 tuning parameters to NVIDIA developers. Every significant compiler heuristic (register allocation thresholds, scheduling priorities, pass enable/disable, peephole rules) has a corresponding knob.
 
-- **Two instantiations.** The system is shared with cicc, but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,195 knobs).
+- **Two instantiations.** The system is shared with cicc, but ptxas instantiates it twice: once for the DAG scheduler pipeline (99 knobs) and once for the OCG (Optimizing Code Generator) backend (1,000 knobs). The counts are byte-exact: the OCG static initializer `ctor_005` (`0x40D860`) emits exactly 1,000 knob-definition entries — confirmed independently by the dump-schema table sentinel arithmetic `(0x1CFB580 − 0x1CE9C40) / 72 = 1000` — and the DAG initializer `ctor_007` (`0x421290`) emits exactly 99.
 - **ROT13 names.** All knob names are stored ROT13-encoded in the binary — a lightweight obfuscation that prevents casual `strings` discovery while being trivially reversible.
 
 The knobs infrastructure lives primarily in two address regions: `0x6F0000`--`0x6F8000` (DAG knob instantiation, shared with the Mercury SASS pipeline) and `0x797000`--`0x7A2000` (OCG knob instantiation, the larger set). Both regions are compiled from the same template.
 
 | | |
 |---|---|
-| **Total knobs** | 1,294 (99 DAG + 1,195 OCG) |
+| **Total knobs** | 1,099 (99 DAG + 1,000 OCG) |
 | **DAG GetKnobIndex** | `sub_6F0820` (2,782 bytes) |
 | **OCG GetKnobIndex** | `sub_79B240` (518 bytes) |
 | **ParseKnobValue** | `sub_6F7360` / `sub_79F540` (DAG: 18KB, OCG: 18KB) |
@@ -228,7 +228,7 @@ The array grows by calling `sub_6EFD20(slot+8, count+2)` before each insertion, 
 
 ## Knob Type System
 
-The definition-table type tag (at descriptor offset `+16`) determines how `ParseKnobValue` interprets the value string. There are 10 logical knob types with 1,294 total registrations:
+The definition-table type tag (at descriptor offset `+16`) determines how `ParseKnobValue` interprets the value string. There are 10 logical knob types; the counts below are the OCG dump-schema's type distribution (n = 1,000, binary-verified against the `0x1CE9C40` table — see [The OKT Descriptor-Schema Table](#the-okt-descriptor-schema-table-0x1ce9c40)):
 
 | Type Tag | Name | Count | Parse Rule |
 |---|---|---|---|
@@ -245,7 +245,7 @@ The definition-table type tag (at descriptor offset `+16`) determines how `Parse
 | 11 | `OKT_STR` (variant) | — | Same as type 8 (alternate string slot) |
 | 12 | `OKT_ILIST` (variant) | — | Int-list with pre-initialized allocator |
 
-The INT type (616 knobs, 47.6%) dominates. These control thresholds, limits, and numeric heuristic parameters across the entire compiler. BDGT (budget) knobs (88) are semantically similar to INT but carry a secondary field used for budget-tracking in cost models. The 100 DBL knobs control floating-point heuristic weights (scheduling priorities, cost ratios, etc.).
+The INT type (616 knobs, 61.6%) dominates. These control thresholds, limits, and numeric heuristic parameters across the entire compiler. BDGT (budget) knobs (88) are semantically similar to INT but carry a secondary field used for budget-tracking in cost models. The 100 DBL knobs control floating-point heuristic weights (scheduling priorities, cost ratios, etc.).
 
 ### Definition-Type to Runtime-Type Mapping
 
@@ -496,7 +496,7 @@ DAG knobs referenced in the binary include knob indices 8 and 17 (pipeline optio
 
 ### OCG Knobs (sub_79B240)
 
-The OCG (Optimizing Code Generator) knob table contains 1,195 entries — the vast majority of all knobs. These control the optimization passes, register allocation, instruction scheduling, and code generation.
+The OCG (Optimizing Code Generator) knob table contains 1,000 entries — the vast majority of all knobs. These control the optimization passes, register allocation, instruction scheduling, and code generation.
 
 | Property | Value |
 |---|---|
@@ -504,8 +504,8 @@ The OCG (Optimizing Code Generator) knob table contains 1,195 entries — the va
 | ParseKnobValue | `sub_79F540` |
 | KnobsInit | `sub_79D990` (40,817 bytes, master initializer) |
 | KnobInit | `sub_7A0C10` (per-knob state constructor) |
-| Table size | 1,195 entries x 64 bytes = 76,480 bytes |
-| Runtime values | 1,195 entries x 72 bytes = 86,040 bytes |
+| Table size | 1,000 entries x 64 bytes = 64,000 bytes |
+| Runtime values | 1,000 entries x 72 bytes = 72,000 bytes |
 
 OCG knob indices referenced across the codebase include: 185 (pass-disable string, offset 13320), 294 (epilogue instruction count, used in tepid scheduling), 487 (LoopMakeSingleEntry enablement), 956-957 (shader hint settings at offsets 68832/68904).
 
@@ -588,7 +588,7 @@ Output: names[256], values[256], full_strings[256]
 
 ## Knob Categories
 
-The 1,294 knobs cluster into functional categories. Prefix analysis of decoded knob names reveals these major groups:
+The 1,099 knobs cluster into functional categories. Prefix analysis of decoded knob names reveals these major groups:
 
 | Prefix | Count | Domain |
 |---|---|---|
@@ -1318,7 +1318,7 @@ Offset  Size  Field
 
 Paths of 15 bytes or fewer are stored inline without heap allocation. Longer paths allocate via the arena allocator at knob_state+8. The dump is produced later during compilation — `KnobInit` only stores the path; the actual file write happens after all knobs are resolved.
 
-This is the primary mechanism for discovering which knobs exist and what their current values are. Setting it produces a text file with all 1,294 knob names and their resolved values.
+This is the primary mechanism for discovering which knobs exist and what their current values are. Setting it produces a text file with all 1,099 knob names and their resolved values.
 
 ### The OKT Descriptor-Schema Table (`0x1CE9C40`)
 
@@ -1378,7 +1378,11 @@ The type tokens in `field[2]` are `OKT_NONE` / `OKT_INT` / `OKT_BDGT` (BUDGET) /
 `OKT_OPCODE_STR_LIST`. The OPCODE_LIST value space is
 `{ARRIVES, DFMA, FFMA, HFMA2, HMMA, IMAD, IDP, IMMA, LDG, LDGSTS, LDS, LDSM, MEMBAR, STG, STS, XMAD}`.
 
-The full extracted schema is in the repo at `decoded/ptxas-knobs-builtins/okt_descriptors.tsv`.
+The full extracted schema (all 1,000 entries, 10 columns: `index`, `bss_offset`,
+`name`, `type`, `description`, `min`, `max`, `default`, `stepsize`, `flags`) is in the
+repo at `decoded/ptxas-knobs-builtins/okt_descriptors.tsv`, regenerated by
+`extract_okt_descriptors.py`, which walks the `0x1CE9C40` table to its `0x1CFB580`
+sentinel and reproduces it byte-for-byte.
 
 ## Error Handling
 

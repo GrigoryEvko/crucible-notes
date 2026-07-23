@@ -31,5 +31,5 @@ ET_EXEC	e_type	2	executable Mercury (accepted input; triggers NOBITS demotion of
 ET_EWP	e_type	ET_LOPROC=0xFF00	Extensible Whole Program (accepted input)
 ELFMERCABIV_ABI	abi_version	0	initial==latest Mercury ABI; input abiVersion must equal this or ELFNLZR_ERROR_UNSUPPORTED_ABI
 ELFOSABIV_LATEST	abi_version	7	SASS ABI version set on finalized output (replaces ELFMERCABIV_ABI)
-.nv.merc	section_name_prefix	-	prefix prepended to every cloned original section in the capsule (binary spelling; earlier toolchains used ".merc")
+.nv.merc	section_name_prefix	-	prefix prepended to every cloned original section in the capsule
 .nv.capmerc	section_name_prefix	-	per-function capmerc payload section family (ptxas capmerc output)

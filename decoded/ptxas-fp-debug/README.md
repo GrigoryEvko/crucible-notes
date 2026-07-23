@@ -15,7 +15,7 @@ This directory documents three under-covered ptxas areas:
 
 ---
 
-## 1. FP constant-fold engine (softfloat) — KEY NEGATIVE FINDING
+## 1. FP constant-fold engine (softfloat)
 
 **ptxas does NOT statically link the Berkeley SoftFloat-3e library, and contains
 no FP128 / extF80 / 128-bit-integer software-float routines.**
@@ -52,9 +52,7 @@ Native fold-engine inventory (the structural replacement for softfloat):
 | `0x91ba60` / `0x91cdd0` | folded-result writer / const-pool interner |
 | `0x2a12cb0` / `0x2a12d50` | `sqrt@GLIBC` / `pow@GLIBC` PLT thunks (fold math kernels) |
 
-See `softfloat_routines.tsv` and `softfloat_callers.tsv`. **DRIFT**: any wiki
-note that assumes a Berkeley-SoftFloat layer in ptxas would be wrong for this
-build; the FP-emulation page should describe the native fold engine above.
+See `softfloat_routines.tsv` and `softfloat_callers.tsv`.
 
 ---
 
@@ -115,9 +113,9 @@ generic-address relocs.
   entry, `DW_OP_regx` = ULEB128 register-name; `DW_OP_bregx` = ULEB128
   register-name + SLEB128 offset. Data produced by post-RA pass `0x88D870`.
 * `.nv_debug_info_reg_type` (`0x867B00`) — register-type sidecar.
-* `.nv_debug_ptx_txt` — verbatim PTX source minus DWARF-machinery lines.
+* `.nv_debug_ptx_txt` — exact PTX source minus DWARF-machinery lines.
 
-### Mercury namespace (SM100+) — NEW vs older model
+### Mercury namespace (SM100+)
 
 A full `.nv.merc.debug_*` namespace (15 names) classified by `0x1C98C60`
 (switch on ELF `SHT_LOPROC`-range section tags, e.g. `0x70000006`) and writers
@@ -163,10 +161,8 @@ false && !forceText(+613)` — i.e. **`verboseMode && !forceText`** (the `-v` /
 descriptors (`dword_29FD320/29FD330`, type 3) gated by the `warn-on-spills`
 knob, not part of the info report.
 
-**DRIFT (CUDA-13 additions):** `, used %d barriers` and `Compile time = %.3f ms`
-are present in this build's report; both are newer than the field set emitted by
-older ptxas builds. Treat barrier count and compile time as standard
-modern-ptxas fields.
+The report includes `, used %d barriers` and `Compile time = %.3f ms` as
+standard fields.
 
 ### SASS disassembly text printer
 

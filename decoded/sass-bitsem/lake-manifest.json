@@ -1,0 +1,6 @@
+{"version": "1.2.0",
+ "packagesDir": ".lake/packages",
+ "packages": [],
+ "name": "«sass-bitsem»",
+ "lakeDir": ".lake",
+ "fixedToolchain": false}

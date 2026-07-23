@@ -1,4 +1,4 @@
-sm_generation	num_records	num_distinct_classes	class_ids	extended_flag2_count
-sm_10x	97	14	0,1,2,3,4,5,6,7,8,9,10,11,12,13	9
-sm_8x	24	11	0,1,2,3,4,5,6,7,8,9,10	0
-sm_7x	150	17	0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16	20
+sm_generation	table_va	num_records	num_distinct_classes	class_ids	extended_flag2_count	selectors	covers
+sm_90	0x224FE80	97	14	0,1,2,3,4,5,6,7,8,9,10,11,12,13	9	0x4000,0x4001	Hopper (sm_90) — disasm-proven via sub_ABF590 (ctx+0x98 = 0x224FE80)
+sm_8x	0x2274180	24	11	0,1,2,3,4,5,6,7,8,9,10	0	0x3003,0x3004,0x3005	Ampere/Ada (sm_8x)
+sm_blackwell	0x21FB680	150	17	0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16	20	0x5000,0x5001,0x5003,0x5004,0x5005	Blackwell family (sm_100/103/120/121; sm_101 class present but -arch rejected)

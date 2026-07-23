@@ -70,7 +70,7 @@ barrier, and continues all of them together at the reconvergence PC. A lane that
 leave the region early — a `break`, an early `return`, an exit — issues `BREAK Ba` to
 remove itself from membership so the others' `BSYNC` does not wait on it forever.
 
-The canonical divergent-`if`/call pattern, taken verbatim from `nvdisasm -c` of a
+The canonical divergent-`if`/call pattern, reproduced exactly from `nvdisasm -c` of a
 kernel with a non-uniform `call` (SM90):
 
 ```
@@ -286,7 +286,106 @@ guarantee:
 All of these — together with `BPT` (breakpoint/trap, modes pause/trap/int/drain) and
 `RTT` (return-from-trap) — are issued by the same unit as the branches and barriers.
 
-## 6. The branch unit (CBU) and the control hazard
+## 6. Warp collectives: the convergent datapath
+
+`WARPSYNC` reconverges a named lane subset; the instructions in this section are
+the ones that then *compute across* that converged subset. They are the SASS
+lowerings of the PTX `.sync` collective family, and every one of them takes the
+warp's **active mask** as an implicit operand: the result of an active lane is
+defined only over the set of lanes that are simultaneously active (the PTX
+"membermask" must equal the arriving set). The functional model below was
+recovered by compiling each PTX form, confirming the emitted op with `nvdisasm`,
+and differential-testing a single 32-thread warp on hardware with deliberately
+*divergent* active masks (lanes deactivated by predication) — reading every
+lane's result back and matching it bit-for-bit.
+
+### `VOTE` / `VOTEU` — warp ballot and reductions of a predicate
+
+| PTX | SASS | result |
+|---|---|---|
+| `vote.sync.ballot.b32 Rd,P,mask` | `VOTE.ANY Rd, PT, P` | 32-bit mask, bit `l`=1 iff lane `l` active **and** `P` true; inactive lanes contribute 0 |
+| `vote.sync.all.pred Pd,P,mask` | `VOTE.ALL Pd, P` | 1 iff `P` true on **every** active lane |
+| `vote.sync.any.pred Pd,P,mask` | `VOTE.ANY Pd, P` | 1 iff `P` true on **some** active lane |
+| `vote.sync.uni.pred Pd,P,mask` | `VOTE.ALL`/`.ANY` pair | 1 iff `P` is **uniform** across active lanes |
+| `activemask.b32 Rd` | `VOTE.ANY Rd, PT` | the active mask itself (predicate forced `PT`) |
+
+`VOTEU` is the uniform-datapath form (`VOTEU.ANY UR, UPT, …`): when ptxas can
+prove the predicate uniform it computes the ballot once on the uniform unit
+instead of per lane. `ACTIVEMASK` is just a ballot with the predicate pinned
+true, so its result equals the current active mask exactly — the property the
+differential harness asserts directly.
+
+### `SHFL` — lane-to-lane copy with segment clamp
+
+`SHFL.{IDX,UP,DOWN,BFLY} Pd, Rd, Ra, Rb, Rc` reads `Ra` from a computed source
+lane and also returns a predicate `Pd`. The `c` operand packs **two** fields,
+`c = (segmask << 8) | clamp`, with `segmask = c[12:8]` and `clamp = c[4:0]`. For
+a sub-warp width `W` the front end emits `segmask = 32 - W` and `clamp = W - 1`.
+The hardware derives, per lane:
+
+```
+minLane = laneid & segmask                 # segment base (bits of laneid kept)
+maxLane = minLane | (clamp & ~segmask)      # segment top
+```
+
+so full-warp width (`segmask = 0`) makes the whole warp one segment
+(`minLane = 0`, `maxLane = clamp = 0x1f`). The source lane and in-range
+predicate per mode are:
+
+| mode | source lane | in range (`Pd`) when |
+|---|---|---|
+| `IDX`  | `minLane \| (b & ~segmask)` | `src ≤ maxLane` |
+| `UP`   | `laneid − b`               | `src ≥ minLane` |
+| `DOWN` | `laneid + b`               | `src ≤ maxLane` |
+| `BFLY` | `laneid ^ b`               | `minLane ≤ src ≤ maxLane` |
+
+`Pd` is a purely **geometric** test: it does not depend on whether the source
+lane is active. When the source lane is out of range the destination keeps the
+issuing lane's own value; when the source lane is in range but **inactive**, the
+result value is **undefined** (hardware writes nothing — the destination keeps
+its prior contents) even though `Pd` is 1. Reliable `SHFL` data therefore
+requires the source lane to be in the converged set, which is why the `.sync`
+form ties the shuffle to a membermask.
+
+### `MATCH` — find lanes holding the same value
+
+| PTX | SASS | result |
+|---|---|---|
+| `match.any.sync.b32 Rd,R,mask` | `MATCH.ANY Rd, R` | per-lane mask of the active lanes whose `R` equals this lane's `R` |
+| `match.all.sync.b32 Rd\|Pd,R,mask` | `MATCH.ALL Rd, Pd, R` | if all active lanes share one value: `Rd = active`, `Pd = 1`; else `Rd = 0`, `Pd = 0` |
+
+`MATCH.ANY` is the building block for converting a warp's data-dependent
+divergence into a set of "labels" — e.g. a conflict-free atomic aggregation.
+
+### `REDUX` — single-instruction warp reduction (uniform result)
+
+`redux.sync.{add,min,max,and,or,xor}.{u32,s32,b32} Rd,R,mask` lowers to
+`REDUX.{SUM,MIN,MAX,AND,OR,XOR}[.S32] UR, R` — note the **uniform** destination:
+the reduction over all active lanes is computed once and broadcast, so every
+active lane sees the identical scalar. `min`/`max` honour the signedness of the
+PTX type (`.s32` vs `.u32`); the bitwise ops are width-32. `REDUX` collapses the
+classic `log₂(warp)`-step `SHFL.BFLY` reduction tree into one hardware op.
+
+### `ELECT` — pick a single leader lane
+
+`elect.sync Rd|Pd, mask` (`ELECT`, Hopper+) returns `Pd = 1` on exactly the
+**lowest** active lane and 0 elsewhere, and `Rd` = that leader's lane id. It is
+the canonical single-writer primitive ("one lane does the store"). On parts
+without `ELECT` the same semantics are the predicate `laneid == FFS(activemask)`,
+which is how the pre-Hopper lowering expresses it.
+
+### Convergence requirement, restated
+
+All of the above are **convergent** ops: their datapath crosses lanes, so the
+participating lanes must be converged at the instruction. The compiler guarantees
+this by pairing the collective with the membermask sync (`WARPSYNC`, or the
+`.sync` semantics folded into the op) and by the control dependency (§7) that
+forbids hoisting a collective across a divergent branch or an active-mask
+mutation. A collective issued on a partially-diverged warp reads its inputs only
+from the arriving lanes — which is exactly why the differential model masks every
+result by the active set.
+
+## 7. The branch unit (CBU) and the control hazard
 
 ### One unit, one queue
 
@@ -340,7 +439,7 @@ latency column: arming a barrier, mutating the active mask, and taking a branch 
 each ordered against later control instructions through control-dependency edges, so
 the CBU sees them in program order even as the data pipe runs ahead.
 
-## 7. Summary — the lowering at a glance
+## 8. Summary — the lowering at a glance
 
 | Source intent | SASS | barrier / field |
 |---|---|---|
@@ -355,6 +454,12 @@ the CBU sees them in program order even as the data pipe runs ahead.
 | thread/warp terminate | `EXIT` | sets `MEXITED` |
 | spill / restore convergence state | `BMOV.{32,64}{.CLEAR,.PQUAD}` | B-reg ↔ GPR, mask, `ATEXIT_PC`, depth |
 | spin-loop forward progress | `YIELD` / `NANOSLEEP` / `WARPSYNC` | relinquish slot / sleep / mask-sync |
+| warp ballot / predicate vote | `VOTE.{ANY,ALL}` / `VOTEU.…` | ballot mask, all/any/uni over active lanes |
+| warp ballot of "true" (active set) | `VOTE.ANY Rd, PT` | the active mask (== `activemask`) |
+| lane-to-lane copy | `SHFL.{IDX,UP,DOWN,BFLY}` | segment clamp `c=(segmask<<8)\|clamp`; geometric in-range `Pd` |
+| equal-value lane grouping | `MATCH.{ANY,ALL}` | per-lane match mask (+ `Pd` for `.ALL`) |
+| single-instruction warp reduction | `REDUX.{SUM,MIN,MAX,AND,OR,XOR}` | uniform-register result broadcast to all active lanes |
+| pick one leader lane | `ELECT` | `Pd`=1 on lowest active lane (Hopper+) |
 
 The whole machine is named, explicit, and compiler-scheduled: 16 convergence
 barriers replace the implicit reconvergence stack, per-lane PCs make divergence

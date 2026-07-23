@@ -1,0 +1,63 @@
+# Uniform-register / predicate / return-PC scheduling hazards -- the resources
+# the per-class dependency-rule model (dependency_rules_<sm>.tsv) does not name.
+# Recovered from CUDA-13.1 ptxas + nvdisasm static analysis and VERIFIED on an
+# sm_89 GPU (RTX Ada, compute_cap 8.9): each producer->consumer pair is compiled
+# with `ptxas -arch sm_89`, its emitted SASS control word decoded
+# (decoded/sass-tools/sass_ctrl_decode.py), launched on synthesized inputs
+# (decoded/sass-tools/sass_launch.py, 5 seeds), then the hazard distance is
+# patch-swept down to the minimum that still reproduces the bit-identical
+# read-back (gpu_min).  RPC + UPRED.bindless rows that sm_89 ptxas does not emit
+# are STATIC (ptxas/nvdisasm analysis); their gpu_min column reads "-".
+#
+# Resources:
+#   UGPR  uniform datapath registers UR0..UR62 (REDUX/UMOV/ULDC/UISETP/...->reader)
+#   UPRED uniform predicates UP0..UP6
+#   PRED  predicates P0..P6   (ISETP/PSETP/VOTE -> guarded/arithmetic reader)
+#   RPC   return-PC / USETMAXREG implicit ordering (branch ops, USETMAXREG)
+#
+# Columns:
+#   producer        SASS opcode (class) that writes the resource
+#   consumer        SASS opcode (class) that reads it
+#   kind            RAW | WAW | WAR | RPC-ORDER ; +coupled/decoupled where it
+#                   matters (coupled = fixed usched stall on the producer;
+#                   decoupled = producer arms a write scoreboard, consumer waits)
+#   source_model    producer->consumer latency from the ptxas scheduling model
+#   ptxas_emitted   the stall/scoreboard ptxas actually put on sm_89 (cyc, or
+#                   "SBn" for a write-scoreboard arm/wait pair)
+#   gpu_min         min cycles that still reproduce V1 on the sm_89 GPU
+#                   ("SB"=hardware async barrier, not a sweepable stall; "-"=static)
+#   note
+producer	consumer	kind	source_model	ptxas_emitted	gpu_min	note
+REDUX/R2UR/S2UR	UGPR_reader(IMAD/MOV)	RAW_decoupled	scoreboard(seed 2)	SB0	SB	uniform R->UR producer arms a write scoreboard; reader waits the bit -- dropping the wait corrupts the read-back (verified). Producer issue stall 2.
+REDUX/R2UR/S2UR	coupled_math(URa)	RAW	2	SB0	SB	source-model fixed 2 is the WAW/anti fallback; ptxas resolves the RAW with a write scoreboard, not a stall
+UMOV/UIADD3/ULOP3/USHF/ULEA	UGPR_reader(coupled)	RAW	6	4	4	coupled uniform-datapath producer; not-bindless latency band 6 (sm_89 emits producer stall 4, GPU-tight at 4)
+UMOV/UIADD3/ULOP3/USHF/ULEA	MIO/CBU_reader	RAW	12	-	-	bindless latency band: 12 to a decoupled (MIO/CBU) reader vs 6 not-bindless -- ptxas cannot discriminate operand bindless-ness, picks the conservative 12; sm_89 PTX did not force this pair (static)
+ULDC	UGPR_reader(coupled)	RAW	2	-	-	ULDC not-bindless reader latency band 2 (static; sm_89 keeps ULDC for the param-base pointer)
+ULDC	MIO_reader(addr/STG)	RAW	5	1	1	ULDC.64 base ptr -> STG address operand; bindless band 5 / not-bindless residual, GPU-tight at 1 for the address path
+UISETP	UGPR_reader	RAW	7	-	-	uniform compare -> uniform reader (UDP_subset column 5 = 7); static (sm_89 PTX folds to scalar ISETP)
+UMOV/UIADD3/USHF	UGPR_writer	WAW	1	-	-	non-decoupled uniform producer followed by non-decoupled writer = 1 (static)
+UDP_decoupled	UGPR_writer(decoupled)	WAW	7	-	-	decoupled-after-decoupled uniform WAW = 7 (static)
+UDP_producer	UGPR_writer	WAR	1	-	-	uniform WAR same-class = 1 (static)
+UDP_producer	UGPR_decoupled_writer	WAR	3	-	-	uniform WAR to a decoupled writer = 3 (static)
+UPRED_ALU(UISETP/UPSETP/UPLOP3)	UPRED_reader	RAW	6	-	-	uniform-predicate producer -> uniform-predicate reader band 6 (static; sm_89 ptxas keeps predicates in the scalar P datapath)
+UPRED_ALU	UPRED_BRA/JMP_reader	RAW	11	-	-	uniform predicate -> uniform branch reader band 11 (static)
+UPRED_ALU	UPRED_reader_alt(UPu/UPv)	RAW	4	-	-	uniform predicate alt reader column 4 (static)
+VOTEU	UPRED_reader	RAW_decoupled	1	-	-	VOTEU is decoupled into the uniform predicate path (band 1 to most readers; static -- sm_89 uses scalar VOTE)
+VOTEU	UPRED_BRA_reader	RAW	5	-	-	VOTEU -> uniform branch reader band 5 (static)
+UPRED_ALU	UPRED_writer	WAW	1	-	-	uniform-predicate WAW = 1 (static)
+UPRED_ALU	UPRED_decoupled_writer	WAW	7	-	-	uniform-predicate WAW to a decoupled writer = 7 (static)
+UPRED_reader	UPRED_writer	WAR	1	-	-	uniform-predicate WAR same-class = 1 (static)
+UPRED_reader	UPRED_decoupled_writer	WAR	2	-	-	uniform-predicate WAR to a decoupled writer = 2 (static)
+ISETP/PSETP(FXU coupled)	SEL/coupled_math_guard	RAW_coupled	5	4	4	coupled predicate producer -> coupled-math reader; control-band collapses to producer stall 4 (source 5 = 4 + issue), GPU-tight at 4
+ISETP/PSETP(FXU coupled)	VOTE/P2R/R2P/control_reader	RAW_coupled	13	13	13	coupled predicate producer -> NON-math (control-band) reader = 13; GPU-tight at 13 (patching below corrupts)
+ISETP/PSETP(FXU coupled)	@P_predicated_STG(MIO)	RAW_coupled	13	13	13	predicate guarding a decoupled MIO store sits in the control band 13; GPU-tight at 13
+FMALITE/HMMA(fp64)	coupled_math_guard	RAW	6	-	-	fp64 predicate producer -> coupled reader band 6 (static; not exercised on sm_89)
+FMALITE/HMMA(fp64)	control_reader	RAW	14	-	-	fp64 predicate producer -> control-band reader 14 (static)
+VOTE/MIO(decoupled)	predicate_reader	RAW_decoupled	1	4	4	VOTE-class predicate producer -> coupled reader: producer stall 4 (decoupled-1 is the scoreboard fallback), GPU-tight at 4
+MIO_predicate_producer	predicate_reader	RAW_decoupled	1	-	-	a memory/MIO op that writes a predicate is scoreboard-tracked (band 1); reader waits the SB (static)
+FXU/FMAI_predicate	predicate_writer	WAW	1	-	-	coupled predicate WAW same-class = 1 (static)
+FXU/FMAI_predicate	fp64/decoupled_pred_writer	WAW	2	-	-	coupled predicate WAW to fp64/decoupled writer = 2 (static)
+predicate_reader	predicate_writer	WAR	1	-	-	predicate WAR = 1 (static)
+RPC_writer(BRA/CALL/RET/JMP/BRX/RPCMOV/WARPSYNC)	math_op	RPC-ORDER	9	seq	-	branch/return-PC writers order against following math at distance 9 (the implicit return-PC hazard); sm_89 exposes it as CALL.REL.NOINC / RET.REL.NODEC sequencing, not a sweepable scoreboard (static)
+USETMAXREG	math_op	RPC-ORDER	8	seq	-	USETMAXREG orders against math at distance 8 on the RPC resource; Hopper+/sm_89 has the op (warp register reallocation) but emits it only under warp-specialized register pressure (static)
+RPCMOV	UGPR_reader	RAW	(per UGPR row)	-	-	RPCMOV writes the return-PC register pair through the uniform datapath; treated as a UGPR producer in the table, separated from MATH so its return-PC semantics are not folded (static)

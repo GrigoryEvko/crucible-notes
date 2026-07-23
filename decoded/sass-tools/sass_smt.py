@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  Our code; the scheduling
-# model is recovered from static + differential analysis of the CUDA 13.1
-# ptxas / nvdisasm binaries plus live-GPU measurement.
+# nvopen-tools -- SASS reverse-engineering tooling.  The scheduling model is
+# recovered from static + differential analysis of the CUDA 13.1 ptxas /
+# nvdisasm binaries plus live-GPU measurement.
 """
 Whole-program SMT-LIB2 instruction scheduler, discharged to a standalone Z3.
 
@@ -27,7 +27,7 @@ One integer issue cycle t[i] for every instruction i in the kernel:
     pinned to the last rank; pinned (live-in) instructions keep their rank lower
     bound.
   * PINNED block (barrier / control / internal target): rank[i] is FIXED to the
-    instruction's original position -- the block keeps ptxas's order verbatim.
+    instruction's original position -- the block keeps ptxas's order unchanged.
 
   * OBJECTIVE: minimise the global makespan = max over i of t[i] + 1.  Because
     blocks are fenced and contiguous, this equals sum of per-block makespans plus

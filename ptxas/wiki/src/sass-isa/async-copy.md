@@ -76,6 +76,19 @@ with the following semantics, each recovered from a one-variable probe:
 A predicated `cp.async` lowers to a guarded `@P LDGSTS …`; the predicate gates the
 copy issue, and the `.ZFILL` semantics are independent of it.
 
+`LDGSTS` carries the primary opcode byte `0xae`. The four decoration groups map
+onto four independent encoding sub-fields, each pinned by an isolated probe:
+
+| Sub-field | Width | Values | Driven by |
+|---|---|---|---|
+| `loc` | 1 | `BYPASS`=0 (`.cg`), `ACCESS`=1 (`.ca`) | the PTX cache hint |
+| `zfill` | 1 | `NONE`=0, `ZFILL`=1 | presence of the source-size operand |
+| `sp` (L2 promotion) | 2 | `NOSP`=0, `LTC64B`=1, `LTC128B`=2, `LTC256B`=3 | `L2::{64,128,256}B` |
+| `sz` (width) | 3 | `SIZE32`=4 (bare), `SIZE64`=5 (`.64`), `SIZE128`=6 (`.128`) | the byte-count operand |
+
+The eviction class shares the same `cop` field (`EF`/`EN`/`EL`/`LU`/`EU`/`NA`) as an
+ordinary `LDG` (see [Memory Model](memory-model.md#eviction-priority-cop-volta)).
+
 ### The async-copy *group* — commit and wait
 
 `cp.async` copies are tracked as ordered **groups** on a single dedicated async
@@ -195,15 +208,15 @@ the object's cache state so the shared slot can be reused for non-barrier data.
 Assembling each mbarrier op for `sm_90a` and `sm_100a` yields an identical mapping
 on both:
 
-| PTX | SASS (`sm_90a` / `sm_100a`) |
-|---|---|
-| `mbarrier.init.shared.b64 [b],C` | `SYNCS.EXCH.64 URZ, [b], packed` |
-| `mbarrier.inval.shared.b64 [b]` | `SYNCS.CCTL.IV [b]` |
-| `mbarrier.arrive.shared.b64 r,[b]` | `SYNCS.ARRIVE.TRANS64 RZ, [b], R` |
-| `mbarrier.arrive.expect_tx.shared.b64 r,[b],N` | `SYNCS.ARRIVE.TRANS64.A1T0 RZ, [b], N` |
-| `mbarrier.expect_tx.shared.b64 [b],N` (drop-form) | `SYNCS.ARRIVE.TRANS64.RED.A0TR RZ, [b], N` |
-| `mbarrier.try_wait.parity.shared.b64 p,[b],ph` | `SYNCS.PHASECHK.TRANS64.TRYWAIT P, [b], ph` |
-| `mbarrier.test_wait.parity.shared.b64 p,[b],ph` | `SYNCS.PHASECHK.TRANS64 P, [b], ph` |
+| PTX | SASS (`sm_90a` / `sm_100a`) | op byte |
+|---|---|---|
+| `mbarrier.init.shared.b64 [b],C` | `SYNCS.EXCH.64 URZ, [b], packed` | `0xb2` |
+| `mbarrier.inval.shared.b64 [b]` | `SYNCS.CCTL.IV [b]` | `0xb1` |
+| `mbarrier.arrive.shared.b64 r,[b]` | `SYNCS.ARRIVE.TRANS64 RZ, [b], R` | `0xa7` |
+| `mbarrier.arrive.expect_tx.shared.b64 r,[b],N` | `SYNCS.ARRIVE.TRANS64.A1T0 RZ, [b], N` | `0xa7` |
+| `mbarrier.expect_tx.shared.b64 [b],N` (drop-form) | `SYNCS.ARRIVE.TRANS64.RED.A0TR RZ, [b], N` | `0xa7` |
+| `mbarrier.try_wait.parity.shared.b64 p,[b],ph` | `SYNCS.PHASECHK.TRANS64.TRYWAIT P, [b], ph` | `0xa7` |
+| `mbarrier.test_wait.parity.shared.b64 p,[b],ph` | `SYNCS.PHASECHK.TRANS64 P, [b], ph` | `0xa7` |
 
 The `TRANS64` decoration marks the instruction as operating on the 64-bit
 transaction-counting barrier object. The arrive modifiers encode *which* fields
@@ -275,10 +288,14 @@ ULEA UR_addr, UR, UR_off, 0x18 ; DSMEM addr = (rank << 0x18) | shared_offset
 The `<< 0x18` (24-bit) shift packs the CTA rank into the high bits of the shared
 address, which is how a `shared::cluster` copy targets another CTA's shared memory
 inside the cluster. A shared→global `UBLKCP.G.S` or a `UBLKRED` is followed by
-**`UTMACMDFLUSH`**, which drains the TMA command queue so the subsequent
+**`UTMACMDFLUSH`** (op `0xb7`), which drains the TMA command queue so the subsequent
 `DEPBAR.LE SB0, 0x0` (`cp.async.bulk.wait_group 0`) observes completion. The
 `.read` wait variant (`cp.async.bulk.wait_group.read`) additionally emits
 `CCTL.IVALL` to invalidate the source so the buffer can be reused.
+
+The bulk-copy opcode bytes (low byte of the 128-bit word) are `UBLKCP` = `0xba`,
+`UBLKPF` = `0xbc`; the issue is wrapped in an `ELECT P0, URZ, PT` (op `0x2f`)
+leader guard so exactly one lane launches the engine.
 
 ### Tensor copies — `UTMALDG` / `UTMASTG` / `UTMAREDG` / `UTMAPF`
 
@@ -286,15 +303,14 @@ inside the cluster. A shared→global `UBLKCP.G.S` or a `UBLKRED` is followed by
 descriptor (the tensor-map) plus per-call tile coordinates. The matrix for
 `sm_90a` (identical on `sm_100a`):
 
-| PTX | SASS |
-|---|---|
-| `…bulk.tensor.2d.shared::cluster.global.tile.mbarrier…` | `UTMALDG.2D [s], [desc]` |
-| `… .multicast::cluster` | `UTMALDG.2D.MULTICAST [s], [desc], mask` |
-| `…bulk.tensor.3d.im2col.shared::cluster.global…` | `UTMALDG.3D.IM2COL [s], [desc], off` |
-| `…bulk.tensor.2d.global.shared::cta.tile…` | `UTMASTG.2D [desc], [s]` |
-| `cp.reduce.async.bulk.tensor.2d…add.tile…` | `UTMAREDG.2D.ADD [desc], [s]` |
-| `cp.reduce.async.bulk.tensor.2d…min.tile…` | `UTMAREDG.2D.MIN [desc], [s]` |
-| `cp.async.bulk.prefetch.tensor.2d.L2.global.tile…` | `UTMAPF.L2.2D [desc] / [s]` |
+| PTX | SASS | op byte |
+|---|---|---|
+| `…bulk.tensor.2d.shared::cluster.global.tile.mbarrier…` | `UTMALDG.2D [s], [desc]` | `0xb4` |
+| `… .multicast::cluster` | `UTMALDG.2D.MULTICAST [s], [desc], mask` | `0xb4` |
+| `…bulk.tensor.5d.im2col.shared::cluster.global…` | `UTMALDG.5D.IM2COL [s], [desc], off` | `0xb4` |
+| `…bulk.tensor.2d.global.shared::cta.tile…` | `UTMASTG.2D [desc], [s]` | `0xb5` |
+| `cp.reduce.async.bulk.tensor.2d…add.tile…` | `UTMAREDG.2D.ADD [desc], [s]` | `0xb6` |
+| `cp.async.bulk.prefetch.tensor.2d.L2.global.tile…` | `UTMAPF.L2.2D [desc]` | `0xb8` |
 
 The descriptor is read once into a uniform-register pointer
 (`ULDC.64 UR, c[0x0][0x210]` — the kernel-parameter bank on Hopper) and the
@@ -367,7 +383,10 @@ analogue of `cp.async`'s `.ZFILL`).
 Publishing a descriptor that was modified on-device requires a proxy fence:
 `tensormap.cp_fenceproxy …` lowers to an `ATOMG.E.EXCH.STRONG.GPU` (a strong-scope
 exchange) that flushes the generic-proxy write of the descriptor so the TMA engine,
-which reads it through a different memory proxy, observes the new bytes.
+which reads it through a different memory proxy, observes the new bytes. The
+acquire half — `fence.proxy.tensormap::generic.acquire …` — lowers instead to
+**`UTMACCTL.IV`** (op `0xb9`), which invalidates the TMA's tensor-map proxy cache
+so a subsequent tile op re-reads the freshly published descriptor.
 
 ---
 

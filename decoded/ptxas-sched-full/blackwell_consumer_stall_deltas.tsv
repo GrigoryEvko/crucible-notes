@@ -1,0 +1,28 @@
+# Blackwell lineup (sm_100/103/110/120/121) -- per-op scheduling divergences.
+# Columns: op, the producer usched value per arch (sm_100/103/120/121/110), note.
+# Divergences come from isolated single-producer/single-consumer probes.
+#
+# Notation:  c = coupled (fixed pipeline latency, no scoreboard);
+#            D = decoupled (variable latency, producer sets a write scoreboard);
+#            the number is the producer's usched value in the isolated probe.
+#
+# ROBUST divergences (survive every probe variant) ----------------------------------
+op	sm_100(GB100)	sm_103(GB300)	sm_120(consumer)	sm_121(consumer)	sm_110(Thor)	note
+DFMA	c (coupled)	D (decoupled)	D (decoupled)	D (decoupled)	D (decoupled)	FP64: GB100 keeps DFMA coupled (full-rate); all others decouple it
+DADD	c (coupled)	D (decoupled)	D (decoupled)	D (decoupled)	D (decoupled)	FP64: same split as DFMA -- intrinsic, invariant to the consumer
+F2F.F32.F64	D18	D15	D15	D15	D15	f32->f64 widen: GB100 producer usched 18 vs 15 elsewhere (both decoupled)
+FSETP	c4	c4	c5	c5	c4	fp predicate: consumer Blackwell (sm_120/121) +1 only; sm_110(Thor)=4 like sm_100/103; holds across gt/geu/lt/eq + pressure
+#
+# FP64 RATE FLOOR (dependent back-to-back DFMA chain, byte gap between issues) -------
+# op	sm_100	sm_103	sm_120	sm_121	sm_110
+DFMA_chain_issue_gap	0x10	0x50	0x50	0x50	0x50	GB100=1 slot (full FP64); all others=5 slots (rate-limited)
+#
+# WEAK / RSQ-specific (consistent only on MUFU.RSQ; SIN/RCP show no difference) ------
+MUFU.RSQ	D21	D21	D19	D19	D21	consumer Blackwell rsqrt collect usched 19 vs 21 (RSQ only; not a general MUFU delta)
+#
+# IDENTICAL across all five arches (no per-arch divergence) --------------------------
+POPC	D18	D18	D18	D18	D18	decoupled everywhere; equal usched
+I2FP	c5	c5	c5	c5	c5	coupled everywhere; equal
+F2I	D18	D18	D18	D18	D18	decoupled everywhere; equal
+F2F.F64.F32	D18	D18	D18	D18	D18	f64->f32 narrow: equal everywhere
+LOP3	c4	c4	c4	c4	c4	coupled everywhere; equal

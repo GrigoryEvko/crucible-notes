@@ -16,7 +16,7 @@ DMCA 17 U.S.C. § 1201(f) (and *Sega v. Accolade*, *Sony v. Connectix*, EU
 2009/24/EC Arts. 5–6) protects the **act of decrypting and studying** a publicly
 distributed binary for interoperability and research, and the **disclosure of the
 circumvention means** to others for that purpose. It does **not** grant a license
-to *redistribute NVIDIA's copyrighted expression verbatim*. So the line we draw:
+to *redistribute NVIDIA's copyrighted expression wholesale*. So the line we draw:
 
 **Published (in git):**
 - **Our decoder/extractor tools** (`tools/`, `ptxas-scheduling/extract_sched_tables.py`).
@@ -31,9 +31,9 @@ to *redistribute NVIDIA's copyrighted expression verbatim*. So the line we draw:
 - The **wholesale decoded NVIDIA data tables** — the PTX-macro pools, the SASS-ISA
   grammar dumps, the cicc name pools. These are NVIDIA-authored creative/compiled
   expression; § 1201(f) lets us decrypt and analyze them, not republish them. Our
-  *analysis* of their contents lives in the wiki as commentary; the verbatim bytes
+  *analysis* of their contents lives in the wiki as commentary; the raw bytes
   stay off-repo.
-- **Third-party material** (redplait's extractor and his decrypted snapshot) — not
+- **Third-party material** (redplait's extractor and his decrypted pool dump) — not
   ours to redistribute.
 
 Anyone can regenerate the local-only outputs from their own CUDA install using the
@@ -71,6 +71,12 @@ out of the user's own binary at run time — it is not shipped here.
 
 ## Published contents
 
+### Top-level report
+- `sm_coverage.md` — SM-version coverage + correctness matrix across every per-arch
+  table in `decoded/`, for the full Blackwell lineup (sm_100/103/110/120/121), with the
+  two-oracle (13.0.88 + 13.1.115) ground truth (e_flags, `__CUDA_ARCH__`, max-regs, FP64
+  DFMA gap, SASS byte-identity, ELF-container details).
+
 ### `tools/` — decoders (our code)
 - `decode_pool.py` — reproduces the ptxas/nvlink PTX-macro pool from the on-disk
   binary (reads the encrypted blob + S-box out of the ELF you point it at).
@@ -91,8 +97,19 @@ out of the user's own binary at run time — it is not shipped here.
   issue/timing simulator (validated: 221 producer→consumer scoreboard pairs, opex invariant
   1912/1912). `sass_legality.py` — constraint checker + `iadd3`/`lop3`/`shf`/`prmt` functional
   model; `sass_validate.py` — hypothesis harness vs real ptxas SASS.
+- `sass_sem_int.py` / `sass_sem_fp.py` / `sass_warp.py` — bit-exact functional models
+  (integer/logic, IEEE float, 32-lane warp collectives + MMA), each gated by a live-GPU
+  differential harness (`sass_gpu_probe.py`, `sass_launch.py` generic cubin launcher).
+  `sass_scheduler.py` with `sass_smt.py`/`sass_optsched.py` — latency-optimal scheduler.
 - All require the user to regenerate the (local-only) decoded tables first via
   `tools/nvdisasm_decode.py`. Documented in the ptxas wiki `sass-isa/` section.
+
+### `sass-bitsem/` — typed, machine-checked bit semantics (Lean 4, our code)
+- `SassBitsem/{Logic,Convert,Synthesis}.lean` — the SASS bit functions as width-typed
+  `BitVec` operations (lop3 LUT, funnel shift, bmsk; integer casts + bf16↔f32 surgery;
+  invented-op synthesis). Every identity is proved by `bv_decide` (bit-blast → SAT), so it
+  holds for all inputs with a kernel-checked term. `lake build`; no external deps. The
+  typed companion to the executable `sass-tools/` models.
 
 ### `ptxas-scheduling/` — the SASS scheduling model (tool + extracted facts)
 - `extract_sched_tables.py` — extracts both tables below from a `.rodata` dump of
@@ -126,9 +143,102 @@ out of the user's own binary at run time — it is not shipped here.
 - `messages.tsv` — 506 messages (id, severity, text); `extract_messages.py` — our
   extractor. All strings are cleartext in the binary.
 
+### `ptxas-isel/` — instruction selection (facts + our tools)
+- Static: `opcode_to_encoding.tsv` (opcode→slot, `sm_gen` = introduction
+  generation), `isel_dispatch_groups.tsv` (144 groups), `isel_operand_constraint_records.tsv`,
+  `isel_node_vtables.tsv`. Behavioural per-arch: `per_arch_opcode_histogram.tsv` +
+  `per_arch_encoding_opbyte.tsv` (sm_90a/100/103/110/120/121 SASS selection for a
+  fixed probe) via `extract_per_arch_isel.py`. See its README for the
+  consumer-vs-datacenter move-idiom / integer-ALU differences.
+
+### `ptxas-encoding-full/` — SASS-encoding dispatch (facts + our tools)
+- The seven per-arch encoder blocks in `.rodata 0x22E7AD0..0x23EFB60`: blocks 0–4
+  (sm50_7x/sm75/sm100/sm80_8x/sm86_89), block 6 (sm_110 Jetson Thor) and block 7
+  (sm_120/121 consumer Blackwell) — `arch_blocks.tsv`,
+  `new_arch_blocks_sm110_sm120.tsv`, `per_arch_encoder_blocks.tsv` via
+  `extract_arch_blocks.py`. Blocks 6/7 share 0 emitters with the classic family
+  (disjoint `.text` code). `sass_class_presence_by_arch.tsv` cross-checks ISA-class
+  coverage (tcgen05/TMEM only on sm_100/103/110; RT/TTU + consumer-tensor only on
+  sm_120). See its README.
+
+### `ptxas-ir/` — the Ori internal IR (facts)
+- `ir_node_layout.tsv` (296-byte instruction-object field map), `opcode_enum.tsv`
+  (322 primary Ori opcodes, ROT13-decoded, with `sm_gen`), `opcode_enum_mercury.tsv`
+  (385 Mercury/SM103 tensor extended opcode names), `operand_packed_word.tsv` (packed
+  inline-operand bitfield), `operand_kind_enum.tsv` (ISel operand-descriptor kinds).
+  All recovered from the stripped binary; see its README.
+
+### `ptxas-passes/` — the optimization phase pipeline (facts)
+- `phase_pipeline.tsv` — 159 phases: default `exec_order`, authoritative `bin_index`
+  (phase-name table at `0x22BD0C0` + factory switch), plaintext `phase_name`,
+  `name_string_va`, analytical category, and the layer-1 opt-level gate per phase.
+
+### `ptxas-passes-detail/` — per-phase deep-dive (facts)
+- `passes_detail.tsv` — one row per of 14 high-leverage phases:
+  `phase | bin_index | vtable_va | execute_thunk_va | worker_or_slot | dispatch_kind |
+  role | key_transform`. Grounded in disassembly + vtable layout.
+
+### `ptxas-driver/` — compilation driver, O0–O5 model, recipe DSL (facts + prose)
+- `phase_index.tsv` (factory/dispatch phase index), `phase_order_table.txt` (default
+  order), `ocg_knobs.tsv` (OCG tuning knobs), `recipe_override_dsl.tsv` (the
+  NvOptRecipe / named-phases override grammar, option 298). Prose: `driver_callgraph.md`,
+  `opt_level_model.md`, `phase_dispatch_157_vs_159.md`.
+
+### `ptxas-targets/` — target / SM-version gating tables (facts)
+- `sm_id_enumeration.tsv`, `sm_version_codes.tsv` (legacy 16-bit hash-slot codes),
+  `sm_target_properties.tsv`, `supported_targets.tsv`, `sass_elf_eflags.tsv` (EF_CUDA
+  flag encoding), `sm_scheduling_seeds.tsv`, `gating_diagnostics.tsv`, and
+  `instruction_legality.tsv` (~19k per-arch instruction/feature legality rows). See README.
+
+### `ptxas-regalloc/` — register allocation / occupancy tables (facts)
+- `register_classes.tsv` + `register_class_summary.tsv` (3 per-generation class tables,
+  selector `sub_ABF590`), `register_file_config.tsv` / `register_file_limits.tsv`,
+  `occupancy_constants.tsv`, `abi.tsv` (calling-convention constraints),
+  `operand_regcount_matrix.tsv`, `per_arch_regalloc_binding.tsv`,
+  `fp64_throughput_class.tsv`, `register_id_arrays.tsv`. Corroborated with `ptxas -v`.
+
+### `ptxas-sched-full/` — full per-SM SASS scheduling model (facts + our tools)
+- The complete latency / dependency-rule / scoreboard tables for every SM through
+  sm_121: `latency_table_sm{7x,8x,10x,11x,12x}.tsv`, `dependency_rules_sm_*.tsv`
+  (+ merged `dependency_rules_all.tsv`), `scoreboard_configs_sm_*.tsv`,
+  `scalar_latency_oracle.tsv`, `opcode_pipeline_map.tsv`, `sm_coverage_summary.tsv`,
+  `blackwell_consumer_stall_deltas.tsv`. Our code: `render_sched_full.py`,
+  `extract_blackwell_consumer.py`, `measure_blackwell_deltas.py`. The full set
+  spanning what `ptxas-scheduling/` covers representatively. See README.
+
+### `ptxas-elf-output/` — device-ELF (cubin) output emitter (facts)
+- What ptxas writes when assembling PTX into a cubin: `section_catalog.tsv` (CUDA
+  section types), `eiattr_codes.tsv` (`.nv.info` EIATTR codes), `eicompat_codes.tsv`,
+  `reloc_types.tsv`, `nvinfo_wire_groundtruth.tsv`, `header_notes_compat.tsv`,
+  `per_arch_sm110_120_121.tsv`. Re-extracted from `.rodata` name-pointer tables and
+  cross-checked against emitted bytes / `cuobjdump --dump-elf`. See README.
+
+### `ptxas-mercury/` — Mercury container / capmerc / Finalizer (facts)
+- The Mercury SASS container + capsule packaging + R_MERCURY relocations + FNLZR
+  finalizer + section content-dedup: `capsule_section_layout.tsv`, `r_mercury_relocs.tsv`,
+  `reloc_conversion_chain.tsv`, `finalizer_{functions,attributes,pipeline}.tsv`,
+  `merc_section_names.tsv`, `merc_sass_map.tsv`, `nvrs_symbol_value_actions.tsv`,
+  `dedup_functions.tsv`, `arch_compat_capbits.tsv` (off-target family-compat cap-bits).
+
+### `ptxas-fp-debug/` — FP constant-fold, DWARF debug, SASS text printing (facts)
+- `softfloat_{routines,callers}.tsv` (the FP constant-fold engine — see README's key
+  negative finding), `dwarf_{sections,emitters}.tsv` (debug-info emission),
+  `sass_{listing_fields,printer_fns}.tsv` (the `-v` resource report + self-check SASS).
+
+### `ptxas-knobs-builtins/` — tuning knobs + builtin/opcode catalogs (facts)
+- `knob_names.tsv` (1121 tuning-knob names, ROT13 where stored that way),
+  `okt_descriptors.tsv` (option-knob-table descriptors), `builtins_catalog.tsv` (1080
+  builtin function declarations), `builtins_wgmma_infra.tsv` (wgmma infra blocks),
+  `opcode_master_canonical.tsv` (322 canonical opcodes: mnemonic, sm_gen, encoding slot,
+  per-family pipeline flags).
+
+### `ptxas-gap-closure/` — resolved ptxas internals (facts)
+- `resolved_items.tsv` — one row per (item, subitem): resolution, binary evidence,
+  and confidence.
+
 ## Local-only outputs (not in git — regenerate with the tools above)
 
-These are produced by the published tools but are NVIDIA's verbatim data tables, so
+These are produced by the published tools but are NVIDIA's data tables, so
 they are git-ignored and not redistributed:
 
 - `ptxas-ptx-macro-pool/`, `nvlink-ptx-macro-pool/` — the decoded printf-template
@@ -142,8 +252,8 @@ they are git-ignored and not redistributed:
   targets, pins cicc to LLVM 21), the Clang `Builtins` table (12,506), and cicc's
   PTX-emission mnemonic dictionary. The LLVM/Clang names are themselves public
   (Apache-2.0) and the PTX mnemonics are documented in NVIDIA's PTX ISA; we keep the
-  bulk verbatim dumps off-repo regardless and cite the facts in the wiki.
-- `reference/` — redplait's `denvdis` extractor and his decrypted pool snapshot
+  bulk dumps off-repo regardless and cite the facts in the wiki.
+- `reference/` — redplait's `denvdis` extractor and his decrypted pool dump
   (third-party; see his blog, not republished here).
 
 ## Provenance / legal

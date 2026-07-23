@@ -1,13 +1,10 @@
 # ptxas v13.0.88 — Optimization/Validation/Lowering Phase Detail (binary-derived)
 
-Deep-dive reverse engineering of 14 high-leverage ptxas phases that previously had
-no detail page. Every fact is recovered from the ptxas binary
-(`ptxas/ptxas`, CUDA 13.0.88, ELF x86-64, stripped; `.text` VMA == file offset) via
-`objdump` raw disassembly cross-checked against the per-function decompilation in
-`ptxas/decompiled/`. Every fact is grounded in disassembly, control/data flow, vtable
-layouts, and the binary's own embedded strings; where the binary and any prior doc
-disagree, the **binary wins** and the divergence is flagged in-row. All output is
-binary-derived.
+Reverse engineering of 14 ptxas optimization/validation/lowering phases. Every fact is
+recovered from the ptxas binary (`ptxas/ptxas`, CUDA 13.0.88, ELF x86-64, stripped;
+`.text` VMA == file offset) via `objdump` raw disassembly cross-checked against the
+per-function decompilation in `ptxas/decompiled/`, and is grounded in disassembly,
+control/data flow, vtable layouts, and the binary's own embedded strings.
 
 ## Files
 
@@ -17,7 +14,7 @@ binary-derived.
   `bin_index`=index, `worker_or_slot`=execute_fn, plus the vtable VA, the execute-thunk
   VA, and the dispatch kind for full traceability.
 - `README.md` — this file (methodology, dispatch architecture, the gate primitive,
-  per-phase confidence, and the wiki page proposal).
+  per-phase confidence).
 
 ## Phases covered (authoritative bin_index)
 
@@ -38,11 +35,8 @@ binary-derived.
 | 110 | FinalInspectionPass | Validation (shaderType virtual) |
 | 116 | BackPropagateVEC2D | Analysis (post-schedule) |
 
-> **Index reconciliation.** The task brief listed older display-order numbers
-> (e.g. "OriCreateMacroInsts(8)", "FinalInspectionPass(94)"). The authoritative
-> identity is the **bin_index** = the factory `sub_C60D30` switch case = the phase
-> name-table index at `0x22BD0C0`. The brief's numbers are a stale ordering; the
-> bin_index values above were re-derived directly from the binary and supersede them.
+The authoritative identity is the **bin_index** = the factory `sub_C60D30` switch
+case = the phase name-table index at `0x22BD0C0`.
 
 ## Dispatch architecture (binary-confirmed)
 
@@ -96,11 +90,10 @@ AnalyzeControlFlow reads DISABLESOURCEORDER at `knobs+0x4218`).
   name does not surface the "TTU" string, but the body's logic is unambiguous). Worker
   `sub_19DFC20`; gate `Gb+0x564` bit7 (HasTTU); matches
   `(node+0x48 & 0xCF00) == 0xFC00` = OP_TTUOPEN. The neighboring thunk `0xC5F8E0`
-  (a different phase) gates on `Gb+0x588` — the two were previously conflated.
+  (a different phase) gates on `Gb+0x588` — a distinct gate from this phase's.
 - **OriSanitize** is **not** an IR validator; it is the **compute-sanitizer** device
   instrumentation injector (memcheck / threadsteer paths, `__cuda_sanitizer_*` runtime
-  calls). All four mode/symbol strings are byte-verified in `.rodata`. The device
-  instrumentation behavior behind this name is a **binary-only discovery**.
+  calls). All four mode/symbol strings are byte-verified in `.rodata`.
 - **OriCheckInitialProgram** is a debug-gated (`Gb+0x566 & 0x401`) read-only DAG/
   consistency walk; it sits ahead of the index-0 FP16 promotion phase. Its public-name
   identity is uncertain (no other reference uses this name), so the name binding is
@@ -120,26 +113,3 @@ Reduced-confidence sub-items (flagged in-row): the loop-depth interval machinery
 the CFG builder (MEDIUM); the exact public-name identity of OriCheckInitialProgram
 (MEDIUM — name binding uncertain); the exact propagated sub-attribute flag inside
 BackPropagateVEC2D (MEDIUM — the fine-grained predicate is inferred from the body alone).
-
-## Proposed wiki enrichment (for `passes/`, do NOT edit `*/wiki/` from here)
-
-Add one grouped detail page plus targeted per-phase sections, all under the existing
-`passes/` family:
-
-1. **`passes/validation-and-lowering.md`** — new grouped page "Validation & Lowering
-   Passes". Sections:
-   - *The OptBudget gate* (`sub_7DDB50`, knob 499, the O0-sentinel semantics) — shared
-     infrastructure every phase page can link to.
-   - *Profile-virtual dispatch* (base empty-stub pattern, slot table, override addresses).
-   - *Per-phase*: OriCheckInitialProgram, PromoteFP16, AnalyzeControlFlow,
-     OriCreateMacroInsts, OriSanitize, ConvertVTGReadWrite, DoVirtualCTAExpansion,
-     ForwardProgress, EnforceArgumentRestrictions (+ Late pair), ExpandJmxComputation,
-     FinalInspectionPass, BackPropagateVEC2D.
-2. **`passes/shader-constants.md`** — ExtractShaderConsts{First,Final} (shared worker,
-   extract-vs-finalize flag, setup-shader build, loop/block consistency BUG check).
-3. Cross-links from `passes/index.md` rows (bin 0/2/3/9/13/39/45/46/49/55/59/94/110/116)
-   to the new sections; add a one-line "compute-sanitizer, not a validator" caveat to the
-   OriSanitize row.
-
-Suggested page order in the grouped page follows pipeline position
-(initial → optimization → final), matching `decoded/ptxas-passes/phase_pipeline.tsv`.

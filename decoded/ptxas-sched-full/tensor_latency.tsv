@@ -1,0 +1,40 @@
+# Tensor-op result latency: ptxas (CUDA 13.1 V13.1.115) emission vs sm_89 GPU measurement.
+#
+# Resolves the HMMA/IMMA result-latency divergence between two numbers seen
+# downstream: a "13" band entry and a "27-28" completion latency.  Measured on
+# an NVIDIA RTX 1000 Ada Generation (sm_89) with ptxas -arch sm_89 + nvdisasm
+# -c (control words) + a Driver-API patch-and-relaunch sweep.
+#
+# VERDICT.  Neither 13 nor 27 is "the stall ptxas emits".  HMMA/IMMA/BMMA are
+# COUPLED tensor ops: ptxas sets NO write-scoreboard on them (dst_wr_sb=7) and
+# the dependent consumer carries NO scoreboard wait, so the producer->use order
+# is held purely by summed fixed usched stalls.  ptxas spaces the dependent
+# consumer 23 issue-cycles after the producing HMMA/IMMA (8+7+8 on the m16n16k16
+# lowering) -- the emitted spacing, consistent with the 27-28 result-latency
+# model and NOT with 13 (13 is the control/CC issue band, mis-applied to tensor).
+# The GPU then shows the spacing is a hardware floor, not a software contract:
+# patching the HMMA/IMMA->use issue gap down to 3 still reproduces the baseline
+# result bit-for-bit (the tensor pipe interlocks the read), whereas the same
+# harness corrupts an under-stalled FFMA chain (4->1) -- proving the probe is
+# sensitive and that, unlike scalar FFMA, the tensor read is HW-enforced.
+# DMMA is the exception: ptxas tracks it with a real write-scoreboard
+# (dst_wr_sb=1, consumer wait on that SB) -- DECOUPLED, matching its 25-26 band.
+#
+# coupled_or_scoreboard : how ptxas enforces producer->use ordering
+#   coupled    = fixed usched stall, no write-scoreboard (HMMA/IMMA/BMMA on Ada)
+#   scoreboard = sets a write-scoreboard, consumer waits on it (DMMA on Ada)
+#   group_sb   = warpgroup/group async scoreboard (Hopper/Blackwell, static only)
+# source_model   : result-GPR (RAW) latency band the latency model carries
+# ptxas_emitted  : producer->dependent-consumer issue-cycle spacing ptxas emits
+#                  (m16n16k16 lowering: stall(prod)+stall(prod2)+stall(addr))
+# gpu_min_required : smallest still-correct producer->use issue gap on sm_89
+#                    silicon from the patch-down sweep (below it the HW interlock
+#                    still holds, so the result never breaks => "3+ (HW-locked)")
+op	arch	coupled_or_scoreboard	source_model	ptxas_emitted	gpu_min_required	note
+HMMA.16816.F32	sm_89	coupled	27-28	23	3 (HW-locked)	fp16 m16n8k16/m16n16k16; dst_wr_sb=7, consumer no SB wait; 23-cyc spacing = 27-28 model not 13
+HMMA.1688.F32	sm_89	coupled	27-28	23	3 (HW-locked)	fp16 m16n8k8; same coupled pattern as .16816, shorter k
+IMMA.16816.S8.S8	sm_89	coupled	27-28	23	3 (HW-locked)	s8/u8 m16n16k16->s32; dst_wr_sb=7; sweep 9/9 OK to gap=3
+BMMA.88128.XOR.POPC	sm_89	coupled	27-28	12	3 (HW-locked)	b1 m8n8k128->s32; single-op end-group usched=12; coupled, no SB
+DMMA.884	sm_89	scoreboard	25-26	scoreboard	scoreboard	fp64 m8n8k4; dst_wr_sb=1 + consumer wait[1]; decoupled, unlike HMMA/IMMA/BMMA
+HGMMA/IGMMA.async	sm_90a	group_sb	static	static	static	Hopper wgmma.mma_async: warpgroup-async, retires into a group scoreboard; wgmma.wait_group N gates the accumulator read (no inline producer->use stall)
+tcgen05.mma	sm_100	group_sb	static	static	static	Blackwell datacenter 5th-gen tensor: TMEM accumulator, async group-scoreboard commit; tcgen05.wait/commit barrier gates the read (consumer Blackwell sm_120 lacks tcgen05/TMEM)

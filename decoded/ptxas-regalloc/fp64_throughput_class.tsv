@@ -1,0 +1,7 @@
+sm_string	codename	fp64_class	min_dependent_dfma_gap	stall_slots_between_deps	native_fp64_ops	note
+sm_90	Hopper	FAST	0x10	0	DMUL/DADD/DFMA	full-rate FP64; dependent doubles issue back-to-back (1 slot)
+sm_100	Blackwell (datacenter)	FAST	0x10	0	DMUL/DADD/DFMA	full-rate FP64; identical scheduling to sm_90 for the FP64 probe kernel
+sm_103	Blackwell Ultra	RATE-LIMITED	0x50	4	DMUL/DADD/DFMA	reduced-rate FP64; scheduler pads 4 stall slots between dependent doubles
+sm_110	Jetson Thor	RATE-LIMITED	0x50	4	DMUL/DADD/DFMA	reduced-rate FP64; same dependent-DFMA spacing as consumer Blackwell
+sm_120	consumer RTX 50xx / Pro	RATE-LIMITED	0x50	4	DMUL/DADD/DFMA	reduced-rate FP64 (consumer ~1/64 FP32 rate); 4 stall slots between dependent doubles
+sm_121	DGX Spark	RATE-LIMITED	0x50	4	DMUL/DADD/DFMA	reduced-rate FP64; SASS byte-identical to sm_120 (shares code-gen tables)

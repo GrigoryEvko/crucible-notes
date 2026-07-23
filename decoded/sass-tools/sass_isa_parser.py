@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-# nvopen-tools -- SASS reverse-engineering tooling.  MIT-style: our code; facts
-# and structure only, no vendor table text is reproduced.
+# nvopen-tools -- SASS reverse-engineering tooling.
 """
 SASS-ISA table parser for NVIDIA nvdisasm-decoded instruction databases.
 
 Parses the per-arch SASS instruction database (sass_isa_SM*.txt) into a
 structured model: top-level header, RELOCATORS, REGISTERS token tables, and a
 list of CLASS instruction blocks each with FORMAT / CONDITIONS / PROPERTIES /
-PREDICATES / OPCODES / ENCODING sub-sections.
+PREDICATES / OPCODES / ENCODING sub-sections, reconstructing each instruction's
+bit-field layout from the BITS_* directives.
 
-This is a facts/structure extractor -- it does not republish the table text; it
-reconstructs each instruction's bit-field layout from the BITS_* directives.
-
-Bit-field directive grammar (the core encoding axis):
+Bit-field directive grammar (the encoding axis):
 
     BITS_<width>_<hi>_<lo>_<name> = <source>                 # contiguous span
     BITS_<width>_<hi1>_<lo1>_<hi2>_<lo2>_<name> = <source>   # split span (2 ranges)

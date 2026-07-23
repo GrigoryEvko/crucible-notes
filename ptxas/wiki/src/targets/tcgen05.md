@@ -12,7 +12,7 @@ TCGen05 is the Blackwell-generation tensor core instruction family introduced wi
 | **PTX instructions** | 13: alloc, dealloc, relinquish_alloc_permit, ld, ld.red, st, commit, cp, shift, fence, wait, mma, mma.ws |
 | **Guardrail instructions** | 8: is_phase_valid, are_columns_allocated, is_current_warp_valid_owner, in_physical_bounds, allocation_granularity, datapath_alignment, sp_consistency_across_idesc_mod, check_sparse_usage |
 | **SASS opcode range** | Opcodes 122–139 (TMEM operations), 213–221 (TCGEN05_MMA/FENCE, TMEM extended), 342–372 (TCGEN05 control) |
-| **Codegen factory** | 36864 (9 << 12) — shared across all Blackwell targets |
+| **Codegen factory** | generation nibble `0x9` (`9 << 12`) shared across the Blackwell family; per-arch profile codes differ — sm_100=`0x9000`, sm_103=`0x9003`, sm_110=`0x9001`, sm_120=`0x9004`, sm_121=`0x9005` |
 | **MMA codegen** | `sub_5BBC30` (90KB) |
 | **PTX validator** | `sub_4C5FB0` (28KB — shared MMA/WMMA/tcgen05 validator) |
 | **Intrinsic handler** | `sub_6D7AF0` (19KB — TCGen05 MMA handler) |
@@ -408,7 +408,7 @@ The `EICOMPAT_ATTR_INST_TCGEN05_MMA_DEPRECATED` attribute tags objects compiled 
 
 ### SM 100 vs SM 103 Differences
 
-Both sm_100 and sm_103 share the same tcgen05 instruction set and codegen factory (36864). They share all 7 dispatch-table handler functions. The differences between sm_100 and sm_103 are:
+Both sm_100 and sm_103 share the same tcgen05 instruction set, but they have **distinct** internal profile codes (sm_100=`0x9000`/36864, sm_103=`0x9003`/36867) and distinct per-SM dispatch-table handler functions. The differences between sm_100 and sm_103 are:
 
 - Different Handler A and Handler B capability accessor functions (sm_100: `sub_609C30`/`sub_609BD0`; sm_103: `sub_608F20`/`sub_609D20`)
 - Different intrinsic table initializers (sm_100: `sub_60A910`; sm_103: `sub_60A700`)

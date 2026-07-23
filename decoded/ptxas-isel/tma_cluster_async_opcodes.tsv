@@ -1,0 +1,94 @@
+ptx_op	sass_opcode	op_byte	intro_sm	addr_form	operand_fields	completion	notes
+ld.global	LDG.E	0x81	sm_70	desc[UR][Rn.64]	sem/sco/cop/sz/E	register	weak default prints bare LDG.E
+ld.global.ca	LDG.E.STRONG.SM	0x81	sm_70	desc[UR][Rn.64]	cop=EN sco=CTA->SM sem=STRONG	register	cache-all folds to CTA-scope-strong
+ld.global.cg	LDG.E.STRONG.GPU	0x81	sm_70	desc[UR][Rn.64]	cop=EN sco=GPU sem=STRONG	register	bypass-L1 folds to GPU-scope-strong
+ld.global.cs	LDG.E.EF	0x81	sm_70	desc[UR][Rn.64]	cop=EF sem=WEAK	register	streaming = evict-first eviction class
+ld.global.cv	LDG.E.STRONG.SYS	0x81	sm_70	desc[UR][Rn.64]	cop=EN sco=SYS sem=STRONG	register	volatile/uncached folds to SYS-scope-strong
+ld.global.lu	LDG.E.LU	0x81	sm_70	desc[UR][Rn.64]	cop=LU sem=WEAK	register	last-use eviction class
+ld.global.L1::evict_first	LDG.E.EF	0x81	sm_75	desc[UR][Rn.64]	cop=EF	register	cop field 3-bit EF=0
+ld.global.L1::evict_last	LDG.E.EL	0x81	sm_75	desc[UR][Rn.64]	cop=EL	register	EL=2
+ld.global.L1::evict_unchanged	LDG.E.EU	0x81	sm_75	desc[UR][Rn.64]	cop=EU	register	EU=4
+ld.global.L1::no_allocate	LDG.E.NA	0x81	sm_75	desc[UR][Rn.64]	cop=NA	register	NA=5 no-allocate
+ld.global.relaxed.gpu	LDG.E.STRONG.GPU	0x81	sm_70	desc[UR][Rn.64]	sem=STRONG sco=GPU	register	relaxed maps STRONG (acquire identical print)
+ld.global.acquire.gpu	LDG.E.STRONG.GPU	0x81	sm_70	desc[UR][Rn.64]	sem=STRONG sco=GPU	register	acquire == relaxed in printed/encoded form
+ld.global.relaxed.cluster	LDG.E.STRONG.GPU	0x81	sm_90	desc[UR][Rn.64]	sem=STRONG sco=GPU	register	cluster scope == GPU scope
+ld.global.mmio.relaxed.sys	LDG.E.MMIO.SYS	0x81	sm_70	[Rn.64]	sem=MMIO sco=SYS	register	MMIO bypasses the desc[] addressing path
+st.global.wb	STG.E.STRONG.SM	0x86	sm_70	desc[UR][Rn.64]	cop->EN sco=CTA->SM sem=STRONG	posted	write-back = CTA-scope-strong
+st.global.cg	STG.E.STRONG.GPU	0x86	sm_70	desc[UR][Rn.64]	sco=GPU sem=STRONG	posted	-
+st.global.cs	STG.E.EF	0x86	sm_70	desc[UR][Rn.64]	cop=EF sem=WEAK	posted	streaming store
+st.global.wt	STG.E.STRONG.SYS	0x86	sm_70	desc[UR][Rn.64]	sco=SYS sem=STRONG	posted	write-through = SYS-scope-strong
+st.global.release.gpu	STG.E.STRONG.GPU	0x86	sm_70	desc[UR][Rn.64]	sem=STRONG sco=GPU	posted	release folds to STRONG+scope
+st.global.release.cta	STG.E.STRONG.SM	0x86	sm_70	desc[UR][Rn.64]	sem=STRONG sco=CTA->SM	posted	-
+atom.global.add.u32	ATOMG.E.ADD.STRONG.GPU	0xa8	sm_70	desc[UR][Rn.64]	atom_op=ADD(0) sem=STRONG sco=GPU	register	default atomic scope = GPU
+atom.global.min.s32	ATOMG.E.MIN.S32.STRONG.GPU	0xa8	sm_70	desc[UR][Rn.64]	atom_op=MIN(1) size=S32	register	-
+atom.global.exch.b32	ATOMG.E.EXCH.STRONG.GPU	0xa8	sm_70	desc[UR][Rn.64]	atom_op=EXCH(8)	register	-
+atom.global.cas.b32	ATOMG.E.CAS.STRONG.GPU	0xa9	sm_70	[Rn]	cas-opcode (distinct from atom_op)	register	CAS is its own opcode byte 0xa9 not an atom_op value
+atom.global.add.f32	ATOMG.E.ADD.F32.FTZ.RN.STRONG.GPU	0xa3	sm_70	desc[UR][Rn.64]	atom_op=ADD fp-type	register	fp atomic low byte differs by type
+atom.global.add.acq_rel.gpu	ATOMG.E.ADD.STRONG.GPU	0xa8	sm_70	desc[UR][Rn.64]	sem=STRONG sco=GPU	register	acq_rel folds to STRONG+scope
+atom.shared.add.u32	ATOMS.ADD	0x8c	sm_70	[Rn]	atom_op=ADD no sem/sco	register	shared atomics are CTA-local no scope field
+atom.shared.cas.b32	ATOMS.CAS	0x8d	sm_70	[Rn]	cas-opcode	register	-
+red.global.add.u32	REDG.E.ADD.STRONG.GPU	0x8e	sm_70	desc[UR][Rn.64]	red_op=ADD sem=STRONG sco=GPU	posted	fire-and-forget reduction
+red.global.add.f32	REDG.E.ADD.F32.FTZ.RN.STRONG.GPU	0xa6	sm_70	desc[UR][Rn.64]	red_op=ADD fp-type	posted	fp reduction low byte 0xa6
+red.shared.add.u32	ATOMS.ADD	0x8c	sm_70	[Rn]	atom_op=ADD dst=RZ	posted	shared reduction = ATOMS with RZ dest (no REDS opcode)
+membar.cta	MEMBAR.SC.CTA	0x92	sm_70	-	sem=SC(0) sco=CTA(0)	fence	-
+membar.gl	MEMBAR.SC.GPU	0x92	sm_70	-	sem=SC sco=GPU(2)	fence	-
+membar.sys	MEMBAR.SC.SYS	0x92	sm_70	-	sem=SC sco=SYS(3)	fence	-
+fence.acq_rel.cta	MEMBAR.ALL.CTA	0x92	sm_70	-	sem=ALL(1) sco=CTA	fence	acq_rel = ALL not SC
+fence.acq_rel.gpu	MEMBAR.ALL.GPU	0x92	sm_70	-	sem=ALL sco=GPU	fence	-
+fence.sc.gpu	MEMBAR.SC.GPU	0x92	sm_70	-	sem=SC sco=GPU	fence	sc = sequential consistency
+fence.acq_rel.cluster	MEMBAR.ALL.GPU+ERRBAR+CGAERRBAR	0x92	sm_90	-	sco=GPU + cluster error drain	fence	cluster fence = GPU membar + error barriers
+fence.proxy.tensormap::generic	UTMACCTL.IV	0xb9	sm_90	[UR]	tensormap-proxy cache invalidate	fence	publishes on-device tensor-map edits
+prefetch.global.L2	CCTL.E.PF2	0x8f	sm_70	-	cctl-subop=PF2	-	-
+discard.global.L2	CCTL.E.RML2	0x8f	sm_80	-	cctl-subop=RML2	-	-
+cp.async.ca.shared.global	LDGSTS.E	0xae	sm_80	[Rsh],[Rg.64]	loc=ACCESS sz cop	group SB0	4-byte width prints bare
+cp.async.ca.shared.global.8	LDGSTS.E.64	0xae	sm_80	[Rsh],[Rg.64]	sz=SIZE64(5)	group SB0	-
+cp.async.ca.shared.global.16	LDGSTS.E.128	0xae	sm_80	[Rsh],[Rg.64]	sz=SIZE128(6)	group SB0	-
+cp.async.cg.shared.global.16	LDGSTS.E.BYPASS.128	0xae	sm_80	[Rsh],[Rg.64]	loc=BYPASS(0)	group SB0	cg = L1 bypass
+cp.async.ca.shared.global.16.N	LDGSTS.E.128.ZFILL	0xae	sm_80	[Rsh],[Rg.64],!P	zfill=ZFILL(1)	group SB0	source-size operand -> ZFILL
+cp.async.commit_group	LDGDEPBAR	0xaf	sm_80	-	-	commits SB0 group	-
+cp.async.wait_group	DEPBAR.LE SB0,k	0x1a	sm_80	SB0,imm	pendcnt sbidx=0 le=1	waits SB0 down to <=k	-
+mbarrier.init.shared.b64	SYNCS.EXCH.64	0xb2	sm_90	[Rsh],{lo,hi}	packed 64-bit init word	-	atomic write of init word
+mbarrier.inval.shared.b64	SYNCS.CCTL.IV	0xb1	sm_90	[Rsh]	-	-	invalidate barrier cache state
+mbarrier.arrive.shared.b64	SYNCS.ARRIVE.TRANS64	0xa7	sm_90	[Rsh],R	arrive-1	-	decrements pending-arrival up-counter
+mbarrier.arrive.expect_tx.shared.b64	SYNCS.ARRIVE.TRANS64.A1T0	0xa7	sm_90	[Rsh],N	arrive-1 + tx-raise N	-	producer half of TMA pipeline
+mbarrier.expect_tx.shared.b64	SYNCS.ARRIVE.TRANS64.RED.A0TR	0xa7	sm_90	[Rsh],N	arrive-0 + tx-raise N	-	expect_tx-only (no thread arrival)
+mbarrier.try_wait.parity.shared.b64	SYNCS.PHASECHK.TRANS64.TRYWAIT	0xa7	sm_90	P,[Rsh],ph	phase-parity compare	predicate	non-blocking spin
+mbarrier.test_wait.parity.shared.b64	SYNCS.PHASECHK.TRANS64	0xa7	sm_90	P,[Rsh],ph	phase-parity compare	predicate	-
+cp.async.bulk.shared.global.mbarrier	UBLKCP.S.G	0xba	sm_90	[Rsh],[Rg],size	dst.src naming	tx-count	global->shared bulk load (under ELECT)
+cp.async.bulk.global.shared.bulk_group	UBLKCP.G.S	0xba	sm_90	[Rg],[Rsh],size	dst.src naming	group + UTMACMDFLUSH	shared->global bulk store
+cp.async.bulk.prefetch.L2.global	UBLKPF.L2	0xbc	sm_90	[Rg],size	-	-	bulk prefetch to L2
+cp.reduce.async.bulk.global.shared.add	UBLKRED.G.S.ADD	0xba	sm_90	[Rg],[Rsh],size	reduce-op	group	bulk reduction store
+cp.async.bulk.tensor.2d.shared.global.tile	UTMALDG.2D	0xb4	sm_90	[Rsh],[desc]	rank=2D tile	tx-count	tensor tile load (under ELECT)
+cp.async.bulk.tensor.2d.multicast::cluster	UTMALDG.2D.MULTICAST	0xb4	sm_90	[Rsh],[desc],mask	rank + 16-bit CTA mask	tx-count	cluster broadcast load
+cp.async.bulk.tensor.5d.im2col	UTMALDG.5D.IM2COL	0xb4	sm_90	[Rsh],[desc],{off}	rank + im2col offsets	tx-count	convolution-lowering access pattern
+cp.async.bulk.tensor.2d.global.shared.tile	UTMASTG.2D	0xb5	sm_90	[desc],[Rsh]	rank=2D tile	group + flush	tensor tile store
+cp.reduce.async.bulk.tensor.2d.add	UTMAREDG.2D.ADD	0xb6	sm_90	[desc],[Rsh]	rank + reduce-op	group + flush	tensor tile reduction store
+cp.async.bulk.prefetch.tensor.2d.L2	UTMAPF.L2.2D	0xb8	sm_90	[desc],[Rsh]	rank	-	tensor tile prefetch
+(bulk store drain)	UTMACMDFLUSH	0xb7	sm_90	-	-	drains TMA command queue	emitted before group-wait after S->G bulk
+cp.async.bulk.wait_group	DEPBAR.LE SB0,0x0	0x1a	sm_90	SB0,0	-	waits SB0	bulk_group completion
+elect.sync	ELECT	0x2f	sm_90	P,UR,PT	membermask in UR	-	leader-election predicate + uniform lane id
+mapa.shared::cluster.u32	LEA+PRMT	-	sm_90	Rd from Rsh,rank	rank into [31:24] via PRMT 0x654	-	target rank in byte 3 of shared addr
+getctarank.shared::cluster.u32	PRMT-extract	-	sm_90	Rd = addr[31:24]	-	-	extracts byte-3 rank back to a register
+barrier.cluster.arrive	UCGABAR_ARV	0xc7	sm_90	-	syncall bit 72	-	full word 0x79c7
+barrier.cluster.wait	UCGABAR_WAIT	0xc7	sm_90	-	-	-	full word 0x7dc7
+cluster.error.barrier	CGAERRBAR	0xab	sm_90	-	errbar_cga bit 72	drain	cluster memory error pipe (full word 0x75ab)
+errbar	ERRBAR	0xab	sm_90	-	-	drain	warp-level error pipe (full word 0x79ab)
+multimem.ld_reduce.global.add.u32	LDGMC.E.ADD.32.STRONG.SYS	0xa4	sm_90	[Rn.64]	mc-op=ADD(0) STRONG.SYS	register	load-reduce across multicast copies
+multimem.ld_reduce.global.add.f32	LDGMC.E.ADD.F32.RN.STRONG.SYS	0xa5	sm_90	[Rn.64]	mc-op fp variant	register	fp low byte 0xa5
+multimem.ld_reduce.global.min.s32	LDGMC.E.MIN.S32.STRONG.SYS	0xa4	sm_90	[Rn.64]	mc-op=MIN(1)	register	-
+multimem.red.global.add.u32	REDG.E.ADD.STRONG.SYS	0x8e	sm_90	desc[UR][Rn.64]	red_op=ADD STRONG.SYS	posted	multicast routing in memory descriptor
+bar.sync	BAR.SYNC.DEFER_BLOCKING	0x1d	sm_70	bar-id[,thr]	barmode=SYNC(0) defer-bit	barrier	whole-CTA convergence
+bar.arrive	BAR.ARV	0x1d	sm_70	bar-id,thr	barmode=ARV(1)	split-arrive	-
+wgmma.fence	WARPGROUP.ARRIVE	0xc5	sm_90	-	-	commit warpgroup async	-
+wgmma.wait_group	WARPGROUP.DEPBAR.LE	0xc5	sm_90	gsb,k	gsbcnt 4-bit + gsb selector	waits GMMA groups	-
+wgmma.mma_async.f16(smem)	HGMMA	0xf0	sm_90	gdesc[UR],...	64-bit smem matrix descriptor	gsb scoreboard	half/bf16/tf32 warpgroup MMA
+wgmma.mma_async.s8(smem)	IGMMA	0xf1	sm_90	gdesc[UR],...	smem matrix descriptor	gsb scoreboard	integer warpgroup MMA
+tcgen05.alloc	UTCATOMSWS.FIND_AND_SET.ALIGN	0xe3	sm_100	UP,UR,UR	tmem allocator atomic	-	allocates a TMEM column range
+tcgen05.dealloc	UTCATOMSWS.AND	0xe3	sm_100	UR,UR	tmem free	-	clears the allocation bitset
+tcgen05.mma.kind::f16	UTCHMMA	0xea	sm_100	gdesc[UR],gdesc[UR],tmem[UR],tmem[UR],idesc[UR],UR,UP	A/B gdesc + tmem acc + idesc	UTCBAR/mbarrier	1-CTA half/tf32 tensor MMA
+tcgen05.mma.kind::i8	UTCIMMA	0xea	sm_100	gdesc,gdesc,tmem,tmem,idesc,UR,UP	idesc selects int format	UTCBAR/mbarrier	integer tensor MMA
+tcgen05.mma.cta_group::2	UTCHMMA.2CTA	0xea	sm_100	gdesc,gdesc,tmem,tmem,idesc,UR,UP	2-CTA paired issue	UTCBAR/mbarrier	two CTAs feed one tensor core
+tcgen05.ld.16x64b	LDTM.16dp64bit	0xee	sm_100	Rd,tmem[UR]	16 datapaths x 64-bit column	register	read accumulator from TMEM
+tcgen05.ld.16x128b	LDTM.16dp128bit	0xee	sm_100	Rd,tmem[UR]	16 datapaths x 128-bit column	register	-
+tcgen05.st.16x64b	STTM	0xed	sm_100	tmem[UR],Rs	-	posted	write to TMEM
+tcgen05.commit.mbarrier	UTCBAR	0xe9	sm_100	[UR],UR	signals mbarrier on MMA completion	tx/arrive	tcgen05 completion barrier

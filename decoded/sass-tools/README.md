@@ -2,8 +2,7 @@
 
 Binary-derived tooling for the decoded per-architecture SASS-ISA tables
 (`decoded/nvdisasm-sass-isa/sass_isa_SM*.txt`). The rule grammar is
-reconstructed from the `CONDITIONS` blocks in those tables; nothing here
-republishes the table text.
+reconstructed from the `CONDITIONS` blocks in those tables.
 
 ## `sass_legality.py`
 
@@ -118,10 +117,10 @@ python3 sass_sched_sim.py k.cubin --validate   # producer->barrier + opex self-c
 
 `--validate` returns `barrier_pairs` (consumer waits paired to an earlier arming
 producer), `unmatched_waits` (must be 0), `opex_violations` (must be 0), and
-`batch_with_group_end_stall` (must be 0). It consumes the **real** control-word
-fields verbatim; the only modelling defaults are the variable-latency completion
+`batch_with_group_end_stall` (must be 0). It consumes the decoded control-word
+fields as-is; the only modelling defaults are the variable-latency completion
 times that decide when a scoreboard-wait gate opens (`DEFAULT_COMPL_LATENCY`,
-clearly flagged, coarse pipe families — not recovered constants).
+coarse pipe families — not recovered constants).
 
 Validated against CUDA 13.1 ptxas/nvdisasm V13.1.115 across `sm_75 sm_80 sm_86
 sm_89 sm_90 sm_90a sm_100 sm_120`: **221 producer→consumer scoreboard pairs, 0
@@ -137,15 +136,20 @@ keyings into one model:
   `MIN_WAIT_NEEDED`, `SIDL_NAME`, `VIRTUAL_QUEUE` (the decoupled functional-unit
   pipe), `MEM_SCBD`/`MEM_SCBD_TYPE` (Blackwell);
 - the ptxas scheduling tables (`decoded/ptxas-sched-full/`) → the scalar latency
-  oracle (per-Ori-opcode result band {6,13,24,30,300}).
+  oracle (per-Ori-opcode result band {6,13,24,30,300}) and the per-SM
+  dependency-rule rows (`load_dependency_rules(arch)`). The Blackwell lineup is
+  fully wired: sm_100/sm_103 each use their own dep-rule + scoreboard table, and
+  sm_110/sm_120/sm_121 use the **real extracted** sm_103 Blackwell tables they
+  resolve to (not the generic sm_10x fallback) — sm_120 ≡ sm_121 byte-identical;
+  the residual consumer/Thor stall deltas are in
+  `decoded/ptxas-sched-full/blackwell_consumer_stall_deltas.tsv`.
 
 `load_arch_model(arch)` returns `{mnemonic → ClassModel}` (coupled?, pipe family,
 min-wait, scoreboard arming, band). `coupled_stall(arch, prod_pipe, cons_pipe)`
 resolves the issue-relative stall from `coupled_stall_matrix.tsv` (exact arch key
 → family key → wildcard; producer-pipe rules outrank consumer-pipe rules). Run
 `python3 sass_latency_tables.py SM89` to dump the model + a stall-matrix sample.
-Everything loads the **local** decoded copies at runtime — no vendor table text
-or matrices are duplicated in the Python.
+The model loads the decoded tables at runtime.
 
 ## `sass_scheduler.py` — scheduling composer / decomposer (the "scheduler brain")
 
@@ -181,9 +185,9 @@ exactly — e.g. the int→float conversion is decoupled **I2F** on sm_75/sm_80 
 the coupled **I2FP** form from sm_86, and `ULDC` is absent on Blackwell. The
 issue-relative stall *magnitudes* (the 4/5/6/8/13 a coupled producer owes by
 pipe pair) are not a single table cell — ptxas's OCG scheduler derives them — so
-they are recovered by differential analysis of emitted SASS and shipped as a
-small per-(family, prod-pipe, cons-pipe) matrix (`coupled_stall_matrix.tsv`,
-our own result, no vendor bytes). The composer's stall pass is a **sound
+they are recovered by differential analysis of emitted SASS and held as a
+per-(family, prod-pipe, cons-pipe) matrix (`coupled_stall_matrix.tsv`). The
+composer's stall pass is a **sound
 difference-constraint solver over issue cycles**: every fixed RAW edge enforces
 `issue_cycle[C] − issue_cycle[P] ≥ weight`, iterated to a fixpoint, so the stall
 shrinks as intervening instructions absorb the latency yet never under-stalls a
@@ -216,15 +220,28 @@ transposed RAW matrix is the classic reconstruction mistake.
   arith, dependent chains, loads feeding math, transcendental chains, mixed,
   int-multiply chains, transcendental mixes, memory chains, and an 8-load
   scoreboard-overload kernel) across `--arches` (default sm_75/80/86/89/90; the
-  PTX `.version` auto-bumps to 8.6/8.7 for sm_100/sm_120), decode, recompute,
-  diff, and print per-arch match rates + a diagnostic mismatch taxonomy.
-- `--verify-dyn K.cubin --entry NAME` — **stretch dynamic check**: patch the
+  PTX `.version` auto-bumps per target — sm_100→8.6, sm_120→8.7, sm_103/sm_121→8.8,
+  sm_110→9.0), decode, recompute, diff, and print per-arch match rates + a
+  diagnostic mismatch taxonomy. The full Blackwell lineup verifies: on the
+  default corpus sm_120/sm_121 reach 90.7% exact stall / 100% scoreboard pairing
+  vs 88.9% for sm_100/sm_103/sm_110 — the consumer-Blackwell model is picked, not
+  a fallback.
+- `--verify-dyn K.cubin [--entry NAME]` — **stretch dynamic check**: patch the
   recomposed control words back into a copy of the cubin (`patch_cubin`), launch
-  the original and the patched kernel on the GPU via the CUDA Driver API
-  (`launch_cubin.c`: `cuModuleLoad` + `cuLaunchKernel`, plain C against `libcuda`
-  to avoid the gcc/nvcc host-header clash), and diff the output. Identical output
-  proves the composed schedule is hazard-safe.
-- `--perf-diff` — **MODE 1, measured ptxas-waste proof** (below).
+  the original (V1) and the patched (V2) kernel on the GPU on **identical
+  synthesized inputs**, and diff the output. Identical output proves the composed
+  schedule is hazard-safe. By default this routes through the **generic
+  introspection launcher** (`sass_launch.py`, below), so it works on **any**
+  cubin — no hand-wired signature. Add `--legacy-harness` to force the old
+  fixed-signature C harness (`launch_cubin.c`).
+- `--launch K.cubin` — **introspect + test-launch every kernel** in an arbitrary
+  cubin and print a per-kernel verdict (`launchable` / `crashed` / `timed_out` /
+  `needs_cluster`). The generic launch primitive, run standalone.
+- `--introspect K.cubin` — print the recovered parameter-buffer layout (per-param
+  ordinal / offset / size, pointer vs scalar) for every kernel; no launch.
+- `--perf-diff` — **MODE 1, measured ptxas-waste proof** on the amplified probe
+  corpus (below). `--perf-diff-cubin K.cubin` runs the same V1/V2 bit-gate +
+  cycle measurement on an **arbitrary** cubin via the generic launcher.
 - `--stall-profile {K.cubin | --amp PROBE}` — **MODE 2, per-instruction warp-stall
   observability** (below).
 
@@ -233,10 +250,112 @@ python3 sass_scheduler.py --decompose k.cubin
 python3 sass_scheduler.py --compose   k.cubin          # composed vs ptxas, per instr
 python3 sass_scheduler.py --debug      k.cubin --dot k.dot
 python3 sass_scheduler.py --verify-corpus
-python3 sass_scheduler.py --verify-dyn k.cubin --entry kname   # needs gcc + GPU
-python3 sass_scheduler.py --perf-diff  --arch sm_89            # needs gcc + ncu + GPU
+python3 sass_scheduler.py --introspect k.cubin                 # param layout, no GPU
+python3 sass_scheduler.py --launch     k.cubin                 # test-launch all kernels
+python3 sass_scheduler.py --verify-dyn k.cubin --entry kname   # generic; needs GPU
+python3 sass_scheduler.py --perf-diff  --arch sm_89            # corpus; needs ncu + GPU
+python3 sass_scheduler.py --perf-diff-cubin k.cubin            # arbitrary cubin + GPU
 python3 sass_scheduler.py --stall-profile --amp amp_loadmath   # needs gcc + ncu + GPU
 ```
+
+## `sass_launch.py` — generic cubin introspect + launch (Driver API, pure Python)
+
+The corpus modes above launch *hand-wired* kernels whose signature the harness
+already knows. To run the V1/V2 correctness gate on **arbitrary** cubins — real
+kernels such as the sm_120a CUTLASS cubins, not just the corpus — the tool needs
+to introspect any cubin and launch it with synthesized inputs. `sass_launch.py`
+is that reusable primitive: a pure-Python `ctypes` binding to `libcuda` (no
+host-C++ compile, so it sidesteps the gcc-16 / nvcc host-header clash) plus a
+cubin parameter-layout parser.
+
+**Introspection.** Kernel parameters live in constant bank 0. `ptxas` records the
+layout in the per-entry `.nv.info.<entry>` attribute stream, all readable with
+`cuobjdump --dump-elf`:
+
+| attribute | gives |
+|---|---|
+| `EIATTR_CBANK_PARAM_SIZE` | total param-buffer size in bytes |
+| `EIATTR_PARAM_CBANK` | the cbank window: `[u16 base_offset][u16 total_bytes]` |
+| `EIATTR_KPARAM_INFO` | one 12-byte record per parameter: **Ordinal**, **Offset** in the buffer, **Size** (4 = a 32-bit scalar slot, 8 = a 64-bit / pointer slot) |
+
+`cuLaunchKernel`'s parameter buffer **is** that cbank window with the base
+subtracted: a flat buffer of `CBANK_PARAM_SIZE` bytes where parameter *k* lives at
+its `KPARAM_INFO` Offset for Size bytes. (The offsets are *not* sequential —
+`ptxas` reorders by alignment and packs adjacent scalars, e.g. a `(u32, u64)`
+signature places the u32 at 0x0 and the pointer at 0x8 with a 4-byte gap. Sourcing
+the offsets from `KPARAM_INFO` rather than assuming packing is the whole point.)
+The recovered buffer size is cross-checked against `cuFuncGetAttribute`.
+
+**Input synthesis — the arena trick.** Allocate one large zeroed device *arena*
+and build the param buffer so that **every 8-byte slot = the arena base address**
+(so every pointer parameter is a *valid* device pointer into zeroed memory — reads
+return 0, writes land in the captured arena, no illegal-address fault) and **every
+4-byte scalar slot = a small value** (1 — a benign count/stride that keeps indexing
+in-bounds). Most "load → compute → store" kernels then launch and write into the
+arena; we read the arena back and hash it.
+
+**Fault-isolated launch.** Each launch runs under a watchdog thread (timeout → verdict),
+and CUDA errors are caught per kernel into a verdict — `launchable | crashed |
+timed_out | needs_cluster | introspect_failed` — instead of aborting the batch.
+An illegal-address / launch-failed error is **sticky for the whole process** in
+the Driver API (even `cuCtxDestroy` + `cuCtxCreate` keep returning it), so each
+kernel is launched in its **own subprocess** (the
+`--worker` mode): a kernel that faults kills only its child, and the parent reads
+its verdict + arena hash from one JSON line. A wedged (infinite-loop) kernel hits
+the in-thread watchdog and the child fast-exits, leaving the GPU work for the OS
+to reclaim.
+
+**The V1/V2 gate (`--verify-dyn`, `--perf-diff-cubin`).** V1 = the cubin `ptxas`
+emitted; V2 = the same cubin with its scheduling control words re-encoded by our
+composer (`decompose → compose → patch` bits 105–124 in place). Launch **both** in
+isolated subprocesses on the **same** synthesized inputs and compare the read-back
+arena hash. **Bit-identical output proves the reschedule is hazard-safe — no
+ground-truth needed: V1 *is* the reference.** Several small scalar inputs are used
+so a match cannot pass by luck on one input.
+
+```sh
+python3 sass_launch.py k.cubin --introspect-only   # param layout, no GPU
+python3 sass_launch.py k.cubin                      # test-launch every kernel
+python3 sass_launch.py k.cubin --verify-dyn         # V1/V2 bit-gate
+python3 sass_launch.py k.cubin --entry NAME --timeout 5 --scalar 1
+python3 selftest_sass_launch.py                     # full self-test (sm_89 GPU)
+```
+
+`selftest_sass_launch.py` builds a corpus of varied-signature kernels (single pointer,
+scalar+pointer, three buffers, shared-memory, a 5-param scalar/pointer mix, and a
+deliberate null-deref), and asserts: introspection recovers the right param
+layout; the arena trick launches each and reads back a hash; the null-deref is
+**caught** (`crashed`), not fatal; the faithful recompose **matches** V1; and a
+deliberately-removed scoreboard wait **differs** (so the gate is not a no-op).
+
+### Running it on the sm_120a CUTLASS cubins (Blackwell box)
+
+The sm_89 GPU here cannot *execute* sm_120a SASS, but the introspection step is
+arch-independent and the launch path is identical on Blackwell. On a Blackwell box
+(RTX 50-series / Pro, or DGX) with CUDA 13.x:
+
+```sh
+# 1. extract the kernels from the CUTLASS fatbin/cubin
+cuobjdump -elf cutlass_kernel.cubin | grep '\.text\.'      # entry names
+python3 sass_launch.py cutlass_kernel.cubin --introspect-only
+
+# 2. test-launch each kernel with synthesized inputs
+python3 sass_launch.py cutlass_kernel.cubin                 # per-kernel verdict
+
+# 3. V1/V2 correctness gate on a chosen entry
+python3 sass_scheduler.py --verify-dyn cutlass_kernel.cubin --entry <name>
+
+# 4. measured cycles (needs ncu profiling permission)
+python3 sass_scheduler.py --perf-diff-cubin cutlass_kernel.cubin --entry <name>
+```
+
+Kernels that need a thread-block **cluster** launch (Hopper/Blackwell
+`EIATTR_CTA_PER_CLUSTER` / `EIATTR_EXPLICIT_CLUSTER`) are reported as
+`needs_cluster` and skipped by the simple grid launcher (a cooperative
+cluster-launch path would be the next extension). Kernels whose pointers must
+point at *structured* inputs (descriptors, TMA tensor maps) may fault under the
+zeroed-arena trick and are reported `crashed` — expected, and isolated so the rest
+of the batch still runs.
 
 ### GPU measurement: which conservative stalls are *real waste*
 
@@ -289,8 +408,6 @@ stalls removed, bit-identical, even against `-O3`), while `amp_loadmath` is
 **hardware-enforced** — its load-feeds-math stalls are absorbed by surrounding
 latency, and 6 of its candidates are **real hazards** (a loop-carried `IMAD`
 feeding the address path) that the multi-seed bit-identical gate correctly rejects.
-(Earlier `-O1` measurements showed larger ~7–10 % deltas because `-O1` ptxas leaves
-more slack; the numbers above are the honest `-O3` figures with a stable metric.)
 
 **`--stall-profile` — per-instruction warp-stall observability.** Runs `ncu` PC
 sampling (the public `smsp__pcsamp_warps_issue_stalled_*` family via the Source
@@ -376,8 +493,8 @@ issue order that minimizes the block makespan:
   the 16-byte words in place** (no PC-relative fixup) and writing freshly
   recomposed control words; the operand-reuse hint is cleared on reorder.
 
-The honest result: **`-O3` ptxas's combined order+stall schedule is excellent and
-essentially optimal on small or rolled kernels** — the model and silicon agree, so
+**`-O3` ptxas's combined order+stall schedule is essentially optimal on small or
+rolled kernels** — the model and silicon agree, so
 `--optsched` proposes no reorder and simply falls back (never slower). Reproducible
 *ordering* wins appear only on **large unrolled hot loop bodies** where ptxas's
 greedy list scheduler leaves a few cycles per iteration. On `rc1_twochain` (a hot
@@ -387,7 +504,7 @@ the bit-identical + cycle gate**, and the kernel measures **930 400 → 920 399
 cycles (+1.08 %)** — a real, gated reorder win over `-O3` ptxas. `--optsched` then
 runs Stage-1 tightening on top, so it is always at least as good as `--tighten`.
 
-**Limits (stated plainly).** The fixed register allocation we inherit from ptxas
+**Limits.** The fixed register allocation we inherit from ptxas
 turns every WAR/WAW into a hard ordering edge, which structurally caps how much
 reordering is possible (we never rename). Variable-latency producers are handled
 by scoreboards, not static timing, so the model bounds — not predicts — their
@@ -416,26 +533,22 @@ modprobe option, or running under `sudo`), and degrade gracefully — the perf-d
 cubins are still built so the run can be repeated once profiling is permitted.
 
 **Validation (CUDA 13.1).** **Producer→scoreboard pairing is 100 %** on every
-arch (which producer arms each consumer's wait bit is reproduced exactly).
-Moving from the prior hand-tuned constants to the table-driven model raised
-coupled-stall **exactness from 71.9 % → 86.2 %** on the original 6-probe corpus
-across sm_75/80/86/89/90 (per-arch sm_75 64.7 → 94.1, sm_80 70.0 → 80.0,
-sm_86/89 72.1 → 81.4, sm_90 80.6 → 97.2). On the expanded 10-probe corpus across
-9 arches (sm_75…sm_120) the stall exactness is **82.2 %** (264/264 scoreboard
-pairs); the newer Blackwell-class arches sit at 88.9–97.2 %.
+arch (which producer arms each consumer's wait bit is reproduced exactly). The
+table-driven model reaches coupled-stall **exactness 86.2 %** on the 6-probe
+corpus across sm_75/80/86/89/90 (per-arch sm_75 94.1, sm_80 80.0, sm_86/89 81.4,
+sm_90 97.2). On the expanded 10-probe corpus across 9 arches (sm_75…sm_120) the
+stall exactness is **82.2 %** (264/264 scoreboard pairs); the Blackwell-class
+arches sit at 88.9–97.2 %.
 
 | stall exactness | sm_75 | sm_80 | sm_86 | sm_89 | sm_90 |
 |---|---|---|---|---|---|
-| before (heuristic, 6 probes) | 64.7 % | 70.0 % | 72.1 % | 72.1 % | 80.6 % |
-| after (table-driven, 6 probes) | 94.1 % | 80.0 % | 81.4 % | 81.4 % | 97.2 % |
+| table-driven (6 probes) | 94.1 % | 80.0 % | 81.4 % | 81.4 % | 97.2 % |
 
-Which table fields fixed which mismatch buckets: the per-arch `INSTRUCTION_TYPE`
-killed the I2F→I2FP / F2I rename-boundary misclassifications; the pipe
-classification + the calibrated matrix made the same/cross-pipe (incl.
-IMAD↔LOP3), the AGU pre-issue slot (and the Turing 8), the float↔int conversion
-/ MUFU-input latch, and the CC/pred control band (13; 12 on Turing) all **exact**
-— the prior `cc_pred_control_band`, `turing_prestore_slot` and
-`tensor_or_special_band` buckets are now empty.
+Which table fields drive which result: the per-arch `INSTRUCTION_TYPE` resolves
+the I2F→I2FP / F2I rename-boundary classification; the pipe classification + the
+calibrated matrix make the same/cross-pipe edges (incl. IMAD↔LOP3), the AGU
+pre-issue slot (and the Turing 8), the float↔int conversion / MUFU-input latch,
+and the CC/pred control band (13; 12 on Turing) all **exact**.
 
 **Dynamic: 10/10 sm_89 kernels** (including the 8-load scoreboard-overload and a
 memory-dependency chain) recompose to **bit-identical GPU output**; the
@@ -447,6 +560,6 @@ emits a smaller stall than our hazard-safe minimum), the `ULDC` uniform-descript
 1/4/9 spread is ptxas-schedule-specific), and the variable-latency completion
 *times* / exact SB *index* (allocator policy). Every non-exact composed stall is
 still hazard-safe — the issue-cycle fixpoint honours every RAW edge, confirmed
-bit-identical on the GPU. The model is recovered purely from binary analysis of
+bit-identical on the GPU. The model is recovered from binary analysis of
 CUDA 13.1 `ptxas`/`nvdisasm` and differential study of emitted SASS, loaded from
-the local decoded tables at runtime; it republishes no vendor table text.
+the decoded tables at runtime.

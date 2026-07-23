@@ -115,6 +115,9 @@
 - [Pseudo-Instruction Expansion & Adler-32 Macro Registry](./intrinsics/pseudo-instruction-macros.md)
 - [OCG Intrinsic System (44 Operations)](./intrinsics/ocg.md)
 - [Math Intrinsics](./intrinsics/math.md)
+- [SIMD Video & Dot-Product Lowering](./intrinsics/simd-video-dp.md)
+- [Convert (cvt) Lowering](./intrinsics/cvt-lowering.md)
+- [Registry-Only & Special-Op Lowering](./intrinsics/registry-ops.md)
 - [Tensor Core Intrinsics](./intrinsics/tensor.md)
 - [Sync & Warp Intrinsics](./intrinsics/sync-warp.md)
 
@@ -128,7 +131,7 @@
 # Configuration
 
 - [CLI Options](./config/cli-options.md)
-- [Knobs System (1,294 Knobs)](./config/knobs.md)
+- [Knobs System (1,099 Knobs)](./config/knobs.md)
 - [Optimization Levels](./config/opt-levels.md)
 - [DUMPIR & NamedPhases](./config/dumpir.md)
 
