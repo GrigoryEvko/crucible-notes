@@ -16,18 +16,18 @@ these here by the `fp_sem_hp_fma` semantic membership (a clean partition slice �
 overlap, §1); it sits between the integer multiply-accumulate of
 [B04](b04-mac-integer.md)/[B05](b05-mac-mixed.md) and the fp32 FMA of [B17](b17-spfma.md).
 
-Everything below is **re-grounded against the shipped binaries this pass**: the **encoding** from
+Everything below is **grounded in the shipped binaries**: the **encoding** from
 `libisa-core.so` (`Opcode_<mnem>_Slot_<slot>_encode` thunks read byte-for-byte; `Field_fld_*` get/set
 thunks executed in-process to recover the operand bit map); the **value semantics** by *executing* the
 matching `module__xdref_*_16f` leaves in `libfiss-base.so` live via `ctypes` (every output-bit pattern
 below is a real return value of the shipped binary, license-free); the **issue/timing model** from the
 per-format `*_fp_sem_hp_fma_semantic_stage<N>` leaves in `libcas-core.so`; and a byte-exact
 encode/decode oracle from the device-native `xtensa-elf-as`/`xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`).
-Confidence tags per [the Confidence & Walls model](../../reference/confidence-model.md):
-`[HIGH/OBSERVED]` = read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
-`[…/CARRIED]` = re-used at a sibling page's confidence.
+The page default is `[HIGH/OBSERVED]` (read-from-byte / proven-by-execution); claims that depart from
+that default carry an explicit tag per [the Confidence & Walls model](../../reference/confidence-model.md)
+— `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic and binaries re-confirmed this pass.** Three binaries are cited, all under
+> **NOTE — address arithmetic and binaries.** Three binaries are cited, all under
 > `extracted/` (gitignored; reach with `fd --no-ignore` or an absolute path):
 > `libisa-core.so` (sha256 `8fe68bf462ce76ee17dfbe2167ff8443d473a66385ed115364e9677bf143e451`, 9 690 712 B,
 > ET_DYN x86-64, **not** stripped — the encode/field thunks are local symbols, resolved by address);
@@ -37,7 +37,7 @@ Confidence tags per [the Confidence & Walls model](../../reference/confidence-mo
 > `libcas-core.so` (sha256 `7f1d86da52891b3c65533d394ace4902b101536fedb31dff7ed976dc40b1041a`, 45 878 080 B —
 > DWARF, the timing leaves). For `libisa-core.so`, `.text`/`.rodata` are VMA==file-offset; `.data.rel.ro`
 > (VMA `0x67bb00` ↔ file `0x47bb00`) carries the per-binary delta **`0x200000`** — **not** libtpu's
-> `0x400000`. `[HIGH/OBSERVED]`
+> `0x400000`.
 
 ---
 
@@ -46,17 +46,17 @@ Confidence tags per [the Confidence & Walls model](../../reference/confidence-mo
 * **One datapath, three spellings, 27 mnemonics.** The group is nine op-classes (ADD, SUB, MUL,
   MADD/MULA, MADDN/MULAN, MSUB/MULS, MSUBN/MULSN, MULSONE, DIVN) × three mnemonic spellings (IVP vector
   base `*nxf16`, IVP predicated `*nxf16t`, Tensilica-FP scalar `.H`). All 27 are present as distinct
-  opcodes in `libisa-core.so` (each with multiple slot placements), `nm`-verified this pass. `[HIGH/OBSERVED]`
+  opcodes in `libisa-core.so` (each with multiple slot placements), `nm`-verified.
 * **True single rounding.** The product `a·b` is kept exact (full 22-bit significand) into the aligned
   add; the result is rounded **once** to binary16. Proven by *executing* the shipped `madd16` leaf on a
   catastrophic-cancellation input where fused and two-step rounding differ: the binary returns the fused
-  answer `0x0ffe`, not the two-step `0x0000` (§5.3). `[HIGH/OBSERVED]`
+  answer `0x0ffe`, not the two-step `0x0000` (§5.3).
 * **Directional NaN propagation** (the trap a naive reference gets wrong): ADD/SUB return the **first**
   NaN operand, MUL returns the **second**, the fused `a + b·c` propagates in **a, then c, then b** order;
-  signalling NaNs are quieted with sign+payload preserved. All live-confirmed bit-for-bit (§5.2). `[HIGH/OBSERVED]`
+  signalling NaNs are quieted with sign+payload preserved. All live-confirmed bit-for-bit (§5.2).
 * **Round-half-to-even** under the FCR 2-bit `RoundMode` {0=RNE, 1=RZ, 2=RU, 3=RD}: the `0.1+0.2` fp16
   sum is the exact midpoint of `0x34cc`/`0x34cd`; the live binary returns `0x34cc` (even) under RNE,
-  `0x34cd` under RU, `0x34cc` under RD/RZ (§5.1). `[HIGH/OBSERVED]`
+  `0x34cd` under RU, `0x34cc` under RD/RZ (§5.1).
 * **This page reclaims the fp16 FMA forms that [B04](b04-mac-integer.md)/[B05](b05-mac-mixed.md)
   over-counted as integer MAC.** The nine `ivp_mula/mulan/muls/mulsn*nxf16` and the four `madd/maddn/
   msub/msubn.h` spell like the integer `mul`/`mula` MAC family but are **fp16 FMA** (semantic group
@@ -76,8 +76,8 @@ group and to none of the other semantic groups). **Lane format:** `NXF16` = 32 �
 * **c** (addend / accumulator) = `vt` — `opnd_fp_sem_hp_fma_vt` (read only by the accumulate classes)
 * **d** (result) = `vt` — written by every class
 
-The 27 members, grouped by op-class (all `nm`-verified present as distinct opcodes this pass —
-`27/27`, none missing):
+The 27 members, grouped by op-class (all `nm`-verified present as distinct opcodes — `27/27`, none
+missing):
 
 | op-class | IVP base | IVP pred (`t`) | scalar `.H` | value `d` (single round) |
 |---|---|---|---|---|
@@ -105,7 +105,7 @@ decode-time mux (`op_scalar`/`op_vector`, §4). The `.H` scalar forms have **no 
 > *not* the integer `mul_24_8_8` / `mul_48_16_16` accumulator leaves. The disambiguator is the `nxf16`
 > lane-format suffix (fp16) vs the integer-MAC width suffixes, plus the semantic-group membership read
 > from the binary. B04/B05 must subtract these from any integer-MAC denominator they quote; this page is
-> the authoritative home of the fp16 multiply-add forms. `[HIGH/OBSERVED]`
+> the authoritative home of the fp16 multiply-add forms.
 
 ---
 
@@ -142,7 +142,7 @@ back. The thunks operate on the slot-local encode word (the 32-bit value the enc
 > field holds **`vt`** (the destination/accumulator), and the split `[9:8]‖[3:1]` field holds **`vs`** —
 > a field-map that places `vs` at the contiguous slot and `vt` at the split would invert this and produce
 > the wrong operand bits (`0x…0404`). The `set`→`get` round-trip is fully binary-driven (no inference):
-> reading back gives `vt=2, vs=0, vr=1` exactly. `[HIGH/OBSERVED]`
+> reading back gives `vt=2, vs=0, vr=1` exactly.
 
 For an asymmetric pattern `ivp_mulanxf16 v7,v3,v5` (`vt=7`, `vs=3`, `vr=5`), the same thunks produce
 slot-local word **`0x80961c27`**, and the device oracle (§7) round-trips the N1 bundle
@@ -161,7 +161,7 @@ domain). `[HIGH/OBSERVED]`
 Each op is placed across the wide FLIX formats {F0, F1, F2, F3, F7} and the narrow N1 bundle. The fp-FMA
 op lives in the ALU slot **S3** and, in F1/F2/F7, additionally borrows the **Mul** slot **S2** (so a wide
 bundle can co-issue two FMAs — the "2×FMA" of [vfpu-ieee](../../uarch/vfpu-ieee.md)). Placement counts
-this pass (`nm | rg -c` on the `Opcode_*_Slot_*_encode` thunks):
+(`nm | rg -c` on the `Opcode_*_Slot_*_encode` thunks):
 
 | op-class | base placements | `t` placements |
 |---|---|---|
@@ -206,7 +206,7 @@ in-process `set`/`get` round-trip (the slot word equals `selector<<15 | operand-
 The IVP base and the `.H` spelling differ by a small constant per op-class (ADD: `0x10d7e` vs `0x10d7d`;
 DIVN: `0x10d5f` vs `0x10d5e`) — adjacent decode points into the same op-class mux, separated by the
 `op_vector`/`op_scalar` prefanout (§4). The SUB/MUL `t` forms are not placed at F0/S3 (no F0/S3
-`t`-encode thunk; their predicated variants live in other slots). `[HIGH/OBSERVED]`
+`t`-encode thunk; their predicated variants live in other slots).
 
 > **CORRECTION — the IVP base selectors for SUB and MUL are `0x101cc` and `0x1014c`.** The encode-thunk
 > bodies read `movl $0x80e60000,(%rdi)` (SUB) and `movl $0x80a60000,(%rdi)` (MUL), giving
@@ -215,7 +215,7 @@ DIVN: `0x10d5f` vs `0x10d5e`) — adjacent decode points into the same op-class 
 > `mul.h`=`0x1018d`) into the IVP column — the IVP and `.H` selectors are *not* equal for SUB/MUL (they
 > differ by `0x1f` and `0x41` respectively, exactly as they differ for every other op-class). The
 > remaining seven IVP base selectors above match independent transcription; only SUB/MUL needed the fix.
-> The F0/S3 `t`-form ADD selector is **`0x1049`** (from `movl $0x82480000`, `>>19`), not `0x1089`. `[HIGH/OBSERVED]`
+> The F0/S3 `t`-form ADD selector is **`0x1049`** (from `movl $0x82480000`, `>>19`), not `0x1089`.
 
 ### 3.4 State / exception args per op-class
 
@@ -238,7 +238,7 @@ neither `RoundMode` nor enables nor emit flags (the fast un-flagged path used in
 `RoundMode` is a 2-bit FCR field {0=RNE, 1=RZ, 2=RU(+∞), 3=RD(−∞)}, reset `2'h0`=RNE; the
 `{Inv,Ovf,Unf,Inx}Flag` FSR fields are `shared_or` (the 32 lanes sticky-OR into one IEEE flag). FCR/FSR
 are read/written by the `rur/wur fcr/fsr` group; the full register model is in
-[vfpu-ieee](../../uarch/vfpu-ieee.md). `[HIGH/OBSERVED]`
+[vfpu-ieee](../../uarch/vfpu-ieee.md).
 
 ---
 
@@ -273,7 +273,7 @@ names + the executed value behaviour]`
 Each op is 32 independent invocations of the scalar binary16 FMA primitive (no cross-lane carry, so a
 per-lane reference is a complete vector-op reference). **Every output-bit pattern in this section is a
 real return value of `libfiss-base.so`, executed in-process via `ctypes`.** The fp16 value leaves and
-their addresses (`nm`-verified this pass, `.text` VMA==file-offset so these are valid file offsets):
+their addresses (`nm`-verified, `.text` VMA==file-offset so these are valid file offsets):
 
 ```
 module__xdref_add_1_1_1_16f_16f_16f_2          @ 0x51c640   (out[3] = result, out[0] = inexact flag)
@@ -287,7 +287,7 @@ module__xdref_mulsone_1_1_1_1_16f_16f_16f_2    @ 0x5b9a80   (out[4] = result; fo
 
 The ABI (live-probed): `f(xstate, A, B[, C], roundC, *out…)`; the `RoundMode` is `roundC` bits `[1:0]`
 {0=RNE 1=RZ 2=RU 3=RD}. The ISS computes this **integer-only** — the `add16` body at `0x51c640…0x51ce70`
-contains **0 hardware-FP instructions** (disassembled this pass: no `addss`/`mulss`/`cvtss`/`fadd`/…),
+contains **0 hardware-FP instructions** (disassembled: no `addss`/`mulss`/`cvtss`/`fadd`/…),
 and 13 references to the binary16 field masks `0x7c00`/`0x3ff` — i.e. it cracks the IEEE fields and rounds
 in integer ALU, taking `RoundMode` as a parameter. This is a bit-accurate model of the silicon FP pipe;
 the two are one value function (see [vfpu-ieee §soft-float reconciliation](../../uarch/vfpu-ieee.md)). `[HIGH/OBSERVED]`
@@ -315,7 +315,7 @@ add(0x2e66, 0x3266)  RZ  → out[3] = 0x34cc   (truncate)
 ```
 
 The same input rounds to **three different lanes** under RNE/RU/RD — the round mode is honoured exactly,
-and the RNE tie goes to the even neighbour. `[HIGH/OBSERVED — executed]`
+and the RNE tie goes to the even neighbour.
 
 ### 5.2 NaN propagation (the directional trap), LIVE
 
@@ -345,7 +345,7 @@ madd(a=fin,   b=0x7e02, c=0x7e03)  → 0x7e03   b AND c NaN → c wins over b
 > **GOTCHA — the fused-madd NaN order is a, c, b — not a, b, c.** The addend/accumulator `c` (= `vt`) is
 > checked **before** the multiplicand `b`. A reference that walks the operands in mnemonic/argument order
 > `(a, b, c)` and returns the first NaN will diverge whenever both `b` and `c` are NaN: it returns `b`'s
-> payload, the silicon returns `c`'s. Live-confirmed: `madd(fin, 0x7e02, 0x7e03) → 0x7e03`. `[HIGH/OBSERVED]`
+> payload, the silicon returns `c`'s. Live-confirmed: `madd(fin, 0x7e02, 0x7e03) → 0x7e03`.
 
 ### 5.3 Single rounding — the catastrophic-cancellation proof, LIVE
 
@@ -384,7 +384,7 @@ add(0x8000,0x8000)  RNE → 0x8000   (−0) + (−0) → −0
 > (round-to-max-finite when the mode rounds *away* from the infinity). Independently, `1 + (−1)` is exactly
 > zero but its **sign** is `+0` under RNE/RZ/RU and `−0` under RD — the IEEE signed-zero-of-an-exact-sum
 > rule. Both are live-confirmed; a constant-fold pass that ignores the active `RoundMode` will mis-fold
-> these. `[HIGH/OBSERVED]`
+> these.
 
 ### 5.5 DIVN — the Newton division step
 
@@ -427,7 +427,7 @@ F3/S3, …; 16 stage leaves total). `[HIGH/OBSERVED]`
 > the cas-ISS modeling level `fp_sem_hp_fma` has stage10 and stage14 functions; its fp32 peer
 > `ivp_sem_spfma` additionally has a `*_semantic_stage15` leaf (the `VectorPipeImpreciseErr` edge). The
 > architectural data result @stage13 and the imprecise-error edge @stage15 are carried from the
-> `INSTR_SCHEDULE` model; the directly-observed cas anchors this pass are the stage10/stage14 leaves.
+> `INSTR_SCHEDULE` model; the directly-observed cas anchors are the stage10/stage14 leaves.
 > `[stage10/14 HIGH/OBSERVED; result@13 + ImpreciseErr@15 HIGH/CARRIED]`
 
 ---
@@ -436,7 +436,7 @@ F3/S3, …; 16 stage leaves total). `[HIGH/OBSERVED]`
 
 Oracle: `xtensa-elf-as` → `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, `XTENSA_SYSTEM=…/XtensaTools/config`).
 Each form assembled into a narrow N1 bundle (op0=`0x2f`, the fp op in slot S2, two `nop` companions) and
-disassembled back **bit-exact this pass**. The objdump hex column is byte-reversed for display (memory-order
+disassembled back **bit-exact**. The objdump hex column is byte-reversed for display (memory-order
 first byte = `0x2f`).
 
 ### 7.1 IVP vector base + `t` + `.H` forms (v2 = dst, v0/v1 = inputs)
@@ -457,7 +457,7 @@ divn.h    v2,v0,v1            → 00a544012e40352f
 ```
 
 Note `madd.h` byte `0xe8` ≠ `ivp_mulanxf16` byte `0x4a` — distinct decode points, same op-class via the
-`op_scalar`/`op_vector` mux. All round-trips are bit-exact this pass. `[HIGH/OBSERVED]`
+`op_scalar`/`op_vector` mux. All round-trips are bit-exact.
 
 ### 7.2 Primary-slot (F0/S3, 20-bit selector) slot-local words
 
@@ -534,7 +534,7 @@ IVP_MULSONENXF16 lane: v0=0x3800(0.5), v1=0x4000(2.0)
 * `[HIGH/OBSERVED]` Timing: `libcas-core.so` per-format `*_fp_sem_hp_fma_semantic_stage10`/`stage14`
   leaves; read@10, FSR-flag@14 directly observed; result@13, ImpreciseErr@15 carried from the schedule.
 * `[HIGH/OBSERVED]` All 18 representative bundles round-trip bit-exact through the device
-  `xtensa-elf-as`/`objdump` (`XTENSA_CORE=ncore2gp`) this pass.
+  `xtensa-elf-as`/`objdump` (`XTENSA_CORE=ncore2gp`).
 * `[MED/INFERRED]` DIVN's exact Newton coefficients (the ISS body, not in the schedule); the a-vs-b
   multiplicand labelling (`vs` vs `vr`) is symmetric for MUL/MADD and is cosmetic.
 * `[LOW]` The full per-slot field scatter in every one of the 9–13 slots is not enumerated per op (only

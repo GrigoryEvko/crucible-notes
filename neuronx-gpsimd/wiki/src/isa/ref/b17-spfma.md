@@ -12,27 +12,27 @@ the floating-point sub-ISA whose control/status model is documented in
 [VFPU / IEEE-754 pipe](../../uarch/vfpu-ieee.md). The preceding committed boundary is
 [B16 — Vector Replicate / Extract](b16-vec-rep.md).
 
-Everything below is re-grounded against the shipped binaries **this pass**: the **encoding** from
+Everything below is grounded in the shipped binaries: the **encoding** from
 `libisa-core.so` (`Opcode_<mnem>_Slot_<slot>_encode` thunks read byte-for-byte for the selector
 `CONST`), the **operand/state signature** from the per-op `Iclass_<MNEM>_args` / `_stateArgs` tables
 (read directly out of `.data.rel.ro`), the **timing** from the `*_inst_*_issue` bodies in
 `libcas-core.so` (`mov $stage,%esi` operand-port stamps), the **single-rounding value semantics** by
 *executing* the `module__xdref_madd_*` leaf in `libfiss-base.so` live in-process via ctypes, and a
 byte-exact **encode/decode oracle** from the device-native `xtensa-elf-as`/`xtensa-elf-objdump`
-(`XTENSA_CORE=ncore2gp`). Confidence tags per
-[the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
-read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]` =
-re-used at a sibling page's confidence.
+(`XTENSA_CORE=ncore2gp`). The page default is `[HIGH/OBSERVED]` (read-from-byte /
+proven-by-execution); claims that depart from that default carry an explicit tag per
+[the Confidence & Walls model](../../reference/confidence-model.md) — `[MED/INFERRED]` = reasoned
+over OBSERVED, `[…/CARRIED]` = re-used at a sibling page's confidence.
 
-> **NOTE — address arithmetic re-confirmed this pass.** `libisa-core.so` (sha256
+> **NOTE — address arithmetic.** `libisa-core.so` (sha256
 > `8fe68bf462ce76ee17dfbe2167ff8443d473a66385ed115364e9677bf143e451`, 9 690 712 B, ET_DYN x86-64, not
-> stripped). `readelf -SW` this pass: `.text` (`0x312c10`) and `.rodata` (`0x3b6e40`) are
+> stripped). Per `readelf -SW`: `.text` (`0x312c10`) and `.rodata` (`0x3b6e40`) are
 > **VMA == file-offset**; `.data.rel.ro` (VMA `0x67bb00` ↔ file `0x47bb00`) and `.data` (VMA `0x764040`
 > ↔ file `0x564040`) carry the per-binary delta **`0x200000`** — **not** libtpu's `0x400000`. The
 > `Iclass_*_args` / `_stateArgs` operand tables live in `.data.rel.ro` and must be read at
 > `VMA − 0x200000`; the encode thunks live in `.text` (VMA == file). `libfiss-base.so` and
 > `libcas-core.so` keep `.text`/`.rodata` at VMA == file-offset. All three are in `extracted/`
-> (gitignored; reach with `fd --no-ignore` or an absolute path). `[HIGH/OBSERVED]`
+> (gitignored; reach with `fd --no-ignore` or an absolute path).
 
 ---
 
@@ -48,18 +48,18 @@ double-counting.
 * **fp32 ALU min / max / compare / classify / convert (`ivp_minn_2xf32`, `ivp_oeqn_2xf32`,
   `ivp_cvtf16n_2xf32`, …) → [B02](b02-vec-alu-fp.md) / [B13](b13-sp-cvt.md), NOT here.** These spell
   `*n_2xf32` and ride the same FLIX slots, but their iclass operand is `opnd_ivp_sem_vec_alu_*`
-  (min/max/compare) or the `sp_cvt` semantic — **not** `ivp_sem_spfma`. Read live this pass:
+  (min/max/compare) or the `sp_cvt` semantic — **not** `ivp_sem_spfma`. Read live:
   `IVP_MINN_2XF32` → `opnd_ivp_sem_vec_alu_vt`, `IVP_OEQN_2XF32` → `opnd_ivp_sem_vec_alu_vbt`,
   `IVP_CVTF16N_2XF32_0` → the sp_cvt convert core. Only the **9 FMA roots** (`muln`, `addn`, `subn`,
-  `mulan`, `mulann`, `mulsn`, `mulsnn`, `mulsonen`, `divnn`) carry `ivp_sem_spfma`. `[HIGH/OBSERVED]`
+  `mulan`, `mulann`, `mulsn`, `mulsnn`, `mulsonen`, `divnn`) carry `ivp_sem_spfma`.
 * **fp32 transcendental seeds (`ivp_recip0n_2xf32`, `ivp_rsqrt0n_2xf32`, `ivp_nexp01n_2xf32`,
   `ivp_div0n_2xf32`, `ivp_mksadjn_2xf32`) → [B15](b15-sp-lookup.md), NOT here.** Those are the
   table-lookup *seed* ops the `divnn`/`mulann` Newton chain *consumes*; they live in the
   `ivpep_sem_sp_lookup` semantic, not spfma. The `DIVN` here is the one-shot divide that *chains*
-  those seeds, not the seed itself. `[HIGH/OBSERVED]`
+  those seeds, not the seed itself.
 * **fp16 FMA (`ivp_mulnxf16`, `madd.h`, …) → [B18](b18-hp-fma.md), NOT here.** The 32-lane `NXF16` FMA
   is the half-precision peer; it shares the s0/s1/s2 tree skeleton at a narrower significand but is a
-  distinct semantic (`fp_sem_hp_fma`). B17 owns **only** the 16-lane fp32 `N_2XF32` forms. `[HIGH/OBSERVED]`
+  distinct semantic (`fp_sem_hp_fma`). B17 owns **only** the 16-lane fp32 `N_2XF32` forms.
 * **Integer MAC (`ivp_mulan_2x32`, `ivp_mulanx16`, the complex `_2x32c`) → [B04](b04-mac-integer.md) /
   [B05](b05-mac-mixed.md), NOT here.** Those accumulate into the **wide `wvec`** integer accumulator
   (24/48/96-bit) with no rounding; the fp32 FMA accumulates into a **`vec`** lane with IEEE rounding.
@@ -70,14 +70,14 @@ double-counting.
 > partition over-counts **24 FP-typed MAC forms** (`mulnxf16`, `mulan_2xf32`, `mulsonenxf16`, …) as if
 > they belonged to the integer batches. **This page authoritatively reclaims the fp32 half.** The exact
 > fp32 forms reclaimed (`nm libisa-core.so | rg -i '2xf32.*(mul|add|sub|madd|msub|divn|mulsone)'`,
-> filtered to the FMA roots this pass) are the **18 vector mnemonics**
+> filtered to the FMA roots) are the **18 vector mnemonics**
 > `ivp_{muln,mulan,mulann,mulsn,mulsnn,mulsonen,addn,subn,divnn}_2xf32{,t}` plus the **9 `.S` scalar
 > aliases** `{add,sub,mul,madd,maddn,msub,msubn,mulsone,divn}.s` — **27 in total**. They are FP because
 > (a) every one carries the `opnd_ivp_sem_spfma_*` operand semantic, (b) their iclass `stateArgs` carry
 > `RoundMode` + the IEEE `*Enable` / `*Flag` fields (an integer MAC carries none), and (c) the live
 > `madd` value leaf is a single-rounded IEEE-754 fused multiply-add (§4). A reimplementation that routes
 > `ivp_mulan_2xf32` through an integer `wvec` accumulator is wrong: it accumulates a **rounded fp32
-> sum into a `vec` lane**, not an exact integer product into a wide accumulator. `[HIGH/OBSERVED]`
+> sum into a `vec` lane**, not an exact integer product into a wide accumulator.
 
 ---
 
@@ -85,8 +85,8 @@ double-counting.
 
 | Fact | Value | Binary source |
 |---|---|---|
-| Semantic group | **`ivp_sem_spfma`** (one shared multiplexed fp32 FMA tree) | `opnd_ivp_sem_spfma_*` in every member's `Iclass_*_args` `[HIGH/OBSERVED]` |
-| Lanes × width | **16 × fp32** (`N_2XF32`, IEEE-754 1-8-23) over the 512-bit `vec` | the `_2xf32` dtype tag; `vec` idx2 `[HIGH/OBSERVED]` |
+| Semantic group | **`ivp_sem_spfma`** (one shared multiplexed fp32 FMA tree) | `opnd_ivp_sem_spfma_*` in every member's `Iclass_*_args` |
+| Lanes × width | **16 × fp32** (`N_2XF32`, IEEE-754 1-8-23) over the 512-bit `vec` | the `_2xf32` dtype tag; `vec` idx2 |
 | Mnemonics this batch | **27** = 18 vector (`ivp_*n_2xf32{,t}`) + 9 scalar (`.S`) | §2; `nm libisa-core.so` distinct `Opcode_…_Slot` roots |
 | Producing roots (write `vt`) | MUL · ADD · SUB · MULSONE (+ `.S`, + `t`) | `vt` dir = **`o`** (output) in `_args` (§3) |
 | Accumulate roots (read-modify `vt`) | MADD/MULA · MSUB/MULS · MADDN/MULANN · MSUBN/MULSNN (+`.S`,+`t`) | `vt` dir = **`m`** (modify) in `_args` (§3) |
@@ -115,56 +115,57 @@ The 27 split into **18 vector** mnemonics (`ivp_*n_2xf32`, each with a `t` predi
 scalar `.S` aliases**. The two spellings bind the *same* compute — the `.S` names are the toolchain's
 aliases for the same 16-lane fp32 datapath, **not** AR-scalar fp (their operands are `vec`, §3, §6). The
 `opc-sel` column is the F0/S3 selector field `bits[34:15]` (= the thunk's `word0 >> 15`); `placements`
-is the per-mnemonic `Opcode_…_Slot_…_encode` count.
+is the per-mnemonic `Opcode_…_Slot_…_encode` count. Every row of §2.1–§2.3 is `[HIGH/OBSERVED]` except
+the flagged `mulsn` polarity cell.
 
 ### 2.1 Producing forms — write `vt` (no accumulator read)
 
 `vt = round_RM(a ⊙ b)`, `a = vr`, `b = vs`. The `t` twin adds a `vbool` mask and merges per lane.
 
-| mnemonic | form | opc-sel (F0/S3) | placements | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_muln_2xf32` / `mul.s` | MUL | `0x1015c` / `0x1019d` | 9 / 9 | `vt[k] = round_RM(a·b)` | `[HIGH/OBSERVED]` |
-| `ivp_addn_2xf32` / `add.s` | ADD | `0x10d4f` / `0x10d4e` | 9 / 9 | `vt[k] = round_RM(a+b)` | `[HIGH/OBSERVED]` |
-| `ivp_subn_2xf32` / `sub.s` | SUB | `0x101dc` / `0x101bd` | 9 / 9 | `vt[k] = round_RM(a−b)` | `[HIGH/OBSERVED]` |
-| `ivp_mulsonen_2xf32` / `mulsone.s` | MUL (one-path) | `0x101bc` / `0x1017d` | 9 / 9 | `vt[k] = round_RM(a·b)`, `op_mulsone` partial-product path (recip-residual seed) | `[HIGH/OBSERVED]` |
-| `ivp_muln_2xf32t` / `ivp_addn_2xf32t` / `ivp_subn_2xf32t` / `ivp_mulsonen_2xf32t` | `t` twins | (selector narrows; vbr field set) | 9 each | `vt[k] = pred[k] ? <result> : vt[k]` | `[HIGH/OBSERVED]` |
+| mnemonic | form | opc-sel (F0/S3) | placements | semantics |
+|---|---|---|---|---|
+| `ivp_muln_2xf32` / `mul.s` | MUL | `0x1015c` / `0x1019d` | 9 / 9 | `vt[k] = round_RM(a·b)` |
+| `ivp_addn_2xf32` / `add.s` | ADD | `0x10d4f` / `0x10d4e` | 9 / 9 | `vt[k] = round_RM(a+b)` |
+| `ivp_subn_2xf32` / `sub.s` | SUB | `0x101dc` / `0x101bd` | 9 / 9 | `vt[k] = round_RM(a−b)` |
+| `ivp_mulsonen_2xf32` / `mulsone.s` | MUL (one-path) | `0x101bc` / `0x1017d` | 9 / 9 | `vt[k] = round_RM(a·b)`, `op_mulsone` partial-product path (recip-residual seed) |
+| `ivp_muln_2xf32t` / `ivp_addn_2xf32t` / `ivp_subn_2xf32t` / `ivp_mulsonen_2xf32t` | `t` twins | (selector narrows; vbr field set) | 9 each | `vt[k] = pred[k] ? <result> : vt[k]` |
 
 ### 2.2 Accumulate forms — read-modify `vt` (the fused MADD/MSUB family)
 
 `vt` is an **in-place accumulator** (`_args` dir = `m`): it is both read (the addend `c`) and written.
 The assembler still requires `vt` spelled; a 2-operand form errors "too few operands" (§6).
 
-| mnemonic | form | opc-sel (F0/S3) | placements | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_mulan_2xf32` / `madd.s` | MADD | `0x1013c` / `0x1011d` | 7 / 7 | `vt[k] = round_RM(a·b + c)`  (single round) | `[HIGH/OBSERVED]` |
-| `ivp_mulsn_2xf32` / `msub.s` | MSUB | `0x1019c` / `0x1015d` | 7 / 7 | `vt[k] = round_RM(c − a·b)`  (`negate_axb_M` sign path) | `[HIGH/OBS] form; [MED] exact c−a·b vs a·b−c` |
-| `ivp_mulann_2xf32` / `maddn.s` | MADDN ('N') | `0x1011c` / `0x101fc` | 7 / 7 | `vt[k] = round_RNE(a·b + c)`, **RNE-forced**, no flags (Newton step) | `[HIGH/OBSERVED]` |
-| `ivp_mulsnn_2xf32` / `msubn.s` | MSUBN ('N') | `0x1017c` / `0x1013d` | 7 / 7 | `vt[k] = round_RNE(c − a·b)`, **RNE-forced**, no flags | `[HIGH/OBSERVED]` |
-| `ivp_mulan_2xf32t` / `ivp_mulsn_2xf32t` / `ivp_mulann_2xf32t` / `ivp_mulsnn_2xf32t` | `t` twins | (vbr field set) | 7 each | predicated read-modify merge | `[HIGH/OBSERVED]` |
+| mnemonic | form | opc-sel (F0/S3) | placements | semantics |
+|---|---|---|---|---|
+| `ivp_mulan_2xf32` / `madd.s` | MADD | `0x1013c` / `0x1011d` | 7 / 7 | `vt[k] = round_RM(a·b + c)`  (single round) |
+| `ivp_mulsn_2xf32` / `msub.s` | MSUB | `0x1019c` / `0x1015d` | 7 / 7 | `vt[k] = round_RM(c − a·b)`  (`negate_axb_M` sign path); form `[HIGH/OBSERVED]`, exact `c−a·b` vs `a·b−c` polarity `[MED]` |
+| `ivp_mulann_2xf32` / `maddn.s` | MADDN ('N') | `0x1011c` / `0x101fc` | 7 / 7 | `vt[k] = round_RNE(a·b + c)`, **RNE-forced**, no flags (Newton step) |
+| `ivp_mulsnn_2xf32` / `msubn.s` | MSUBN ('N') | `0x1017c` / `0x1013d` | 7 / 7 | `vt[k] = round_RNE(c − a·b)`, **RNE-forced**, no flags |
+| `ivp_mulan_2xf32t` / `ivp_mulsn_2xf32t` / `ivp_mulann_2xf32t` / `ivp_mulsnn_2xf32t` | `t` twins | (vbr field set) | 7 each | predicated read-modify merge |
 
 > **NOTE — `mulan`/`mulsn` (vector) and `madd`/`msub` (`.S`) are the same form, different spelling.**
 > The vector `mulan` = "multiply-add", the `.S` `madd` = "multiply-add"; both are `round_RM(a·b+c)` with
 > a read-modify `vt`. Likewise `mulsn`/`msub`, `mulann`/`maddn`, `mulsnn`/`msubn`. The selector const is
-> the *only* byte difference (§6). `[HIGH/OBSERVED]`
+> the *only* byte difference (§6).
 
 ### 2.3 Divide form — one-shot fp32 divide
 
-| mnemonic | form | opc-sel (F0/S3) | placements | semantics | conf |
-|---|---|---|---|---|---|
-| `ivp_divnn_2xf32` / `divn.s` | DIVN | `0x10d6f` / `0x10d6e` | 7 / 7 | `vt[k] = round_RM(a / b)` — seeded by recip ([B15](b15-sp-lookup.md)) + refined by the MADDN/MULSONE chain | `[HIGH/OBSERVED]` |
-| `ivp_divnn_2xf32t` | `t` twin | (vbr field set) | 7 | predicated divide | `[HIGH/OBSERVED]` |
+| mnemonic | form | opc-sel (F0/S3) | placements | semantics |
+|---|---|---|---|---|
+| `ivp_divnn_2xf32` / `divn.s` | DIVN | `0x10d6f` / `0x10d6e` | 7 / 7 | `vt[k] = round_RM(a / b)` — seeded by recip ([B15](b15-sp-lookup.md)) + refined by the MADDN/MULSONE chain |
+| `ivp_divnn_2xf32t` | `t` twin | (vbr field set) | 7 | predicated divide |
 
 > **GOTCHA — DIVN drops `InvalidEnable` and rides `vt` as read-modify, even though it has no addend.**
 > The divide's iclass `stateArgs` carry `Overflow/Underflow/InexactEnable` but **no `InvalidEnable`**
 > (the 0/0 and ∞/∞ invalid cases are handled by the `op_divn` mux + sticky flag, not the enable edge
 > the mul/add forms carry). Its `vt` operand dir is `m` (read-modify) — `vt` is the quotient/result
 > register the iterative refinement writes through. A reimplementation must not give DIVN an
-> `InvalidEnable` input nor treat `vt` as pure-output. `[HIGH/OBSERVED]` from the `Iclass_DIVN_S` /
+> `InvalidEnable` input nor treat `vt` as pure-output — read from the `Iclass_DIVN_S` /
 > `Iclass_IVP_DIVNN_2XF32` `stateArgs` (§3).
 
 ### 2.4 Placement summary
 
-Per-mnemonic placement count (`nm libisa-core.so | rg -c 'Opcode_<mn>_Slot_'`, this pass): the
+Per-mnemonic placement count (`nm libisa-core.so | rg -c 'Opcode_<mn>_Slot_'`): the
 **producing** roots (MUL/ADD/SUB/MULSONE and their `.S`) carry **9** placements each; the
 **accumulate/divide** roots (MADD/MSUB/MADDN/MSUBN/DIVN and their `.S`) carry **7** each — the denser
 accumulate ops drop the two narrowest selector slots (`f1_s2_mul` and `f3_s3_alu`). The `t` twins match
@@ -177,12 +178,12 @@ plus the scalar `.S` set; **0** added to the integer-MAC batches (the reclamatio
 ## 3. Operand & state signature — read from the iclass tables
 
 The authoritative per-op signature is the `Iclass_<MNEM>_args` (data operands) + `Iclass_<MNEM>_stateArgs`
-(FCR/FSR/CPENABLE state) tables in `.data.rel.ro` (read at `VMA − 0x200000` this pass). Each entry is a
+(FCR/FSR/CPENABLE state) tables in `.data.rel.ro` (read at `VMA − 0x200000`). Each entry is a
 `{char* name, uint64 dir}` pair; `dir` is the ASCII byte `i`=input, `o`=output, `m`=read-modify. The
 data operands resolve to `opnd_ivp_sem_spfma_{vt,vs,vr}` (the group's own operand semantic), with
 `vr = a` (multiplicand/minuend), `vs = b` (multiplier/subtrahend), `vt = c`/result.
 
-**Data operands (`_args`), read this pass:**
+**Data operands (`_args`):**
 
 | op | `vt` | `vs` | `vr` | meaning |
 |---|---|---|---|---|
@@ -192,7 +193,7 @@ data operands resolve to `opnd_ivp_sem_spfma_{vt,vs,vr}` (the group's own operan
 | `IVP_MULANN_2XF32` / `MADDN_S` | **`m`** | `i` | `i` | Newton accumulate (RNE) |
 | `IVP_DIVNN_2XF32` / `DIVN_S` | **`m`** | `i` | `i` | divide (quotient in `vt`) |
 
-**Control/status state (`_stateArgs`), read this pass — the per-op IEEE enable subset:**
+**Control/status state (`_stateArgs`) — the per-op IEEE enable subset:**
 
 | op | `RoundMode` | flags `m` (FSR) / enables `i` (FCR) | `CPENABLE` |
 |---|---|---|---|
@@ -203,14 +204,14 @@ data operands resolve to `opnd_ivp_sem_spfma_{vt,vs,vr}` (the group's own operan
 | `MADDN_S` / `IVP_MULANN_2XF32` | **—** | **none** — only `CPENABLE` + operands | `i` |
 
 > **QUIRK — the `N` (Newton) forms carry NO `RoundMode`, NO enables, NO flags.** Read straight from
-> `Iclass_MADDN_S_stateArgs` / `Iclass_IVP_MULANN_2XF32_args` this pass: the entire state list is
+> `Iclass_MADDN_S_stateArgs` / `Iclass_IVP_MULANN_2XF32_args`: the entire state list is
 > **`CPENABLE/i`** plus the three `vt/m, vs/i, vr/i` operands. The `N` forms (`MADDN`/`MSUBN`/`MULANN`/
 > `MULSNN`) are the **un-flagged, RNE-forced fast path** threaded through the DIVN/recip Newton loop:
 > they neither read the dynamic `RoundMode` (they force round-to-nearest-even) nor post the IEEE sticky
 > flags nor the imprecise-error edge. This matches the round core's gate `roundm = RoundMode ∧ ¬(maddn ∨
 > msubn)` (the FMA round forces RNE for the negated-multiply forms). A reimplementation must **suppress
 > all exception machinery** for the `N` ops — they are intermediate steps whose flags would be
-> meaningless. `[HIGH/OBSERVED]`
+> meaningless.
 
 The IEEE exceptions are **imprecise**: every member additionally DEFs `VectorPipeImpreciseErr` (the
 deferred vector-pipe fp-exception edge) at the late fp stage; the only **precise** exception is
@@ -260,7 +261,7 @@ FMA output. A two-step `c + round(a·b)` reimplementation would diverge here. `[
 ### 4.2 Round-mode and special values (executed live, fp32 add/sub)
 
 The fp32 `add`/`sub` leaves (`module__xdref_add_1_1_1_32f_32f_32f_2` @ `0x871790`,
-`…sub…_32f…` @ `0x872020`) are self-contained and were driven live this pass — they exercise the same
+`…sub…_32f…` @ `0x872020`) are self-contained and were driven live — they exercise the same
 `RoundMode` and IEEE special-value machinery the whole spfma group shares:
 
 ```
@@ -276,7 +277,7 @@ The last pair is decisive: the **same** overflowing sum `MAX+MAX` resolves to `+
 the largest finite `0x7f7fffff` under RTZ — overflow direction is governed by the round mode (the
 directed-round overflow: round-to-max-finite when the mode rounds *away* from the infinity). The
 `+inf + -inf → qNaN` invalid case fires the invalid path. Every result is bit-exact from the shipped
-binary. `[HIGH/OBSERVED by execution]`
+binary.
 
 ### 4.3 The C reference model (annotated, naming the real symbols)
 
@@ -323,7 +324,7 @@ the per-mnemonic polarity is the selector's job).
 ## 5. Timing — the 3-cycle FMA pipe
 
 The per-op issue body in `libcas-core.so` stamps each operand/state access with its pipeline stage in
-`%esi` before the access call. Read this pass from `F0_F0_S3_ALU_36_inst_MUL_S_issue` and its peers,
+`%esi` before the access call. Read from `F0_F0_S3_ALU_36_inst_MUL_S_issue` and its peers,
 the stage stamps are unambiguous: **`$0xa` (10)** = `vec` operand reads, **`$0xd` (13)** = `vec` result
 write, **`$0xe` (14)** = FCR/FSR state-register samples.
 
@@ -348,8 +349,8 @@ counts; `[MED/CARRIED]` the @14/@15 flag/error stages (inherited from the shared
 > `F0_F0_S3_ALU_36_inst_<op>_issue`; `SUB_S`, `MSUB_S`, `MSUBN_S`, `MULSONE_S` have **no** separate
 > issue body (each shares the issue/timing routine of the form with an identical schedule — `SUB_S`
 > aliases `ADD_S`, `MSUB` aliases `MADD`, etc.) but **does** carry its own `<op>_stage_functions` table
-> and `<op>_inst_stage0..15` compute bodies. Timing is shared; the per-stage value compute is distinct.
-> `[HIGH/OBSERVED]` from `nm libcas-core.so`.
+> and `<op>_inst_stage0..15` compute bodies. Timing is shared; the per-stage value compute is
+> distinct (from `nm libcas-core.so`).
 
 ---
 
@@ -384,10 +385,9 @@ Three structural facts the oracle pins:
 
 * **The `.S` aliases take `vec` operands, not AR-scalar.** `mul.s v7,v6,v5` round-trips with `vec`
   registers — the `.S` spelling is a toolchain alias for the same 16-lane fp32 datapath, confirming §0.
-  `[HIGH/OBSERVED]`
 * **The `t` twin's fourth operand is a `vbool`.** `ivp_addn_2xf32t v7,v6,v5,vb2` round-trips with the
   mask register spelled; the bundle's byte1 = `0x25` (vbr field set) vs the non-`t` `0xa5` — the
-  encoding witness for the per-lane predicated writeback. `[HIGH/OBSERVED]`
+  encoding witness for the per-lane predicated writeback.
 * **Sibling discrimination is purely the selector.** With operands held at `v7,v6,v5`, the XOR of each
   bundle against `ivp_muln_2xf32` lands **only** in the S2 selector field — `addn ^ muln = 0x…62000000`,
   `subn ^ muln = 0x…04000000`, `mulan ^ muln = 0x…80000000`, `divnn ^ muln = 0x0600…64000000`, and the
@@ -399,7 +399,7 @@ Three structural facts the oracle pins:
 
 To seat an op in a wide F0 bundle alongside three companions, the slot-local 35-bit word is built from
 the F0/S3 field map (`sel[34:15]`, `vs[14:10]`, `vt[9:8]++[3:1]`, `vr[7:4]++[0]`). For `vt=v7, vs=v5,
-vr=v6` (reconstructed and **verified bit-exact** against the thunk's `word0` this pass):
+vr=v6` (reconstructed and **verified bit-exact** against the thunk's `word0`):
 
 ```
 ivp_muln_2xf32  (sel 0x1015c):  word0 = sel<<15 | vs<<10 | vt-split | vr-split = 0x80ae143e
@@ -411,37 +411,36 @@ add.s           (sel 0x10d4e):                                                  
 The encode thunk itself emits `word0 = sel<<15` with the operand fields left for the FLIX scatter:
 `Opcode_ivp_muln_2xf32_Slot_f0_s3_alu_encode` is `movl $0x80ae0000,(%rdi)` (the selector `0x1015c<<15`)
 + `movl $0x0,0x4(%rdi)` (**word1 == 0** — the upper lane carries no selector bits for an S3_ALU op) +
-`ret`. The full 128-bit bundle is produced by the FLIX slot-scatter get-fn. `[HIGH/OBSERVED]`
+`ret`. The full 128-bit bundle is produced by the FLIX slot-scatter get-fn.
 
 ---
 
 ## 7. Adversarial self-verification — the five strongest claims
 
-Each re-challenged against the binary this pass.
-
 1. **"The roster is exactly 27 — 18 vector (`ivp_*n_2xf32{,t}`) + 9 scalar (`.S`) — all `ivp_sem_spfma`."**
-   Re-run: the FMA-root encode thunks
+   The FMA-root encode thunks
    `Opcode_ivp_(muln|mulan|mulann|mulsn|mulsnn|mulsonen|addn|subn|divnn)_2xf32t?_Slot` = **18** distinct
    lowercase roots; the `.S` set `{add,sub,mul,madd,maddn,msub,msubn,mulsone,divn}_s` = **9**; total
    **27**. The `2xf32` min/max/compare/cvt ops carry `opnd_ivp_sem_vec_alu_*` / sp_cvt, **not** spfma —
-   confirmed live (`IVP_MINN_2XF32` → `vec_alu`). **VERDICT: PASS** (matches the DX-ISA-01 §4 target
-   "B17 ivp_sem_spfma ~27"). *Divergence noted for reconcile (§8).*
+   confirmed live (`IVP_MINN_2XF32` → `vec_alu`). **VERDICT: PASS** (matches the
+   [partition table](template-and-partition.md)'s "B17 `ivp_sem_spfma` ~27" target).
+   *Divergence noted for reconcile (§8).*
 
-2. **"The F0/S3 selector for `ivp_muln_2xf32` is `0x1015c` (thunk `word0 = 0x80ae0000`)."** Re-disasm:
+2. **"The F0/S3 selector for `ivp_muln_2xf32` is `0x1015c` (thunk `word0 = 0x80ae0000`)."**
    `34acd0: c7 07 00 00 ae 80  movl $0x80ae0000,(%rdi)`; `0x80ae0000 >> 15 = 0x1015c`. The full per-op
    table (§2) was read the same way; `addn 0x10d4f`, `mul.s 0x1019d`, `madd.s 0x1011d`, `maddn.s
    0x101fc`, `divnn 0x10d6f` all match. **VERDICT: PASS.**
 
-3. **"The FMA is single-rounding — `round_RM(a·b+c)` once, not `round(round(a·b)+c)`."** Re-run live:
+3. **"The FMA is single-rounding — `round_RM(a·b+c)` once, not `round(round(a·b)+c)`."** Driven live:
    `madd16(a=1.0, b=1.0009766, c=1.0009766) = 0x3d01`; single-round ref `0x3d01`, double-round ref
    `0x3d00` — **live matches single** (8/8 divergent cases). **VERDICT: PASS** (proven by executing the
    shipped binary).
 
-4. **"DIVN omits `InvalidEnable`; the `N` forms (MADDN/MSUBN) carry no RoundMode/enables/flags."** Re-read
+4. **"DIVN omits `InvalidEnable`; the `N` forms (MADDN/MSUBN) carry no RoundMode/enables/flags."** In the
    `stateArgs`: `DIVN_S` = `{Overflow,Underflow,Inexact}{Enable,Flag}` + RoundMode + CPENABLE,
    **no Invalid**; `MADDN_S` = **CPENABLE only** + the three `vt/m,vs/i,vr/i` operands. **VERDICT: PASS.**
 
-5. **"Operands read @stage 10, result @stage 13 (3-cycle), state @stage 14."** Re-disasm
+5. **"Operands read @stage 10, result @stage 13 (3-cycle), state @stage 14."** In the disassembled
    `MUL_S_issue`: `8× mov $0xa,%esi` (reads @10), `3× mov $0xd,%esi` (write @13), `8× mov $0xe,%esi`
    (state @14). The 16-stage `*_inst_stage0..15` symbol set confirms the ~15-deep pipe. **VERDICT: PASS.**
 
@@ -449,11 +448,11 @@ Each re-challenged against the binary this pass.
 
 ## 8. Cross-page reconcile notes
 
-* **Count divergence (resolved here authoritatively).** The DX-ISA-17 backing report's headline prose
-  said "19 `IVP_*N_2XF32` vector mnemonics … + 9 `.S`", which sums to 28; its own §0 roster list and §7
+* **Count divergence (resolved here authoritatively).** An earlier survey's headline prose said
+  "19 `IVP_*N_2XF32` vector mnemonics … + 9 `.S`", which sums to 28, while its own roster list and
   ledger say **27**. The binary is unambiguous: **18** vector encode-thunk roots + **9** `.S` = **27**.
-  This page pins **27 = 18 + 9**; the "19" in the report prose is a transcription slip (it likely
-  double-counted MULSONE or a `t` twin). `[HIGH/OBSERVED]`
+  This page pins **27 = 18 + 9**; the "19" is a transcription slip (it likely double-counted MULSONE
+  or a `t` twin).
 * **B04/B05 reclamation (resolved).** B05 §9 already correctly *defers* the "24 FP MAC forms" to
   B17/B18; this page reclaims the **fp32** half (the `*_2xf32` FMA roots) authoritatively as
   `ivp_sem_spfma`, with the `opnd_ivp_sem_spfma_*` + `RoundMode`/IEEE-state proof (§0 CORRECTION). The

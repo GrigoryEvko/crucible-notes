@@ -18,9 +18,10 @@ This page inherits the certified-perfect denominator from
 [the coverage tally](../core/coverage-tally.md): the `1534 / 12569` shipped mnemonic/placement cover and the
 `864/864` value-leaf cover. Counts are grounded with `nm | rg -c` against the binary `.symtab`, never a
 decompile grep; the `extracted/` tree is gitignored (reach it with `fd --no-ignore` or an absolute path).
-Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md): `OBSERVED` =
-a byte / immediate / symbol / **executed** value read from the shipped binary; `INFERRED` = reasoned over
-OBSERVED; `CARRIED` = re-used at a cited page's confidence; crossed with `HIGH`/`MED`/`LOW`. All prose is
+The page default is `[HIGH/OBSERVED]` — a byte / immediate / symbol / **executed** value read from the
+shipped binary; claims that depart from that default carry an explicit tag per
+[the Confidence & Walls Model](../../reference/confidence-model.md) — `INFERRED` = reasoned over OBSERVED,
+`CARRIED` = re-used at a cited page's confidence, crossed with `HIGH`/`MED`/`LOW`. All prose is
 binary / static-analysis derived only.
 
 > **Scope in one line.** B10 = `ivp_pack*` (the `packv*` saturating round-shift readout, the `packl*`/
@@ -28,7 +29,7 @@ binary / static-analysis derived only.
 > AR-shift/vector-shift · low/high-half variants), reading **24 / 48 / 96-bit** `wvec` lanes and writing
 > **8 / 16 / 32-bit** `vec` lanes with **arithmetic right-shift + round-half-up + signed/unsigned
 > saturate**. **42 mnemonics, 217 placements, 56 value leaves.** The op rides the **Ld slot `s1`**, *not*
-> the Mul slot — it is a readout, not a multiply. `[HIGH/OBSERVED]`
+> the Mul slot — it is a readout, not a multiply.
 
 ---
 
@@ -64,8 +65,10 @@ Columns: `mnemonic` · `FLIX format·slot` (the slots hosting it — all sit in 
 `opcode-sel imm` (the `F6_S1_Ld` encode-thunk template `WORD0`, the
 [universal `C7 07 imm32 C3` ABI](../core/flix-encoding.md#61-the-universal-encode-thunk-abi); per-format
 packing differs) · `wvec→vec` (acc-bits → out-bits) · `shift src` (`AR` / `vec` / none) · `sat` (signed /
-unsigned / none) · `round` · `xdref leaf` · `[conf]`. Templates are byte-exact from `objdump -d` this pass;
-semantics from the joined [`xdref` leaf](#6-the-mnemonic--value-leaf-join-by-width-and-token) executed live.
+unsigned / none) · `round` · `xdref leaf`. Templates are byte-exact from `objdump -d`; semantics from the
+joined [`xdref` leaf](#6-the-mnemonic--value-leaf-join-by-width-and-token) executed live. Every row of
+§2.2–§2.4 is `[HIGH/OBSERVED]` except `ivp_packhn_2x64w`, whose leaf binding is `[MED/OBSERVED]` (flagged
+in its own row).
 
 ### 2.1 The pack token grammar, decoded
 
@@ -97,19 +100,19 @@ place in only **one** slot ([§3.2](#32-the-bimodal-placement--8-slots-r-vs-1-sl
 This is the production readout: a quantized GEMM accumulates `int32` partial sums into `wvec`, then a
 `packvrnx48` de-scales by the per-tensor right-shift (an `AR` scalar), rounds, and saturates to `int16`.
 
-| mnemonic | fmt·slot | opcode-sel imm (F6·s1) | wvec→vec | shift | sat | round | leaf | conf |
-|---|---|---|---|---|---|---|---|---|
-| `ivp_packvrnx48` | F0/F1/F2/F3/F4/F6/F7/N2 · s1_ld | `0x00320000` | 48 → 16 | AR | signed-16 | half-up | `packvr_16_48_32` | `[HIGH/OBSERVED]` |
-| `ivp_packvrnx48_0` | (same 8 slots) | `0x00320001` | 48 → 16 (lo half) | AR | signed-16 | half-up | `packvr_16_48_32__0` | `[HIGH/OBSERVED]` |
-| `ivp_packvrnx48_1` | (same 8 slots) | — | 48 → 16 (hi half) | AR | signed-16 | half-up | `packvr_16_48_32__1` | `[HIGH/OBSERVED]` |
-| `ivp_packvr2nx24` | (same 8 slots) | `0x000c1000` | 24 → 8 | AR | signed-8 | half-up | `packvr_8_24_32` | `[HIGH/OBSERVED]` |
-| `ivp_packvr2nx24_0` / `_1` | (same 8 slots) | — | 24 → 8 (lo/hi) | AR | signed-8 | half-up | `packvr_8_24_32` | `[HIGH/OBSERVED]` |
-| `ivp_packvrn_2x64w` | (same 8 slots) | `0x00321001` | 96 → 32 (wide) | AR | signed-32 | half-up | `packvr_32_96_32` | `[HIGH/OBSERVED]` |
-| `ivp_packvrnrnx48` | (same 8 slots) | `0x00300000` | 48 → 16 | AR | **none** | half-up | `packvrnr_16_48_32` | `[HIGH/OBSERVED]` |
-| `ivp_packvrnrnx48_0` / `_1` | (same 8 slots) | `0x00300001` / — | 48 → 16 (lo/hi) | AR | none | half-up | `packvrnr_16_48_32__{0,1}` | `[HIGH/OBSERVED]` |
-| `ivp_packvrnr2nx24` / `_0` / `_1` | (same 8 slots) | `0x000e0001` | 24 → 8 | AR | none | half-up | `packvrnr_8_24_32` | `[HIGH/OBSERVED]` |
-| `ivp_packvrnrn_2x64w` | (same 8 slots) | `0x00301001` | 96 → 32 (wide) | AR | none | half-up | `packvrnr_32_96_32` | `[HIGH/OBSERVED]` |
-| `ivp_packvru2nx24` / `_0` / `_1` | (same 8 slots) | `0x00340000` | 24 → 8 | AR | **unsigned-8** | half-up | `packvru_8_24_32` | `[HIGH/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm (F6·s1) | wvec→vec | shift | sat | round | leaf |
+|---|---|---|---|---|---|---|---|
+| `ivp_packvrnx48` | F0/F1/F2/F3/F4/F6/F7/N2 · s1_ld | `0x00320000` | 48 → 16 | AR | signed-16 | half-up | `packvr_16_48_32` |
+| `ivp_packvrnx48_0` | (same 8 slots) | `0x00320001` | 48 → 16 (lo half) | AR | signed-16 | half-up | `packvr_16_48_32__0` |
+| `ivp_packvrnx48_1` | (same 8 slots) | — | 48 → 16 (hi half) | AR | signed-16 | half-up | `packvr_16_48_32__1` |
+| `ivp_packvr2nx24` | (same 8 slots) | `0x000c1000` | 24 → 8 | AR | signed-8 | half-up | `packvr_8_24_32` |
+| `ivp_packvr2nx24_0` / `_1` | (same 8 slots) | — | 24 → 8 (lo/hi) | AR | signed-8 | half-up | `packvr_8_24_32` |
+| `ivp_packvrn_2x64w` | (same 8 slots) | `0x00321001` | 96 → 32 (wide) | AR | signed-32 | half-up | `packvr_32_96_32` |
+| `ivp_packvrnrnx48` | (same 8 slots) | `0x00300000` | 48 → 16 | AR | **none** | half-up | `packvrnr_16_48_32` |
+| `ivp_packvrnrnx48_0` / `_1` | (same 8 slots) | `0x00300001` / — | 48 → 16 (lo/hi) | AR | none | half-up | `packvrnr_16_48_32__{0,1}` |
+| `ivp_packvrnr2nx24` / `_0` / `_1` | (same 8 slots) | `0x000e0001` | 24 → 8 | AR | none | half-up | `packvrnr_8_24_32` |
+| `ivp_packvrnrn_2x64w` | (same 8 slots) | `0x00301001` | 96 → 32 (wide) | AR | none | half-up | `packvrnr_32_96_32` |
+| `ivp_packvru2nx24` / `_0` / `_1` | (same 8 slots) | `0x00340000` | 24 → 8 | AR | **unsigned-8** | half-up | `packvru_8_24_32` |
 
 ### 2.3 `packv*` (no-`r`) — per-lane VECTOR shift, F6-only (17 mnemonics, 1 placement each)
 
@@ -117,16 +120,16 @@ The no-`r` forms take the shift amount from a **second `vec` operand** (a per-la
 de-scale by a different amount. That extra `vec` read makes them encodable **only in F6** (the one wide
 format with a spare Ld port — [§3.2](#32-the-bimodal-placement--8-slots-r-vs-1-slot-f6-only)).
 
-| mnemonic | fmt·slot | opcode-sel imm (F6·s1) | wvec→vec | shift | sat | round | leaf | conf |
-|---|---|---|---|---|---|---|---|---|
-| `ivp_packvnx48` | **F6·s1_ld only** | `0x003dd000` | 48 → 16 | vec | signed-16 | none | `packv_16_48_16` | `[HIGH/OBSERVED]` |
-| `ivp_packvnx48_0` / `_1` | **F6 only** | — | 48 → 16 (lo/hi) | vec | signed-16 | none | `packv_16_48_16__{0,1}` | `[HIGH/OBSERVED]` |
-| `ivp_packv2nx24` / `_0` / `_1` | **F6 only** | `0x003c9000` | 24 → 8 | vec | signed-8 | none | `packv_8_24_8` | `[HIGH/OBSERVED]` |
-| `ivp_packvn_2x64w` | **F6 only** | `0x00303000` | 96 → 32 | vec | signed-32 | none | `packv_32_96_32_w` | `[HIGH/OBSERVED]` |
-| `ivp_packvnrnx48` / `_0` / `_1` | **F6 only** | `0x003d5000` | 48 → 16 | vec | **none** | none | `packvnr_16_48_16{,__0,__1}` | `[HIGH/OBSERVED]` |
-| `ivp_packvnr2nx24` / `_0` / `_1` | **F6 only** | `0x003cf000` | 24 → 8 | vec | none | none | `packvnr_8_24_8` | `[HIGH/OBSERVED]` |
-| `ivp_packvnrn_2x64w` | **F6 only** | `0x003db000` | 96 → 32 | vec | none | none | `packvnr_32_96_32_w` | `[HIGH/OBSERVED]` |
-| `ivp_packvu2nx24` / `_0` / `_1` | **F6 only** | `0x00322000` | 24 → 8 | vec | **unsigned-8** | none | `packvu_8_24_8` | `[HIGH/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm (F6·s1) | wvec→vec | shift | sat | round | leaf |
+|---|---|---|---|---|---|---|---|
+| `ivp_packvnx48` | **F6·s1_ld only** | `0x003dd000` | 48 → 16 | vec | signed-16 | none | `packv_16_48_16` |
+| `ivp_packvnx48_0` / `_1` | **F6 only** | — | 48 → 16 (lo/hi) | vec | signed-16 | none | `packv_16_48_16__{0,1}` |
+| `ivp_packv2nx24` / `_0` / `_1` | **F6 only** | `0x003c9000` | 24 → 8 | vec | signed-8 | none | `packv_8_24_8` |
+| `ivp_packvn_2x64w` | **F6 only** | `0x00303000` | 96 → 32 | vec | signed-32 | none | `packv_32_96_32_w` |
+| `ivp_packvnrnx48` / `_0` / `_1` | **F6 only** | `0x003d5000` | 48 → 16 | vec | **none** | none | `packvnr_16_48_16{,__0,__1}` |
+| `ivp_packvnr2nx24` / `_0` / `_1` | **F6 only** | `0x003cf000` | 24 → 8 | vec | none | none | `packvnr_8_24_8` |
+| `ivp_packvnrn_2x64w` | **F6 only** | `0x003db000` | 96 → 32 | vec | none | none | `packvnr_32_96_32_w` |
+| `ivp_packvu2nx24` / `_0` / `_1` | **F6 only** | `0x00322000` | 24 → 8 | vec | **unsigned-8** | none | `packvu_8_24_8` |
 
 > **GOTCHA — the no-`r` `packv*` family is F6-exclusive; do not schedule it anywhere else.** `nm | rg
 > 'Opcode_ivp_packvnx48_Slot_.*_encode'` returns **exactly one** symbol — `Slot_f6_s1_ld_encode` — for all
@@ -135,7 +138,7 @@ format with a spare Ld port — [§3.2](#32-the-bimodal-placement--8-slots-r-vs-
 > (`art`); F6 is the only wide format carrying the extra `Ld`/vec read port that second `vec` source needs
 > ([flix §2](../core/flix-encoding.md#2-the-14-formats--selector-length-slot-composition):
 > `F6 = LdSt · Ld · Mul · ALU`). A reimplementer's bundler **must** place a vector-shift pack into F6 or
-> the bundle is unencodable. `[HIGH/OBSERVED]`
+> the bundle is unencodable.
 
 ### 2.4 `packl*` / `packm*` / `packp* / packq* / packh*` — word-select extracts (no shift, no sat)
 
@@ -143,23 +146,23 @@ These are the **raw word-select** readouts: no de-scale, no saturate — just pu
 out of the wide acc lane. They are the "I already scaled; give me the bits" path, and the building block of
 the two-step full-width (`_0`/`_1`) readouts.
 
-| mnemonic | fmt·slot | opcode-sel imm (F6·s1) | wvec→vec | extract | leaf | conf |
-|---|---|---|---|---|---|---|
-| `ivp_packl2nx24` | 8 slots · s1_ld | `0x0033b050` | 24 → 8 | low byte | `packl_8_24` | `[HIGH/OBSERVED]` |
-| `ivp_packl2nx24_1` | 8 slots · s1_ld | `0x0033a051` | 24 → 8 | high-half byte | `packl_8_24` | `[HIGH/OBSERVED]` |
-| `ivp_packlnx48` | 8 slots · s1_ld | `0x0033b051` | 48 → 16 | low 16 | `packl_16_48` | `[HIGH/OBSERVED]` |
-| `ivp_packmnx48` | 8 slots · s1_ld | `0x0033b060` | 48 → 16 | **mid** word (`>>16`) | `packm_16_48` | `[HIGH/OBSERVED]` |
-| `ivp_packpnx48` | 8 slots · s1_ld | `0x0033a061` | 48 → 16 | partial-packed | `packp_16_48` | `[HIGH/OBSERVED]` |
-| `ivp_packqnx48` | 8 slots · s1_ld | `0x0033b061` | 48 → 16 | quad-packed | `packq_16_48` | `[HIGH/OBSERVED]` |
-| `ivp_packln_2x96` | 8 slots · s1_ld | `0x0033a060` | 96 → 32 | low 32 | `packl_32_96` | `[HIGH/OBSERVED]` |
-| `ivp_packhn_2x64w` | 8 slots · s1_ld | `0x0033a050` | 96 → 32 | **high** word | `packm_32_96`/`packh` | `[MED/OBSERVED]` |
+| mnemonic | fmt·slot | opcode-sel imm (F6·s1) | wvec→vec | extract | leaf |
+|---|---|---|---|---|---|
+| `ivp_packl2nx24` | 8 slots · s1_ld | `0x0033b050` | 24 → 8 | low byte | `packl_8_24` |
+| `ivp_packl2nx24_1` | 8 slots · s1_ld | `0x0033a051` | 24 → 8 | high-half byte | `packl_8_24` |
+| `ivp_packlnx48` | 8 slots · s1_ld | `0x0033b051` | 48 → 16 | low 16 | `packl_16_48` |
+| `ivp_packmnx48` | 8 slots · s1_ld | `0x0033b060` | 48 → 16 | **mid** word (`>>16`) | `packm_16_48` |
+| `ivp_packpnx48` | 8 slots · s1_ld | `0x0033a061` | 48 → 16 | partial-packed | `packp_16_48` |
+| `ivp_packqnx48` | 8 slots · s1_ld | `0x0033b061` | 48 → 16 | quad-packed | `packq_16_48` |
+| `ivp_packln_2x96` | 8 slots · s1_ld | `0x0033a060` | 96 → 32 | low 32 | `packl_32_96` |
+| `ivp_packhn_2x64w` | 8 slots · s1_ld | `0x0033a050` | 96 → 32 | **high** word | `packm_32_96`/`packh` `[MED/OBSERVED]` |
 
 > **NOTE — `l`/`m`/`h` select *word position* in the wide lane, not sign.** For the 96-bit (`2x96`/`2x64w`)
 > acc lane, `packl_32_96` returns word0 (`mov (%rsi)`), `packm_32_96` returns word1 (`mov 0x4(%rsi)`), and
 > the `h`/`packhn` form returns the top word — the 96-bit lane is `{w0, w1, w2}` and these three select
 > among them. For 48-bit lanes, `packl_16_48` is the low 16, `packm_16_48` is `>>16`. The `__1`/`_1`
 > variants do a cross-word bit-shuffle (`packl_16_48__1`: `shl $0x8` the high half | `shr $0x18` the low
-> half) to assemble the *upper* lanes of a two-output readout. `[HIGH/OBSERVED]`
+> half) to assemble the *upper* lanes of a two-output readout.
 
 > **QUIRK — `ivp_mulnx16packl` and friends are NOT in B10.** Four `mul*packl` mnemonics
 > (`ivp_mulnx16packl`, `ivp_mulanx16packl`, `ivp_mulsnx16packl`, `ivp_mulanx16packlt`) *also* carry the
@@ -167,7 +170,7 @@ the two-step full-width (`_0`/`_1`) readouts.
 > writes `vec` directly without ever touching `wvec` — squarely [B04](b04-mac-integer.md) (its
 > [§2.4 "pack-low"](b04-mac-integer.md#24-immediate-scalar-sign-multiply-and-pack-low)). The B10
 > classifier is `name root starts "pack"`, so it excludes them; `nm | rg 'module__xdref_mul.*packl'` =
-> 3 leaves (`mul/mula/muls_16_16_16_packl`) that belong to B04's value tally, not B10's 56. `[HIGH/OBSERVED]`
+> 3 leaves (`mul/mula/muls_16_16_16_packl`) that belong to B04's value tally, not B10's 56.
 
 ---
 
@@ -195,7 +198,7 @@ accumulator *k+1*. The `libcas-core.so` schedule confirms the slot/stage: `F0_F0
 > (`Opcode_ivp_pack*_Slot_*_s1_ld_encode`), whereas the *non-narrowing*
 > [unpack/wvec-move](b22-unpack-wvec-mov.md) (`ivp_sem_unpack_wvec_mov_*`) rides `s2_mul`
 > ([register-files §6.2](../core/register-files.md#62-vec--wvec--pack-write-into-the-accumulator-and-unpack-read-it-back-out)).
-> They are *different* ops in *different* slots; B10 owns only the Ld-slot narrowing pack. `[HIGH/OBSERVED]`
+> They are *different* ops in *different* slots; B10 owns only the Ld-slot narrowing pack.
 
 ### 3.2 The bimodal placement — 8 slots (`r`) vs 1 slot (F6-only)
 
@@ -209,12 +212,12 @@ The 217 placements split cleanly:
 
 The 8-slot forms occupy `{F0,F1,F2,F3,F4,F6,F7,N2}·s1_ld` — every wide format's Ld slot plus the narrow
 `N2`. The 1-slot forms occupy **only F6** for the operand-arity reason of
-[§2.3](#23-packv-no-r--per-lane-vector-shift-f6-only-17-mnemonics-1-placement-each). `[HIGH/OBSERVED]`
+[§2.3](#23-packv-no-r--per-lane-vector-shift-f6-only-17-mnemonics-1-placement-each).
 
 ### 3.3 The operand model — `art` shift vs vector shift
 
 The iclass `_args` table (a `(operand-name-ptr, direction)` array in `.data.rel.ro`, file = VMA − `0x200000`)
-is the authoritative operand model. Read byte-exact this pass for three representative iclasses:
+is the authoritative operand model. Read byte-exact for three representative iclasses:
 
 ```
 Iclass_IVP_PACKVRNX48_args   @0x845da0:                  # the AR-shift round+sat readout
@@ -239,11 +242,11 @@ So the three structural classes are exactly: **AR-shift** (`art` operand → 8 p
 (`..._vr` operand → F6-only), and **no-shift** (extract → 8 placements). The `vt`/`wvr` direction bytes are
 literally the ASCII `'o'` (`0x6f`, out) and `'i'` (`0x69`, in) — the same per-operand direction encoding the
 [register-files page](../core/register-files.md#6-cross-file-bridge--move-instructions) documents for cross-file
-bridges. `[HIGH/OBSERVED]`
+bridges.
 
 ### 3.4 The opcode-selector templates (byte-exact `F6_S1_Ld` `WORD0`)
 
-Read from the encode thunks this pass (`.text`, VMA == file; the universal `C7 07 imm32 C3` ABI). The
+Read from the encode thunks (`.text`, VMA == file; the universal `C7 07 imm32 C3` ABI). The
 templates cluster by sub-family — the `0x33xxxxxx` band is the extract family, `0x003xxxxx` the saturating-vec
 family:
 
@@ -264,7 +267,7 @@ Note the `_0`/`_1` two-half variants differ from the base form by exactly the lo
 (`packvrnx48 = 0x00320000` → `packvrnx48_0 = 0x00320001`); the `WORD1` upper lane is `0x00000000` as for
 every placement ([template §3.1 NOTE](template-and-partition.md#3-the-canonical-per-instruction-page-template-the-b01b30-schema)).
 The full `(mnemonic, slot) → WORD0` table is per-format (the same mnemonic packs differently in F0 vs F6),
-so a reimplementer's assembler carries the table; it cannot synthesize one format from another. `[HIGH/OBSERVED]`
+so a reimplementer's assembler carries the table; it cannot synthesize one format from another.
 
 ---
 
@@ -326,7 +329,7 @@ before the shift. `packvr_16_48_32` builds the 48-bit lane as `lo32 | (sext16(hi
 `movswl 0x4(%rsi)` sign-extends the top half); `packl_16_48__1` instead does the cross-word
 `(hi16 << 8) | (lo32 >> 24)` shuffle to extract the *upper* output lane. A reimplementer that models the
 wvec lane as a flat `int_t<3L>` and shifts it gets the same answer; the half-word assembly is a host-ABI
-detail of the simulator leaf, not architectural. `[HIGH/OBSERVED]`
+detail of the simulator leaf, not architectural.
 
 ### 4.2 The shift amount is clamped before use
 
@@ -344,7 +347,6 @@ Two helper leaves do this, selected by output width:
 
 `module__xdref_shift_amt_satu_32` is the same with `cmp $0x20` (max 32) for 16/32-bit outputs. The bound is
 exactly the acc-lane width minus one output-lane-byte (`24−1 = 23`), so a clamp never reads past the lane.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -400,7 +402,7 @@ packvr_16_48_32, shift=1:   acc=1->1   acc=3->2   acc=5->3   acc=7->4   acc=9->5
 Every 0.5-fraction rounds **toward +∞** (up), never to-even — this is **round-half-up**, implemented by the
 `+(1<<(shift-1))` bias of [§4](#4-the-pack-pipeline--annotated-c-against-the-binary) (the `movl $0x1,…; shl
 %cl; shr $1` idiom in `packvr`). A reimplementer that models round-to-nearest-even would mismatch on every
-tie. `[HIGH/OBSERVED by execution]`
+tie.
 
 ### 5.3 Round-vs-truncate, and no-saturate — the `nr` forms
 
@@ -426,7 +428,7 @@ no-saturate proof (shift=0, out-of-range acc):
 **clamps**. So the `nr` token = *no-round AND no-saturate* = the **raw arithmetic-shift-and-narrow**; the
 `r`/default = *round + signed-saturate*. This is the single most important reimplementation distinction in
 the batch: choosing `packvnr` where you meant `packvr` produces silent overflow garbage instead of a clamped
-result. `[HIGH/OBSERVED by execution]`
+result.
 
 ### 5.4 The de-scale (Q-format right-shift), proven
 
@@ -441,8 +443,7 @@ packvr_16_48_32:  acc=100  shift=1 -> 50      (100/2, rounded)
 
 The right-shift is **arithmetic** (sign-preserving): a negative acc shifted right stays negative
 (`-50000 >> 0` with sat → `-32768`, and the unsaturated `packvnr` keeps the sign through the shift). A
-reimplementer models `(acc + bias) >> shift` as a C arithmetic shift on a signed type. `[HIGH/OBSERVED by
-execution]`
+reimplementer models `(acc + bias) >> shift` as a C arithmetic shift on a signed type.
 
 ---
 
@@ -473,7 +474,7 @@ shift-bits). The join, verified by matching widths and executing:
 > operand bit-width* (a 32-bit `art` scalar), NOT a 32-bit lane. Contrast `packv_16_48_16` (the vector-shift
 > form) whose third field `16` echoes the output width because its shift rides a 16-bit `vec` lane. A join
 > that reads the third number as a lane width mis-types the op. The `_w` suffix (`packv_32_96_32_w`) marks
-> the wide 96→32 form; the `__0`/`__1` suffix marks the two-half readout. `[HIGH/OBSERVED]`
+> the wide 96→32 form; the `__0`/`__1` suffix marks the two-half readout.
 
 ---
 
@@ -514,31 +515,29 @@ IN operand) and writes `vec` with narrowing.** If it reads `vec` it is a convert
 
 ## 9. Adversarial self-verification — 5 strongest claims, re-challenged
 
-Each claim re-derived against the binary this pass; nothing taken on a report's word.
-
 1. **"42 `ivp_pack*` mnemonics, 217 placements, split 25×8 + 17×1."** *Challenge:* did the `mul*packl`
-   forms leak in, or did the count include the `_0`/`_1` halves twice? Re-derived: `rg -o
+   forms leak in, or did the count include the `_0`/`_1` halves twice? `rg -o
    'Opcode_(ivp_pack[a-z0-9_]*)_Slot_'` over `nm` (root starts `pack`, so the 4 `mul*packl` are excluded) =
    **42** distinct; per-mnemonic `rg -c` sums to **217**; the bimodal histogram is exactly **25** mnemonics
    with 8 placements and **17** with 1 (`25×8 + 17 = 217`). The `_0`/`_1` halves are *distinct* mnemonics
-   with their own thunks, correctly counted once each. **Confirmed.** `[HIGH/OBSERVED]`
+   with their own thunks, correctly counted once each. **Confirmed.**
 
 2. **"Pack rides `s1_ld`, not `s2_mul`."** *Challenge:* maybe some pack forms ride the Mul slot like the
    MAC. `nm | rg 'Opcode_ivp_pack.*_Slot_.*_encode' | rg -o 'Slot_[a-z0-9_]+' | sort -u` returns **only**
    `s1_ld` slots (`f0..f7_s1_ld`, `n2_s1_ld`) — **zero** `s2_mul`. The `s2_mul` symbols are the *unpack*
-   (`ivp_sem_unpack_wvec_mov_*`, B22). Pack is Ld-slot exclusively. **Confirmed.** `[HIGH/OBSERVED]`
+   (`ivp_sem_unpack_wvec_mov_*`, B22). Pack is Ld-slot exclusively. **Confirmed.**
 
 3. **"Rounding is round-half-up, not round-to-even."** *Challenge:* the executed ties might be coincidence.
-   Re-run on a *clean* 0.5 fraction with no even-coincidence: `packv_8_24_8(acc=8, shift=4)` → `8>>4 = 0.5`
+   On a *clean* 0.5 fraction with no even-coincidence: `packv_8_24_8(acc=8, shift=4)` → `8>>4 = 0.5`
    → **1** (round-to-even would give **0**, the nearest even). And `packvr_16_48_32(acc=1, shift=1)` →
    `0.5` → **1** (to-even = 0). Both round **up**. The bias term `1<<(shift-1)` in the disassembly confirms
-   the mechanism. Round-to-even is **refuted**. **Confirmed.** `[HIGH/OBSERVED by execution]`
+   the mechanism. Round-to-even is **refuted**. **Confirmed.**
 
 4. **"`packvnr` is no-round AND no-saturate (wraps); `packvr` is round + signed-saturate."** *Challenge:*
-   maybe `nr` only drops the round but still saturates. Re-run on out-of-range acc: `packvnr_16_48_16(40000,
+   maybe `nr` only drops the round but still saturates. On out-of-range acc: `packvnr_16_48_16(40000,
    0)` → `0x9c40 (-25536)` — the **modular wrap** of 40000 mod 2^16, **not** `0x7fff` (which a saturator
    returns, and which `packvr` *does* return on the same input). So `nr` drops both. Saturation in `nr` is
-   **refuted**. **Confirmed.** `[HIGH/OBSERVED by execution]`
+   **refuted**. **Confirmed.**
 
 5. **"The no-`r` `packv*` forms are F6-exclusive because they take a per-lane `vec` shift."** *Challenge:*
    maybe they place elsewhere too, or the operand is really an AR. `nm | rg
@@ -546,9 +545,8 @@ Each claim re-derived against the binary this pass; nothing taken on a report's 
    iclass `Iclass_IVP_PACKVNX48_args` operand 2 is `opnd_ivp_sem_wvec_pack_vr` (a `vec` IN), whereas the
    `r`-form `Iclass_IVP_PACKVRNX48_args` operand 2 is `art` (an AR IN). The extra `vec` read needs F6's
    spare Ld port. Both the single-placement count and the operand-model difference confirm it. **Confirmed.**
-   `[HIGH/OBSERVED]`
 
-**What I could not ground to OBSERVED.** The exact word-position of `ivp_packhn_2x64w`'s "high" extract is
+**What is not grounded to OBSERVED.** The exact word-position of `ivp_packhn_2x64w`'s "high" extract is
 `[MED/OBSERVED]` — the leaf reads `module__xdref_packm_32_96`/a high-word slice, but the `2x64w` lane-tiling
 (whether "high" is word1 or word2 of the 96-bit lane) is inferred from the `m`/`h` token semantics, not
 separately executed end-to-end. The `p`/`q` extract variants' exact bit-shuffle is `[HIGH/OBSERVED]` as
@@ -564,7 +562,7 @@ leaves but their *use* (which GEMM tiling emits them) is `[MED/INFERRED]`.
 | Pack is a `s1_ld`-slot op (never `s2_mul`); unpack is `s2_mul` (B22) | `[HIGH/OBSERVED]` | `Opcode_ivp_pack*_Slot_*_s1_ld_encode` symtab; `ivp_sem_unpack_wvec_mov_*` on `s2_mul` |
 | Operand model `vt`(out)/`wvr`(in)/`art`-or-`vr`(in)/`CPENABLE`(in) | `[HIGH/OBSERVED]` | `Iclass_IVP_PACK*_args` tables (`.data.rel.ro`, delta `0x200000`) |
 | AR-shift (`r`) forms = 8 placements; vector-shift (no-`r`) forms = F6-only | `[HIGH/OBSERVED]` | one placement each = `Slot_f6_s1_ld_encode`; operand-arity difference |
-| Opcode-sel `WORD0` templates (byte-exact `F6_S1_Ld`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks this pass |
+| Opcode-sel `WORD0` templates (byte-exact `F6_S1_Ld`) | `[HIGH/OBSERVED]` | `objdump -d` of the encode thunks |
 | Pipeline: clamp → round-bias → ASR → saturate; result `@stage12` | `[HIGH/OBSERVED]` | executed `xdref` leaves + `libcas` `F0_F0_S1_Ld_*_PACK*_inst_stage{0..12}` |
 | Round-half-up (ties toward +∞), proven on 0.5-fraction inputs | `[HIGH/OBSERVED by execution]` | ctypes `packv_8_24_8`/`packvr_16_48_32` on half-way values |
 | Signed-sat (`packv*`/`packvr*`), unsigned-sat (`packvu*`/`packvru*`), no-sat wrap (`packvnr*`/`packl*`) | `[HIGH/OBSERVED by execution]` | ctypes clamp-vs-wrap on out-of-range acc |
@@ -604,7 +602,7 @@ leaves but their *use* (which GEMM tiling emits them) is `[MED/INFERRED]`.
 ---
 
 *Provenance: the encode templates, slot placements, and iclass operand-arg tables are `[HIGH/OBSERVED]` —
-re-disassembled / `readelf`-dumped in-checkout from `libisa-core.so` (`ncore2gp/config/`, `.data.rel.ro`
+disassembled / `readelf`-dumped in-checkout from `libisa-core.so` (`ncore2gp/config/`, `.data.rel.ro`
 delta `0x200000`). The value semantics in [§5](#5-value-semantics--driven-live) are `[HIGH/OBSERVED by
 execution]` — the `libfiss-base.so` `xdref` pack leaves were loaded via ctypes and run on the inputs shown
 (saturation edges, 0.5-fraction rounding ties, no-sat wrap). The pipeline stages are `[HIGH/OBSERVED]` from

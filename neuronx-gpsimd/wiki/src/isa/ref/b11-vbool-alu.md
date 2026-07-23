@@ -28,9 +28,9 @@ Concretely, B11 owns **27 mnemonics / 189 placements** of the certified-perfect 
 The encoding is read byte-exact from the non-stripped `libisa-core.so` (`Opcode_*_encode` selector
 templates, the `ivp_sem_vbool_alu_ltr_{vbt,vbr,vbs}` field thunks); the **value semantics are proven by
 execution** by driving the matching `module__xdref_*` leaves in `libfiss-base.so` live via `ctypes`
-(license-free value lane). Every numeric claim is anchored to a binary address or a live call and tagged
-`[HIGH/OBSERVED]` unless flagged. The prose is derived from static analysis and in-process execution of
-the shipped artifacts only.
+(license-free value lane). Every numeric claim is anchored to a binary address or a live call; the page
+default is `[HIGH/OBSERVED]` and claims that depart from it carry an explicit tag. The prose is derived
+from static analysis and in-process execution of the shipped artifacts only.
 
 > **The B01/B03/B08/B11/fp-sub-isa partition boundary (read this first).** The predicate datapath is
 > split by **what reads / writes the predicate**, with **zero mnemonic overlap**:
@@ -52,7 +52,6 @@ the shipped artifacts only.
 > The `IVP_FS0..FS7` predicate-accumulator file B11 targets is **not** the FCR/FSR arithmetic-control
 > state — that 5-flag IEEE sticky block lives in [fp-sub-isa](../core/fp-sub-isa.md) and is a different
 > state file ([fp-sub-isa §5.4](../core/fp-sub-isa.md)). The full family-prefix assignment is §7.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -75,20 +74,20 @@ the shipped artifacts only.
 | Value leaves driven live | `andb`/`orb`/`xorb`/`notb`/`andnotb`/`ornotb`, `bnorfs`/`borfs`, `popc8`/`popc64`, `extbi`, `joinb`, `notb1`/`andnotb1`/`ornotb1` | §4–§5 |
 | Confidence | `[HIGH/OBSERVED]` (encoding + execution) | — |
 
-Every B11 mnemonic is package **`xt_ivp32`** (parsed `opcodes[i].package` at offset `+0x08` for all 27,
-this pass — all returned `xt_ivp32`). So the whole batch counts toward the **1065 `ivp_`-prefix vector
+Every B11 mnemonic is package **`xt_ivp32`** (parsed `opcodes[i].package` at offset `+0x08` for all 27 —
+all return `xt_ivp32`). So the whole batch counts toward the **1065 `ivp_`-prefix vector
 axis**, **not** the `xt_booleans` package — that package holds the *base-Xtensa scalar* `BR` ops
 (`all4`/`any8`/branch-on-bool), which are owned by **B28**. The `*b1` ops here *use* the `BR` register
 file but are themselves `xt_ivp32` Vision-ISA forms, not `xt_booleans`.
 
 > **CORRECTION — the partition row's "`xt_ivp32`+`xt_booleans`" package anchor is half right.** The
 > [template §4.1](template-and-partition.md) row for B11 names the package anchor as
-> "`xt_ivp32`+`xt_booleans`". Re-parsed this pass, **all 27 B11 mnemonics resolve to package
-> `xt_ivp32`** — none are `xt_booleans`. The `xt_booleans` package (the 16×1-bit `BR` file's *own*
+> "`xt_ivp32`+`xt_booleans`". **All 27 B11 mnemonics resolve to package `xt_ivp32`** — none are
+> `xt_booleans`. The `xt_booleans` package (the 16×1-bit `BR` file's *own*
 > instruction set: scalar `all`/`any`/branch-on-bool) is a **base-Xtensa** package owned by **B28**
 > ([template §4.1](template-and-partition.md) B28 row), not by B11. B11 merely *references* the `BR`
 > file from three `xt_ivp32` Vision ops (`notb1`/`andnotb1`/`ornotb1`). Pin the package anchor as
-> **`xt_ivp32` only** for B11. `[HIGH/OBSERVED]` (package parse of all 27 rows).
+> **`xt_ivp32` only** for B11 (package parse of all 27 rows).
 
 ---
 
@@ -98,7 +97,7 @@ file but are themselves `xt_ivp32` Vision-ISA forms, not `xt_booleans`.
 `f0_s1_ld` for the boolean-logic group; `f0_s3_alu` / `f1_s2_mul` for the scan/bridge group).
 `opcode-sel imm` is `word0` of the representative `Opcode_ivp_<mn>_Slot_<slot>_encode` template
 (`C7 07 imm32` — [flix-encoding §6.1](../core/flix-encoding.md)). `files (dir)` names the operand files
-the op touches and the dst direction. `[conf]` is `[HIGH/OBSERVED]` for every row unless flagged.
+the op touches and the dst direction. Every row is `[HIGH/OBSERVED]` unless flagged.
 
 ### 2.1 vbool boolean algebra — `vbool→vbool` (7 mnemonics, 56 placements)
 
@@ -180,7 +179,7 @@ family whose *destination* is the FS file rather than `vbool`.
 > This is the [register-files §6.4](../core/register-files.md) `vbool→AR` extraction path ("a
 > population/index count … the path that produces a scalar `AR` result"). The `m`-infixed forms
 > (`counteqm`/`countlem`) additionally read a `vbool` mask to gate which lanes are counted; the `z`
-> forms compare against the implicit zero (one fewer `vec` operand). `[HIGH/OBSERVED]`
+> forms compare against the implicit zero (one fewer `vec` operand).
 
 ---
 
@@ -190,8 +189,7 @@ family whose *destination* is the FS file rather than `vbool`.
 
 All seven §2.1 logic ops and all three §2.2 `*b1` ops issue in **`f0_s1_ld`** — the **Load** pipe — and
 share the low 16 bits **`0x4a00`** (the `vbool`-ALU iclass marker in the Ld slot). The discriminator is
-the **high byte of `word0`** (re-read byte-exact from the encode thunks `@0x341…`/`@0x353…`/`@0x361…`
-this pass):
+the **high byte of `word0`** (read byte-exact from the encode thunks `@0x341…`/`@0x353…`/`@0x361…`):
 
 ```
 andb   0x70104a00     andnotb  0xa0004a00     notb   0xe0104a00     joinb   0xb0004a00
@@ -206,7 +204,7 @@ xorb   0xd0004a00
 > This is why B03 calls them "ld-pipe" ops, and why their placement count is **low** (8–9, vs 15–21 for
 > a vec-ALU op) — they are legal in far fewer slots. The compiler that wants to overlap predicate
 > bookkeeping with data movement gets it for free; one that tries to issue `andb` in the ALU slot finds
-> no placement. `[HIGH/OBSERVED]` (slot token in every `Opcode_ivp_<logic>_Slot_f0_s1_ld_encode`).
+> no placement — the slot token appears in every `Opcode_ivp_<logic>_Slot_f0_s1_ld_encode`.
 
 The byte-2 nibble distinguishes the operand **class**: `0x_0_` for the XOR/ANDNOT/ORNOT/`joinb`/`mb`
 forms (byte-2 `0x00`), `0x_1_` for AND/OR/NOT and the `*b1` forms (byte-2 `0x10`/`0x11`). There is **no**
@@ -225,8 +223,8 @@ multiply pipe's lane-reduction tree to sum the set bits. The `count*4nx8` ops ar
 ### 3.3 The three `vbool` operand fields — `vbt`/`vbr`/`vbs`, distinct bit-windows
 
 A 3-operand boolean op (`andb vbt, vbr, vbs`) names three `vbool` registers via the
-`ivp_sem_vbool_alu_ltr_{vbt,vbr,vbs}` field group. The *get* thunk bodies (re-disassembled this pass)
-give the exact bit-windows in the Ld-slot `word0`:
+`ivp_sem_vbool_alu_ltr_{vbt,vbr,vbs}` field group. The *get* thunk bodies, disassembled, give the exact
+bit-windows in the Ld-slot `word0`:
 
 ```c
 // Field_fld_ivp_sem_vbool_alu_ltr_vbt_Slot_f0_s1_ld_get @ 0x330250   (DESTINATION)
@@ -250,7 +248,7 @@ only the opcode selector) — [template §3.2 NOTE](template-and-partition.md). 
 > `[3:0]`, `vbs` (src2) is `[11:8]`, and the *destination* `vbt` is the highest field `[16:13]`. A
 > reimplementer who lays the operands out left-to-right (dst, src1, src2) will deposit the destination
 > register into the source nibble and silently compute into the wrong `vbool`. Read the windows from the
-> field thunks, never from operand order. `[HIGH/OBSERVED]`
+> field thunks, never from operand order.
 
 ### 3.4 Operand count and direction
 
@@ -259,7 +257,6 @@ The `*_operands` descriptor and `num_args` immediate pin the shape. `andb` is `n
 `num_args = 9` (one FS `o` + eight `vbool` `i`); `popc`/`count*` write an `AR` `o`. The destination is a
 plain **`out`** (`0x6f`, 'o') in every B11 op — there is **no `m`/inout merge** here (that is the B03
 `*t` family). A B11 boolean op fully overwrites its destination mask; it never reads-modifies-writes.
-`[HIGH/OBSERVED]`
 
 ---
 
@@ -272,7 +269,7 @@ live-driven `module__xdref_*` leaf.
 ### 4.1 (a) Bitwise predicate logic — `ivp_andb` / `ivp_orb` / `ivp_xorb` / `ivp_andnotb`
 
 The mask is a 64-bit value the leaf processes as **two 32-bit words** (low `(%rsi)`, high `0x4(%rsi)`).
-Disassembled bodies (re-read this pass), unified:
+Disassembled bodies, unified:
 
 ```c
 // module__xdref_andb_64_64_64 @ 0x856f80  (ABI: rdi=ctx unused, rsi=a, rdx=b, rcx=out)
@@ -301,7 +298,7 @@ lanes flagged by `b`" idiom (`andnotb`) and "force-set the lanes `b` does not fl
 ### 4.2 (b) Fold-into-FS reduce — `ivp_borfs2n` / `ivp_bnorfs2n`
 
 `borfs` is a **horizontal OR across eight `vbool` registers**, written to one FS-state register;
-`bnorfs` is the same with a final complement. The body (re-read `@0x8327f0`/`@0x832870`) ORs eight
+`bnorfs` is the same with a final complement. The body (`@0x8327f0`/`@0x832870`) ORs eight
 64-bit masks word-by-word:
 
 ```c
@@ -331,7 +328,7 @@ single-bit masks `{1,2,4,8,16,32,64,1<<63}` → `0x800000000000007f` (the bitwis
 > (`module__xdref_randb2n_64_64 @0x81cc40`: `cmpl $0xffffffff,(%rsi)` → a within-mask "all-set?"
 > reduce). B11's `borfs` ORs **eight separate** masks into one FS register — an *inter-register* fold.
 > Same word "reduce", orthogonal axis: B08 folds lanes within a mask, B11 folds registers into FS.
-> Never merge the two tallies. `[HIGH/OBSERVED]`
+> Never merge the two tallies.
 
 ### 4.3 (c) Population / match scan — `ivp_popc2nx8`, `ivp_counteq4nx8`, `ivp_ext0ib`
 
@@ -388,7 +385,7 @@ two differently-strided bitsets would be. `[HIGH/OBSERVED]`
 `libfiss-base.so` (sha256 `260b110c…`, 864 `module__xdref_*` value leaves) is callable in-process with
 no license. The per-element/per-mask leaf ABI is **System-V with `rdi` reserved** (a ctx pointer the
 mask leaves ignore): mask args are `uint32_t[2]` pointers, scalar args pass by value, outputs are
-pointer args. Six leaf families driven live this pass; the transcripts below reproduce with
+pointer args. Six leaf families driven live; the transcripts below reproduce with
 `ctypes.CDLL(...)`.
 
 ### 5.1 vbool boolean algebra over two 64-bit masks (the required logic case)
@@ -419,7 +416,7 @@ bnorfs(all-zero masks)  = ffffffffffffffff   (every lane: "none of the 8 set it"
 ```
 
 `borfs` is the inter-register OR-reduce into the FS register; `bnorfs` its complement. The all-zero case
-is the FS "nothing matched" sentinel. `[HIGH/OBSERVED by execution]`
+is the FS "nothing matched" sentinel.
 
 ### 5.3 Population / extract scan — `popc`, `extbi` (the required scan case)
 
@@ -434,7 +431,7 @@ extbi_2_16_32(mask 0b10110, i=0..5) = [0,3,3,0,3,0]   (bit replicated into the 2
 
 `popc` answers "how many lanes set"; `extbi` extracts one indexed predicate lane (with lane-width
 replication). Together they synthesise *any/all/first-set*, for which the ISA ships **no dedicated
-opcode**. `[HIGH/OBSERVED by execution]`
+opcode**.
 
 ### 5.4 Single-bit `BR` boolean — `notb1` / `andnotb1` / `ornotb1`
 
@@ -445,7 +442,7 @@ ornotb1(a,b)  over {0,1}² : 0|~0=1  0|~1=0  1|~0=1  1|~1=1     (= a | ~b)
 ```
 
 The 1-bit `BR`-file forms reproduce their mask siblings on a scalar boolean — `notb1` is "is the bit
-clear?", `andnotb1`/`ornotb1` invert `b` then AND/OR. `[HIGH/OBSERVED by execution]`
+clear?", `andnotb1`/`ornotb1` invert `b` then AND/OR.
 
 ---
 
@@ -475,7 +472,7 @@ clear?", `andnotb1`/`ornotb1` invert `b` then AND/OR. `[HIGH/OBSERVED by executi
 ## 7. Partition discipline — the exact family-prefix assignment
 
 To guarantee **no mnemonic is double-counted** across the predicate-adjacent batches, the per-prefix
-ownership, re-derived against the roster this pass:
+ownership, derived against the roster:
 
 | family / prefix | example | owner | why |
 |---|---|---|---|
@@ -507,7 +504,7 @@ the boundary but **not** counted in B11's 27. `[HIGH/OBSERVED]`
 > compares (just with an FS destination and a fixed slot index). B11 owns the *consumers* of `vbool`/FS,
 > so these belong with the compare/classify producers ([fp-sub-isa §5.4](../core/fp-sub-isa.md) /
 > [B03](b03-vec-alu-rest.md)). They are excluded from the §8 tally to avoid double-counting a producer
-> the compare batches already own. `[HIGH/OBSERVED]`
+> the compare batches already own.
 
 ---
 
@@ -522,10 +519,10 @@ the boundary but **not** counted in B11's 27. `[HIGH/OBSERVED]`
 | vbool↔FS bridge + scan | 11 | 68 | `movvfs/movfsv_512_64×8`, `popc{8,16,32,64}`, `count*` (composed) |
 | **B11 total** | **27** | **189** | — |
 
-Re-grounded this pass: `Σ` placements over the 27 mnemonics = **189** (`nm libisa-core.so | rg -c
+`Σ` placements over the 27 mnemonics = **189** (`nm libisa-core.so | rg -c
 'Opcode_ivp_<mn>_Slot_.*_encode'` summed; the per-mnemonic counts in §2). The 27 mnemonics are a strict
-subset of the **1065** `ivp_`-prefix vector ops and of package **`xt_ivp32`** (all 27 parsed `xt_ivp32`
-this pass). Together with B01/B02/B03 (the `vec`/compare/merge ALU) and B08 (within-mask reduce) they
+subset of the **1065** `ivp_`-prefix vector ops and of package **`xt_ivp32`** (all 27 parse
+`xt_ivp32`). Together with B01/B02/B03 (the `vec`/compare/merge ALU) and B08 (within-mask reduce) they
 cover the predicate datapath without overlap (§7). No B11 mnemonic appears in any other batch's prefix
 set. The 189 placements are part of — never additive beyond — the certified-perfect **12569**
 ([coverage-tally](../core/coverage-tally.md)); the valid pairing stays **`1534 ↔ 12569`**, never
@@ -533,8 +530,8 @@ set. The 189 placements are part of — never additive beyond — the certified-
 
 **Value-leaf contribution.** B11 resolves to **≈14 distinct `module__xdref_*` leaves** (7 logic + 3 b1
 + `ext0ib` + `borfs`/`bnorfs` + `popc{8,16,32,64}` + `movvfs`/`movfsv`), of which the 6 logic-family,
-the 2 fold, the 2 popc widths driven, the 3 b1, and `extbi` were **driven live to 0 mismatches** this
-pass; `mb`/`movab1`/`movba1`/`count*` are structural/composed (no dedicated leaf — validated by the
+the 2 fold, the 2 popc widths driven, the 3 b1, and `extbi` were **driven live to 0 mismatches**;
+`mb`/`movab1`/`movba1`/`count*` are structural/composed (no dedicated leaf — validated by the
 objdump round-trip, not `xdref` execution). All counted in the 864 leaf denominator
 ([coverage-tally §5](../core/coverage-tally.md)).
 
@@ -543,37 +540,37 @@ objdump round-trip, not `xdref` execution). All counted in the 864 leaf denomina
 ## 9. Adversarial self-verification — five strongest claims re-challenged
 
 1. **"The boolean ops are `vbool→vbool` flat-64-bit, issued in the *Load* slot, distinct from the
-   `vec→vec` bitwise B01 ops."** Re-challenged two ways: (a) the value leaves are `andb_64_64_64`
+   `vec→vec` bitwise B01 ops."** Two independent checks: (a) the value leaves are `andb_64_64_64`
    (flat 64-bit, no element-width token) vs B01's `and_2nx8` (element-typed) — *different leaves*;
    (b) every `Opcode_ivp_andb_Slot_*_encode` symbol carries the slot token **`f0_s1_ld`** (the Load
    sub-slot), confirmed by the `word0` low bytes `0x4a00`, and the `libcas-core` model
    `F0_F0_S1_Ld_16_inst_IVP_ANDB_issue`. A reimplementer scheduling `andb` in the ALU slot finds no
-   placement. **Holds.** `[HIGH/OBSERVED]`
+   placement. **Holds.**
 2. **"`borfs`/`bnorfs` OR/NOR-reduce *eight* `vbool` registers into one FS register, not a within-mask
-   reduce."** Re-challenged by driving the leaf live: `borfs` of eight distinct single-bit masks →
+   reduce."** Driving the leaf live: `borfs` of eight distinct single-bit masks →
    `0x800000000000007f` (the bitwise OR of all eight), `bnorfs` → its complement; all-zero inputs →
    `0`/`0xffff…ffff`. The disasm shows a chain of 8 `or` ops over 8 pointer args then a store. Contrast
    B08's `randb2n` (`cmpl $0xffffffff,(%rsi)` — a *within-one-mask* all-set test). The two reduces are
-   on orthogonal axes. **Holds.** `[HIGH/OBSERVED by execution]`
+   on orthogonal axes. **Holds.**
 3. **"`popc`/`count*` cross a file boundary: `vec`/`vbool` in, `AR` scalar out — and there is no
-   dedicated `any`/`all`/`first-set` opcode."** Re-challenged: `popc8` over all 256 inputs and `popc64`
+   dedicated `any`/`all`/`first-set` opcode."** `popc8` over all 256 inputs and `popc64`
    over 2000 random masks both returned **0 mismatches** against `bin(x).count('1')`; the destination is
    an `AR` register ([register-files §6.4](../core/register-files.md) `vbool→AR` path). `nm | rg -i
    'any|allb|firstb'` over the roster = **0** — *any/all/first* are synthesised from
-   `popc`/`borfs`/`ext0ib` + a scalar compare, not shipped as opcodes. **Holds.** `[HIGH/OBSERVED]`
+   `popc`/`borfs`/`ext0ib` + a scalar compare, not shipped as opcodes. **Holds.**
 4. **"The three `vbool` operand fields sit at non-adjacent windows: `vbt`(dst)@[16:13], `vbr`(src1)@[3:0],
-   `vbs`(src2)@[11:8] — dst is *not* first in the bitstream."** Re-challenged by disassembling the three
+   `vbs`(src2)@[11:8] — dst is *not* first in the bitstream."** Disassembling the three
    `Field_fld_ivp_sem_vbool_alu_ltr_*_Slot_f0_s1_ld_get` thunks: `vbt` = `(w0<<0xf)>>0x1c` (bits
    [16:13]), `vbr` = `w0 & 0xf` (bits [3:0]), `vbs` = `(w0<<0x14)>>0x1c` (bits [11:8]). A left-to-right
    (dst,src1,src2) layout would deposit the destination into the `vbr` source nibble. The windows are
-   read from the thunks, not operand order. **Holds (and corrects the naive layout).** `[HIGH/OBSERVED]`
+   read from the thunks, not operand order. **Holds (and corrects the naive layout).**
 5. **"Every B11 mnemonic is package `xt_ivp32`, not `xt_booleans` — the partition row's package anchor
-   is half-wrong."** Re-challenged by parsing `opcodes[i].package` (`+0x08`) for all 27 B11 rows
+   is half-wrong."** Parsing `opcodes[i].package` (`+0x08`) for all 27 B11 rows
    directly from the `.data.rel.ro` table (file = VMA − `0x200000`): **all 27 return `xt_ivp32`**;
    `andb`/`notb1`/`movvfs`/`borfs2n`/`popc2nx8`/`counteq4nx8` all parsed `xt_ivp32`. The `xt_booleans`
    package is the *base-Xtensa* `BR` instruction set (B28), which the `*b1` ops only *reference*. The
    template's "`xt_ivp32`+`xt_booleans`" anchor is corrected to `xt_ivp32` only (§1 CORRECTION).
-   **Holds.** `[HIGH/OBSERVED]`
+   **Holds.**
 
 **Ungrounded / flagged items.** (i) `ivp_mb`/`ivp_movab1`/`ivp_movba1`/`ivp_count*4nx8` have **no
 dedicated `module__xdref_*` value leaf** — their value semantics are `[MED/INFERRED]` (composed from
@@ -622,7 +619,7 @@ multi-width leaves serve the one mnemonic's per-lane element width; counted once
 
 *Provenance: selector templates, `num_args`/`_operands` direction bytes, the
 `ivp_sem_vbool_alu_ltr_{vbt,vbr,vbs}` field thunks, and the package parse of all 27 `opcodes[]` rows are
-re-disassembled/re-read from `libisa-core.so` (sha256 `8fe68bf4…`, `ncore2gp/config/`, not stripped);
+disassembled and read from `libisa-core.so` (sha256 `8fe68bf4…`, `ncore2gp/config/`, not stripped);
 the value leaves in §4–§5 (`andb`/`orb`/`xorb`/`notb`/`andnotb`/`ornotb`, `borfs`/`bnorfs`,
 `popc8`/`popc64`, `extbi`, `notb1`/`andnotb1`/`ornotb1`, `joinb`) are driven live via `ctypes` against
 `libfiss-base.so` (sha256 `260b110c…`), license-free; pipeline stages from `libcas-core.so` (DWARF).
