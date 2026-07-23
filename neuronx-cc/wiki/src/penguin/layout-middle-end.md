@@ -52,7 +52,7 @@ All strings below are verbatim from `targets/tonga/CodeGenFlow.cpython-310-x86_6
 "TransformLayout" / "GlobalLayoutOpt" / "LowerTranspose"  ── the passes it sequences
 ```
 
-`CompileCommand.so` carries the request-side names `mcts_layout` and `used_mcts_layout`. The accepted value set `{mcts, none}` and the default `none` are grounded by the help literal plus the `== "mcts"` equality test in the CodeGenFlow pipeline assembly; they are **STRONG** rather than a verbatim `choices=` array dump (the argparse choices list is not a single contiguous rodata array, so a third value cannot be byte-excluded).
+`CompileCommand.so` carries the request-side names `mcts_layout` and `used_mcts_layout`. The accepted value set `{mcts, none}` and the default `none` come from the help literal plus the `== "mcts"` equality test in the CodeGenFlow pipeline assembly. The argparse choices list is not a single contiguous rodata array, so a third accepted value cannot be excluded byte-for-byte.
 
 > **NOTE —** `_layout_transform_heuristic` (request) and `used_mcts_layout` (telemetry) are distinct. MCTS can be *requested* and still not *fire*: a trivial graph, a single real candidate after `add_no_change_plan`, or a failed design-space generation (`"Design space generation failed."`) all fall back to the static assignment, and `used_mcts_layout` records that it did not run.
 
@@ -77,11 +77,15 @@ The layout problem is a constrained assignment: many tensors' partition-axis cho
 | **DAG** | A dataflow sub-graph (one op, or a fused op region) whose layout is **one** decision. | `dag2pagsets` keys; `chosen_par_axes_for_dag` |
 | **UCC** | An *undecided connected component*: a maximal set of DAGs whose layouts are mutually coupled and not yet decided. The solver solves each UCC independently. | `undecided_cc`, `undecided_dag_set`; greedy docstring `"each dag in a undecided connected component (UCC) in PAGLayoutAnalysis"` |
 
-> **CORRECTION (LAYOUT-PAG) —** an earlier draft asserted the literal expansion `"Partition Axes Group"` and the prose phrase `"undecided connected component"` exist as strings. String-table analysis shows neither spelled-out form is present: only the identifier forms `axis2pag` and `undecided_cc` survive. The acronym expansions are the *meaning*, reconstructed from the identifiers, not quoted strings. The owning class is `PAGLayoutFramework` (not a class literally named `PAGLayoutAnalysis`).
+> **NOTE — the acronym expansions are reconstructions, not strings.** The string table
+> holds only the identifier forms `axis2pag` and `undecided_cc`; neither `"Partition Axes
+> Group"` nor `"undecided connected component"` appears spelled out, so do not grep for
+> them. Likewise, the owning class is `PAGLayoutFramework` — `PAGLayoutAnalysis` is the
+> *module*, not a class.
 
 ### Construction order
 
-The framework builds its structures in a fixed sequence (`__pyx`-confirmed method symbols, ordinal order in `PAGLayoutFramework`):
+The framework builds its structures in a fixed sequence (method symbols read from the `__pyx` table, in ordinal order within `PAGLayoutFramework`):
 
 ```text
 build_initial_pags_and_pagsets        ── seed PAGs from each tensor/axis, initial PAGSet candidates
@@ -136,7 +140,7 @@ has_swap_benefit     ── does swapping cut transpose count/size?
 can_bridge_with_pf_transpose            ── can a PE-array (partition-free) transpose reconcile a mismatch w/o DMA?
 ```
 
-The rule set (**STRONG**, grounded by the identifiers above):
+The rule set, reconstructed from the identifiers above:
 
 ```c
 // Matmul partition-axis forcing + operand-swap peephole (PAGLayoutFramework)
@@ -235,7 +239,12 @@ The exhaustive arm carries an explicit early-prune: `min_cost` is threaded as th
 
 > **QUIRK —** the class and module are named *GreedySearch*, yet the default behavior is *exhaustive when affordable*. The greedy `heuristic_based_search` is the last resort for UCCs whose Cartesian product is too large even to divide-and-conquer. A reimplementer who builds a pure greedy hill-climb will under-search small components and produce worse layouts than this binary on common (small-UCC) graphs.
 
-> **CORRECTION (LAYOUT-DOC) —** the cost-model docstrings (`CycleBasedLayoutCostModel`) and the autotuner method docstrings (`add_plan`, `add_no_change_plan`) are **stripped** in this build — only identifiers and short format strings survive there. The greedy module's docstrings and the analysis module's docstrings (e.g. the matmul swap log, the empty-partition note) *do* survive. Claims about the cost model and autotuner below are grounded on identifiers/format-literals, not docstrings.
+> **NOTE — docstring survival is uneven across these modules.** The greedy module and the
+> analysis module keep their docstrings (the matmul swap log and the empty-partition note
+> below are quoted from them), but `CycleBasedLayoutCostModel` and the autotuner methods
+> (`add_plan`, `add_no_change_plan`) are stripped down to identifiers and short format
+> strings. Everything §5 and §6 say about those two rests on identifiers and format
+> literals, so expect no prose to grep for there.
 
 ### Vectorization-driven post-merge: `AdditionalPAGSetAdder`
 
@@ -495,7 +504,7 @@ _DesignSpaceGenerationAutotuner  enumerates LayoutCandidateEnumerator candidates
 
 ### The apply pass — `TransformLayout`
 
-`tonga/passes/TransformLayout.so` is the materializer for either path. Confirmed methods: `calculateTargetLayout`, `annotatePartitionAxes`, `buildTranspose`, `buildOutputTranspose`, `calculateIOTranspose`, `calculateTranspose`, `createIntermediateTensor`, `build_dst_indices`. It rewrites each DAG to the chosen partition/free axes and emits the implied transpose(s).
+`tonga/passes/TransformLayout.so` is the materializer for either path. Its methods are `calculateTargetLayout`, `annotatePartitionAxes`, `buildTranspose`, `buildOutputTranspose`, `calculateIOTranspose`, `calculateTranspose`, `createIntermediateTensor`, `build_dst_indices`. It rewrites each DAG to the chosen partition/free axes and emits the implied transpose(s).
 
 ---
 
@@ -516,7 +525,6 @@ _DesignSpaceGenerationAutotuner  enumerates LayoutCandidateEnumerator candidates
 
 - [Layout & Tiling Pipeline](layout-tiling-pipeline.md) — `LayoutTilingPipeline` assembles {layout assign → tiling}; layout (this page) precedes tiling
 - [HLO Layout Passes](../hlo-opt/layout-passes.md) — the XLA HLO layout normalization runs in hlo-opt *before* Penguin; a different binary and IR layer, disjoint from this tonga middle-end
-  > **CORRECTION (Wave-2 audit) — cross-ref slug.** This link previously pointed at `../hlo/legalize-passes.md`; the `hlo/` directory does not exist and there is no `legalize-passes` page. The hlo-opt-binary layout-normalization page is `hlo-opt/layout-passes.md` ("Layout Passes"). Retargeted; no factual claim changed.
 - [SBUF / PSUM Geometry](../arch/sbuf-psum-geometry.md) — the 128-partition SBUF the partition-axis decision targets
 - [Front Pipeline](../front/pipeline.md) — where the layout middle-end sits in the overall compile flow
 - [Worked Example: Matmul](../front/worked-example-matmul.md) — the contract→partition forcing in a concrete matmul lowering
