@@ -4,7 +4,7 @@
 
 ## Abstract
 
-The neuronx-cc IR exists in **two languages at once**. The Python front-end (`penguin` / `birpy`) *emits* BIR; the C++ back-end (`libwalrus.so` → `libBIR.so`) *consumes* it. For an XLA HLO program to compile, the JSON a Python `InstActivation.toJson` produces must parse 1:1 into the C++ `bir::InstActivation::readFieldsFromJson` and re-emit byte-stable. There is no hand-written serializer on either side to keep in sync — instead a **single generator** (`neuronxcc/instabrew/brewer.py`) reads one ISA datamodel spec and projects it into *both* a Python class and a C++ `bir::Inst*` class, so the wire-key set, field order, and enum spelling are structurally identical. This page proves that parity at the byte level for two ops (`InstActivation`, 11 keys; `InstMatmultBase`, 13 keys), pins the C++↔Python `*Gen` class parallel, maps the `toJson`/`createFromJson` factory path against the Python static factories, and **reconciles the four different "instruction count" denominators** (121 vs 113 vs 110 vs 105) that sibling pages report — they count different things, and conflating them is a real correctness hazard for anyone re-deriving the class roster.
+The neuronx-cc IR exists in **two languages at once**. The Python front-end (`penguin` / `birpy`) *emits* BIR; the C++ back-end (`libwalrus.so` → `libBIR.so`) *consumes* it. For an XLA HLO program to compile, the JSON a Python `InstActivation.toJson` produces must parse 1:1 into the C++ `bir::InstActivation::readFieldsFromJson` and re-emit byte-stable. There is no hand-written serializer on either side to keep in sync — instead a **single generator** (`neuronxcc/instabrew/brewer.py`) reads one ISA datamodel spec and projects it into *both* a Python class and a C++ `bir::Inst*` class, so the wire-key set, field order, and enum spelling are structurally identical. This page proves that parity at the byte level for two ops (`InstActivation`, 11 keys; `InstMatmultBase`, 13 keys), pins the C++↔Python `*Gen` class parallel, maps the `toJson`/`createFromJson` factory path against the Python static factories, and **reconciles the five different "instruction count" denominators** (121 vs 113 vs 112 vs 110 vs 105) that sibling pages report — they count different things, and conflating them is a real correctness hazard for anyone re-deriving the class roster.
 
 This is the cross-language counterpart to [the single-spec → `*OpGen` Python contract](./instruction-base.md) and the [110-opcode `InstructionType` enum](./instruction-type.md). Read those first if you have not: this page assumes you know the `bir::Instruction` base struct and the opcode taxonomy.
 
@@ -37,9 +37,9 @@ The consequence is that the Python emitter and the C++ consumer are two **projec
 
 ---
 
-## 2. The `bir::Inst*` class family and the **121 / 113 / 110 / 105** reconciliation
+## 2. The `bir::Inst*` class family and the **121 / 113 / 112 / 110 / 105** reconciliation
 
-This is the single most error-prone fact on the page, because four sibling passes report four different "instruction class counts" and they are **four different denominators**. They are all correct; they count different sets. Treating any one as "the leaf count" is wrong. Every number below is re-grounded against `nm`/`readelf` on the pinned `libBIR.so`.
+This is the single most error-prone fact on the page, because sibling passes report five different "instruction class counts" and they are **five different denominators**. They are all correct; they count different sets. Treating any one as "the leaf count" is wrong. Every number below is re-grounded against `nm`/`readelf` on the pinned `libBIR.so`.
 
 | Figure | What it actually counts | How to reproduce | Confidence |
 |---|---|---|---|
