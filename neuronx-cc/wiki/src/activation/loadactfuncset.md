@@ -51,7 +51,9 @@ A `LoadActFuncSet` makes a named image resident; a subsequent `Activation` names
 
 > **GOTCHA —** Do not expect the load to carry the table data, or the activation to carry the set. The two halves of "reference the loaded function" are split across two ops sharing one bundle byte: the **load** picks the image (raw index), the **activation** picks the function (remapped code). Neither carries a memory address — the images are ROM/engine-resident.
 
-The same byte `+0x23` doubling as both fields is structurally exact and intentional: it is the single "activation table / function selector" slot in the 64-byte compute word ([2.11](../isa/activation-encoding.md) walks the Activation side; this page walks the Load side). [CONFIRMED — the two encoders both write `+0x23`; `InstActivation` reads no set-id key.]
+The same byte `+0x23` doubling as both fields is structurally exact and intentional: it is the single "activation table / function selector" slot in the 64-byte compute word ([2.11](../isa/activation-encoding.md) walks the Activation side; this page walks the Load side).
+
+*Anchors: both encoders write bundle `+0x23`; `InstActivation::readFieldsFromJson` @ `0x417f00` reads no set-id key.*
 
 ---
 
@@ -63,13 +65,13 @@ The L3 wire encoder is `CoreV2GenImpl::visitInstLoadActFuncSet@0x1250b30` (797 b
 
 Every Activation-engine bundle is 64 bytes built through the shared `CoreV2GenImpl::setupHeader@0x1172120`, which stamps `[opcode][0x10][0x00 0x00]` into bytes `0..3` (`inst_word_len = 0x10` = 16 dwords = 64 B). `LoadActFuncSet` fills exactly one more byte and zeroes the rest:
 
-| off | field | source | conf |
+| off | field | source | confidence |
 |---|---|---|---|
-| `0x00` | opcode `0x23` | `setupHeader(src=0x23)` | CONFIRMED |
-| `0x01` | `inst_word_len 0x10` | `setupHeader` | CONFIRMED |
-| `0x02..0x03` | reserved `0x0000` | `setupHeader` | CONFIRMED |
-| `0x23` | **`act_tbl_sel`** (set index, range-checked byte) | `inst+0xF0` → range-checked setter `@0x124e710` | CONFIRMED |
-| *all other 60 bytes* | `0x00` | — (no AP, no operand, no LUT address) | CONFIRMED |
+| `0x00` | opcode `0x23` | `setupHeader(src=0x23)` | CERTAIN |
+| `0x01` | `inst_word_len 0x10` | `setupHeader` | CERTAIN |
+| `0x02..0x03` | reserved `0x0000` | `setupHeader` | CERTAIN |
+| `0x23` | **`act_tbl_sel`** (set index, range-checked byte) | `inst+0xF0` → range-checked setter `@0x124e710` | CERTAIN |
+| *all other 60 bytes* | `0x00` | — (no AP, no operand, no LUT address) | CERTAIN |
 
 ### 2.2 Opcode proof and the `fill_reg` guard
 
@@ -81,7 +83,7 @@ Opcode `0x23` is stamped at all three codegen-mode arms (the backend has a dry-r
 0x1250dda  mov byte  [rbp+var_A1], 0x23   ; alt-bin arm:        opcode → setupHeader src
 ```
 
-It is independently re-validated by the ISA validity checker `core_v2::dbg_is_valid_acttableld@0x128d650`, whose body does `cmp r11b, 0x23` on the opcode byte (two sites, `@0x128d77e` / `@0x128d7c8`). [CONFIRMED]
+It is independently re-validated by the ISA validity checker `core_v2::dbg_is_valid_acttableld@0x128d650`, whose body does `cmp r11b, 0x23` on the opcode byte (two sites, `@0x128d77e` / `@0x128d7c8`).
 
 Before writing the selector, the encoder enforces a guard: `inst+0x110` (the `fill_reg` register-mode flag) **must be 0**, or it raises `boost::throw_exception<out_of_range>` (`@0x74b410`):
 
@@ -107,7 +109,7 @@ The selector is written by a shared range-checking setter (`sub_124E710`) that t
 0x1250cd7 call  sub_124E710                  0x1250e25 call  sub_124E710
 ```
 
-Both arms then `fwrite(bundle, 1, 0x40, sink)` — one 64-byte bundle (`@0x1250d07` generate / `@0x1250d8b` alt-bin). [CONFIRMED — full encoder body read; offsets and stamps verbatim.]
+Both arms then `fwrite(bundle, 1, 0x40, sink)` — one 64-byte bundle (`@0x1250d07` generate / `@0x1250d8b` alt-bin).
 
 ---
 
@@ -152,7 +154,7 @@ Byte-exact anchors:
 0x1157abc  mov  byte [rax+0x110], 0    ; fill_reg = 0
 ```
 
-The map's value type is `int` (`std::map<string, pair<string const, int>>` per the demangled `operator[]` symbol), confirming the index is a plain signed integer, not a richer descriptor. [CONFIRMED — map symbol, store offset, and both asserts read verbatim.]
+The map's value type is `int` (`std::map<string, pair<string const, int>>` per the demangled `operator[]` symbol), so the index is a plain signed integer, not a richer descriptor.
 
 > **GOTCHA —** The minted load's name carries a `"-PWP"` suffix (rodata `@0x1c835c5`, `lea rsi, "-PWP"` `@0x1156643`) — these instructions show up in a BIR dump as `<…>-PWP`. That is just the synthesised name, not a separate field.
 
@@ -188,9 +190,7 @@ long act_func_set_id(const DenseMap<AffineIdx*, long>& idxMap) const {
 0x402e0b  call  QuasiAffineExpr::eval ; symbolic path: eval the affine expr
 ```
 
-[CONFIRMED — read/write/eval bodies all anchored.]
-
-> **CORRECTION —** D-J13 named only the silicon wire field `act_tbl_sel`; D-AG07 named the BIR-text form `act_func_set_id`. They are the **same datum at `+0xF0`**, two layers: BIR-JSON key `act_func_set_id`, silicon field `act_tbl_sel`. The encoder reads `+0xF0` and packs it into bundle `+0x23` with the wire name `instr.act_tbl_sel`.
+> **NOTE — `act_tbl_sel` and `act_func_set_id` are one field, not two.** They are the same datum at `inst+0xF0` seen at two layers: `act_func_set_id` is the BIR-JSON key, `act_tbl_sel` is the silicon field name. The encoder reads `+0xF0` and packs it into bundle byte `+0x23` under the wire name `instr.act_tbl_sel`.
 
 ---
 
@@ -218,7 +218,7 @@ Two structural budget asserts in `generateInstLoadActFuncSet` cap the residency 
 - `"the number of activation tables must be <= 8"` — **at most 8 resident func-sets** can be referenced per engine. This is distinct from the `act_func_set_id` index range (0..20): the index numbers the *shipped catalog*, the `≤ 8` caps how many a single kernel keeps live.
 - `"Engine2UsedActSetNames.size() <= 1"` (and the CoreV4 variant `== 0`) — one func-set *family* per engine.
 
-[STRONG — pass structure, symbols, and all asserts anchored. The precise cover heuristic inside `calculateBestSets` is byte-traced in [10.7 (set-cover)](set-cover.md): it is a **greedy first-fit** single forward sweep, *not* an optimal power-set minimiser — so "minimal number of loads" / "minimal cover" here means greedily-fewest by first-fit, not provably-optimal.]
+One caveat on the word "minimal": the cover heuristic inside `calculateBestSets` is a **greedy first-fit** single forward sweep, not an optimal power-set minimiser ([10.7 (set-cover)](set-cover.md) byte-traces it). "Minimal number of loads" throughout this section therefore means greedily-fewest by first-fit, not provably optimal.
 
 ---
 
@@ -238,7 +238,7 @@ A separate global toggle, `enableDynamicActTable` (`.bss`, with the literal `"Dy
 - **Static mode** — a single pre-loaded ROM set; no per-op `LoadActFuncSet`.
 - **Dynamic mode** — the set-cover path of §4 emits `ActivationTableLoad` ops and sets the `neff_feature_dynamic_pwp` module attribute.
 
-[CONFIRMED for the bit/attribute (anchored byte-exact); STRONG for the `enableDynamicActTable` role; SPECULATIVE for the precise static↔dynamic decision rule — the upstream HLO pass that *sets* the module attribute is not in these binaries.]
+The feature bit and the attribute name are byte-exact anchors; the `enableDynamicActTable` role is read from its reference sites. [SPECULATIVE] The precise static↔dynamic decision rule is out of reach — the upstream HLO pass that *sets* the module attribute does not live in these binaries.
 
 ---
 
@@ -254,7 +254,7 @@ The silicon ISA-name tables (`core_vN::enum_variant_string_opcode`, the 256-entr
 | `0x25` | `Activate2` | `InstActivation` (gen4-only override) |
 | `0xC6` | `PseudoLoadActFuncSet` | scheduling pseudo (this section) |
 
-The real load is emitted as `0x23`; the `0xC6` pseudo is the placeholder the scheduling/prefetch passes (§4b/c) manipulate — a pseudo so the resident-set bookkeeping survives hoisting and dedup without consuming a real engine cycle, later materialised to `0x23`. [STRONG for the pseudo's existence and ISA-name; INFERRED for the exact `0xC6 → 0x23` materialisation point.]
+The real load is emitted as `0x23`; the `0xC6` pseudo is the placeholder the scheduling/prefetch passes (§4b/c) manipulate — a pseudo so the resident-set bookkeeping survives hoisting and dedup without consuming a real engine cycle, later materialised to `0x23`. [INFERRED] The exact point at which `0xC6` becomes `0x23` was not byte-traced.
 
 ---
 
@@ -282,7 +282,7 @@ Each body is 35 bytes (`sub rsp,8; lea rcx/rsi/rdi <strings>; call __assert_fail
 
 The consequence for a reimplementer: the perf-sim / time-aware scheduler **must not** call the typed latency for this op (it would abort) — it treats the load via a generic default, effectively a fixed/near-zero slot. The refill cost is paid **structurally** — by the §4 trio that minimises the number of loads and hoists each one early — not by a cycle number charged per instruction.
 
-> **CORRECTION —** Earlier strand notes (D-AG07 §6) listed `getLatencyReadInit / getLatencyExec / getLatencyWriteDrain` as if they "model the load cost." They exist as *symbols*, but their *bodies* are `__assert_fail` stubs in this build — the cost is not modelled. The structural amortisation (fewest loads + prefetch + dedup) is the real cost-management mechanism, confirmed by the absence of any non-stub latency.
+> **GOTCHA — the latency symbols exist but model nothing.** Seeing `getLatency` / `getLatencyReadInit` / `getLatencyExec` / `getLatencyWriteDrain` in the symbol table for this op suggests a cost model; every one of those bodies is an `__assert_fail` stub. The structural amortisation of §4 (fewest loads + prefetch + dedup) is the only cost-management mechanism the build has for the table load.
 
 ---
 
@@ -303,25 +303,23 @@ The `(set index in the load) + (func code in the activation) + (implicit residen
 
 ## 9. Confidence ledger
 
-| claim | tag | anchor |
+| claim | confidence | anchor |
 |---|---|---|
-| Encoder `CoreV2GenImpl::visitInstLoadActFuncSet@0x1250b30`, gen-invariant (no V3/V4 override) | CONFIRMED | functions.json; no override symbol |
-| Opcode `0x23`, three stamps + `dbg_is_valid_acttableld cmp r11b,0x23` | CONFIRMED | `0x1250c18/c8b/dda`; `0x128d77e/7c8` |
-| Selector `inst+0xF0` → bundle `+0x23` via range-checked `instr.act_tbl_sel` setter | CONFIRMED | `0x1250cbb→cc8→cd7`; `0x1250e0a→e11→e25` |
-| `fill_reg@0x110` guard must be 0, else `out_of_range@0x74b410` | CONFIRMED | `0x1250cab/cb5`, `0x1250dfa/e04` |
-| Set index = `std::map<string,int>` position = `act_info.json` array order | CONFIRMED | `operator[]@0x1156881`; `mov [rcx+0xF0],ebx@0x11568b6` |
-| Asserts: name must exist; index in range; `≤8` tables; one family/engine | CONFIRMED | rodata `0x1d4ff60/0x1d50040`; "≤ 8" / `Engine2UsedActSetNames` |
-| BIR-JSON key `act_func_set_id`; default `0xFFFFFFFF` (−1); read `@0x4155c0`, write `@0x435850` | CONFIRMED | `cmp [rbx+0xF0],0xFFFFFFFF@0x43586a`; `lea [r12+0xF0]@0x41571b` |
-| Static/symbolic split via flag `@0x110`; symbolic = `QuasiAffineExpr::eval` | CONFIRMED | `getActFuncSetIdEvalIfNeeded@0x402de0` |
-| Insertion = `lower_act` set-cover + prefetch hoist + global dedup | STRONG | `0x11597e0 / 0x11653f0 / 0x11618a0` + asserts |
-| `dynamic_pwp` = `ModuleAttribute "neff_feature_dynamic_pwp"` + NEFF bit `0x40` | CONFIRMED | `0x1529c18` (string) + `0x1529c5d` (`or r14,0x40`) |
-| `enableDynamicActTable` global toggles static-vs-dynamic mode | STRONG | `"DynamicActTable"@0x1c83025` |
-| Silicon names: `0x23 ActivationTableLoad`, `0xC6 PseudoLoadActFuncSet` | CONFIRMED | `enum_variant_string_opcode@0x127aea0/0x143fd80`; rodata strings |
-| **No cost model** — all 4 `Hwm` latency methods are `__assert_fail` stubs; no per-inst override | CONFIRMED | `0x4737c0/0x474c60/0x476100/0x4775a0` (35 B each); `InstActivation::getLatencyExec@0x3ea570` is real (459 B) |
-| Valid engine = Activation (EngineType 2) only | CONFIRMED | `InstLoadActFuncSet::getValidEngines@0x43ef80` |
-| `0xC6 → 0x23` materialisation point | INFERRED | pseudo string present; exact lowering not byte-traced |
-| Precise static↔dynamic decision rule / upstream attribute setter | SPECULATIVE | HLO/front-end, not in these binaries |
+| Encoder `CoreV2GenImpl::visitInstLoadActFuncSet@0x1250b30`, gen-invariant (no V3/V4 override) | CERTAIN | functions.json; no override symbol |
+| Opcode `0x23`, three stamps + `dbg_is_valid_acttableld cmp r11b,0x23` | CERTAIN | `0x1250c18/c8b/dda`; `0x128d77e/7c8` |
+| Selector `inst+0xF0` → bundle `+0x23` via range-checked `instr.act_tbl_sel` setter | CERTAIN | `0x1250cbb→cc8→cd7`; `0x1250e0a→e11→e25` |
+| `fill_reg@0x110` guard must be 0, else `out_of_range@0x74b410` | CERTAIN | `0x1250cab/cb5`, `0x1250dfa/e04` |
+| Set index = `std::map<string,int>` position = `act_info.json` array order | CERTAIN | `operator[]@0x1156881`; `mov [rcx+0xF0],ebx@0x11568b6` |
+| Asserts: name must exist; index in range; `≤8` tables; one family/engine | CERTAIN | rodata `0x1d4ff60/0x1d50040`; "≤ 8" / `Engine2UsedActSetNames` |
+| BIR-JSON key `act_func_set_id`; default `0xFFFFFFFF` (−1); read `@0x4155c0`, write `@0x435850` | CERTAIN | `cmp [rbx+0xF0],0xFFFFFFFF@0x43586a`; `lea [r12+0xF0]@0x41571b` |
+| Static/symbolic split via flag `@0x110`; symbolic = `QuasiAffineExpr::eval` | CERTAIN | `getActFuncSetIdEvalIfNeeded@0x402de0` |
+| Insertion = `lower_act` set-cover + prefetch hoist + global dedup | HIGH | `0x11597e0 / 0x11653f0 / 0x11618a0` + asserts |
+| `dynamic_pwp` = `ModuleAttribute "neff_feature_dynamic_pwp"` + NEFF bit `0x40` | CERTAIN | `0x1529c18` (string) + `0x1529c5d` (`or r14,0x40`) |
+| `enableDynamicActTable` global toggles static-vs-dynamic mode | HIGH | `"DynamicActTable"@0x1c83025` |
+| Silicon names: `0x23 ActivationTableLoad`, `0xC6 PseudoLoadActFuncSet` | CERTAIN | `enum_variant_string_opcode@0x127aea0/0x143fd80`; rodata strings |
+| **No cost model** — all 4 `Hwm` latency methods are `__assert_fail` stubs; no per-inst override | CERTAIN | `0x4737c0/0x474c60/0x476100/0x4775a0` (35 B each); `InstActivation::getLatencyExec@0x3ea570` is real (459 B) |
+| Valid engine = Activation (EngineType 2) only | CERTAIN | `InstLoadActFuncSet::getValidEngines@0x43ef80` |
+| `0xC6 → 0x23` materialisation point | MEDIUM | pseudo string present; exact lowering not byte-traced |
+| Precise static↔dynamic decision rule / upstream attribute setter | LOW | HLO/front-end, not in these binaries |
 
 > **Provenance.** Every address and string on this page was re-verified against the cp310 `libwalrus.so` / `libBIR.so` IDA sidecars (`*_functions.json`, `disasm/*.asm`, `*_rodata.bin`). The `(bkt, ctrl)` blob layout these loads select is [10.4](bkt-ctrl-blob.md); the function catalog and set roster are [Activation Function Catalog](act-function-catalog.md); the Activation (0x21) encoder that consumes the resident set is [2.11](../isa/activation-encoding.md); the engine datapath view is [1.10](../arch/activation-engine.md). The minimal-cover heuristic gets its own page ([10.7 (set-cover)](set-cover.md)).
-
-*Sources: D-M07 (LoadActFuncSet / LUT-load mechanism), D-AG07 (PWP bkt/ctrl blob + ctrl-word packer), D-J13 (CoreV2/V4 RNG + activation-engine wire encoders).*

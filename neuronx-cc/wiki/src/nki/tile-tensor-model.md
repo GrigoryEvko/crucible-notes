@@ -6,7 +6,7 @@
 
 A NKI kernel never touches a hardware buffer directly. Everything it manipulates is a Python object from one four-class hierarchy: **`tensor`** (the abstract root — a multidimensional homogeneous array), **`tile`** (a `tensor` subclass whose *partition dimension is the highest dimension*), **`tile_index`** (a `tile` subclass that carries affine index values), and **`mask`** (a `tensor` subclass that is a boolean predicate gating a tile op). This page recovers that hierarchy from `tensor.so`, the contract each class promises, and the four mechanisms that make the abstraction work: the **`as_tile()` chokepoint** that materializes the implicit tensor→tile conversion (and thereby asserts the partition-dim contract), the **`__getitem__` value-vs-mask split**, the **operator-overload dispatch** that routes every `+`/`<`/`@` through `as_tile()._binop(np.<ufunc>, …)`, and the **store-only-lvalue rule** — `tile[...] = value` is a *hard error*; writes go through an explicit store op, and the only legal lvalue path is `tile_assignment(a, b) → a.update_lvalue(b)`.
 
-The structural surprise, recovered and CONFIRMED below, is that **this module is almost entirely abstract**. All four classes are *pure-Python* classes (no `cdef` extension types, so no recoverable `__slots__`/field offsets), built with `tensor_type` as their metaclass. Nearly every leaf method `raise`s `NotImplementedError` with a `"... not implemented for base <class>"` message; the concrete tile is `NeuronSBTensor` (an SBUF tensor) defined in the sibling `tensors.so` ([6.2.2](memref-view-model.md)). `tensor.py` is the **interface contract** for the whole NKI value model — the set of operator overloads, the conversion rule, and the lvalue ban — with the real arithmetic, indexing, and predicate math deferred to siblings.
+The structural surprise is that **this module is almost entirely abstract**. All four classes are *pure-Python* classes (no `cdef` extension types, so no recoverable `__slots__`/field offsets), built with `tensor_type` as their metaclass. Nearly every leaf method `raise`s `NotImplementedError` with a `"... not implemented for base <class>"` message; the concrete tile is `NeuronSBTensor` (an SBUF tensor) defined in the sibling `tensors.so` ([6.2.2](memref-view-model.md)). `tensor.py` is the **interface contract** for the whole NKI value model — the set of operator overloads, the conversion rule, and the lvalue ban — with the real arithmetic, indexing, and predicate math deferred to siblings.
 
 For reimplementation, the contract is:
 
@@ -39,7 +39,7 @@ The hierarchy encodes one idea: a *value* in a NKI kernel is a `tensor`, but onl
 
 ### Construction
 
-All four classes are ordinary Python classes built at module-exec time with the Cython `_Pyx_Py3MetaclassPrepare` + `_Pyx_Py3ClassCreate` pair — i.e. the equivalent of `class X(Base, metaclass=tensor_type): …`. There are **no** `cdef` extension-type structs for `tensor`/`tile`/`tile_index`/`mask` (CONFIRMED: the only `__pyx_type_*` struct in the binary is the `_build_inplace_op` closure scope). Attribute storage is therefore dict-based; **no field offsets or `__slots__` are recoverable**, by design — they live on the concrete `NeuronSBTensor`.
+All four classes are ordinary Python classes built at module-exec time with the Cython `_Pyx_Py3MetaclassPrepare` + `_Pyx_Py3ClassCreate` pair — i.e. the equivalent of `class X(Base, metaclass=tensor_type): …`. There are **no** `cdef` extension-type structs for `tensor`/`tile`/`tile_index`/`mask` — the only `__pyx_type_*` struct in the binary is the `_build_inplace_op` closure scope. Attribute storage is therefore dict-based; **no field offsets or `__slots__` are recoverable**, by design — they live on the concrete `NeuronSBTensor`.
 
 ```text
 class tensor(metaclass=tensor_type):   # bases = ()       — abstract root
@@ -50,7 +50,7 @@ class mask(tensor):                    # base  = tensor   — boolean predicate 
 
 > **NOTE — `mask` is a `tensor`, not a `tile`.** Recovered class qualnames confirm `mask` derives from `tensor`: the `mask` ClassCreate builds its bases tuple from the `tensor` global, not `tile`. This matters because a `mask` is a *predicate over* a tile region, not a value you do arithmetic on — its operator surface is the boolean algebra `& | ~` (§6), not the elementwise ufunc set.
 
-### Docstrings (CONFIRMED — verbatim from `.rodata`)
+### Docstrings (verbatim from `.rodata`)
 
 The three class docstrings are the most precise statement of the data model and are present byte-for-byte in the binary:
 
@@ -61,7 +61,7 @@ The three class docstrings are the most precise statement of the data model and 
 
 The `tile_index` note is the key to §5.4: an index expression (an `arange`-derived affine value) is *itself a tile*, which is why arithmetic on it composes into a dynamic access pattern rather than a numeric add.
 
-### Source line map (CONFIRMED — recovered from per-method `_Pyx_TraceSetupAndCall("tensor.py", <lineno>)`)
+### Source line map (recovered from per-method `_Pyx_TraceSetupAndCall("tensor.py", <lineno>)`)
 
 The recovered line-number table gives the authoritative class layout. `[abstract]` = body is a single `raise NotImplementedError("… not implemented for base <cls>")`; the matching message string is present in `.rodata` for every one of them.
 
@@ -107,7 +107,7 @@ class tile_index(tile), overrides ~535/560..575:
 
 ### The implicit-conversion rule
 
-The strongest statement of the data model lives in `tensor.broadcast_to`'s docstring (CONFIRMED verbatim):
+The strongest statement of the data model lives in `tensor.broadcast_to`'s docstring, verbatim from the binary:
 
 > *"Broadcast tensor to a new shape based on numpy broadcast rules. The tensor object must be a tile or can be implicitly converted to a tile. **A tensor can be implicitly converted to a tile iff the partition dimension is the highest dimension.**"*
 
@@ -134,7 +134,7 @@ The reverse view, `tensor.as_tensor()` (line 423, abstract: `"as_tensor not impl
 
 ## 3. Indexing — `__getitem__` / `__setitem__` / the store-only-lvalue rule
 
-### 3.1 `__getitem__` — value vs mask split (line 84, CONCRETE, STRONG)
+### 3.1 `__getitem__` — value vs mask split (line 84, concrete)
 
 `tensor.__getitem__` @ `0x31b00` branches on whether the index is a boolean predicate:
 
@@ -154,10 +154,10 @@ PyObject *__getitem__(self, indices) {
 
 Two semantics:
 
-- **Predicate / mask indexing** (`tile[mask]` or `tile[predicate]`): the receiver is converted to a tile, a raw `predicate` is first *lifted to a mask* via `predicate._promote_to_mask(t)`, and a masked view is produced by `tile.mask_tensor(mask)`. **The `_promote_to_mask` call is on the index object, not the receiver** (STRONG — the getattr order in the decompiled body; the line-96 path is taken only when the index is not already a `mask`).
+- **Predicate / mask indexing** (`tile[mask]` or `tile[predicate]`): the receiver is converted to a tile, a raw `predicate` is first *lifted to a mask* via `predicate._promote_to_mask(t)`, and a masked view is produced by `tile.mask_tensor(mask)`. **The `_promote_to_mask` call is on the index object, not the receiver**, and the line-96 path is taken only when the index is not already a `mask`.
 - **Value indexing** (affine / `arange` / int slices): everything else dispatches to `self._index_tensor(indices)` (abstract here; concrete in `NeuronSBTensor` and `indexing.so` [6.2.3](index-mask-inference.md)), producing a sub-tile / strided view. Because "indices are also a tile," an `arange`-derived index expression is itself a `tile_index`.
 
-### 3.2 `__setitem__` is a hard error — the store-only-lvalue rule (line 104, CONCRETE, CONFIRMED)
+### 3.2 `__setitem__` is a hard error — the store-only-lvalue rule (line 104, concrete)
 
 Direct assignment into a tensor is **banned unconditionally**. The body ignores its arguments and raises:
 
@@ -178,7 +178,7 @@ The docstring (*"Set the value(s) at the given indices…"*) is still attached, 
 
 > **QUIRK — the type name is formatted into the message at raise time.** `type(self).__name__` is interpolated, so the error reads e.g. `"NeuronSBTensor cannot be directly assigned…"` — the message names the *concrete* class even though the raising code is the abstract `tensor.__setitem__`. `mask.__setitem__` (line 529) and `tile_index.__setitem__` (line 575) are *separate abstract overrides*, so subclasses can give their own assignment errors.
 
-### 3.3 The real lvalue path — `tile_assignment` / `update_lvalue` (line 604, CONCRETE, CONFIRMED)
+### 3.3 The real lvalue path — `tile_assignment` / `update_lvalue` (line 604, concrete)
 
 The legal way to model `a[...] = b` at the IR level is the module function `tile_assignment` @ `0x36390`:
 
@@ -189,15 +189,13 @@ PyObject *tile_assignment(a, b) {
 }
 ```
 
-`update_lvalue` is abstract in base `tile` (`"update_lvalue not implemented for base tile"`); the concrete impl reifies the assignment as an SSA-style lvalue-update *node* in the trace, not a Python `__setitem__`. This is how the trace machinery models a store: assignment becomes an IR operation (cross-ref `KernelBuilder` / `BirCodeGenLoop`), keeping the value model functional while still expressing mutation.
-
-> **CORRECTION (report §3.4 cross-ref):** the backing report cites the lowering target as "D-P22". On this wiki the trace/codegen lowering is documented under [6.2.6 nki/bir-codegen-loop](bircodegenloop.md) and the `KernelBuilder` page; the IR-level reification claim itself is CONFIRMED by the one-line `update_lvalue` delegation and the abstract base stub.
+`update_lvalue` is abstract in base `tile` (`"update_lvalue not implemented for base tile"`); the concrete impl reifies the assignment as an SSA-style lvalue-update *node* in the trace, not a Python `__setitem__`. This is how the trace machinery models a store: assignment becomes an IR operation, keeping the value model functional while still expressing mutation. The lowering that consumes that node is documented in [6.2.6 nki/bir-codegen-loop](bircodegenloop.md) and on the `KernelBuilder` page.
 
 ---
 
-## 4. `match_par_dim` — partition-dim operand alignment (line 609, CONCRETE)
+## 4. `match_par_dim` — partition-dim operand alignment (line 609, concrete)
 
-Before an elementwise binary op runs, the two operands must share the same partition (leading) extent. `match_par_dim` @ `0x308c0` is that pre-pass. The control flow is STRONG (the `RichCompare` / `PyNumber_Add` / `broadcast_to` sequence and linenos 609–625 are CONFIRMED; the exact per-element comparison constants are obscured by Cython's `RichCompare` lowering — see fidelity note):
+Before an elementwise binary op runs, the two operands must share the same partition (leading) extent. `match_par_dim` @ `0x308c0` is that pre-pass. The `RichCompare` / `PyNumber_Add` / `broadcast_to` sequence and the 609–625 line range are read straight out of the binary; only the per-element comparison constants are obscured by Cython's `RichCompare` lowering (see the fidelity notes in §9):
 
 ```c
 // match_par_dim(x, y)                                        # line 609
@@ -224,7 +222,7 @@ What is certain: it compares `x.shape` vs `y.shape` (fast-returns on equal), the
 
 ## 5. Operators — the dispatch table
 
-### 5.1 The universal pattern (STRONG)
+### 5.1 The universal pattern
 
 Every elementwise / comparison operator on a `tensor` routes through `as_tile()._binop(np.<ufunc>, other, …)`:
 
@@ -236,28 +234,28 @@ PyObject *__OP__(self, other) {
 
 `_binop` (line 434), `_unary_op` (~312), and `_matmul` (line 431) are all abstract in base; the concrete subclass lowers them to `nki_api` / `array_functions` op nodes (cross-ref `KernelBuilder.NeuronCodegen`).
 
-### 5.2 The ufunc binding table (CONFIRMED for the loaded constants; STRONG for the rest)
+### 5.2 The ufunc binding table
 
 Each dunder binds a specific numpy ufunc name. **All of these names are present in the module's `.rodata` string pool** (verified directly): `add`, `subtract`, `multiply`, `true_divide`, `divide`, `mod`, `bitwise_and`, `bitwise_or`, `bitwise_xor`, `left_shift`, `right_shift`, `less`, `less_equal`, `greater`, `greater_equal`, `int8`, `int32`, `integer`.
 
-| dunder | line | numpy ufunc | grounding |
-|---|---|---|---|
-| `__add__` / `__radd__` | 114/131 | `np.add` | CONFIRMED (`n_s_add` loaded in `__add__`) |
-| `__sub__` / `__rsub__` | 148/161 | `np.subtract` | STRONG (pool const) |
-| `__mul__` / `__rmul__` | 171/184 | `np.multiply` | STRONG |
-| `__truediv__` / `__floordiv__` | 202/197 | `np.true_divide` / `np.floor_divide` | STRONG (`divide`,`true_divide` both pooled) |
-| `__mod__` | 276 | `np.mod` | CONFIRMED (binds `mod`, **not** `fmod`) |
-| `__and__`/`__or__`/`__xor__` | 224/232/244 | `bitwise_and`/`_or`/`_xor` | STRONG |
-| `__lshift__`/`__rshift__` | 268/272 | `left_shift`/`right_shift` | STRONG |
-| `__lt__`/`__le__`/`__gt__`/`__ge__` | 248/252/256/260 | `less`/`less_equal`/`greater`/`greater_equal` | CONFIRMED for `__lt__` (`n_s_less`) |
+| dunder | line | numpy ufunc | confidence | evidence |
+|---|---|---|---|---|
+| `__add__` / `__radd__` | 114/131 | `np.add` | CERTAIN | `n_s_add` loaded in `__add__` |
+| `__sub__` / `__rsub__` | 148/161 | `np.subtract` | HIGH | pool const |
+| `__mul__` / `__rmul__` | 171/184 | `np.multiply` | HIGH | pool const |
+| `__truediv__` / `__floordiv__` | 202/197 | `np.true_divide` / `np.floor_divide` | HIGH | `divide`, `true_divide` both pooled |
+| `__mod__` | 276 | `np.mod` | CERTAIN | binds `mod`, not `fmod` |
+| `__and__`/`__or__`/`__xor__` | 224/232/244 | `bitwise_and`/`_or`/`_xor` | HIGH | pool const |
+| `__lshift__`/`__rshift__` | 268/272 | `left_shift`/`right_shift` | HIGH | pool const |
+| `__lt__`/`__le__`/`__gt__`/`__ge__` | 248/252/256/260 | `less`/`less_equal`/`greater`/`greater_equal` | CERTAIN for `__lt__` | `n_s_less` |
 
-> **GOTCHA — `mod` ≠ `fmod`.** The string pool contains **both** `mod` and `fmod`. `__mod__` binds `mod` (CONFIRMED via the `n_s_mod` getattr in its body); `fmod` is used elsewhere. Do not assume every pooled ufunc name maps 1:1 to the operator with the closest spelling.
+> **GOTCHA — `mod` ≠ `fmod`.** The string pool contains **both** `mod` and `fmod`. `__mod__` binds `mod`, via the `n_s_mod` getattr in its body; `fmod` is used elsewhere. Do not assume every pooled ufunc name maps 1:1 to the operator with the closest spelling.
 
-> **NOTE — comparisons return an int8 mask-tile.** `__lt__` fetches `np.less`, then `np.int8`, and **casts the boolean result to `int8`** (CONFIRMED: the body loads `n_s_np→n_s_less` then `n_s_np→n_s_int8`). A tile compare therefore yields an `int8` mask-like tile, not a Python `bool`. `int32` / `integer` are also referenced for index-dtype normalization.
+> **NOTE — comparisons return an int8 mask-tile.** `__lt__` fetches `np.less`, then `np.int8`, and **casts the boolean result to `int8`** — the body loads `n_s_np→n_s_less` then `n_s_np→n_s_int8`. A tile compare therefore yields an `int8` mask-like tile, not a Python `bool`. `int32` / `integer` are also referenced for index-dtype normalization.
 
 All reflected forms (`__radd__`…`__rxor__`) exist and mirror with operands swapped.
 
-### 5.3 The `tile` vs `tile_index` add-split (CONFIRMED)
+### 5.3 The `tile` vs `tile_index` add-split
 
 `__add__` is *not* a plain elementwise add — it dispatches on whether the operand is a `tile_index`:
 
@@ -271,9 +269,9 @@ PyObject *__add__(self, other) {
 }
 ```
 
-Adding a plain tile/number does an elementwise add (`tile._add_tile_or_number` @498 → `self._binop(np.add, other)`, CONFIRMED). Adding a `tile_index` instead builds a **dynamic index expression** via `_build_dynamic_index` (abstract here; concrete in `indexing.so` [6.2.3](index-mask-inference.md)). This is how `arange`/affine index math composes: `base_index + offset_tile` produces a new dynamic *access pattern*, not a numeric value-add. The `tile_index` subtype is precisely the carrier that flips `+` from "add values" to "compose accesses."
+Adding a plain tile/number does an elementwise add (`tile._add_tile_or_number` @498 → `self._binop(np.add, other)`). Adding a `tile_index` instead builds a **dynamic index expression** via `_build_dynamic_index` (abstract here; concrete in `indexing.so` [6.2.3](index-mask-inference.md)). This is how `arange`/affine index math composes: `base_index + offset_tile` produces a new dynamic *access pattern*, not a numeric value-add. The `tile_index` subtype is precisely the carrier that flips `+` from "add values" to "compose accesses."
 
-### 5.4 In-place ops — the `_build_inplace_op` factory (lines 464/465, CONCRETE, STRONG)
+### 5.4 In-place ops — the `_build_inplace_op` factory (lines 464/465, concrete)
 
 The augmented assigns (`__iadd__`/`__imul__`/`__isub__`/`__itruediv__`, …) are bound to closures produced by `_build_inplace_op` @ `0x283c0`, whose inner `_inplace_op` is at `0x43290`:
 
@@ -292,9 +290,9 @@ closure _build_inplace_op(op, name) {
 }
 ```
 
-`op` and `name` are captured per-operator; the kwargs dict is built with two `PyDict_SetItem` calls (`op=…`, `name=…`, CONFIRMED). `_iop_tile_impl` (440) / `_iop_number_impl` (443) are abstract in base (`"_iop_tile_impl not implemented for base tensor"`) — the concrete subclass emits an in-place IR op. The factory context also references `.sema.check_shape_identical` (the in-place op validates the two tiles have identical shape before mutating — STRONG/INFERRED).
+`op` and `name` are captured per-operator; the kwargs dict is built with two `PyDict_SetItem` calls (`op=…`, `name=…`). `_iop_tile_impl` (440) / `_iop_number_impl` (443) are abstract in base (`"_iop_tile_impl not implemented for base tensor"`) — the concrete subclass emits an in-place IR op. The factory context also references `.sema.check_shape_identical`; [INFERRED] the in-place op uses it to validate that the two tiles have identical shape before mutating.
 
-### 5.5 `__matmul__` (line 264, CONCRETE, CONFIRMED)
+### 5.5 `__matmul__` (line 264, concrete)
 
 ```c
 PyObject *__matmul__(self, other) {                          // 264
@@ -314,13 +312,13 @@ Both operands are converted via `as_tile()`; `_matmul` (431) is abstract here, w
 mask.__and__   [588] → NotImplementedError (589)    intersection (concrete in predicates.so)
 mask.__or__    [594] → NotImplementedError (595)    union
 mask.__invert__[600] → NotImplementedError (601)    complement
-mask.__rand__  [591] → CONCRETE: return self.__and__(other)   (n_s_and — commutative delegation)
-mask.__ror__   [597] → CONCRETE: return self.__or__(other)    (n_s_or)
+mask.__rand__  [591] → concrete: return self.__and__(other)   (n_s_and — commutative delegation)
+mask.__ror__   [597] → concrete: return self.__or__(other)    (n_s_or)
 ```
 
 The `__rand__`/`__ror__` reflected forms are the only concrete bodies — they delegate to `__and__`/`__or__` on `self`, which is the commutativity of `&`/`|`. The region-enumeration hooks (`enumerate_disjoint_intersections` 578, `enumerate_intersection_predicates` 581, `is_always_false` 584 for dead-region elimination, `is_scalar` 518, `combine_tile_with` 532, `_promote_to_mask` 535) are all abstract contract stubs that the trace/codegen uses to turn `tile[mask]` / `tile[pred]=…` into a set of guarded (predicated) sub-tile operations; the real region math is in `predicates.so` + `sema`.
 
-The end-to-end mask-attach path (CONFIRMED via §3.1):
+The end-to-end mask-attach path (§3.1):
 
 ```text
 tile_expr[predicate_or_mask]
@@ -331,23 +329,23 @@ tile_expr[predicate_or_mask]
                        #   → a masked/predicated tile whose subsequent ops carry the predicate
 ```
 
-> **QUIRK — a `tile_index` cannot be a predicate.** `tile_index._promote_to_mask` is an explicit override (line 535, CONCRETE) that raises `"_promote_to_mask() is not supported for tile_index"` (string CONFIRMED in `.rodata`). An index expression carries affine *values*, not a boolean — it can never act as a mask, and the model rejects the conversion loudly rather than producing a nonsense predicate.
+> **QUIRK — a `tile_index` cannot be a predicate.** `tile_index._promote_to_mask` is an explicit override (line 535) that raises `"_promote_to_mask() is not supported for tile_index"` — the string is present in `.rodata`. An index expression carries affine *values*, not a boolean — it can never act as a mask, and the model rejects the conversion loudly rather than producing a nonsense predicate.
 
 ---
 
 ## 7. View / dtype family
 
-| method | line | semantics | grounding |
-|---|---|---|---|
-| `astype(dtype)` | 352 | *"Copy of the tensor… Copy ALWAYS occur."* → `_astype_impl` (abstract @489) if dtype differs, else `self` | CONFIRMED (docstring) |
-| `view(dtype)` | 365 | *"reinterpret… NO copy will occur."* → `_view_impl` (377, abstract) | CONFIRMED |
-| `_compute_new_shape_for_view` | 380 | dtype-resize byte math (numpy `ndarray.view` rule) | CONFIRMED |
-| `reshape(shape)` | 316 | *"new shape without changing data… no copy"* | abstract |
-| `expand_dims(axis)` | 325 | adds a size-1 dim at `axis` | abstract |
-| `broadcast_to(shape)` | 334 | tuple-equal fast-path → `self`, else `_broadcast_to_impl` (489, abstract) | CONFIRMED |
-| `assert_shape(shape)` | 46 | `assert self.shape == shape, "Expected shape …"`; returns `self` (fluent) | CONFIRMED |
+| method | line | semantics | confidence | evidence |
+|---|---|---|---|---|
+| `astype(dtype)` | 352 | *"Copy of the tensor… Copy ALWAYS occur."* → `_astype_impl` (abstract @489) if dtype differs, else `self` | CERTAIN | docstring |
+| `view(dtype)` | 365 | *"reinterpret… NO copy will occur."* → `_view_impl` (377, abstract) | CERTAIN | docstring |
+| `_compute_new_shape_for_view` | 380 | dtype-resize byte math (numpy `ndarray.view` rule) | CERTAIN | decompiled body |
+| `reshape(shape)` | 316 | *"new shape without changing data… no copy"* | CERTAIN | abstract stub |
+| `expand_dims(axis)` | 325 | adds a size-1 dim at `axis` | CERTAIN | abstract stub |
+| `broadcast_to(shape)` | 334 | tuple-equal fast-path → `self`, else `_broadcast_to_impl` (489, abstract) | CERTAIN | decompiled body |
+| `assert_shape(shape)` | 46 | `assert self.shape == shape, "Expected shape …"`; returns `self` (fluent) | CERTAIN | decompiled body |
 
-`_compute_new_shape_for_view` carries two CONFIRMED error strings — *"Cannot obtain view of tensor with dtype '…"* and *"When changing to a larger dtype, its size must be a divisor of the total size in bytes of the last axis of the tensor"* — encoding the numpy view rule: enlarging a dtype requires the new itemsize divide the old last-axis byte length; shrinking subdivides the last axis. `broadcast_to`'s body normalizes both `self.shape` and `shape` to tuples (`PySequence_Tuple`) before the equality compare, then returns `self` unchanged on a no-op (CONFIRMED, line 346).
+`_compute_new_shape_for_view` carries two error strings — *"Cannot obtain view of tensor with dtype '…"* and *"When changing to a larger dtype, its size must be a divisor of the total size in bytes of the last axis of the tensor"* — encoding the numpy view rule: enlarging a dtype requires the new itemsize divide the old last-axis byte length; shrinking subdivides the last axis. `broadcast_to`'s body normalizes both `self.shape` and `shape` to tuples (`PySequence_Tuple`) before the equality compare, then returns `self` unchanged on a no-op (line 346).
 
 The properties `shape`(39)/`ndim`(56)/`dtype`(63)/`buffer`(70) are abstract; `itemsize`(77) is derived from `dtype.itemsize`; `base`(410) parallels `numpy.ndarray.base` (its docstring even cites the numpy doc URL). `buffer` is the memory space (SBUF / PSUM / DRAM) — the concrete `NeuronSBTensor` lives in SBUF.
 
@@ -359,23 +357,25 @@ There is **no** standalone `return_tensor_or_extracted_scalar` symbol in `tensor
 
 ---
 
-## 9. Adversarial self-verification
+## 9. Evidence anchors and limits
 
-The five strongest claims, re-challenged against the binary (`BuildID a891a5a1…`):
+Anchors for the central claims on this page, all against `BuildID a891a5a1…`:
 
-1. **Partition-dim-is-highest contract.** `strings` on the `.so` returns the `broadcast_to` docstring verbatim, including *"A tensor can be implicitly converted to a tile iff the partition dimension is the highest dimension"* and the `tile` class docstring *"a subtensor whose partition dimension is the highest dimension."* **CONFIRMED.**
-2. **Store-only-lvalue rule.** The fragment *" cannot be directly assigned to a tensor, use store operation instead."* is present in `.rodata`; `tensor.__setitem__` qualname exists at line 104; the lvalue path `tile_assignment` @ `0x36390` and the `__pyx_n_s_update_lvalue` constant both exist. **CONFIRMED.**
-3. **`as_tile()` is abstract here and is the chokepoint.** The string *"as_tile not implemented for base tensor"* is present; `__pyx_n_s_as_tile` exists; `tensor.as_tile` qualname exists. The per-op routing is STRONG (decompiled getattr order, not a literal call graph), so the *enforcement* is tagged GOTCHA as living in `tensors.so`. **CONFIRMED (abstract) + STRONG (routing).**
-4. **`mask` derives from `tensor`, not `tile`.** Recovered qualnames place `mask.*` methods directly; the four class names `tensor`/`tile`/`tile_index`/`mask` each appear exactly once as a defined name, and the ClassCreate bases for `mask` use the `tensor` global. **CONFIRMED.**
-5. **`tile_index._promote_to_mask` raises.** The string *"_promote_to_mask() is not supported for tile_index"* and the override qualname `tile_index._promote_to_mask` (`__pyx_pf_…tile_index_12__promote_to_mask`) both exist. **CONFIRMED.**
+| claim | anchor in the binary |
+|---|---|
+| Partition-dim-is-highest contract | `broadcast_to` docstring in `.rodata` (*"…iff the partition dimension is the highest dimension"*) plus the `tile` class docstring |
+| Store-only-lvalue rule | `.rodata` fragment *" cannot be directly assigned to a tensor, use store operation instead."*; `tensor.__setitem__` qualname @ line 104; `tile_assignment` @ `0x36390`; the `__pyx_n_s_update_lvalue` constant |
+| `as_tile()` abstract in this module | `.rodata` string *"as_tile not implemented for base tensor"*; `__pyx_n_s_as_tile`; the `tensor.as_tile` qualname |
+| `mask` derives from `tensor`, not `tile` | the `mask` ClassCreate bases tuple is built from the `tensor` global; each of the four class names appears exactly once as a defined name |
+| `tile_index` cannot be a predicate | `.rodata` string *"_promote_to_mask() is not supported for tile_index"* plus the override qualname `__pyx_pf_…tile_index_12__promote_to_mask` |
 
-Items left explicitly tagged below CONFIRMED: the per-element comparison constants inside `match_par_dim`/`broadcast_to` (Cython `RichCompare` lowering hides which `<`/`==` and which shape element — algorithm STRONG, literal predicate reconstructed); the ufunc bindings for ops whose body wasn't individually decompiled (STRONG, grounded on pool presence); `check_shape_identical` use inside `_build_inplace_op` (STRONG/INFERRED); and `return_tensor_or_extracted_scalar`'s sibling location (INFERRED).
+Where Cython hides the truth, and what remains open:
 
-### Fidelity notes (where Cython obscures the truth)
-
-- All four classes are pure-Python (no `cdef` extension types) — attribute/slot layout is dict-based; there are no RTTI records or field offsets to recover for them. **CONFIRMED absence.**
-- `RichCompare`-heavy bodies (`match_par_dim`, `broadcast_to`) lower the comparison op-code generically; the operands (`x.shape`/`y.shape`, broadcast targets) and branch structure ARE recovered, so the algorithm is STRONG, but the precise per-element predicate is reconstructed from the surrounding `broadcast_to` + list-concat, not read as a literal.
-- The numpy-ufunc binding per operator is taken from the `n_s_<ufunc>` constants loaded in each decompiled body (CONFIRMED for `add`/`less`/`int8`/`mod`); the rest are matched by pool-present names (STRONG). The `mod`/`fmod` coexistence is the standing trap.
+- All four classes are pure-Python (no `cdef` extension types), so attribute layout is dict-based — there are no RTTI records or field offsets to recover for them.
+- `RichCompare`-heavy bodies (`match_par_dim`, `broadcast_to`) lower the comparison opcode generically. The operands (`x.shape` / `y.shape`, the broadcast targets) and the branch structure are recovered directly, but the precise per-element predicate is reconstructed from the surrounding `broadcast_to` + list-concat rather than read as a literal.
+- The per-op routing through `as_tile()` is read from the decompiled getattr order, not from a literal call graph; the geometry assertion itself lives in `tensors.so`.
+- The ufunc binding per operator is read from the `n_s_<ufunc>` constant loaded in the body for `add` / `less` / `int8` / `mod`; the remaining bindings are matched by string-pool presence, which is why `mod` vs `fmod` is the standing trap.
+- `return_tensor_or_extracted_scalar` is absent from this module; its sibling location is [INFERRED] (`scalars.so` / `tensors.so`).
 
 ---
 
