@@ -253,7 +253,7 @@ Three properties establish tree-expansion, all confirmed against the body:
 
 ### How the read side re-deduplicates
 
-Sharing is recovered on import, inside the context, not on the wire. `fromJsonv2` rebuilds every node through `PelicanContext` factories (`createAffineExpr` / `createModuloExpr` / `createMultExpr` / …) that hash-cons structurally-equal nodes, and the interned leaves go back through the same uniquers — `Function::getOrCreateShardId(ub)` for `ShardId`, `Instruction::findAxis(name)` for `AffineIV`. So a tree-expanded DAG is re-folded into a DAG on load: round-trip memory-DAG → tree-wire → memory-DAG is **value-preserving but not pointer-stable** across the JSON. (The value-preservation across the re-fold is STRONG — the factories are uniquers — rather than byte-proven end-to-end here.)
+Sharing is recovered on import, inside the context, not on the wire. `fromJsonv2` rebuilds every node through `PelicanContext` factories (`createAffineExpr` / `createModuloExpr` / `createMultExpr` / …) that hash-cons structurally-equal nodes, and the interned leaves go back through the same uniquers — `Function::getOrCreateShardId(ub)` for `ShardId`, `Instruction::findAxis(name)` for `AffineIV`. So a tree-expanded DAG is re-folded into a DAG on load: round-trip memory-DAG → tree-wire → memory-DAG is **value-preserving but not pointer-stable** across the JSON. (That the re-fold preserves value follows from the factories being uniquers; it was not traced end-to-end.)
 
 ---
 
@@ -340,7 +340,11 @@ RefPtr<Expr> fromJsonv1(ctx, instr, j):            // 0x3bbe90, 2596 B
     return base;       // no "op" key → the bare AffineExpr
 ```
 
-> **CORRECTION (S08) —** the v1 `"CCGetRank"` op tag does **not** round-trip to a `CCGetRank` node — it decodes to a `CCDivExpr` (corroborated by the `.rodata` assert `"Only CCDiv can be converted to CCGetRank"`). v2 has a distinct `CCGetRankKind` that rebuilds an actual `CCGetRankExpr`. So the `CCGetRank`↔`CCDiv` relationship is version-dependent: v1 collapses them, v2 keeps them distinct.
+> **GOTCHA — the v1 `"CCGetRank"` tag does not decode to a `CCGetRank` node.** It rebuilds
+> a `CCDivExpr`; the `.rodata` assert `"Only CCDiv can be converted to CCGetRank"` is the
+> tell. v2 carries a distinct `CCGetRankKind` that does rebuild an actual `CCGetRankExpr`.
+> So the `CCGetRank`↔`CCDiv` relationship is version-dependent: v1 collapses the two, v2
+> keeps them apart.
 
 ### The CCMod Asymmetry — read-accepted, never written
 
@@ -363,7 +367,9 @@ READ:   QuasiAffineExpr::createFromJson(Instr*, json&) @0x3bd8d0
 
 `bir::Module::getVersion()` has exactly one caller in all of `libBIR` — `createFromJson` @ `0x3bd8ee` — which is why the 1-vs-2 version controls *precisely* the pelican deserializer and nothing else (no per-opcode schema branches on version). The producer always emits v2: every `QuasiAffineExpr::toJson` call site passes `mov $0x2,%edx`; there is no `mov $0x1` before any `toJson` anywhere. v1 is read-only back-compat.
 
-> **CORRECTION (S05) —** the framing "pelican v1/v2 is independent of BIR version" is wrong: the *formats* are a separate codepath, but the *selection* is the single shared `bir::Module::getVersion`. Pelican carries no version field of its own.
+> **GOTCHA — pelican has no version of its own.** The v1 and v2 *formats* are separate
+> codepaths, but which one runs is decided by the single shared `bir::Module::getVersion`.
+> There is no pelican version field to read, set, or bump independently.
 
 > **GOTCHA —** the one exception: `adl_serializer<QuasiAffineExpr>::to_json` @ `0x482620` **hardwires version=2** (`mov edx,2`). Any QAE serialized through the nlohmann ADL hook — notably `DynamicAPINFO.offset_expr` — is always v2, regardless of the module version. Explicit `QAE::toJson(json&, version)` callers honor the module version; ADL callers force v2.
 
@@ -383,19 +389,19 @@ Only the `symbolic_*` / `register_*` AP variants carry pelican exprs; a `physica
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
 | Claim | Evidence | Verdict |
 |---|---|---|
-| Exactly **11 kinds** written in v2 | `toJsonv2` @ `0x3bab90` jumptable: handled `{2,3,6,7,13,17,18,23,25,26,27}`, default `0,1,4,5,8-12,14-16,19-22,24` | CONFIRMED |
-| Exactly **7 kinds** written in v1 | `toJsonv1` @ `0x3b9f30` jumptable: handled `{2,3,13,17,25,26,27}`, default `0,1,4-12,14-16,18-24` | CONFIRMED |
-| Tree-expansion, not DAG | unconditional recursive `toJsonv2()` self-calls (terms idx / Sum loop / var / numer); no `$ref`/`id` in the key set; refcount is lifetime-only | CONFIRMED |
-| `APIndex`/`TiledAPIndex`/`SymbolicIdx` have no wire form | kinds 9,10,12 in both writers' `default:` sets; no `*APIndex*`-`json` function in `libBIR` | CONFIRMED |
-| v1↔v2 encoding delta (`AxisLabel`/`coef`/`op`/`op_param` vs `idx`/`coeff`/`kind`/`numer`/`denom`) | literals confined to their respective writer bodies; both present in `.rodata` | CONFIRMED |
-| `CCModKind` read-accepted, never written | tag in `fromJsonv2` compare ladder (→`createModuloExpr`); absent from both writers' case sets | CONFIRMED (write-absence HIGH by exhaustive case set) |
-| Read-side re-dedup value-preserving | factories (`createAffineExpr`/`getOrCreateShardId`/`findAxis`) are uniquers | STRONG (not byte-proven end-to-end) |
+| Exactly **11 kinds** written in v2 | `toJsonv2` @ `0x3bab90` jumptable: handled `{2,3,6,7,13,17,18,23,25,26,27}`, default `0,1,4,5,8-12,14-16,19-22,24` | CERTAIN |
+| Exactly **7 kinds** written in v1 | `toJsonv1` @ `0x3b9f30` jumptable: handled `{2,3,13,17,25,26,27}`, default `0,1,4-12,14-16,18-24` | CERTAIN |
+| Tree-expansion, not DAG | unconditional recursive `toJsonv2()` self-calls (terms idx / Sum loop / var / numer); no `$ref`/`id` in the key set; refcount is lifetime-only | CERTAIN |
+| `APIndex`/`TiledAPIndex`/`SymbolicIdx` have no wire form | kinds 9,10,12 in both writers' `default:` sets; no `*APIndex*`-`json` function in `libBIR` | CERTAIN |
+| v1↔v2 encoding delta (`AxisLabel`/`coef`/`op`/`op_param` vs `idx`/`coeff`/`kind`/`numer`/`denom`) | literals confined to their respective writer bodies; both present in `.rodata` | CERTAIN |
+| `CCModKind` read-accepted, never written | tag in `fromJsonv2` compare ladder (→`createModuloExpr`); absent from both writers' case sets | CERTAIN on read; HIGH on write-absence (exhaustive case set) |
+| Read-side re-dedup value-preserving | factories (`createAffineExpr`/`getOrCreateShardId`/`findAxis`) are uniquers | HIGH (not traced end-to-end) |
 
-**Re-verify ceiling.** The kind sets, the tag spellings, the field offsets, the recursion structure, and the no-wire-form default sets are all byte/jumptable-pinned (CONFIRMED). The exact intra-body field *read order* inside `fromJsonv1`/`fromJsonv2` was confirmed at the tag/key/factory level but not re-disassembled instruction-by-instruction end to end; the value-preservation of the memory-DAG → tree → memory-DAG round-trip is STRONG (resting on the factories being uniquers) rather than executed. The calendar date when v2 superseded v1 is not byte-recoverable from this snapshot (SPECULATIVE).
+The kind sets, the tag spellings, the field offsets, the recursion structure, and the no-wire-form default sets are all byte- or jumptable-pinned. Three things stop short of that. The intra-body field *read order* inside `fromJsonv1`/`fromJsonv2` is established at the tag/key/factory level, not by an instruction-by-instruction pass. The value-preservation of the memory-DAG → tree → memory-DAG round-trip rests on the factories being uniquers rather than on an executed round-trip. And the calendar date when v2 superseded v1 is not recoverable from this snapshot at all.
 
 ---
 
