@@ -10,7 +10,7 @@ Five invariant families cover the legal-program space. **Partition** asserts enf
 
 The defining architectural fact: **`sema.so` is arch-parametric**. The numbers `128`, `512`, `192 KiB`, `2 KiB` are *not* literals inside the checker. Each assert reads a named attribute off the `target` object (`statebuf_num_partitions`, `psum_par_size_in_bytes`, `psum_num_banks`, …) and compares against that. The same `sema.so` checks an Inferentia kernel and a Trainium-gen4 kernel; only the target attrs differ. The numeric limits cited on this page come from the shipped stubs and the geometry page, not from constants in `sema.so`.
 
-> **CORRECTION (D-W04 grounding, revised #824 audit) —** an earlier note claimed the `sema.cpython-310-…so` binary and its IDA sidecar were *absent* ("decompiled-bodies list is empty", "only under missing_addresses") and downgraded every offset to report-grade. That is wrong: the binary **is** in `extracted/…/neuronxcc/nki/compiler/backends/neuron/sema.cpython-310-x86_64-linux-gnu.so` (6,047,952 bytes), and its IDA DB carries **751 decompiled bodies** (the very "~751 bodies" figure quoted in the table below). The `__pyx_pw_*` symbol offsets were re-derived directly via `nm` for this audit and **every one matches the page**: `nki_assert` sym #23 @ `0xbb9a0`, `assert_par_dim_sbuf` #177 @ `0x57250`, `assert_par_dim_psum` #175 @ `0x57bd0`, `assert_free_dim_sbuf` #181 @ `0x797a0`, `assert_free_dim_psum` #179 @ `0x889c0`, `assert_dtype` #169 @ `0x59070`, `assert_dtype_in` #199 @ `0x51a50`, `assert_dtype_psum` #185 @ `0x55940`, `assert_num_partition` #205 @ `0x96c80`, `assert_same_shape` #209 @ `0xe6bb0`, `canonicalize_type_hint` #3 @ `0x45990`. **Those offsets and sym#s are therefore CONFIRMED in-repo, not report-carried.** The `sema.py:NNNN` def-lines and the `edx` RichCompare-polarity immediates remain decompile-derived (the DWARF/decompile sidecar is present; the per-line anchors are read from it but not re-cross-checked field-by-field for this pass — treat those as STRONG). The **rule content** (partition/free/dtype/shape/addr-space invariants, matmul/reduce limits) is additionally corroborated by the shipped `neuronxcc-stubs/…__init__.pyi`/`sbuf.pyi`/`psum.pyi` docstrings.
+Every `__pyx_pw_*` symbol offset on this page is read from the shipped binary's symbol table; the `sema.py:NNNN` def-lines and the `edx` RichCompare-polarity immediates come from the decompile. The rule content — partition/free/dtype/shape/addr-space invariants, matmul and reduce limits — is independently corroborated by the shipped `neuronxcc-stubs/…__init__.pyi` / `sbuf.pyi` / `psum.pyi` docstrings.
 
 For reimplementation, the contract is:
 
@@ -21,13 +21,12 @@ For reimplementation, the contract is:
 
 | | |
 |---|---|
-| **Module** | `neuronxcc/nki/compiler/backends/neuron/sema.cpython-310-x86_64-linux-gnu.so` (~6 MB, ~751 bodies, ~220 syms) |
+| **Module** | `neuronxcc/nki/compiler/backends/neuron/sema.cpython-310-x86_64-linux-gnu.so` (6,047,952 bytes, 751 decompiled bodies, ~220 syms) |
 | **Source (Cython-compiled)** | `sema.py` |
-| **Single raise sink** | `nki_assert(cond, msg)` — `sym #23 @ 0xbb9a0` *(offset CONFIRMED in-repo via `nm`)* |
+| **Single raise sink** | `nki_assert(cond, msg)` — `sym #23 @ 0xbb9a0` |
 | **Invariant families** | partition `≤128` · free-dim byte budget · dtype (PSUM=`{fp32,int32}`) · shape/matmul · addr-space |
 | **Limit source** | runtime `target` attrs (arch-parametric); numeric values from stubs + [1.05](../arch/sbuf-psum-geometry.md) |
 | **Failure messages** | built by `err_*()` template layer → [6.4.5 diagnostic catalog](diagnostic-catalog.md) |
-| **Evidence grade** | rules CONFIRMED via stubs; symbol offsets CONFIRMED in-repo via `nm` on `sema.so` (see D-W04 correction) |
 
 ---
 
@@ -35,7 +34,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-Every legality predicate in `sema.so` is a thin wrapper that computes one boolean and, on the bad branch, calls **one** shared raise primitive. There is no per-family exception type, no scattered `raise AssertionError`. This single-sink design is what lets the `err_*()` template layer own *all* message formatting while the assert layer owns *only* the decision logic — the split the backing report draws between D-W04 (this page) and D-W05 (the catalog).
+Every legality predicate in `sema.so` is a thin wrapper that computes one boolean and, on the bad branch, calls **one** shared raise primitive. There is no per-family exception type, no scattered `raise AssertionError`. This single-sink design is what lets the `err_*()` template layer own *all* message formatting while the assert layer owns *only* the decision logic — the split between this page and the [diagnostic catalog](diagnostic-catalog.md).
 
 ### Entry Point
 
@@ -53,7 +52,7 @@ op driver (NKIFunc.check_*)              ── per-op, one call per operand
 ### Algorithm
 
 ```c
-function nki_assert(cond, msg):          // sym #23 @ 0xbb9a0  (offset CONFIRMED via nm)
+function nki_assert(cond, msg):          // sym #23 @ 0xbb9a0
     if cond:                             // legal — fall through, op proceeds to lowering
         return None
     raise NKISemanticError(msg)          // the single raise; msg pre-built by err_*()
@@ -74,7 +73,7 @@ A NKI tile's **leading (partition) dimension** maps to physical hardware lanes: 
 ### Algorithm
 
 ```c
-function assert_par_dim_sbuf(par_dim, target):   // sema.py:2716  sym #177 @ 0x57250  (offsets unverified)
+function assert_par_dim_sbuf(par_dim, target):   // sema.py:2716  sym #177 @ 0x57250
     limit = target.statebuf_num_partitions       // arch attr — 128 on gen1..gen4 (geometry 1.05)
     if RichCompare(par_dim, limit, Py_GT):        // disasm edx=4 (Py_GT): par_dim > limit
         err_num_partition_exceed_arch_limit(par_dim, limit, ...)   // → nki_assert(False, msg)
@@ -97,11 +96,11 @@ function assert_num_partition(par_dim, shapes, max_p, api_name):  // sema.py:287
 
 ### Limit Source
 
-| Limit | `target` attribute | Value | Source / Confidence |
-|---|---|---|---|
-| SBUF partition count | `statebuf_num_partitions` | 128 (all gens) | `Statebuf+0x8 numPartitions`, [1.05](../arch/sbuf-psum-geometry.md) — CONFIRMED |
-| PSUM partition count | `psum_num_partitions` | 128 (64 on gen1 Inferentia) | `Psumbuf+0x4`, [1.05](../arch/sbuf-psum-geometry.md) — CONFIRMED |
-| matmul contraction | (caller-supplied `max_p`) | `≤128` | `nc_matmul` stub: partition axes "identical and `<=128`" — CONFIRMED |
+| Limit | `target` attribute | Value | Source | Confidence |
+|---|---|---|---|---|
+| SBUF partition count | `statebuf_num_partitions` | 128 (all gens) | `Statebuf+0x8 numPartitions`, [1.05](../arch/sbuf-psum-geometry.md) | CERTAIN |
+| PSUM partition count | `psum_num_partitions` | 128 (64 on gen1 Inferentia) | `Psumbuf+0x4`, [1.05](../arch/sbuf-psum-geometry.md) | CERTAIN |
+| matmul contraction | (caller-supplied `max_p`) | `≤128` | `nc_matmul` stub: partition axes "identical and `<=128`" | CERTAIN |
 
 > **QUIRK —** the partition limit is `statebuf_num_partitions`, *not* a constant `128`. On gen1 Inferentia the PSUM half (`psum_num_partitions`) is **64** while SBUF stays 128 ([1.05](../arch/sbuf-psum-geometry.md)). A reimplementer who hard-codes 128 into the partition check will let an over-wide PSUM tile through on Inferentia. The stub `nc_matmul` docstring confirms the matmul side independently: *"the partition axis sizes of the `stationary` and `moving` tiles must be identical and `<=128`, which corresponds to the contraction dimension."*
 
@@ -136,10 +135,10 @@ Both raise on **`Py_LT`** — note the operand order is `(capacity, required)`, 
 
 ### Limit Source
 
-| Buffer | `target` attribute(s) | Value (gen2 ref) | Source / Confidence |
-|---|---|---|---|
-| SBUF per-partition | `statebuf_par_size_in_bytes` | 192 KiB physical, 16 KiB compiler-reserved → `[0, 176 KiB)` usable | `sbuf.pyi`: *"0 … to 192KiB-16KiB"* — CONFIRMED (gen3/4 are 224/256 KiB per [1.05](../arch/sbuf-psum-geometry.md)) |
-| PSUM per-partition | `psum_par_size_in_bytes` × `psum_num_banks` | 2 KiB/bank × 8 banks (gen2+) | `psum.pyi`: *"fdim_size cannot exceed 2KiB … size of a single PSUM bank"*; banks from [1.05](../arch/sbuf-psum-geometry.md) — CONFIRMED |
+| Buffer | `target` attribute(s) | Value (gen2 ref) | Source | Confidence |
+|---|---|---|---|---|
+| SBUF per-partition | `statebuf_par_size_in_bytes` | 192 KiB physical, 16 KiB compiler-reserved → `[0, 176 KiB)` usable | `sbuf.pyi`: *"0 … to 192KiB-16KiB"* (gen3/4 are 224/256 KiB per [1.05](../arch/sbuf-psum-geometry.md)) | CERTAIN |
+| PSUM per-partition | `psum_par_size_in_bytes` × `psum_num_banks` | 2 KiB/bank × 8 banks (gen2+) | `psum.pyi`: *"fdim_size cannot exceed 2KiB … size of a single PSUM bank"*; banks from [1.05](../arch/sbuf-psum-geometry.md) | CERTAIN |
 
 > **GOTCHA —** `assert_free_dim_psum` checks the **all-banks total**, but a single *physical* PSUM tile may not span banks at all: the `psum.pyi` stub states *"a physical PSUM tile cannot span multiple PSUM banks"* (`fdim_size <= 2 KiB`). That finer per-bank rule is enforced in the **allocator** ([Part 8 walrus](../walrus/)), not in `sema`. A reimplementer who folds the two checks into one will either reject legal multi-bank tensors (if they apply the 2 KiB cap in sema) or accept an illegal bank-spanning physical tile (if they apply only the total in the allocator). The two limits live in two layers on purpose.
 
@@ -149,11 +148,11 @@ Two asserts pin exact per-partition *element* counts (not byte budget), used by 
 
 ```c
 function assert_elements_per_partition(elements_per_partition, min_size, max_size):  // sema.py:2801  sym #191 @ 0xc6c90
-    // "Check that the number of elements per partition is between min and max." (docstring, CONFIRMED)
+    // docstring: "Check that the number of elements per partition is between min and max."
     if elements_per_partition < min_size or elements_per_partition > max_size:
         nki_assert(False, "<N> elements per partition, but must have exactly <M>")   // exact-match path
 
-function assert_exact_elements(...):    // sym #197 @ 0x682e0   (STRONG)
+function assert_exact_elements(...):    // sym #197 @ 0x682e0
     // companion: asserts an access dimension has an exact element count
     // string " elements per partition, but must have exactly "
 ```
@@ -189,12 +188,12 @@ function assert_dtype_psum(dtype, target):            // sema.py:2749  sym #185 
 
 ### Limit Source
 
-| Rule | Mechanism | Value | Source / Confidence |
-|---|---|---|---|
-| single-type | `np.issubdtype(tile.dtype, type)` | subtype, not `==` | `assert_dtype` `sym #169 @ 0x59070` CONFIRMED via nm; subtype-vs-`==` logic decompile-derived — STRONG |
-| per-op set | `dtype ∈ supported_dtypes` | op-specific | `nki-dtype` stub tables — CONFIRMED |
-| PSUM dtype | `dtype ∈ {float32, int32}` | exactly two | `assert_dtype_psum`; PSUM = PE-array accumulator — CONFIRMED (matmul output to PSUM, stubs) |
-| gen3+ mm dtype | `assert_gen3_or_newer_mm_dtype` (`sym #189 @ 0x54460`) | branches on `target` generation | STRONG — gen3-only matmul operand dtypes |
+| Rule | Mechanism | Value | Source | Confidence |
+|---|---|---|---|---|
+| single-type | `np.issubdtype(tile.dtype, type)` | subtype, not `==` | `assert_dtype` `sym #169 @ 0x59070`; subtype-vs-`==` logic from the decompile | HIGH |
+| per-op set | `dtype ∈ supported_dtypes` | op-specific | `nki-dtype` stub tables | CERTAIN |
+| PSUM dtype | `dtype ∈ {float32, int32}` | exactly two | `assert_dtype_psum`; PSUM = PE-array accumulator (matmul output to PSUM, stubs) | CERTAIN |
+| gen3+ mm dtype | `assert_gen3_or_newer_mm_dtype` (`sym #189 @ 0x54460`) | branches on `target` generation | gen3-only matmul operand dtypes | HIGH |
 
 > **NOTE —** the PSUM `{float32, int32}` rule is the dtype counterpart of the PSUM partition/byte rules: PSUM *is* the matmul accumulator, and a systolic-array accumulation lands in fp32 (for float inputs) or int32 (for integer inputs). The `nc_matmul` stub confirms matmul "write[s] outputs to PSUM"; `assert_dtype_psum` is what rejects, e.g., a `bfloat16` PSUM tile at trace time. Supporting display helpers: `dtype2str` (`sym #7 @ 0xa83b0`) renders a dtype as its `"np.<name>"` string; `expected_dtype_str` (`sym #15 @ 0xacca0`) builds the `"expected dtype of {…}"` fragment from a set.
 
@@ -266,7 +265,7 @@ function assert_min_dimensions(shape, min_dims, name):   // sym #195 @ 0x52880
     if PyObject_Size(shape) < min_dims:
         nki_assert(False, ...)                    // symmetric lower bound
 
-function assert_local_tensor_shapes(...):         // sema.py:2760  sym #187 @ 0xc92a0  (STRONG, ~1265 lines)
+function assert_local_tensor_shapes(...):         // sema.py:2760  sym #187 @ 0xc92a0  (~1265 lines)
     // validates (block, partition, free) of a locally-declared tensor:
     //   "The leading dimension of SBUF/PSUM tensors must be the partition dimension."
     //   "Block dimension is deprecated"
@@ -315,15 +314,15 @@ function check_matmul_mx_low_level_shape(self, ...):   // sym #125/#126 @ 0xdcd4
 
 | Operand axis | Limit | `target` / source | Confidence |
 |---|---|---|---|
-| stationary partition (= contraction) | `≤128`, identical to moving partition | `nc_matmul` stub: *"identical and `<=128`"* | CONFIRMED |
-| stationary free | `≤128` | `nc_matmul` stub: *"free axis sizes … must be `<= 128`"* | CONFIRMED |
-| moving free | `≤512` | `nc_matmul` stub: *"and `<=512`, respectively"* | CONFIRMED |
-| mx partition access | one of `32 / 64 / 128` | `check_matmul_mx_low_level_shape` string | CONFIRMED |
-| output placement | PSUM, dtype `{fp32, int32}` | `nc_matmul` stub + Family 3 | CONFIRMED |
+| stationary partition (= contraction) | `≤128`, identical to moving partition | `nc_matmul` stub: *"identical and `<=128`"* | CERTAIN |
+| stationary free | `≤128` | `nc_matmul` stub: *"free axis sizes … must be `<= 128`"* | CERTAIN |
+| moving free | `≤512` | `nc_matmul` stub: *"and `<=512`, respectively"* | CERTAIN |
+| mx partition access | one of `32 / 64 / 128` | `check_matmul_mx_low_level_shape` string | CERTAIN |
+| output placement | PSUM, dtype `{fp32, int32}` | `nc_matmul` stub + Family 3 | CERTAIN |
 
 > **QUIRK —** the matmul caps `128` (stationary free) and `512` (moving free) are **asymmetric** and not interchangeable. The `nc_matmul` stub example is unambiguous: `stationary.shape = (128, 126)`, `moving.shape = (128, 512)` → output `(126, 512)`. The stationary operand feeds the array columns (capped at the 128 PE columns); the moving operand streams through (capped at the 512-deep accumulator depth). A reimplementer that applies one cap to both operands will reject legal `(_, 512)` moving tiles or accept illegal `(_, 512)` stationary tiles.
 
-> **NOTE —** `nl.transpose` / `matmul(transpose=…)` on the Tensor Engine is **illegal inside direct-allocation ("allocated") kernels** — the string instructs the author to *"declare your own identity tensor and call nisa.nc_matmul"* instead. This is checked alongside `check_transpose_shape` (`sym #114`). It is a kernel-mode restriction, not a shape bound (STRONG).
+> **NOTE —** `nl.transpose` / `matmul(transpose=…)` on the Tensor Engine is **illegal inside direct-allocation ("allocated") kernels** — the string instructs the author to *"declare your own identity tensor and call nisa.nc_matmul"* instead. This is checked alongside `check_transpose_shape` (`sym #114`). It is a kernel-mode restriction, not a shape bound.
 
 ---
 
@@ -361,7 +360,7 @@ logical_and, logical_or
 | `err_reduce_unsupported_negate` | *"negate option can only be used with arithmetic ops"* — `negate` illegal on bitwise/logical |
 | (`atomic_rmw`) | *"`op` param only supports 'add' operation currently."* |
 
-> **NOTE —** the bitvec/arithmetic split is corroborated directly by the shipped `nki/isa/__init__.pyi` `tensor_reduce` docstring: *"There are two types of reduction operators: 1) bitvec operators (e.g., bitwise_and, bitwise_or) … 2) arithmetic operators (e.g., add, subtract, multiply)"* and *"`negate`: … only applicable when op is an arithmetic operator"*. That is the same rule `check_tensor_reduce_supported_ops` and its companion guards enforce — re-grounded against binary-distributed stub evidence (CONFIRMED), corroborating the in-corpus `sema.so` decompile.
+> **NOTE —** the bitvec/arithmetic split is corroborated directly by the shipped `nki/isa/__init__.pyi` `tensor_reduce` docstring: *"There are two types of reduction operators: 1) bitvec operators (e.g., bitwise_and, bitwise_or) … 2) arithmetic operators (e.g., add, subtract, multiply)"* and *"`negate`: … only applicable when op is an arithmetic operator"*. That is the same rule `check_tensor_reduce_supported_ops` and its companion guards enforce; stub and `sema.so` decompile agree.
 
 ---
 
@@ -410,34 +409,30 @@ function enumerate_all_types(annotation):         // sema.py:70  sym #5 @ 0xd933
 
 Operand/op attributes read on the tile side: `dtype`, `shape`, `tensor_ir_class`, `sizeinbytes`, `name` (`op.name`), `params_map`, `cur_api_name`, `is_superclass`, `issubdtype`.
 
-### RichCompare polarity (recovered from disasm `edx` immediate — report grade)
+### RichCompare polarity
+
+Each numeric guard's comparison operator is the `edx` immediate handed to `PyObject_RichCompare`:
 
 | Assert | Op (`edx`) | Failing condition |
 |---|---|---|
 | `assert_par_dim_sbuf` / `_psum`, `assert_num_partition` | `Py_GT` (4) | `par_dim > limit` → error |
 | `assert_free_dim_sbuf` / `_psum` | `Py_LT` (1) | `capacity < required_bytes` → error |
 
-> **CORRECTION (D-W04 caveat) —** the report flags that the `Py_EQ` (2) compares elsewhere in these Cython wrappers are the **kwarg-name interning fast-path**, *not* semantic checks — IDA inlines them adjacent to the real `Py_GT`/`Py_LT` guards. A reimplementer reading a disasm of these wrappers must not mistake the `Py_EQ` keyword-dispatch comparisons for the legality comparison. The semantic guards are the `Py_GT` (partition) and `Py_LT` (free-dim) ones only.
+> **GOTCHA —** these wrappers also contain `Py_EQ` (2) compares, and IDA inlines them right next to the real guards. Those are the **kwarg-name interning fast-path**, not semantic checks. The only legality comparisons are the `Py_GT` (partition) and `Py_LT` (free-dim) ones.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims on this page, re-challenged against binary-distributed evidence:
+| Claim | Grounding | Confidence |
+|---|---|---|
+| Five invariant families, all funnelling through one `nki_assert` sink | each family is a named assert cluster in the symbol table; `nki_assert` is `sym #23 @ 0xbb9a0`; the `err_*` → `nki_assert` dispatch comes from the xref structure | HIGH |
+| PSUM tile dtype must be `float32` or `int32` | `assert_dtype_psum` tests both via `target.float32` / `target.int32`; PSUM is the matmul accumulator (`nc_matmul` stub: outputs written to PSUM) | CERTAIN |
+| Partition limit is read from `statebuf_num_partitions`, not a literal `128` | [1.05](../arch/sbuf-psum-geometry.md) `Statebuf+0x8 numPartitions = 128` (all gens), `nc_matmul` stub `"<=128"`; the arch-parametric framing is what makes PSUM = 64 on gen1 expressible | CERTAIN |
+| matmul caps are asymmetric — stationary free `≤128`, moving free `≤512` | `nc_matmul` stub: *"free axis sizes of `stationary` and `moving` … must be `<= 128` and `<=512`, respectively"*, with the worked `(128,126)`×`(128,512)`→`(126,512)` example | CERTAIN |
+| Reduce op-set is the 11 names listed above, split bitvec vs arithmetic, `negate` arithmetic-only | the `tensor_reduce` stub docstring gives the two-category split and the `negate` restriction verbatim; the exact 11-name list is read from the `sema.so` module string table | HIGH |
 
-1. **"Five invariant families, all funneling through one `nki_assert` sink."** The five families (partition/free/dtype/shape/addr-space) are each a named assert cluster in the symbol table; `nki_assert` is `sym #23 @ 0xbb9a0`, **CONFIRMED in-repo via `nm`** (see D-W04 correction). The family taxonomy and the err→nki_assert dispatch are STRONG from the symbol/xref structure.
-
-> **CORRECTION (#824 audit resume) —** items 1, 5 and the "Failures fixed" line below were written under the now-inverted false-absence premise (`sema.so` sidecar "absent"). The D-W04 correction at the top of this page established that `sema.so` **is** in-corpus (`extracted/…/sema.cpython-310-…so`, 751 decompiled bodies) and that all eleven cited `__pyx_pw_*` offsets — including `nki_assert` `sym #23 @ 0xbb9a0` — were re-derived directly via `nm` and **match the page**. The "(offset unverifiable / sidecar absent)" tags here are stale and have been corrected: the symbol offsets are CONFIRMED in-repo; only the `sema.py:NNNN` def-lines and the `edx` RichCompare immediates remain decompile-derived (STRONG).
-
-2. **"PSUM tile dtype must be `float32` or `int32`."** `assert_dtype_psum` tests both via `target.float32`/`target.int32`. Re-grounded: PSUM is the matmul accumulator (`nc_matmul` stub: outputs written to PSUM); fp32/int32 are the natural accumulator formats. **CONFIRMED** by stub + architecture, independent of the offset.
-
-3. **"Partition limit is 128, read from `statebuf_num_partitions`, not a literal."** Cross-checked against [1.05](../arch/sbuf-psum-geometry.md) `Statebuf+0x8 numPartitions = 128 (all gens)` and the `nc_matmul` stub `"<=128"`. **CONFIRMED.** The arch-parametric framing (PSUM = 64 on gen1) is also confirmed by [1.05](../arch/sbuf-psum-geometry.md).
-
-4. **"matmul moving free ≤512, stationary free ≤128 — asymmetric."** Directly from `nc_matmul` stub lines: *"free axis sizes of `stationary` and `moving` … must be `<= 128` and `<=512`, respectively"* with the worked `(128,126)`×`(128,512)`→`(126,512)` example. **CONFIRMED** by binary-distributed stub.
-
-5. **"Reduce op-set = {add, multiply, maximum, minimum, max, min, bitwise_{and,or,xor}, logical_{and,or}}, bitvec-vs-arithmetic split with `negate` arithmetic-only."** The `tensor_reduce` stub docstring confirms the two-category split and the `negate` restriction verbatim; the exact 11-name list is read from the `sema.so` module string table (in-corpus). **CONFIRMED** for the category split; the precise name list is STRONG (read from the decompile's string table, corroborated in spirit by the stub).
-
-Failures fixed: the per-function `__pyx_pw_*` `@0x…` symbol offsets are CONFIRMED in-repo via `nm` (D-W04 correction); the residual `sema.py:NNNN` def-lines remain decompile-derived (STRONG); the SBUF byte budget is given as the per-gen `statebuf_par_size_in_bytes` range from [1.05](../arch/sbuf-psum-geometry.md), not a flat "176 KiB", since sema reads it from `target`.
+Two things remain decompile-derived rather than symbol-table-derived: the `sema.py:NNNN` def-lines and the `edx` RichCompare immediates. The SBUF byte budget is stated as the per-gen `statebuf_par_size_in_bytes` range from [1.05](../arch/sbuf-psum-geometry.md) rather than a flat "176 KiB", because `sema` reads it from `target` and never fixes it.
 
 ---
 

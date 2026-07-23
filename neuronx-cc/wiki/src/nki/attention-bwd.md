@@ -117,7 +117,7 @@ dq = matmul(K, dx.T) * softmax_scale               // → dS@K · scale  (L106)
 dk = matmul(q_scaled, dx)                          // → Q.T@dS        (L107)
 ```
 
-Note that `q_scaled = q * softmax_scale` (`attention_bwd_torch.py:73`) — the scale is pre-applied to `Q`, so it rides into `dK`'s Q-factor *and* appears explicitly on `dQ`. This exactly mirrors the kernel, where `load_q_dy` scales `Q` at DMA time (next section) and `dQ` carries a separate `·softmax_scale`. `[CONFIRMED — kernel L106/137-139, golden L73/106-107]`
+Note that `q_scaled = q * softmax_scale` (`attention_bwd_torch.py:73`) — the scale is pre-applied to `Q`, so it rides into `dK`'s Q-factor *and* appears explicitly on `dQ`. This exactly mirrors the kernel, where `load_q_dy` scales `Q` at DMA time (next section) and `dQ` carries a separate `·softmax_scale`. (Kernel L106/137-139, golden L73/106-107.)
 
 ---
 
@@ -179,7 +179,7 @@ function recompute_qk_softmax(cfg, q_local, k_local, softmax_exp_bias, softmax_y
                    bias=softmax_exp_bias[:, q_tile], scale=1.0)         // P = exp(S - LSE) (L964-970)
 ```
 
-The `nc_matmul` convention used throughout is `dst = stationaryᵀ @ moving`, with the contraction on the partition axis of both operands; here `stationary=Q (d,q)` and `moving=K (d,k)` give `qk_psum = Qᵀ@K` in `(q, k)` layout. The `softmax_scale` is **already folded into `Q`** at load (`load_q_dy → scale_first=softmax_scale`, `attention_bwd.py:751/790/698-699`), so there is no separate scale op in the recompute. `[CONFIRMED]`
+The `nc_matmul` convention used throughout is `dst = stationaryᵀ @ moving`, with the contraction on the partition axis of both operands; here `stationary=Q (d,q)` and `moving=K (d,k)` give `qk_psum = Qᵀ@K` in `(q, k)` layout. The `softmax_scale` is **already folded into `Q`** at load (`load_q_dy → scale_first=softmax_scale`, `attention_bwd.py:751/790/698-699`), so there is no separate scale op in the recompute.
 
 ### The single-exp and the LSE sign chain
 
@@ -203,7 +203,7 @@ The AP transposes the `(n_tiles, pmax)` packing of `lse_ref` into the SBUF layou
 
 > **QUIRK — the max-shift and the 1/sum normalise both live in one bias operand.** There is no subtract-max instruction and no divide-by-sum instruction anywhere in the recompute. Both are folded into `−LSE`. This is the entire reason the forward checkpoints LSE: it is a *linear*-size statistic (`O(seqlen_q)` per head, not `O(seqlen_q²)`) that carries both softmax normalisers in one number per row.
 
-The sign chain is consistent with the forward. The [CTE kernel](attention-cte.md) stores the row-max **negated** (`mm1_running_max = −max`) and a reciprocal sum (`exp_sum_reciprocal = 1/l`), DMA'd out as the `(out_neg_max, out_sum_recip)` pair when `cache_softmax=True` (CTE kernel lines 799-808). The golden reconstructs `lse = −1·(neg_max + log(recip)) = max + log(sum)` (`attention_bwd_torch.py:230`), so `−LSE = −max − log(sum)` and `exp(S − max − log sum) = softmax`. `[STRONG — forward emits the pair; host combines to the single LSE this kernel ingests, see Corrections]`
+The sign chain is consistent with the forward. The [CTE kernel](attention-cte.md) stores the row-max **negated** (`mm1_running_max = −max`) and a reciprocal sum (`exp_sum_reciprocal = 1/l`), DMA'd out as the `(out_neg_max, out_sum_recip)` pair when `cache_softmax=True` (CTE kernel lines 799-808). The golden reconstructs `lse = −1·(neg_max + log(recip)) = max + log(sum)` (`attention_bwd_torch.py:230`), so `−LSE = −max − log(sum)` and `exp(S − max − log sum) = softmax`. The forward emits the pair; the host combines it into the single LSE this kernel ingests.
 
 ---
 
@@ -229,7 +229,7 @@ function compute_softmax_backward_dx(cfg, dy_local, v_local, softmax_y, dy_o_sum
                              op1=nl.multiply, operand1=softmax_y[g])      // * P          (L1029-1036)
 ```
 
-`softmax_dy_psum[q,k] = Σ_d dO[d,q]·V[d,k] = (dO @ Vᵀ)` in `(q,k)` layout = `dP`. The `scalar_tensor_tensor` primitive computes `dst = (data op0 operand0) op1 operand1 = (dP − D) ∘ P` in a single Pool/DVE instruction — the on-chip realisation of `softmax_dx`, with the `Σ(dy·y)` rowsum supplied by the precomputed `D`. `[CONFIRMED]`
+`softmax_dy_psum[q,k] = Σ_d dO[d,q]·V[d,k] = (dO @ Vᵀ)` in `(q,k)` layout = `dP`. The `scalar_tensor_tensor` primitive computes `dst = (data op0 operand0) op1 operand1 = (dP − D) ∘ P` in a single Pool/DVE instruction — the on-chip realisation of `softmax_dx`, with the `Σ(dy·y)` rowsum supplied by the precomputed `D`.
 
 The reference twin uses the *identical* op with the *identical* operand order (`neuronxcc/nki/kernels/attention.py:1027-1033`: `scalar_tensor_tensor(data=softmax_dy, op0=np.subtract, operand0=dy_o_sum[...], op1=np.multiply, operand1=softmax_y)`), strong mutual corroboration that the fused `(dP − D)∘P` ordering is deliberate.
 
@@ -267,7 +267,7 @@ for i_d_head_tile:
                          op1=nl.add,      operand1=dq_local[i_d_head_tile])     // L1558-1565
 ```
 
-The final `scalar_tensor_tensor` computes `dq_local += dq_psum·softmax_scale` — the explicit `·scale` of `dQ`, fused with the running accumulation across K-tiles. `dq_local` is `(d_head_tile_size, q_seq_tile_size·q_tile_group_size)`. The K transpose is explicitly pinned to `scalar_engine` (L1509). `[CONFIRMED]`
+The final `scalar_tensor_tensor` computes `dq_local += dq_psum·softmax_scale` — the explicit `·scale` of `dQ`, fused with the running accumulation across K-tiles. `dq_local` is `(d_head_tile_size, q_seq_tile_size·q_tile_group_size)`. The K transpose is explicitly pinned to `scalar_engine` (L1509).
 
 ### Algorithm — dV (Step 3.1) and dK (Step 5.1)
 
@@ -295,7 +295,7 @@ for i_d_head_tile:
     tensor_tensor(dk_local_reduced[i_d_head_tile][:, k-slice], ..., dk_psum, op=nl.add)  // accumulate
 ```
 
-`dV` and `dK` accumulate via `tensor_tensor(add)` into **SBUF section accumulators** `dv_local_reduced` / `dk_local_reduced`, which are zero-initialised per K-section (`flash_attn_bwd:1166-1167`, `value=0.0`) and summed across **all q-heads and all q-tiles** of the section — this is the **GQA reduction**: one KV-head receives gradient from `nheads_per_kv_head` q-heads. `[CONFIRMED]`
+`dV` and `dK` accumulate via `tensor_tensor(add)` into **SBUF section accumulators** `dv_local_reduced` / `dk_local_reduced`, which are zero-initialised per K-section (`flash_attn_bwd:1166-1167`, `value=0.0`) and summed across **all q-heads and all q-tiles** of the section — this is the **GQA reduction**: one KV-head receives gradient from `nheads_per_kv_head` q-heads.
 
 ### nisa primitive census (one core invocation)
 
@@ -307,7 +307,7 @@ for i_d_head_tile:
 | dV | `nc_matmul`×`q_grp` → `tensor_tensor(add)` | PE, Pool/DVE |
 | dK | `nc_matmul`×`q_grp` → `tensor_tensor(add)` | PE, Pool/DVE |
 
-Exactly **five `nc_matmul` call sites** exist in the file (QK, dP, dQ, dV, dK) and **two `op=nl.exp` activations** (P-recompute L966, sink-prob L1380) — verified by `rg -c`. `[CONFIRMED]`
+Exactly **five `nc_matmul` call sites** exist in the file (QK, dP, dQ, dV, dK) and **two `op=nl.exp` activations** (P-recompute L966, sink-prob L1380).
 
 ---
 
@@ -353,7 +353,7 @@ for sample_idx in [start_idx, end_idx):                      // shard over bs*nh
 | `k_seq_section_len` | `8192 // power_of_2(d_head_tiles)` | `setup_config:368,408` |
 | `k_seq_fwd_bwd_multiplier` | `k_seq_tile_size // k_seq_tile_size_backward` | `setup_config:434` |
 
-`k_seq_fwd_bwd_multiplier` is the number of 128-wide transposed sub-tiles inside one 512-wide K-tile — the inner loop count in the `dQ` transpose+matmul. `power_of_2(n)` rounds *up* to the smallest power of two `≥ n` (`attention_bwd.py:494-497`); dividing the 8K section budget by it keeps the K/V/dK/dV SBUF footprint bounded as `d_head` grows. `[CONFIRMED]`
+`k_seq_fwd_bwd_multiplier` is the number of 128-wide transposed sub-tiles inside one 512-wide K-tile — the inner loop count in the `dQ` transpose+matmul. `power_of_2(n)` rounds *up* to the smallest power of two `≥ n` (`attention_bwd.py:494-497`); dividing the 8K section budget by it keeps the K/V/dK/dV SBUF footprint bounded as `d_head` grows.
 
 The driver is **SPMD-sharded** over `bs·nheads_kv` (`flash_attn_bwd:1134-1143`): `num_shards = nl.num_programs(0)`, `shard_id = nl.program_id(0)`, `shard_size = div_ceil(bs·nheads_kv, num_shards)`. See [SPMD programming model](spmd-programming-model.md).
 
@@ -363,17 +363,19 @@ The driver is **SPMD-sharded** over `bs·nheads_kv` (`flash_attn_bwd:1134-1143`)
 
 ### Two levels of mask
 
-**(a) Tile-level early exit** — `get_required_tiles_mask` (`attention_bwd.py:794-846`) is pure compile-time Python. For causal, a `(q-tile, k-tile)` pair is skipped when `q_tile_max_pos < k_tile_min_pos`; SWA additionally skips when `k_tile_max_pos < q_tile_min_pos − sliding_window + 1`. Fully-skipped tiles never enter `_flash_attn_bwd_core`. `[CONFIRMED]`
+**(a) Tile-level early exit** — `get_required_tiles_mask` (`attention_bwd.py:794-846`) is pure compile-time Python. For causal, a `(q-tile, k-tile)` pair is skipped when `q_tile_max_pos < k_tile_min_pos`; SWA additionally skips when `k_tile_max_pos < q_tile_min_pos − sliding_window + 1`. Fully-skipped tiles never enter `_flash_attn_bwd_core`.
 
 **(b) Element-level mask** — applied inside `recompute_qk_softmax` on the *recomputed scores* (so the backward mask is identical to the forward). Non-packed causal uses `affine_select` to set `S → _FLOAT32_MIN (−3.4e38)` where `k_idx > q_idx` (pattern `[[-1, k_seq]]`, `channel_multiplier=1`, `greater_equal`); a second `affine_select` enforces the SWA lower bound (`attention_bwd.py:943-962`). After `exp`, masked entries → 0 and contribute nothing to any gradient.
 
-**(c) Sequence packing** — when `bound_min`/`bound_max` are present, the per-row bounds are DMA'd to SBUF once and clamped on-device: causal clamps `bound_max[q] = min(bound_max[q], q+1)` via `iota` + `tensor_tensor(minimum)`; SWA clamps `bound_min[q] = max(bound_min[q], q−w+1)` via `iota` + `tensor_tensor(maximum)` (`flash_attn_bwd:1120-1131`). Masking then folds into the PSUM→SBUF copy as **one `range_select`** (`greater_equal bound_min AND less bound_max → keep, else _FLOAT32_MIN`, `attention_bwd.py:924-933`), replacing the two `affine_select`s. `[CONFIRMED]` See [mask-predicate algebra](mask-predicate-algebra.md) and [index-mask inference](index-mask-inference.md).
+**(c) Sequence packing** — when `bound_min`/`bound_max` are present, the per-row bounds are DMA'd to SBUF once and clamped on-device: causal clamps `bound_max[q] = min(bound_max[q], q+1)` via `iota` + `tensor_tensor(minimum)`; SWA clamps `bound_min[q] = max(bound_min[q], q−w+1)` via `iota` + `tensor_tensor(maximum)` (`flash_attn_bwd:1120-1131`). Masking then folds into the PSUM→SBUF copy as **one `range_select`** (`greater_equal bound_min AND less bound_max → keep, else _FLOAT32_MIN`, `attention_bwd.py:924-933`), replacing the two `affine_select`s. See [mask-predicate algebra](mask-predicate-algebra.md) and [index-mask inference](index-mask-inference.md).
 
 ### No dropout in this kernel
 
-An exhaustive search of `attention_bwd.py` for `dropout|rng|seed|philox|bernoulli|random_seed` returns **zero hits** (`rg -ci` = 0). This kernel re-applies no dropout mask, re-draws no Bernoulli mask, and applies no `1/(1−p)` rescale to `dP`. The golden reference likewise never exercises dropout: its `compute_o_lse` accepts a `dropout_mask` parameter (`attention_bwd_torch.py:136,214-215`) but `attention_bwd_torch_ref` calls it **without** that argument (L75-86). `[CONFIRMED]`
+An exhaustive search of `attention_bwd.py` for `dropout|rng|seed|philox|bernoulli|random_seed` returns **zero hits** (`rg -ci` = 0). This kernel re-applies no dropout mask, re-draws no Bernoulli mask, and applies no `1/(1−p)` rescale to `dP`. The golden reference likewise never exercises dropout: its `compute_o_lse` accepts a `dropout_mask` parameter (`attention_bwd_torch.py:136,214-215`) but `attention_bwd_torch_ref` calls it **without** that argument (L75-86).
 
-> **CORRECTION (O15-§7) —** D-O15 frames dropout as "a forward-family feature not threaded into this bwd," citing the reference twin's 30 dropout mentions as belonging to "its FORWARD kernel, not its backward." Direct inspection of the twin overturns the *generalisation*, though not the conclusion for this kernel. In `neuronxcc/nki/kernels/attention.py`, the dropout re-draw — `nl.random_seed(offset_seed)` then `softmax_y = nl.dropout(softmax_y, rate=...)` then `nl.multiply(softmax_y, 1/(1−dropout_p))` at **lines 974-981** — sits *inside* `_flash_attn_bwd_core` (the twin's backward core, L872-1080), guarded by `if dropout_p > 0.0`. So the twin's *backward* **does** re-draw and re-apply the same-seeded mask to the recomputed `softmax_y` with the `1/(1−p)` rescale — exactly the FA-2 dropout-backward recipe. The accurate statement is: **the shipped `nkilib` `attention_bwd.py` has no dropout, but the reference twin's backward does.** Any reimplementer wiring dropout should follow the twin's L974-981 pattern (re-seed per `(batch, head, q-tile, k-tile)` offset, redraw, then `·1/(1−p)`); this matches the `InstDropout` / MT19937-64 mechanism documented for the dropout op generally. `[CONFIRMED — twin L974-981 in _flash_attn_bwd_core]`
+**The reference twin's backward, by contrast, does handle dropout** — so the absence above is specific to `nkilib`, not a property of the algorithm. In `neuronxcc/nki/kernels/attention.py`, the dropout re-draw sits *inside* `_flash_attn_bwd_core` (the twin's backward core, L872-1080), guarded by `if dropout_p > 0.0`: `nl.random_seed(offset_seed)`, then `softmax_y = nl.dropout(softmax_y, rate=...)`, then `nl.multiply(softmax_y, 1/(1−dropout_p))`, at **lines 974-981**. That is the standard FA-2 dropout-backward recipe: re-draw the same-seeded mask against the recomputed `softmax_y` and re-apply the `1/(1−p)` rescale.
+
+A reimplementer wiring dropout should follow that L974-981 pattern — re-seed per `(batch, head, q-tile, k-tile)` offset, redraw, then `·1/(1−p)` — which matches the `InstDropout` / MT19937-64 mechanism documented for the dropout op generally.
 
 ---
 
@@ -402,7 +404,7 @@ dma_copy(out_dsinks_ref, dsinks_reduced)                                   // L1
 
 `p_sink = exp(sink_logit − LSE)` uses the **same `−LSE` bias** as `P` (sinks are part of the same softmax). With `reverse1=True`, the op computes `dst = operand1 − (data·operand0) = dsinks_local − p_sink·D`, accumulating `dsinks_local −= p_sink·D` over q-tiles.
 
-The math is the sink case of the softmax-backward: a sink contributes no value output, so `dP_sink = 0`, and `dS_sink = p_sink·(dP_sink − D) = −p_sink·D`, summed over the query axis. This matches the golden, which pads `softmax_dy` with zeros for the sink columns and takes the sink slice of `softmax_dx_golden` summed over `dim=2` (`attention_bwd_torch.py:91-101`). `[CONFIRMED]`
+The math is the sink case of the softmax-backward: a sink contributes no value output, so `dP_sink = 0`, and `dS_sink = p_sink·(dP_sink − D) = −p_sink·D`, summed over the query axis. This matches the golden, which pads `softmax_dy` with zeros for the sink columns and takes the sink slice of `softmax_dx_golden` summed over `dim=2` (`attention_bwd_torch.py:91-101`).
 
 > **NOTE — `reverse1=True` is the sink op's only distinguishing flag.** Three `scalar_tensor_tensor` call sites exist in the file (dS, dQ scale-accumulate, dsinks); only the dsinks one (`attention_bwd.py:1393`) sets `reverse1=True`, swapping the second operand order so the accumulator can be *subtracted into* without a separate negate. The other two use the default `(data op0 operand0) op1 operand1` order.
 
@@ -418,7 +420,7 @@ The forward checkpoints `{O, LSE}` and the host supplies the upstream `dO`. None
 | `LSE` (`lse_ref`) | `O(seqlen_q)` per head | the one-number-per-row softmax normaliser; recomputes `P` via one `exp` |
 | `dO` (`dy_ref`) | `O(seqlen_q · d_head)` | the upstream gradient (always supplied) |
 
-The tradeoff: instead of saving the `O(seqlen_q · seqlen_k)` probability matrix, the forward saves only the linear LSE, and the backward re-derives `P` on-chip with **one extra QK matmul + one `exp`** per K-tile, plus the `dO@Vᵀ` matmul for `dP`. It trades a constant factor of extra matmul FLOPs for eliminating the quadratic activation memory. `[CONFIRMED/STRONG]`
+The tradeoff: instead of saving the `O(seqlen_q · seqlen_k)` probability matrix, the forward saves only the linear LSE, and the backward re-derives `P` on-chip with **one extra QK matmul + one `exp`** per K-tile, plus the `dO@Vᵀ` matmul for `dP`. It trades a constant factor of extra matmul FLOPs for eliminating the quadratic activation memory.
 
 ---
 

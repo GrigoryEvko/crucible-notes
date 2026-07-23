@@ -45,10 +45,10 @@ Four `.rodata` strings pin the four sizes. They fire only if the encoded slot le
 
 | Descriptor | `N` | Size | Assert string | `.rodata` address | Confidence |
 |---|---|---|---|---|---|
-| `TENSOR1D` | 1 | **8 B** | `"ISA mem pattern 1D must have 8 bytes to encode"` | `0x1d6e810` | CONFIRMED |
-| `TENSOR2D` | 2 | **12 B** | `"ISA mem pattern 2D must have 12 bytes to encode"` | `0x1d6e8b0` | CONFIRMED |
-| `TENSOR3D` | 3 | **16 B** | `"ISA mem pattern 3D must have 16 bytes to encode"` | `0x1d6e920` | CONFIRMED |
-| `TENSOR4D` | 4 | 20 B | `"ISA mem pattern 4D must have 20 bytes to encode"` | `0x1d6e990` | CONFIRMED |
+| `TENSOR1D` | 1 | **8 B** | `"ISA mem pattern 1D must have 8 bytes to encode"` | `0x1d6e810` | CERTAIN |
+| `TENSOR2D` | 2 | **12 B** | `"ISA mem pattern 2D must have 12 bytes to encode"` | `0x1d6e8b0` | CERTAIN |
+| `TENSOR3D` | 3 | **16 B** | `"ISA mem pattern 3D must have 16 bytes to encode"` | `0x1d6e920` | CERTAIN |
+| `TENSOR4D` | 4 | 20 B | `"ISA mem pattern 4D must have 20 bytes to encode"` | `0x1d6e990` | CERTAIN |
 
 `8 = 4 + 4·1`, `12 = 4 + 4·2`, `16 = 4 + 4·3`, `20 = 4 + 4·4` — the rule holds exactly. The `count`-array base is the other half of the rule: it starts at `4 + 2N` (past the ADDR4 word and all `N` stride words), i.e. `+6` (1D), `+8` (2D), `+0xA` (3D), `+0xC` (4D).
 
@@ -60,7 +60,7 @@ Four `.rodata` strings pin the four sizes. They fire only if the encoded slot le
 
 ### Purpose
 
-The single fact that distinguishes this layout from a naive guess: the stride words and the count words live in **two separate contiguous arrays**, not interleaved. The ADDR4 word comes first; immediately after it, all `N` strides; immediately after them, all `N` counts. For 1D the two arrays are one element each, so a 1D descriptor *looks* interleaved — but that is a degenerate coincidence, not a different layout (see the **CORRECTION** below).
+The single fact that distinguishes this layout from a naive guess: the stride words and the count words live in **two separate contiguous arrays**, not interleaved. The ADDR4 word comes first; immediately after it, all `N` strides; immediately after them, all `N` counts. For 1D the two arrays are one element each, so a 1D descriptor *looks* interleaved — but that is a degenerate coincidence, not a different layout.
 
 ### Algorithm
 
@@ -99,14 +99,16 @@ The `stride` array base is `+4` and the `count` array base is `4 + 2N`, on both 
 
 | Descriptor | Total | ADDR4 | stride words | count words | Confidence |
 |---|---|---|---|---|---|
-| `TENSOR1D` (8 B) | `+0..+7` | `addr32 @+0` | `stride0 @+4` | `num0 @+6` | CONFIRMED |
-| `TENSOR2D` (12 B) | `+0..+0xB` | `addr32 @+0` | `stride0 @+4`, `stride1 @+6` | `num0 @+8`, `num1 @+0xA` | CONFIRMED |
-| `TENSOR3D` (16 B) | `+0..+0xF` | `addr32 @+0` | `stride0 @+4`, `stride1 @+6`, `stride2 @+8` | `num0 @+0xA`, `num1 @+0xC`, `num2 @+0xE` | CONFIRMED |
-| `TENSOR4D` (20 B) | `+0..+0x13` | `addr32 @+0` | `+4`/`+6`/`+8`/`+0xA` | `+0xC`/`+0xE`/`+0x10`/`+0x12` | CONFIRMED |
+| `TENSOR1D` (8 B) | `+0..+7` | `addr32 @+0` | `stride0 @+4` | `num0 @+6` | CERTAIN |
+| `TENSOR2D` (12 B) | `+0..+0xB` | `addr32 @+0` | `stride0 @+4`, `stride1 @+6` | `num0 @+8`, `num1 @+0xA` | CERTAIN |
+| `TENSOR3D` (16 B) | `+0..+0xF` | `addr32 @+0` | `stride0 @+4`, `stride1 @+6`, `stride2 @+8` | `num0 @+0xA`, `num1 @+0xC`, `num2 @+0xE` | CERTAIN |
+| `TENSOR4D` (20 B) | `+0..+0x13` | `addr32 @+0` | `+4`/`+6`/`+8`/`+0xA` | `+0xC`/`+0xE`/`+0x10`/`+0x12` | CERTAIN |
 
 Worked offsets for the count-array base: `+6 = 4 + 2·1`, `+8 = 4 + 2·2`, `+0xA = 4 + 2·3`, `+0xC = 4 + 2·4`. These are byte-exact from the writer `lea` offsets (`lea 0x2(rax,r13)` for 1D, `lea 0x4(rax,r13)` for 2D, `lea 0x6(rax,r13)` for 3D — each = `base + (2i+4) + 2N_offset`) and from the validator `cmpw` offsets (next section).
 
-> **CORRECTION (supersedes an earlier `TENSOR2D` decode) —** an earlier study described the 2D slot as the *interleaved* layout `[addr32 @+0][stride0 @+4][num0 @+6][stride1 @+8][num1 @+0xA]`. That is **wrong**. The verified 2D layout is the *separate-array* form `[addr32 @+0][stride0 @+4][stride1 @+6][num0 @+8][num1 @+0xA]`. The proof is symmetric: the encoder writes `stride @+4+2i` (`sub_116ca30`) and `num @+8+2i` (`sub_116d620`, `lea 0x4(rax,r13)` @ `0x11762d9`), and the validator `tensor2d_valid` reads `num0 @+8` and `num1 @+0xA` (next section). The two-separate-arrays rule is universal across 1D/2D/3D/4D; the apparent 1D "interleave" is the degenerate case where each array holds one element.
+The 2D case is the one worth pinning down explicitly, because both halves of the toolchain agree on it. The encoder writes `stride @+4+2i` (`sub_116ca30`) and `num @+8+2i` (`sub_116d620`, `lea 0x4(rax,r13)` @ `0x11762d9`), and the validator `tensor2d_valid` reads `num0 @+8` and `num1 @+0xA` (next section). So the 2D slot is `[addr32 @+0][stride0 @+4][stride1 @+6][num0 @+8][num1 @+0xA]`.
+
+> **GOTCHA — a 2D descriptor is not interleaved.** The obvious guess, `[addr32][stride0][num0][stride1][num1]`, puts `num0` at `+6` and `stride1` at `+8` and is wrong on both. Strides and counts are two separate arrays for every rank; the apparent 1D "interleave" is only the degenerate case where each array holds one element.
 
 ---
 
@@ -122,15 +124,15 @@ The stride writer is `sub_116ca30 @0x116ca30`, called once per active free dimen
 
 | Property | Value | Evidence | Confidence |
 |---|---|---|---|
-| Width | 16 bits | `mov %ax,(%rdi)` store | CONFIRMED |
-| Signedness | **signed** two's-complement | `movswq` sign-extend + sign-match guard | CONFIRMED |
-| Range | `[-32768, +32767]` | `i16` two's-complement | CONFIRMED |
-| Units | **element units**, not bytes | dtype passed to writer only as error-message context, never as a scale | CONFIRMED |
-| Sign bit | bit 15 of the word | i16 layout | CONFIRMED |
+| Width | 16 bits | `mov %ax,(%rdi)` store | CERTAIN |
+| Signedness | **signed** two's-complement | `movswq` sign-extend + sign-match guard | CERTAIN |
+| Range | `[-32768, +32767]` | `i16` two's-complement | CERTAIN |
+| Units | **element units**, not bytes | dtype passed to writer only as error-message context, never as a scale | CERTAIN |
+| Sign bit | bit 15 of the word | i16 layout | CERTAIN |
 
 > **QUIRK —** the stride is in **element** units. The compiler writes the logical element step verbatim; the dtype byte-size multiply happens in hardware at walk time, not in the descriptor. (The one place a `×4` scale appears in the encoder is the MX-only `MXMEM_PATTERN1D` variant — *not* plain `TENSOR1D/2D/3D`.) A reimplementer must **not** pre-multiply strides by `dtypeBytes`.
 
-> **GOTCHA (PSUM only) —** the validators apply a tighter-than-`i16` bound on `stride1` in the **PSUM-destination** path: `testb $0xe0,0x7(%rsp)` — byte `+7` is the high byte of `stride1 @+6`, and its top 3 bits must be clear, restricting `stride1` to roughly a 13-bit magnitude window for PSUM writes. The general SBUF-source path does **not** apply this mask. (Role inferred from the region gate — INFERRED.)
+> **GOTCHA (PSUM only) —** the validators apply a tighter-than-`i16` bound on `stride1` in the **PSUM-destination** path: `testb $0xe0,0x7(%rsp)` — byte `+7` is the high byte of `stride1 @+6`, and its top 3 bits must be clear, restricting `stride1` to roughly a 13-bit magnitude window for PSUM writes. The general SBUF-source path does **not** apply this mask. That this is specifically a PSUM-write magnitude bound, rather than some other source constraint, is **[INFERRED]** from the surrounding region gate.
 
 ---
 
@@ -146,11 +148,11 @@ The count writer is `sub_116d620 @0x116d620`, called once per active free dimens
 
 | Property | Value | Evidence | Confidence |
 |---|---|---|---|
-| Width | 16 bits | `mov %ax,(%rdi)` store | CONFIRMED |
-| Signedness | **unsigned** | `and $0xffff` guard, no sign-extend | CONFIRMED |
-| Width range | `[0, 65535]` | u16 | CONFIRMED |
-| Effective range | **`[1, 65535]`** | validator rejects `num == 0` (below) | CONFIRMED |
-| Units | element count (no dtype scale) | logical count written verbatim | CONFIRMED |
+| Width | 16 bits | `mov %ax,(%rdi)` store | CERTAIN |
+| Signedness | **unsigned** | `and $0xffff` guard, no sign-extend | CERTAIN |
+| Width range | `[0, 65535]` | u16 | CERTAIN |
+| Effective range | **`[1, 65535]`** | validator rejects `num == 0` (below) | CERTAIN |
+| Units | element count (no dtype scale) | logical count written verbatim | CERTAIN |
 
 > **GOTCHA —** although the *width* admits `0`, a zero count is **illegal** for an SBUF-resident descriptor: the validator rejects any descriptor with a zero count word (`setne` chain, next section). This is the decode-side counterpart of the encoder's `{1,1}` unit-fill — a never-written count word would be `0` and would be rejected, which is precisely *why* the encoder must unit-fill spare dimensions rather than leave them zero.
 
@@ -195,17 +197,17 @@ The 12-byte 2D descriptor passes as `rdi` (bytes `+0..+7`) + `esi` (bytes `+8..+
 
 | Field | Encoder writes | Validator reads | Confidence |
 |---|---|---|---|
-| ADDR4 `@+0` | `assignStartAddr<ADDR4>(slot+0)` | `tensor_start_addr_valid(word)` | CONFIRMED |
-| `stride0 @+4` | `sub_116ca30(slot+4)` i16 | part of ADDR4-style word `@+4` | CONFIRMED |
-| `stride1 @+6` | `sub_116ca30(slot+6)` i16 | byte `+7` hi (`testb 0xe0`, PSUM) | CONFIRMED |
-| `stride2 @+8` | `sub_116ca30(slot+8)` i16 (3D) | `cmpw $0,0x8(rsp)` ≠ 0 (PSUM, 3D) | CONFIRMED |
-| `num0 @+8`/`+0xA` | `sub_116d620(base+0)` u16 | 2D: `test r15w@+8` / 3D: `cmpw +0xA` | CONFIRMED |
-| `num1 @+0xA`/`+0xC` | `sub_116d620(base+2)` u16 | 2D: `cmpw +0xA` / 3D: `cmpw +0xC` | CONFIRMED |
-| `num2 @+0xE` | `sub_116d620(base+4)` u16 (3D) | `cmpw $0,0xe(rsp)` ≠ 0 (3D) | CONFIRMED |
-| partition | folded → ADDR4 band bits | addr band bits | CONFIRMED |
-| dim count | (implicit type) + `active ≤ N+1` | (none on wire) | CONFIRMED |
+| ADDR4 `@+0` | `assignStartAddr<ADDR4>(slot+0)` | `tensor_start_addr_valid(word)` | CERTAIN |
+| `stride0 @+4` | `sub_116ca30(slot+4)` i16 | part of ADDR4-style word `@+4` | CERTAIN |
+| `stride1 @+6` | `sub_116ca30(slot+6)` i16 | byte `+7` hi (`testb 0xe0`, PSUM) | CERTAIN |
+| `stride2 @+8` | `sub_116ca30(slot+8)` i16 (3D) | `cmpw $0,0x8(rsp)` ≠ 0 (PSUM, 3D) | CERTAIN |
+| `num0 @+8`/`+0xA` | `sub_116d620(base+0)` u16 | 2D: `test r15w@+8` / 3D: `cmpw +0xA` | CERTAIN |
+| `num1 @+0xA`/`+0xC` | `sub_116d620(base+2)` u16 | 2D: `cmpw +0xA` / 3D: `cmpw +0xC` | CERTAIN |
+| `num2 @+0xE` | `sub_116d620(base+4)` u16 (3D) | `cmpw $0,0xe(rsp)` ≠ 0 (3D) | CERTAIN |
+| partition | folded → ADDR4 band bits | addr band bits | CERTAIN |
+| dim count | (implicit type) + `active ≤ N+1` | (none on wire) | CERTAIN |
 
-> **NOTE —** there is no standalone `tensor1d_valid` for the *plain-tensor* 1D source path in the validator family that round-trips the count word (`mxmem1d_valid @0x1447190` validates the distinct MX 1D variant). 1D encoder↔validator agreement is therefore inferred from the identical writer offsets (`stride0 @+4`, `num0 @+6`) plus the shared `tensor_start_addr_valid` ADDR4 check — STRONG, not byte-round-tripped.
+> **NOTE —** there is no standalone `tensor1d_valid` for the *plain-tensor* 1D source path in the validator family that round-trips the count word (`mxmem1d_valid @0x1447190` validates the distinct MX 1D variant). 1D encoder↔validator agreement is therefore **[INFERRED]** from the identical writer offsets (`stride0 @+4`, `num0 @+6`) plus the shared `tensor_start_addr_valid` ADDR4 check, not byte-round-tripped.
 
 ---
 
@@ -251,7 +253,7 @@ addr_word     = (basePartition << 18)   + inPartitionByteAddr    // SBUF band
 
 then band-shifted into the high bits of the ADDR4 word. The partition dim is never a stride or count word.
 
-> **GOTCHA — partition step sign.** Unlike the free axes (which may have negative `i16` strides), the partition stride `Pattern[0].step` is asserted `≥ 0` upstream: `bir::AccessPattern::getStepBytesPerHighestDim` ([libBIR](../bir/) @ `0x203170`) reads `Pattern[0]` and `__assert_fail`s on `"Pattern[0].getStep() >= 0 && \"Negative step in Pattern[0] not supported\\n\""`. The partition axis never walks backward; only the free axes may. (CONFIRMED — the assert is read directly off the `libBIR` body, which also confirms the `bir::APPair` element layout `{step @+0, num @+8}` and the 20-entry `Dtype` table, dtype index `> 0x13` → `"Unknown dtype"`.)
+> **GOTCHA — partition step sign.** Unlike the free axes (which may have negative `i16` strides), the partition stride `Pattern[0].step` is asserted `≥ 0` upstream: `bir::AccessPattern::getStepBytesPerHighestDim` ([libBIR](../bir/) @ `0x203170`) reads `Pattern[0]` and `__assert_fail`s on `"Pattern[0].getStep() >= 0 && \"Negative step in Pattern[0] not supported\\n\""`. The partition axis never walks backward; only the free axes may. The same `libBIR` body also pins the `bir::APPair` element layout `{step @+0, num @+8}` and the 20-entry `Dtype` table, where a dtype index `> 0x13` yields `"Unknown dtype"`.
 
 ---
 
@@ -259,7 +261,7 @@ then band-shifted into the high bits of the ADDR4 word. The partition dim is nev
 
 The descriptor byte layout is **arch-invariant** across CoreV2/V3/V4. The CoreV2 packers (`0x11755d0`/`0x1175dd0`/`0x11765d0`) and CoreV4 packers (`0x150ad20`/`0x150b7e0`/`0x150c390`) are byte-identical in the field math — same `stride @+4+2i`, same `num @+(4+2N)+2i`, same `{1,1}` fill, same `0x00010001` immediates. The only difference is which ADDR4 leaf is called (`assignStartAddr<core_v2::ADDR4>` @ `0x1172e10` vs `<core_v4::ADDR4>` @ `0x1508df0`) and, on the v4 3D path, a second `assignStartAddr` call (@ `0x150cde3`) for the inline indirect/gather arm — *not* part of the plain `TENSOR3D` layout ([2.4](tensor4d-mempattern4d.md)).
 
-> **NOTE —** CoreV3 (gen3/Cayman) has no standalone `assignStaticPattern` symbols; `assignAccess<core_v3::TENSOR3D>` @ `0x1425850` routes through `vtbl[+0x30]` (`mov 0x30(rax),rax ; jmp *rax`) to the shared `CoreV3GenImpl` leaf, reusing the same template body. The byte layout is identical — the v4 byte-match proves the geometry is arch-invariant. (STRONG — the v3 leaf was not individually disassembled.)
+> **NOTE —** CoreV3 (gen3/Cayman) has no standalone `assignStaticPattern` symbols; `assignAccess<core_v3::TENSOR3D>` @ `0x1425850` routes through `vtbl[+0x30]` (`mov 0x30(rax),rax ; jmp *rax`) to the shared `CoreV3GenImpl` leaf, reusing the same template body. The byte layout is identical — the v4 byte-match proves the geometry is arch-invariant. The v3 leaf itself was not individually disassembled.
 
 ---
 
@@ -279,13 +281,16 @@ Little-endian on the wire (after the ADDR4 word): `40 00 01 00 10 00 20 00`. The
 
 ---
 
-## Gaps and Confidence
+## Evidence summary
 
-- **Byte offsets, sizes, signedness, `{1,1}` fill, partition folding — CONFIRMED.** The three sizes (8/12/16) are pinned by four `.rodata` asserts; the offsets are byte-exact from writer `lea` offsets and validator `cmpw`/`testb` offsets; stride signedness is the `movswq` sign-match guard, count unsignedness the `and $0xffff` guard; the `0x00010001` immediates pin the unit-fill; the `Pattern[0].step ≥ 0` partition constraint is read directly off the `libBIR` `getStepBytesPerHighestDim` body.
-- **Encoder ↔ validator round-trip — CONFIRMED for 2D and 3D** (`tensor2d_valid` @ `0x14468c0`, `tensor3d_valid` @ `0x14467d0` read exactly the offsets the packers write); **STRONG for 1D** (no count-round-tripping `tensor1d_valid`; inferred from shared writer offsets + ADDR4 validator).
-- **ADDR4 `@+0` bit map — STRONG.** The partition-band decomposition and band bits are owned formally by [2.2 ADDR4](addr4.md); reconstructed here only as the descriptor's first word.
-- **CoreV3 layout — STRONG.** No distinct v3 static-pattern symbols; the vtable-reuse leaf was not individually field-walked, but the v2↔v4 byte-match makes the geometry arch-invariant.
-- **PSUM `stride1` `0xe0`-mask role — INFERRED.** Read off the validator; its role as a PSUM-write magnitude bound (vs a general source constraint) is inferred from the region gate.
+| Claim | Grounding | Confidence |
+|---|---|---|
+| Byte offsets, sizes, signedness, `{1,1}` fill, partition folding | the three sizes (8/12/16) are pinned by four `.rodata` asserts; offsets are byte-exact from writer `lea` offsets and validator `cmpw`/`testb` offsets; stride signedness is the `movswq` sign-match guard and count unsignedness the `and $0xffff` guard; the `0x00010001` immediates pin the unit-fill; the `Pattern[0].step ≥ 0` constraint is read off `libBIR` `getStepBytesPerHighestDim` | CERTAIN |
+| Encoder ↔ validator round-trip, 2D and 3D | `tensor2d_valid` @ `0x14468c0` and `tensor3d_valid` @ `0x14467d0` read exactly the offsets the packers write | CERTAIN |
+| Encoder ↔ validator round-trip, 1D | no count-round-tripping `tensor1d_valid` exists; agreement follows from the shared writer offsets plus the ADDR4 validator | MEDIUM |
+| ADDR4 `@+0` bit map | owned formally by [2.2 ADDR4](addr4.md); reconstructed here only as the descriptor's first word | HIGH |
+| CoreV3 layout | no distinct v3 static-pattern symbols; the vtable-reuse leaf was not individually field-walked, but the v2↔v4 byte-match makes the geometry arch-invariant | HIGH |
+| PSUM `stride1` `0xe0`-mask is a write-magnitude bound | the mask itself is read off the validator; its *role* comes from the surrounding region gate | MEDIUM |
 
 ## Cross-References
 

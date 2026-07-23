@@ -66,7 +66,7 @@ mlir::stablehlo::StablehloToHloOpConverter<UniformDequantizeOp>   (stablehlo -> 
 mlir::stablehlo::StablehloToHloOpConverter<UniformQuantizeOp>
 ```
 
-> **NOTE —** these are the generic stock converters, part of the ~130-op `RewritePatternSet::add` template (e.g. `0x761a840` for the Hlo→Stablehlo direction). There is no Neuron-custom quantize converter. Confirmed by the demangled symbol containing the full op list with `UniformQuantize`/`UniformDequantize` between `UnaryEinsumOp` and `WhileOp`. **[CONFIRMED]**
+> **NOTE —** these are the generic stock converters, part of the ~130-op `RewritePatternSet::add` template (e.g. `0x761a840` for the Hlo→Stablehlo direction). There is no Neuron-custom quantize converter: the demangled symbol carries the full op list, with `UniformQuantize`/`UniformDequantize` sitting between `UnaryEinsumOp` and `WhileOp`.
 
 ### The quantized type zoo
 
@@ -103,7 +103,7 @@ The stock `stablehlo` quantized-op verifier strings are present in the pool, con
 "expects all operands and results to be either quantized or non-quantized"
 ```
 
-> **NOTE —** sub-channel exists in the binary (`UniformQuantizedSubChannelType`, `CalibratedQuantizedTypeStorage` @ `0x8096690`) but is **not** reached through the Neuron dict deserializer in [§3](#3-xlagetquantizedtype-the-neuron-deserializer) — it has no `block_size` read there. Sub-channel arrives only via the stock `stablehlo` quant axis machinery. **[CONFIRMED]**
+> **NOTE —** sub-channel exists in the binary (`UniformQuantizedSubChannelType`, `CalibratedQuantizedTypeStorage` @ `0x8096690`) but is **not** reached through the Neuron dict deserializer in [§3](#3-xlagetquantizedtype-the-neuron-deserializer) — it has no `block_size` read there. Sub-channel arrives only via the stock `stablehlo` quant axis machinery.
 
 ---
 
@@ -126,7 +126,7 @@ function symbolizeDequantizeMode(StringRef s):     // 0x76dece0
     return <default = 0>                             // anything else
 ```
 
-So `DequantizeMode = { <default> = 0, MIN_COMBINED = 1 }`. Pure stock `tf.Dequantize` legacy semantics; never device-bound. **[CONFIRMED]** — the `movabs $0x424d4f435f4e494d` literal decodes ASCII-LE to `MIN_COMB` and the `cmpl $0x44454e49` to `INED`.
+So `DequantizeMode = { <default> = 0, MIN_COMBINED = 1 }`. Pure stock `tf.Dequantize` legacy semantics; never device-bound. The `movabs $0x424d4f435f4e494d` literal decodes ASCII-LE to `MIN_COMB` and the `cmpl $0x44454e49` to `INED`.
 
 > **QUIRK —** the `DequantizeMode` attribute and the `uniform_dequantize` op are easily conflated because both say "dequantize". They are different ops with different lowerings: `DequantizeMode` is the legacy range-table path (Path B), `uniform_dequantize` is the quant-dialect path (Path A). Neither targets the device.
 
@@ -172,9 +172,9 @@ function getQuantizedType(DictionaryAttr& dict):                    // 0x75d65e0
                    scales, zps, quantDim, storageMin, storageMax) // per-axis: full arrays
 ```
 
-> **QUIRK —** `scale` and `zero_point` are **always** read as arrays, even for per-tensor. The per-tensor branch simply uses `scales[0]`/`zps[0]` and discards the rest. A reimplementer who serializes a scalar `scale` for per-tensor will produce a dictionary this deserializer rejects (it calls `ArrayAttr::getValue`, not `FloatAttr::getValueAsDouble`, on the top-level `scale` attr). **[CONFIRMED]** — both `ArrayAttr::getValue` calls at `0x75d665e`/`0x75d6669` precede the per-element loop.
+> **QUIRK —** `scale` and `zero_point` are **always** read as arrays, even for per-tensor. The per-tensor branch simply uses `scales[0]`/`zps[0]` and discards the rest. A reimplementer who serializes a scalar `scale` for per-tensor will produce a dictionary this deserializer rejects (it calls `ArrayAttr::getValue`, not `FloatAttr::getValueAsDouble`, on the top-level `scale` attr). Both `ArrayAttr::getValue` calls, at `0x75d665e` and `0x75d6669`, precede the per-element loop.
 
-The sentinel is the central fact: **`quantization_dimension == -1` ⟺ per-tensor; `>= 0` ⟺ per-axis.** The `cmp $0xffffffffffffffff,%rbx` at `0x75d6889` is the literal `-1` compare; the `je` at `0x75d688d` jumps to the per-tensor builder, and the fall-through at `0x75d68c4` calls the per-axis builder. All seven key strings are present in the string pool at the expected lengths (`scale` len 5, `zero_point` len 10, `quantization_dimension` len 22, `storage_min`/`storage_max` len 11, `storage_type` len 12, `expressed_type` len 14). **[CONFIRMED]**
+The sentinel is the central fact: **`quantization_dimension == -1` ⟺ per-tensor; `>= 0` ⟺ per-axis.** The `cmp $0xffffffffffffffff,%rbx` at `0x75d6889` is the literal `-1` compare; the `je` at `0x75d688d` jumps to the per-tensor builder, and the fall-through at `0x75d68c4` calls the per-axis builder. All seven key strings are present in the string pool at the expected lengths (`scale` len 5, `zero_point` len 10, `quantization_dimension` len 22, `storage_min`/`storage_max` len 11, `storage_type` len 12, `expressed_type` len 14).
 
 ### Function Map
 
@@ -210,7 +210,7 @@ real = (convert<f32>(q) - zero_point) * scale
 
 `round_to_nearest_even` is the MLIR `quant` default (banker's rounding). The CPU emitter side implements the same: the binary carries xnnpack reference ukernels `unary_ukernel_quantized<xnnpack::quantized<signed char,...>, ConvertOp<float,float>>` (e.g. `0x61aa9a0`), which round-to-nearest on the host. `storage_min`/`storage_max` come straight from the storage type's bit-width and signedness (`i8 -> [-128,127]`, `u8 -> [0,255]`, plus the narrower 2/4-bit and `i16`/`i32` forms the verifier strings enumerate).
 
-> **NOTE —** the exact round-even/clamp formula is **[STRONG]**, not single-stepped: it is the documented MLIR `quant` semantics, corroborated by the xnnpack `RoundToNearest`-class quantized ukernels present in the binary, but the precise instruction sequence was not traced. On the device, the numeric `convert<i8>` of operands rides `bir::CastToNewDType` at the tensorizer level (see [4.x — CastToNewDType](#cross-references)); the quantize *semantics* are not a dedicated device op. The `MIN_COMBINED` path (Path B) is a third, legacy, CPU-only lowering, unused by the device.
+> **NOTE —** the exact round-even/clamp formula is the documented MLIR `quant` semantics, corroborated by the xnnpack `RoundToNearest`-class quantized ukernels present in the binary; the precise instruction sequence was not single-stepped. On the device, the numeric `convert<i8>` of operands rides `bir::CastToNewDType` at the tensorizer level (see [4.x — CastToNewDType](#cross-references)); the quantize *semantics* are not a dedicated device op. The `MIN_COMBINED` path (Path B) is a third, legacy, CPU-only lowering, unused by the device.
 
 ---
 
@@ -218,7 +218,7 @@ real = (convert<f32>(q) - zero_point) * scale
 
 ### Purpose
 
-This is the honesty crux. The Neuron device does **not** consume `uniform_quantize`/int8 directly. The one device quantize path is **microscaling FP8** (OCP MXFP), implemented as a pair of `xla::hilo` HLO passes that rewrite a quantized cluster into packed device custom calls. `hilo` is Neuron's HLO-IR layer; both passes are `HloModulePass` over `xla::HloModule`. Source paths leak in the string pool: `hilo/hlo_passes/LegalizeQuantizeMX.cc`, `hilo/hlo_passes/LegalizeScaledMatmul.cc`. Pass flags: `legalize-quantize-mx`. **[CONFIRMED]**
+This is the honesty crux. The Neuron device does **not** consume `uniform_quantize`/int8 directly. The one device quantize path is **microscaling FP8** (OCP MXFP), implemented as a pair of `xla::hilo` HLO passes that rewrite a quantized cluster into packed device custom calls. `hilo` is Neuron's HLO-IR layer; both passes are `HloModulePass` over `xla::HloModule`. Source paths leak in the string pool: `hilo/hlo_passes/LegalizeQuantizeMX.cc`, `hilo/hlo_passes/LegalizeScaledMatmul.cc`. Pass flags: `legalize-quantize-mx`.
 
 ### Entry Point
 
@@ -251,7 +251,7 @@ function LegalizeQuantizeMX_Run(HloModule* m, ...):                  // 0x1efc4f
         computation->ReplaceInstruction(instr, new)
 ```
 
-> **QUIRK —** `LegalizeQuantizeMX` LOWERS an *already-present* `QuantizeMX` custom call (emitted upstream by the Neuron frontend) into its packed device form. It is matched by `opcode == kCustomCall (0x2b)` + a `string::compare` against `"QuantizeMX"`, with **no reference to `uniform_quantize` anywhere**. This is the cleanest proof that the device quantize is a separate, frontend-authored MX custom call, fully disjoint from the stock int8 op. **[CONFIRMED]** — `cmpb $0x2b,0x14(%rax)` at `0x1efc594`, `string::compare` at `0x1efc5ad`.
+> **QUIRK —** `LegalizeQuantizeMX` LOWERS an *already-present* `QuantizeMX` custom call (emitted upstream by the Neuron frontend) into its packed device form. It is matched by `opcode == kCustomCall (0x2b)` + a `string::compare` against `"QuantizeMX"`, with **no reference to `uniform_quantize` anywhere**. This is the cleanest proof that the device quantize is a separate, frontend-authored MX custom call, fully disjoint from the stock int8 op — `cmpb $0x2b,0x14(%rax)` at `0x1efc594`, `string::compare` at `0x1efc5ad`.
 
 ### The QuantizeMX custom-call contract
 
@@ -269,7 +269,7 @@ Recovered from the verifier error strings:
 | output | tuple of exactly 2: (U32-packed data, per-block scale) | `"must return a tuple with exactly 2 outputs"` |
 | `backend_config` | JSON with `{dtype, dim, block_size, scale_method}` | `"Ensure the backend_config is valid JSON with required fields: dtype, dim, block_size, scale_method."` |
 
-> **GOTCHA —** the device quantize target is **FP8, not int8.** `QuantizeMX` outputs `float8_e5m2`/`float8_e4m3fn`, packs four FP8 values into one U32 word, and emits the per-block (E8M0) scale as a *separate second tuple output* — OCP-MX style. There is no int8 storage type anywhere in this contract. An int8 model that reaches the frontend as a `uniform_quantize` does **not** become a `QuantizeMX`. **[CONFIRMED]** — all eight contract strings present in the pool.
+> **GOTCHA —** the device quantize target is **FP8, not int8.** `QuantizeMX` outputs `float8_e5m2`/`float8_e4m3fn`, packs four FP8 values into one U32 word, and emits the per-block (E8M0) scale as a *separate second tuple output* — OCP-MX style. There is no int8 storage type anywhere in this contract. An int8 model that reaches the frontend as a `uniform_quantize` does **not** become a `QuantizeMX`. All eight contract strings are present in the pool.
 
 ### ScaledMatmul — the consumer
 
@@ -283,7 +283,7 @@ Recovered from the verifier error strings:
 
 `ScaledMatmul` consumes the U32-packed MX tensor + per-block scale produced by `QuantizeMX` and performs the microscaled matmul on the Neuron PE array. The `(QuantizeMX -> ScaledMatmul)` graph fuses naturally, so no separate quantize hoist is needed on the device side — the `lift_up_quantize` hoist is the oneDNN/CPU one ([§6](#6-path-c--onednn-cpu-golden-stock-golden)).
 
-> **CORRECTION (X08-1) —** a string-pool fragment near these passes reading `…replace_quant_dag…` is **not** a Neuron pass. It is the oneDNN function `replace_quant_data_with_binary_post_op` (`dnnl::impl::graph::dnnl_impl::`) spliced against an adjacent string. There is no `replace_quant_dag` Neuron pass.
+> **GOTCHA —** a string-pool fragment near these passes reads `…replace_quant_dag…` and looks like a Neuron pass name. It is not: it is the oneDNN function `replace_quant_data_with_binary_post_op` (`dnnl::impl::graph::dnnl_impl::`) spliced against an adjacent string. There is no `replace_quant_dag` pass.
 
 ---
 
@@ -291,7 +291,7 @@ Recovered from the verifier error strings:
 
 ### Purpose
 
-`xla::hilo::NeuronIntMatmulDowncast` is an HLO `OpExpanderPass` (`neuron_int_matmul_downcast.cc`, flag `neuron-int-matmul-downcast`). It is the closest thing to an int8 device path, and the answer is blunt: **the device does not execute integer matmuls natively — it emulates them in F32.** The string `" Downcast for int support "` names the intent. **[CONFIRMED]**
+`xla::hilo::NeuronIntMatmulDowncast` is an HLO `OpExpanderPass` (`neuron_int_matmul_downcast.cc`, flag `neuron-int-matmul-downcast`). It is the closest thing to an int8 device path, and the answer is blunt: **the device does not execute integer matmuls natively — it emulates them in F32.** The string `" Downcast for int support "` names the intent.
 
 ### Algorithm
 
@@ -312,7 +312,7 @@ function ExpandInstruction(HloInstruction* dot):                   // 0x1faa9b0
                               // so the tensorizer must not re-cast them
 ```
 
-The matcher at `0x1fa9f10` is `cmpb $0x2e,0x14(%rsi)` — opcode field at offset `0x14` of the `HloInstruction`, compared to `0x2e` (kDot). The expander tags its inserted converts with the `auto_cast`/`auto_cast_type` attributes (both strings present), marking them as compiler-inserted so the downstream tensorizer leaves them alone. Error: `"HloInstruction '%s' is of type '%s' and cannot be downcasted to '%s.'"`. **[CONFIRMED]**
+The matcher at `0x1fa9f10` is `cmpb $0x2e,0x14(%rsi)` — opcode field at offset `0x14` of the `HloInstruction`, compared to `0x2e` (kDot). The expander tags its inserted converts with the `auto_cast`/`auto_cast_type` attributes (both strings present), marking them as compiler-inserted so the downstream tensorizer leaves them alone. Error: `"HloInstruction '%s' is of type '%s' and cannot be downcasted to '%s.'"`.
 
 > **QUIRK —** Path E proves the device has **no native int8 GEMM** on this route. An int8-quantized model that reaches HLO as an integer dot runs in **F32** on the PE array (convert up, F32 dot, convert down), not as int8. The genuinely low-precision device GEMM is the MX-FP8 `ScaledMatmul` (Path D). The int8 numeric cast of the *operands* rides `bir::CastToNewDType` at the tensorizer.
 
@@ -336,7 +336,7 @@ Both names the task line cites — `convert_dynamic_quantize_ops` and `lift_up_q
 
 The supporting oneDNN op-kind family (`Quantize`, `Dequantize`, `DynamicQuantize`, `DynamicDequantize`, `TypeCast`, `Reorder`, `StaticReshape`) and the execution kernel `quantize_dequantize_t` are all present.
 
-> **GOTCHA —** this is the **golden/CPU reference** INT8 path — used by XLA:CPU to compute reference outputs for numeric verification of the Neuron compile. It never touches the Neuron PE/accelerator. The depth of the oneDNN INT8 matmul scale/zp flow is owned by the calibration sibling (see [4.30](#cross-references)); this section just establishes provenance: the `dnnl::impl::graph::dnnl_impl::` namespace prefix is the tell. **[CONFIRMED]** — all five functions present at the listed addresses with the oneDNN namespace.
+> **GOTCHA —** this is the **golden/CPU reference** INT8 path — used by XLA:CPU to compute reference outputs for numeric verification of the Neuron compile. It never touches the Neuron PE/accelerator. The depth of the oneDNN INT8 matmul scale/zp flow is owned by the calibration sibling (see [4.30](#cross-references)); this section just establishes provenance: the `dnnl::impl::graph::dnnl_impl::` namespace prefix is the tell, and all five functions carry it at the listed addresses.
 
 ---
 
@@ -361,18 +361,18 @@ The chain of evidence backing **"no int8 scale/zero-point reaches device code"**
 
 Therefore the int8 `uniform_quantize` op is a frontend / golden-reference construct; the hardware quantized GEMM is MX-FP8; integer dots that survive to the device are F32-emulated; and int8 numeric casts of operands ride `bir::CastToNewDType` at the tensorizer. **No int8 scale/zero-point ever crosses into Neuron device code.**
 
-### Confidence ledger
+### Evidence summary
 
-| Claim | Tag | Anchor |
+| Claim | Anchor | Confidence |
 |---|---|---|
-| **No int8 scale/zp reaches device (golden-only)** | **CONFIRMED** | namespaces + Path D FP8 verifier + Path E F32 expander |
-| `getQuantizedType` keys + `-1` per-tensor/per-axis branch | CONFIRMED | disasm `0x75d6889` `cmp $-1` |
-| `DequantizeMode = {0, MIN_COMBINED=1}` | CONFIRMED | disasm `0x76dece0` |
-| `QuantizeMX` matches `kCustomCall`, FP8 contract | CONFIRMED | `0x1efc594` + 8 verifier strings |
-| `NeuronIntMatmulDowncast` int-dot → F32 | CONFIRMED | matcher `0x1fa9f10` + expander `0x1faa9b0` |
-| oneDNN provenance (Path C) | CONFIRMED | `dnnl::…::` symbols at listed addrs |
-| Exact round-even/clamp formula (§4) | STRONG | MLIR quant semantics + xnnpack ukernels (not single-stepped) |
-| int8 weights reach device via `bir::CastToNewDType` | INFERRED | cross-task; no int8-uniform device op exists, so the cast is the only route |
+| **No int8 scale/zp reaches device (golden-only)** | namespaces + Path D FP8 verifier + Path E F32 expander | CERTAIN |
+| `getQuantizedType` keys + `-1` per-tensor/per-axis branch | disasm `0x75d6889` `cmp $-1` | CERTAIN |
+| `DequantizeMode = {0, MIN_COMBINED=1}` | disasm `0x76dece0` | CERTAIN |
+| `QuantizeMX` matches `kCustomCall`, FP8 contract | `0x1efc594` + 8 verifier strings | CERTAIN |
+| `NeuronIntMatmulDowncast` int-dot → F32 | matcher `0x1fa9f10` + expander `0x1faa9b0` | CERTAIN |
+| oneDNN provenance (Path C) | `dnnl::…::` symbols at listed addrs | CERTAIN |
+| Exact round-even/clamp formula (§4) | MLIR quant semantics + xnnpack ukernels; not single-stepped | HIGH |
+| int8 weights reach device via `bir::CastToNewDType` | no int8-uniform device op exists, so the cast is the only remaining route | MEDIUM |
 
 ---
 

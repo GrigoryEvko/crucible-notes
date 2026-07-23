@@ -32,7 +32,7 @@ The NKI loop machinery is physically two ELF modules with a thin trampoline betw
 **Layer A — the language surface.** `iterators.cpython-310-*.so` exports the user-visible names: `affine_range`, `sequential_range`, `static_range`, plus the index helpers `arange`/`ds` and the SPMD barrier `sync_program`. Every one of these is a *pure dispatch shim*. The decompiled `affine_range` public wrapper (`__pyx_pw_…_iterators_5affine_range` @ `0x12230`) is three operations:
 
 ```c
-// iterators.affine_range(*args, **kwds)  —  iterators.py:46  (CONFIRMED)
+// iterators.affine_range(*args, **kwds)  —  iterators.py:46
 static PyObject *iterators_affine_range(PyObject *args, PyObject *kwds) {
     PyObject *ctx = GetModuleGlobalName("nki_ctx")();   // the active codegen context
     PyObject *m   = PyObject_GetAttr(ctx, "affine_range"); // bind ctx.affine_range
@@ -40,9 +40,9 @@ static PyObject *iterators_affine_range(PyObject *args, PyObject *kwds) {
 }
 ```
 
-The identical pattern is CONFIRMED for `sequential_range` (`"sequential_range"`, `iterators.py:111`), `static_range` (`"static_range"`, `iterators.py:23`), and `sync_program` (`"sync_program"`, `iterators.py:17`). `nki_ctx()` returns the process-singleton trace context (the `NeuronCodegen` instance); see [6.1.2 nki_ctx scopes](./nki-ctx-scopes.md). So **`nl.affine_range(n)` is exactly `nki_ctx().affine_range(n)`** — all semantics live in `NeuronCodegen.<name>`; `iterators.py` carries none.
+The identical pattern holds for `sequential_range` (`"sequential_range"`, `iterators.py:111`), `static_range` (`"static_range"`, `iterators.py:23`), and `sync_program` (`"sync_program"`, `iterators.py:17`). `nki_ctx()` returns the process-singleton trace context (the `NeuronCodegen` instance); see [6.1.2 nki_ctx scopes](./nki-ctx-scopes.md). So **`nl.affine_range(n)` is exactly `nki_ctx().affine_range(n)`** — all semantics live in `NeuronCodegen.<name>`; `iterators.py` carries none.
 
-> **NOTE —** The "active codegen context" the trampoline fetches is the same `NeuronCodegen` referenced throughout Part 5/6 as the trace-time IR builder (it owns `self.builder`, the pelican/BIR `IRBuilder` C++ binding, and `self.curstmt`, the insertion anchor). The report-strand premise that lowering lives in `starfish/penguin/targets/codegen/NkiCodegen.so` is a **CORRECTION** target — see the callout in §6.
+> **NOTE —** The "active codegen context" the trampoline fetches is the same `NeuronCodegen` referenced throughout Part 5/6 as the trace-time IR builder (it owns `self.builder`, the pelican/BIR `IRBuilder` C++ binding, and `self.curstmt`, the insertion anchor).
 
 **Layer B — the lowering.** `NeuronCodegen` (in `KernelBuilder.so`) holds the four range methods. The `nm` roster of the control/scope methods places them adjacent: `builtin_range` (`_61`), `affine_range` (`_71`), `static_range` (`_89`), `sequential_range` (`_91`), with `create_affine_axis_block` (`_55`) as the shared node factory.
 
@@ -99,7 +99,7 @@ A third, independent fork — **static vs runtime tripcount** (`Axis` vs `Dynami
 
 ```c
 // NeuronCodegen.static_range(*args, **kwargs)  —  KernelBuilder.py:694, pw @0x72b40
-//   (CONFIRMED: thin wrapper, only `self` operand; forwards to the unroll path)
+//   thin wrapper, only `self` operand; forwards to the unroll path
 def static_range(self, *args, **kwargs):
     # No create_affine_axis_block call, no LoopVar, no AxisType.
     # The range object drives a *concrete* Python iteration during the trace:
@@ -108,7 +108,7 @@ def static_range(self, *args, **kwargs):
     ...
 ```
 
-The docstring (CONFIRMED verbatim from the iterators `.so` string pool) states the contract precisely:
+The docstring, interned verbatim in the iterators `.so` string pool, states the contract precisely:
 
 > *"Create a sequence of numbers for use as loop iterators in NKI, resulting in a fully unrolled loop. Unlike `affine_range` or `sequential_range`, Neuron compiler will fully unroll the loop during NKI kernel tracing. […] Due to loop unrolling, compilation time may go up significantly […]. On-chip memory (SBUF) usage may also go up significantly […]. No loop-level optimizations will be performed in the compiler. `static_range` should only be used as a fall-back option for debugging purposes when `affine_range` or `sequential_range` is giving functionally incorrect results or undesirable performance characteristics."*
 
@@ -128,7 +128,7 @@ Both deferring iterators funnel through **one** generator. `sequential_range` is
 
 ```c
 // NeuronCodegen.sequential_range(*args, **kwargs)  —  KernelBuilder.py:697, pw @0xa7c30
-//   CONFIRMED disasm: GetAttr(self,"affine_range"); GetModuleGlobalName("AxisType"); GetAttr(.,"Sequential")
+//   disasm: GetAttr(self,"affine_range"); GetModuleGlobalName("AxisType"); GetAttr(.,"Sequential")
 def sequential_range(self, *args, **kwargs):
     return self.affine_range(*args, name=…, axis_type=AxisType.Sequential)
 ```
@@ -139,7 +139,7 @@ The disassembly shows the exact operand sequence: bind `self.affine_range`, fetc
 
 The `AxisType` enum is interned in KernelBuilder `.rodata`. Its members resolve to the strings `AffineAxis`, `Sequential`, and `DynamicAxis` (the enum name `AxisType` and the member `Default` are also interned). The affine/sequential split is **not** two different node classes — it is this one attribute on the *same* `LoopAxis` node:
 
-| `axis_type` | Scheduler contract | From docstring (CONFIRMED) |
+| `axis_type` | Scheduler contract | From docstring |
 |---|---|---|
 | `Affine` (default) | iterations **independent** → may be reordered, vectorized, software-pipelined across compute engines within one NeuronCore | "parallel loop iterators … default … when there is **no** loop carried dependency … allows … additional loop-level optimizations, such as loop vectorization" |
 | `Sequential` | inter-iteration **dependency respected** → conservative, no reorder/vectorize | "sequential loop iterators … should be used when there is a loop carried dependency … informs Neuron compiler to respect inter-loop dependency and perform much more conservative loop-level optimizations compared to `affine_range`" |
@@ -149,14 +149,14 @@ The `affine_range` docstring also pins down two subtleties a reimplementer will 
 - **Associative reductions are not loop-carried dependencies** in this model. Multiple `nl.matmul` / `nisa.nc_matmul` calls accumulating into one PSUM buffer defined *outside* the loop are still safe under `affine_range` — the docstring explicitly carves this out with a worked example.
 - `affine_range` does **not** parallelize across NeuronCores. "Since each kernel instance only runs on a single NeuronCore, `affine_range` does **not** parallelize different loop iterations across multiple NeuronCores. However, different iterations could be parallelized/pipelined on different compute engines within a NeuronCore." Cross-NeuronCore parallelism is the SPMD launch grid's job (`nc()` sharding), not the loop iterator's — see [6.1.4 SPMD programming model](./spmd-programming-model.md).
 
-> **QUIRK —** Using `affine_range` where a loop-carried dependency genuinely exists is *unsafe* and "could lead to numerical errors" (CONFIRMED docstring). The compiler does not verify the no-dependency claim — `affine_range` is an assertion *by the kernel author*, and `Sequential` is the safe default that a bare `range` falls back to (§4.3). The whole point of the attribute is to let the author *grant* reordering permission the compiler cannot prove on its own.
+> **QUIRK —** Using `affine_range` where a loop-carried dependency genuinely exists is *unsafe* and, in the docstring's words, "could lead to numerical errors". The compiler does not verify the no-dependency claim — `affine_range` is an assertion *by the kernel author*, and `Sequential` is the safe default that a bare `range` falls back to (§4.3). The whole point of the attribute is to let the author *grant* reordering permission the compiler cannot prove on its own.
 
 ### 4.2 The `affine_range` generator — the workhorse
 
-`affine_range` is a `@contextmanager` (a Cython generator, `__pyx_gb_…_NeuronCodegen_72generator12` @ `0x240260`). The ordered call sequence below is reconstructed from the generator's symbol references (CONFIRMED operands: `normalize_range_args`, `extract_loop_directives`, `has_runtime_value`, `Axis`, `DynamicAxis`, `create_affine_axis_block`, `loop_scope`, `allocation_scope`, `LoopVar`, `iv`, `pred_lt`, `wrap_expr`, `opt_level`, `nullcontext`):
+`affine_range` is a `@contextmanager` (a Cython generator, `__pyx_gb_…_NeuronCodegen_72generator12` @ `0x240260`). The ordered call sequence below is reconstructed from the generator's symbol references (operands: `normalize_range_args`, `extract_loop_directives`, `has_runtime_value`, `Axis`, `DynamicAxis`, `create_affine_axis_block`, `loop_scope`, `allocation_scope`, `LoopVar`, `iv`, `pred_lt`, `wrap_expr`, `opt_level`, `nullcontext`):
 
 ```c
-// NeuronCodegen.affine_range  —  generator @0x240260  (CONFIRMED symbol stream)
+// NeuronCodegen.affine_range  —  generator @0x240260
 @contextmanager
 def affine_range(self, *args, name=…, axis_type=AxisType.Affine):
     lb, ub, stride, tripcount = self.normalize_range_args(*args)   # parse range-like bounds
@@ -184,7 +184,7 @@ def affine_range(self, *args, name=…, axis_type=AxisType.Affine):
 
 Notice the body is yielded **once**: the kernel's `for i in nl.affine_range(n):` runs its body a single time during the trace, binding `i` to one symbolic `LoopVar`. Every instruction emitted in that single pass is parameterized by `iv` and lands inside the `LoopScope` region. The backend, not the trace, replays it `tripcount` times — which is exactly why `affine_range` keeps compile time and SBUF bounded relative to `static_range` (the docstrings cite "better compilation time compared to the fully unrolled iterator `static_range`").
 
-> **NOTE — the `trivial_loop` fast path.** The KernelBuilder string pool interns `"trivial loop "` and the generator references `OptLevel`/`nullcontext`. When `tripcount == 1` the generator takes a degenerate path that uses a `nullcontext` instead of opening a real `LoopScope` — a one-iteration loop needs no axis, no `iv < ub` predicate, and no allocation region of its own. This avoids emitting a `LoopAxis` whose range is `[0,1)`. (CONFIRMED: string + `nullcontext`/`opt_level` operands; the exact guard condition is STRONG.)
+> **NOTE — the `trivial_loop` fast path.** The KernelBuilder string pool interns `"trivial loop "` and the generator references `OptLevel`/`nullcontext`. When `tripcount == 1` the generator takes a degenerate path that uses a `nullcontext` instead of opening a real `LoopScope` — a one-iteration loop needs no axis, no `iv < ub` predicate, and no allocation region of its own. This avoids emitting a `LoopAxis` whose range is `[0,1)`. The `"trivial loop "` string and the `nullcontext` / `opt_level` operands are all present; the exact guard condition is **[INFERRED]**.
 
 ### 4.3 The `iv < ub` predicate and `loop_scope`
 
@@ -192,9 +192,9 @@ The `loop_scope` context manager (`NeuronCodegen_46`, generator @ `0x780d0`, kin
 
 ### 4.4 Loop directives (pragmas → axis attrs)
 
-`extract_loop_directives` (module function, `pf @0x80330`) parses kernel loop pragmas into the `attrs` dict passed to `create_affine_axis_block`. The directive taxonomy is CONFIRMED from KernelBuilder `.rodata`:
+`extract_loop_directives` (module function, `pf @0x80330`) parses kernel loop pragmas into the `attrs` dict passed to `create_affine_axis_block`. The directive taxonomy is read from KernelBuilder `.rodata`:
 
-| Directive | Purpose | Error sentinel (CONFIRMED) |
+| Directive | Purpose | Error sentinel |
 |---|---|---|
 | `AutoPipelineDirective` | request SW-pipelining of the axis | "Multiple auto_pipeline directives are not supported!" |
 | `MultiBufferDirective` | buffer-ring depth (multi-buffering) | "Multiple multi_buffer directives are not supported!" |
@@ -209,7 +209,7 @@ These attrs ride on the `LoopAxis` and are read by the backend SW-pipeline: `Mul
 A Python `range(...)` used as a loop iterator inside a kernel is intercepted by `builtin_range`:
 
 ```c
-// NeuronCodegen.builtin_range  —  pw @0x81900  (CONFIRMED control flow)
+// NeuronCodegen.builtin_range  —  pw @0x81900
 def builtin_range(self, *args, **kwargs):
     if self.opts.trace_time_unroll_builtin_range:   # GetAttr(self,"opts"),
         return <unroll now, like static_range>      #   GetAttr(opts,"trace_time_unroll_builtin_range")
@@ -217,7 +217,7 @@ def builtin_range(self, *args, **kwargs):
         return self.sequential_range(*args, **kwargs)   # GetAttr(self,"sequential_range")
 ```
 
-This is CONFIRMED from the decompiled body: it reads `self.opts.trace_time_unroll_builtin_range`; on the false branch it fetches and calls `self.sequential_range`. This grounds the `sequential_range` docstring verbatim: *"Inside a NKI kernel, any use of Python `range(...)` will be replaced with `sequential_range(...)` by Neuron compiler."*
+The decompiled body reads `self.opts.trace_time_unroll_builtin_range`; on the false branch it fetches and calls `self.sequential_range`. This grounds the `sequential_range` docstring verbatim: *"Inside a NKI kernel, any use of Python `range(...)` will be replaced with `sequential_range(...)` by Neuron compiler."*
 
 > **QUIRK —** The bare-range default is `Sequential`, **not** `Affine`. A reimplementer's instinct might be that an un-annotated loop is "probably parallel" — the binary does the opposite. The conservative choice is correct: a loop the author never thought about must not be silently granted reorder permission it may not have, which would risk the very numerical errors §4.1 warns about. To get reorder/vectorization you must *opt in* with `affine_range`; `range` only ever gives you `Sequential` (or a full unroll if `trace_time_unroll_builtin_range` is set globally).
 
@@ -228,7 +228,7 @@ This is CONFIRMED from the decompiled body: it reads `self.opts.trace_time_unrol
 This is the single choke point where the deferred branch turns a Python range into a Penguin loop-axis node. It is a generator (`NeuronCodegen_55`, `__pyx_gb_…_NeuronCodegen_56generator8` @ `0x881f0`) that builds a kwargs dict and calls into `self.builder` (the pelican/BIR `IRBuilder`):
 
 ```c
-// NeuronCodegen.create_affine_axis_block  —  generator @0x881f0  (CONFIRMED)
+// NeuronCodegen.create_affine_axis_block  —  generator @0x881f0
 @contextmanager
 def create_affine_axis_block(self, loop_name_id, lb, ub, stride, it,
                              parent, insert_before, axis_type, attrs):
@@ -247,7 +247,7 @@ def create_affine_axis_block(self, loop_name_id, lb, ub, stride, it,
     yield block
 ```
 
-The CONFIRMED kwargs key set is exactly `{loop_name_id, lb, ub, stride, it, parent, insert_before, axis_type, attrs}` (read from the string pool + the wrapper's kwargs construction). The error sentinel `"unexpected case in create affine axis block, insert before should be None"` is interned verbatim and guards the `insert_before` anchor.
+The kwargs key set is exactly `{loop_name_id, lb, ub, stride, it, parent, insert_before, axis_type, attrs}` (read from the string pool + the wrapper's kwargs construction). The error sentinel `"unexpected case in create affine axis block, insert before should be None"` is interned verbatim and guards the `insert_before` anchor.
 
 ### 5.1 Mapping to the BIR LoopAxis family (the static/runtime fork realized)
 
@@ -262,26 +262,22 @@ The pivotal observation for a reimplementer: **`Affine` and `Sequential` produce
 
 ---
 
-## 6. Adversarial self-verification
+## 6. Evidence summary
 
-The five strongest claims on this page, each re-challenged against the binary:
+| Claim | Grounding | Confidence |
+|---|---|---|
+| `sequential_range` = `affine_range` with `axis_type=AxisType.Sequential` | the `sequential_range` body `@0xa7c30` does `GetAttr(self,"affine_range")`, then resolves the module global `AxisType` and `GetAttr(., "Sequential")`, and calls `affine_range` with it; the traceback string pins `KernelBuilder.py:697`. It creates no node class — it delegates | CERTAIN |
+| Bare `range(...)` defaults to `sequential_range`, gated by `trace_time_unroll_builtin_range` | `builtin_range` `@0x81900` reads `self.opts.trace_time_unroll_builtin_range` (both `GetAttr`s present) and on the false branch fetches `self.sequential_range`; matches the verbatim `sequential_range` docstring | CERTAIN |
+| `static_range` emits no axis — it fully unrolls at trace time | the iterators `.so` docstring says "fully unroll the loop during NKI kernel tracing"; the `static_range` wrapper `@0x72b40` is thin (only `self` operand, no `create_affine_axis_block` / `LoopVar` / `AxisType` references) | CERTAIN (docstring), HIGH (exact unroll mechanism) |
+| The `Axis`-vs-`DynamicAxis` fork is decided by `has_runtime_value` inside `affine_range`, independent of `axis_type` | the `affine_range` generator `@0x240260` (lines 1196–1304) looks up the global `Axis`, does `GetAttrStr(., "has_runtime_value")`, and on the runtime branch looks up `DynamicAxis` instead, before feeding the chosen type into `create_affine_axis_block`; `axis_type` flows separately from `sequential_range`'s call site | CERTAIN |
+| `create_affine_axis_block` is the single choke point, with kwargs `{loop_name_id, lb, ub, stride, it, parent, insert_before, axis_type, attrs}` | all nine keys are interned in KernelBuilder `.rodata` alongside the method name and its `__pyx_scope_struct_14_create_affine_axis_block` scope; the `insert_before` sentinel string pins that parameter's handling; the `affine_range` generator references the factory | CERTAIN |
 
-1. **"`sequential_range` = `affine_range` with `axis_type=AxisType.Sequential`."** — CONFIRMED. The decompiled `sequential_range` (`@0xa7c30`) body does `GetAttr(self,"affine_range")`, then `_Pyx_GetBuiltinName/_GetModuleGlobalName(AxisType)` followed by `GetAttr(., "Sequential")`, and calls `affine_range` with it. Traceback string pins `KernelBuilder.py:697`. No node class is created here — it delegates.
-
-2. **"Bare `range(...)` defaults to `sequential_range`, gated by `trace_time_unroll_builtin_range`."** — CONFIRMED. `builtin_range` (`@0x81900`) reads `self.opts.trace_time_unroll_builtin_range` (both `GetAttr`s present in disasm) and on the false branch fetches `self.sequential_range`. Matches the verbatim `sequential_range` docstring "any use of Python `range(...)` will be replaced with `sequential_range(...)`."
-
-3. **"`static_range` emits no axis — it fully unrolls at trace time."** — CONFIRMED (docstring) / STRONG (body). The iterators `.so` docstring states "fully unroll the loop during NKI kernel tracing." The `static_range` wrapper (`@0x72b40`) is thin (only `self` operand, no `create_affine_axis_block`/`LoopVar`/`AxisType` references), consistent with forwarding to a concrete-iteration unroll path rather than the axis-emitting generator. I tag the *exact unroll mechanism* (Python `range` concrete iteration replaying the body) as STRONG, not byte-pinned to a single instruction.
-
-4. **"The static-vs-runtime fork (`Axis` vs `DynamicAxis`) is decided by `has_runtime_value` inside `affine_range`, independent of `axis_type`."** — CONFIRMED. The `affine_range` generator (`@0x240260`) at lines 1196–1304 looks up the global `Axis`, does `GetAttrStr(., "has_runtime_value")`, and on the runtime branch looks up `DynamicAxis` instead, before feeding the chosen type into `create_affine_axis_block`. The `axis_type` argument flows separately from `sequential_range`'s call site, so the two forks are genuinely orthogonal.
-
-5. **"`create_affine_axis_block` kwargs are `{loop_name_id, lb, ub, stride, it, parent, insert_before, axis_type, attrs}` and it is the single choke point."** — CONFIRMED. All nine keys are interned in KernelBuilder `.rodata` alongside the method name and its `__pyx_scope_struct_14_create_affine_axis_block` scope; the sentinel "unexpected case in create affine axis block, insert before should be None" confirms `insert_before` handling. The affine_range generator's reference to `create_affine_axis_block` confirms it is the funnel.
-
-> **CORRECTION — lowering lives in `KernelBuilder.NeuronCodegen`, not `NkiCodegen`.** A naive reading (and some prior P-strand notes) attributes NKI→Penguin loop lowering to `starfish/penguin/targets/codegen/NkiCodegen.so`. That is the wrong file. `NkiCodegen.so` is the **reverse** direction — a BIR→NKI-Python *source-text printer* (`write_line`/`begin_loop`/`ir_to_nki`), a debug round-tripper. The live trace-time lowering documented here is `neuronxcc/nki/compiler/backends/neuron/KernelBuilder.so`, class `NeuronCodegen`. (KernelBuilder also has a generated twin under `neuronxcc/generated/…/KernelBuilder` — `GeneratedNeuronCodegen` — with identical method names.)
+> **GOTCHA — the lowering is in `KernelBuilder.NeuronCodegen`, not `NkiCodegen`.** The file name invites the wrong guess: `starfish/penguin/targets/codegen/NkiCodegen.so` runs the **reverse** direction — it is a BIR→NKI-Python source-text printer (`write_line` / `begin_loop` / `ir_to_nki`), a debug round-tripper. Trace-time NKI→Penguin loop lowering is `neuronxcc/nki/compiler/backends/neuron/KernelBuilder.so`, class `NeuronCodegen`. (KernelBuilder also has a generated twin under `neuronxcc/generated/…/KernelBuilder` — `GeneratedNeuronCodegen` — with identical method names.)
 
 > **NOTE — two `AxisType` enums at two layers; keep them straight.** This page's `AxisType` is the **trace-time NKI-codegen** enum (KernelBuilder), whose members map to `AffineAxis` / `Sequential` / `DynamicAxis` (+ `Default`). The **penguin/IR** `AxisType` documented in [5.3 axis-loop-model](../penguin/axis-loop-model.md) is a *different, richer* enum — `{Default, Parallel, Sequential, Shard, Thread, Block, CCRank, Interleave, SPMD}` — on the `Axis` class hierarchy (`AffineAxis`/`DynamicAxis`/`SequentialAxis` subclasses). The trace-time `Affine` corresponds to the penguin `Parallel`/`AffineAxis` (reorderable static loop); the trace-time `Sequential` corresponds to the penguin `Sequential`; the trace-time `Dynamic` corresponds to the penguin `DynamicAxis`. The extra penguin members (`Shard`/`Thread`/`Block`/`CCRank`/`SPMD`) are SPMD launch-grid roles that come from the dimension model ([6.1.4](./spmd-programming-model.md)), **not** from the three loop iterators on this page. Do not conflate the loop-iterator enum with the grid-axis enum.
 
-### Gaps (SPECULATIVE / not byte-pinned)
+### Open questions
 
-- The exact pelican C++ `IRBuilder` method name behind `self.builder.<makeAffineAxisBlock>` (the second `GetAttr` the disasm loads dynamically) is not byte-pinned; semantics are fixed by the E16 `InstLoop`/`InstDynamicForLoop` mapping above.
-- The precise `tripcount == 1` guard condition for the `"trivial loop"` fast path is STRONG (string + `nullcontext`/`opt_level` operands present) but the exact comparison is not isolated to a single instruction.
-- The internal unroll loop of `static_range` (concrete Python iteration replaying the body) is inferred from the thin wrapper + docstring; the per-iteration emission is not traced instruction-by-instruction.
+- The exact pelican C++ `IRBuilder` method name behind `self.builder.<makeAffineAxisBlock>` — the second `GetAttr` is loaded dynamically — is **[UNRESOLVED]**; the semantics are pinned by the `InstLoop` / `InstDynamicForLoop` mapping above regardless.
+- The precise `tripcount == 1` guard for the `"trivial loop"` fast path is **[INFERRED]**: the string and the `nullcontext` / `opt_level` operands are present, but the comparison is not isolated to a single instruction.
+- The internal unroll loop of `static_range` (concrete Python iteration replaying the body) is **[INFERRED]** from the thin wrapper plus the docstring; per-iteration emission is not traced instruction-by-instruction.
