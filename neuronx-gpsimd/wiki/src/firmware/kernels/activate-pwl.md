@@ -44,7 +44,7 @@ carries a confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`; tags follo
 
 ## 1. Executive summary
 
-* **The activation FUNCTION is HW, not firmware `[HIGH/OBSERVED]`.** The DEBUG-build handler
+* **The activation FUNCTION is HW, not firmware.** The DEBUG-build handler
   bodies at IRAM `0x93d8` (`Activate`) / `0x9524` (`ActivateQuantize`) / `0x954c`
   (`ActivationTableLoad`) / `0x9574` (`ActivationReadAccumulator`) are **log-and-return shims** —
   a `S: <OpName>` self-name log + three event/semaphore-field setups + `retw.n`. There is **no
@@ -52,14 +52,14 @@ carries a confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`; tags follo
   decodes the instruction and programs the dedicated PWL silicon; the per-element math runs on
   that HW unit.
 
-* **The application path is an affine PRE the function `[HIGH/OBSERVED]`.** `Activate` (struct
+* **The application path is an affine PRE the function.** `Activate` (struct
   `S3D3_AC`, 64 B) computes, per element and per active channel:
   `OUT[k] = func_{activation_func}( scale_value · IN[k] + bias )` — a `scale·x+bias` affine
   (de-quant scale + bias-add) applied *before* the host-loaded function. The function is selected
   by a single byte `activation_func @35` = an index into the loaded PWP table set; the firmware
   never names relu/gelu/sigmoid.
 
-* **`ActivateQuantize` fuses inline requantization `[HIGH/OBSERVED]`.** `S3D3_AQ` (64 B) computes
+* **`ActivateQuantize` fuses inline requantization.** `S3D3_AQ` (64 B) computes
   `OUT[k] = quant_scale_value · func( FP32(IN[k])·FP32(scale_value) + FP32(*bias_addr[k]) ) +
   quant_zero_value`, emitted as **UINT8** — "using the last FMA engine to do inline quantization
   instead of improving accuracy of the activation approximation" (header, verbatim). This is the
@@ -74,7 +74,7 @@ carries a confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`; tags follo
   two different accumulators; the prior cross-page phrasing that ActivationReadAccumulator
   "evicts PSUM" is imprecise (see §6).
 
-* **The table is DMA-staged `[HIGH/OBSERVED]`.** `ActivationTableLoad` (`0x23`) lowers from the
+* **The table is DMA-staged.** `ActivationTableLoad` (`0x23`) lowers from the
   compiler pseudo-instruction `LoadActFuncSet`, which "initiates a DMA data-transfer by writing
   to the DMA tail pointer; the DMA transfer writes new PWP tables" — replaced by a `Write` by KRT.
   The four PWP tables live in dedicated HW SRAM (`TPB_n_ACT_{PROFILE_CAM, PROFILE_TABLE,
@@ -91,7 +91,7 @@ carries a confidence tag `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`; tags follo
 
 ## 2. The ACT opcode set + dispatch routing
 
-### 2.1 Opcodes and operand structs `[HIGH/OBSERVED]`
+### 2.1 Opcodes and operand structs
 
 Read directly from `aws_neuron_isa_tpb_common.h` (CAYMAN lines 162–165; MAVERICK lines 172–173
 for `0x25`/`0x26`) and cross-checked against `instruction_mapping.json` `struct2opcode`:
@@ -115,7 +115,7 @@ documented on the [Cast/Copy](cast-copy.md) and [ALU-op matrix](alu-op-matrix.md
 > **NOTE — `0x25`/`0x26` are not in the CAYMAN header at all.** A `rg` of the CAYMAN
 > `common.h` returns only `0x21`–`0x24`; `ACTIVATE2 = 0x25` and `ACTIVATE_MULTIPASS = 0x26`
 > first appear in the MARIANA(+) / MAVERICK `common.h` (lines 172–173). `ACTIVATE2` is a v4+
-> addition; `ACTIVATE_MULTIPASS` is v5-only and image-dormant (§7). `[HIGH/OBSERVED]`
+> addition; `ACTIVATE_MULTIPASS` is v5-only and image-dormant (§7).
 
 ### 2.2 The DEBUG dispatch compare-chain `[HIGH/OBSERVED route; MED desynced converge]`
 
@@ -147,7 +147,7 @@ call the register thunk `0x90c4`:
 
 The `execute()` entries self-name via baked DEBUG strings (DRAM string offset = device DRAM VA −
 `0x80000`): `S: Activate` @ DRAM `0x16ae41`, `S: ActivateQuantize` @ `0x16ae70`, and the
-production (PERF) and MARIANA build copies at DRAM `0x404681` / `0x6cb001`. `[HIGH/OBSERVED]`
+production (PERF) and MARIANA build copies at DRAM `0x404681` / `0x6cb001`.
 
 > **GOTCHA — the DEBUG `execute()` bodies are shims; do not mistake them for the compute.**
 > `Activate`'s visible DEBUG body (`0x93d8..0x9530`) is the name-log + three near-identical
@@ -161,7 +161,7 @@ production (PERF) and MARIANA build copies at DRAM `0x404681` / `0x6cb001`. `[HI
 
 ## 3. `Activate` (`0x21`) — the application path
 
-### 3.1 The `S3D3_AC` operand struct (64 B) `[HIGH/OBSERVED]`
+### 3.1 The `S3D3_AC` operand struct (64 B)
 
 Read field-exact from `aws_neuron_isa_tpb_s3d3_ac.h` (`ISA_STATIC_ASSERT(sizeof == 64)`). The
 header comment is verbatim: *"The Activate instruction applies a scalar function on a set of
@@ -195,7 +195,7 @@ are valid in PSUM AND SBUF
 match (`same_element_count_t3d`), `num_active_channels ∈ [1, ACTIVATION_NUM_CHANNELS=128]`, and
 the start addresses are quadrant-checked against `num_active_channels`. `[HIGH/OBSERVED]`
 
-### 3.2 The per-element semantics `[HIGH/OBSERVED]`
+### 3.2 The per-element semantics
 
 ```c
 // Activate (opcode 0x21, struct NEURON_ISA_TPB_S3D3_AC_STRUCT).
@@ -232,7 +232,7 @@ PWL evaluation (`stpb_act_pwl_eval`) is the silicon documented as Engine B on th
 [uarch table page](../../uarch/activation-transcendental-tables.md). `[HIGH/OBSERVED struct; HW
 eval CARRIED from the uarch page]`
 
-### 3.3 dtype / bias / scale handling `[HIGH/OBSERVED]`
+### 3.3 dtype / bias / scale handling
 
 The affine operands each have an independent source selector. The `IMM_SRC` enum (`common.h:1207`)
 is `{INSTRUCTION_IMMEDIATE=0, POINTER_IMMEDIATE=1, REG_PTR_IMMEDIATE=2}`; `bias_src_n` uses the
@@ -251,12 +251,12 @@ When `scale`/`imm` are pointer-sourced (`POINTER_IMMEDIATE`), the validator requ
 be **FP32 4-byte-aligned**, a valid SBUF/PSUM address, and quadrant-correct for
 `num_active_channels`; when `bias` is pointer-sourced, the alignment check is against
 `dtype_hi` (bf16/fp16 ⇒ 2-byte aligned, else 4-byte). The instruction-immediate path carries no
-address check. `[HIGH/OBSERVED validator IR `s3d3_ac_{scale,imm,bias}_checks`]`
+address check. `[HIGH/OBSERVED — validator IR s3d3_ac_{scale,imm,bias}_checks]`
 
 > **QUIRK — `bias_src_n` is the only ACT operand with inverted source polarity.** `scale_src` and
 > `imm_src` are `IMM_SRC` (`0=instruction`); `bias_src_n` is `IMM_SRC_N` (`0=pointer,
 > 1=instruction`). A reimplementer copying the scale decode onto bias will read the wrong source.
-> The `_n` suffix on the field name is the only in-struct warning. `[HIGH/OBSERVED]`
+> The `_n` suffix on the field name is the only in-struct warning.
 
 > **NOTE — the affine can also be table-resident.** The PROFILE entry independently carries
 > `bias_fuse_en`/`scale_fuse_en` + `bias_const`/`scale_const` (§5.3). So `scale·x+bias` may come
@@ -268,7 +268,7 @@ address check. `[HIGH/OBSERVED validator IR `s3d3_ac_{scale,imm,bias}_checks`]`
 
 ## 4. `ActivateQuantize` (`0x22`) — the activation+quantize fusion
 
-### 4.1 The `S3D3_AQ` struct (64 B) + the fused math `[HIGH/OBSERVED]`
+### 4.1 The `S3D3_AQ` struct (64 B) + the fused math
 
 Read field-exact from `aws_neuron_isa_tpb_s3d3_aq.h`. The header gives the **exact fused math**
 (verbatim):
@@ -320,12 +320,11 @@ this fusion is **not supported for Parametric-ReLU**. `[HIGH/OBSERVED]`
 > (`is_valid_activateq`) carries `tensor3d_valid(…dst…, AllowedInPSUM::True, AllowedInSBUF::True)`
 > for *both* src and dst — the UINT8 requant output may be written to PSUM as well as SBUF, not
 > SBUF-only. The recommended `out_dtype` is UINT8, but the address space is unconstrained.
-> `[HIGH/OBSERVED]`
 
 > **GOTCHA — the AQ scale roles are split across two fields with opposite jobs.** `scale_value` in
 > the verbatim math is the field named `dequant_scale_value @36` (input de-quant, PRE func), while
 > `quant_scale_value @12` is the *output* requant scale (POST func). Two distinct `float`s, both
-> "scale", at opposite ends of the pass. Do not collapse them. `[HIGH/OBSERVED]`
+> "scale", at opposite ends of the pass. Do not collapse them.
 
 ---
 
@@ -340,7 +339,7 @@ cubic evaluation, the symmetry/region logic, the index-extract silicon — is do
 documents the *format the firmware loads and the addresses it programs*; it does not re-derive the
 silicon eval.
 
-### 5.1 The four-table quad `[HIGH/OBSERVED]`
+### 5.1 The four-table quad
 
 `sizeof` compile-verified (`gcc offsetof`, all gens): **CAM 32 B, PROFILE 128 B, CONTROL 32 B,
 BUCKET 32 B**.
@@ -379,9 +378,9 @@ linear breakpoint/slope/intercept PWL) is the key format fact — see the
 > comment block reads "Control Table Entry / 16 bytes", but the `unused2[7]` tail makes
 > `sizeof == 32`. A reimplementer walking CONTROL must use a **32-byte** stride. (The
 > [uarch page](../../uarch/activation-transcendental-tables.md) flags this stale comment too.)
-> Likewise PROFILE's comment says "90 bytes" but `unused2[8]` pads it to 128. `[HIGH/OBSERVED]`
+> Likewise PROFILE's comment says "90 bytes" but `unused2[8]` pads it to 128.
 
-### 5.2 The HW table memory map (CAYMAN) `[HIGH/OBSERVED]`
+### 5.2 The HW table memory map (CAYMAN)
 
 From `cayman-arch-regs_tgz/output/address_map/address_map_flat.yaml`, the `TPB_0` ACT regions
 (replicated per `TPB_0..7`, SoC-ordered):
@@ -399,7 +398,7 @@ These are dedicated HW SRAM regions, **not SBUF and not baked in the firmware DR
 firmware's own staged copies (`ACT_PROF_CAM` 1 KiB, `ACT_PROF_TABLE` 8 KiB, carved from the
 image) are the *default/initial* set, not the active host-supplied set. `[HIGH/OBSERVED]`
 
-### 5.3 `ActivationTableLoad` (`0x23`) — the DMA staging `[HIGH/OBSERVED]`
+### 5.3 `ActivationTableLoad` (`0x23`) — the DMA staging
 
 `ActivationTableLoad` decodes the shared `CTRL_NO` struct (no operand payload); the DEBUG handler
 `0x954c` is a log-and-return shim. The **real** staging is described by the pseudo-instruction it
@@ -475,7 +474,7 @@ The `ACCUM_CMD` enum (`common.h:777`) that controls the ACT running accumulator:
 | 3 | `ZERO_ACCUMULATE` | zero then accumulate |
 | 4 | `LOAD_ACCUMULATE` | seed from memory (PSUM) then accumulate |
 
-### 6.2 The `D1_RD` struct (64 B) `[HIGH/OBSERVED]`
+### 6.2 The `D1_RD` struct (64 B)
 
 Read field-exact from `aws_neuron_isa_tpb_d1_rd.h` (shared by `ActivationReadAccumulator` and
 `DveReadAccumulator`):
@@ -562,9 +561,9 @@ prevents pinning. `[HIGH/OBSERVED struct/IR; MED/INFERRED ordering]`
 > **NOTE — `relu_param` is the parametric-ReLU negative slope, instruction-resident.** The
 > `relu_param_src @24` field comment is "byte 24-27 → RTL imm12"; for a parametric/leaky-ReLU
 > function the negative-side slope rides this immediate, not the PWL table. ActivateQuantize
-> explicitly does **not** support parametric-ReLU (§4). `[HIGH/OBSERVED]`
+> explicitly does **not** support parametric-ReLU (§4).
 
-### 7.2 `ACTIVATE_MULTIPASS` (`0x26`, `S1S2D2_AM`, 64 B) — image-dormant `[HIGH/OBSERVED]`
+### 7.2 `ACTIVATE_MULTIPASS` (`0x26`, `S1S2D2_AM`, 64 B) — image-dormant
 
 The v5-only multipass variant. It is the same fusion as `0x25` (op0/op1 + reduce_cmd/reduce_op)
 but **drops the third immediate (`relu_param`)** and **adds `prev_pass_mem_pattern` (TENSOR1D
@@ -572,7 +571,7 @@ but **drops the third immediate (`relu_param`)** and **adds `prev_pass_mem_patte
 validator constrains **src AND dst AND prev_pass all SBUF-only** (`AllowedInPSUM::False`, no PSUM
 anywhere), distinguishing it from the single-shot PSUM-drain of `0x21`/`0x25`.
 
-The op is **fully image-dormant** — a firmware-wide string search this pass returns:
+The op is **fully image-dormant** — a firmware-wide string search returns:
 
 * `"Multipass"` (case-insensitive): **0 occurrences**.
 * `"Activate2"`: exactly 2, both `RS: Activate2` at byte offsets `0x40509e` and `0x6cba1e` — both
@@ -588,7 +587,7 @@ multiple passes, each reading the prior pass's 1-D accumulator (`prev_pass`) and
 
 ---
 
-## 8. The SIMD datapath — why there is no software LUT-gather `[HIGH/OBSERVED]`
+## 8. The SIMD datapath — why there is no software LUT-gather
 
 The carved ACT NX core carries a full Vision-Q7 IVP vector datapath (the PERF build shows 632 IVP
 op instances, 299 distinct). The decisive structural fact for the HW-offload conclusion:
@@ -651,7 +650,7 @@ DVE PROF did not), and the read-accumulator is re-expressed as the DVE-native
 
 ---
 
-## 10. Per-gen evolution `[HIGH/OBSERVED]`
+## 10. Per-gen evolution
 
 | axis | SUNDA (v2) | CAYMAN (v3) | MARIANA (v4) | MARIANA+ | MAVERICK (v5) |
 |---|---|---|---|---|---|
@@ -673,30 +672,30 @@ activation datapath HOME is the only structural change: **ACT-engine v2–v4 →
 
 ## 11. Adversarial self-verification — the strongest claims, re-challenged
 
-Each headline claim re-tested against the binary + the shipped header this pass; a claim survives
+Each headline claim is re-tested against the binary + the shipped header; a claim survives
 only if a second independent witness agrees.
 
 1. **The PWL is a four-table CAM/PROFILE/CONTROL/BUCKET quad, BUCKET a 32 B cubic.**
    *Challenge:* could `d2`/`d3` be padding, or the strides drift? *Re-test:* `tpb_activation_entries.h`
    reads `float d0,d1,d2,d3,x0` at offsets 0/4/8/12/16 with a 3-word tail; `sizeof` =
    32/128/32/32 compile-verified; sha `8f6f5f49…` cayman==maverick, `dbdca26b…` sunda. A linear PWL
-   would carry `{d0,d1,x0}` only. **Survives.** `[HIGH/OBSERVED]`
+   would carry `{d0,d1,x0}` only. **Survives.**
 
 2. **The application path is `OUT=func(scale·IN+bias)`.** *Challenge:* is the affine PRE or POST
    the function? *Re-test:* the `s3d3_ac.h` header comment ("integrated scale-and-add … de-quantization
    and bias-add") + the verbatim AQ math `func(FP32(IN)·scale + bias)` both put the affine strictly
-   PRE `func`. **Survives.** `[HIGH/OBSERVED]`
+   PRE `func`. **Survives.**
 
 3. **`ActivationReadAccumulator` drains the ACT per-lane accumulator, not the PE PSUM.**
    *Challenge:* the PE-matmul page says it "evicts PSUM"? *Re-test:* the `D1_RD` header reads "the
    fp32 value of the accumulator in each lane to a 1-D dst with a single element"; the PSUM eviction
    is `Activate`'s `src AllowedInPSUM::True`. Two different accumulators — the `0x24` op reads the
-   reduction accumulator. **Survives, with a CORRECTION logged (§6).** `[HIGH/OBSERVED]`
+   reduction accumulator. **Survives, with a CORRECTION logged (§6).**
 
 4. **`ActivateQuantize` fuses dequant·x+bias → func → requant → UINT8.** *Challenge:* could the
    quant be a separate op? *Re-test:* the `s3d3_aq.h` header gives the single-line fused math
    verbatim + "the last FMA engine to do inline quantization"; the validator forces `out_dtype ==
-   UINT8`. **Survives.** `[HIGH/OBSERVED]`
+   UINT8`. **Survives.**
 
 5. **The MAVERICK fold is a real HW-region migration.** *Challenge:* is it only a scheduling fold?
    *Re-test:* the maverick `TPB_DVE.json` carries `ACT_CONTROL_TABLE`/`PWP_CONTROL_TABLE`/
@@ -704,9 +703,8 @@ only if a second independent witness agrees.
    SRAM moved. **Survives** (region OBSERVED; the v5 eval interior flagged INFERRED). `[HIGH/OBSERVED
    region]`
 
-No claim here rests on a raw dump or a single uncorroborated witness; every struct fact is
-compile-verifiable against the shipped header, every address is in the shipped RTL map, and the
-firmware-string and opcode facts are re-grepped this pass.
+No claim here rests on a raw dump or a single uncorroborated witness: every struct fact is
+compile-verifiable against the shipped header, and every address is in the shipped RTL map.
 
 ---
 

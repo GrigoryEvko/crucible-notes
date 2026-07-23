@@ -36,10 +36,10 @@ DEBUG-build firmware, used purely as name anchors. Every claim carries a confide
   **`NONE = 0`, `MAX_POOL = 1`, `AVG_POOL = 2`** — a complete 3-value closed enum
   (`aws_neuron_isa_tpb_s4d4_pl.h:277-281`). The `Pool` opcode requires `MAX_POOL` or `AVG_POOL`; `NONE`
   is reserved for the sibling `MaxPoolSelect` opcode (`0x58`, §7). The switch's default arm prints
-  `"P%i: Error, invalid pooling function."` `[HIGH/OBSERVED]`
+  `"P%i: Error, invalid pooling function."`
 
 * **The operand struct is `NEURON_ISA_TPB_S4D4_PL_STRUCT` — 64 bytes,
-  `ISA_STATIC_ASSERT(sizeof == 64)`, compile-verified this pass** (§3). One 4-D src `Tensor4d`, one 4-D
+  `ISA_STATIC_ASSERT(sizeof == 64)`, compile-verified** (§3). One 4-D src `Tensor4d`, one 4-D
   dst `Tensor4d`, in/out dtype, `num_active_channels`, `pool_func` (`POOL_TYPE`), `pool_dim`
   (`TensorSubdim`), and `pool_scale` (fp32). `[HIGH/OBSERVED — header + gcc compile]`
 
@@ -64,11 +64,10 @@ DEBUG-build firmware, used purely as name anchors. Every claim carries a confide
 * **All pooling math is fp32.** Header: *"All pooling calculations are performed in FP32 data-type"* /
   *"Internal accumulation must be done at fp32 single precision."* In/out dtypes may be
   `UINT8/INT32/FP16/BFLOAT16/FP32` (+`INT64` in only), each converted to internal fp32 for the reduce.
-  `[HIGH/OBSERVED]`
 
 * **SIMD vectorization is across `num_active_channels`** (the partition/channel axis); the SIMD width is
   `POOLING_NUM_CHANNELS = 128` (`common.h:35`). The window fold (`period`) runs *serially along the data
-  stream*, orthogonal to the lane (channel) axis. `[HIGH/OBSERVED]`
+  stream*, orthogonal to the lane (channel) axis.
 
 * **Reduce-geometry distinction (the key reconciliation):** pooling is a **windowed-spatial** reduce
   *along the data stream* (over `pool_size` sequential elements), vectorized *across* the 128 channel
@@ -92,18 +91,18 @@ companion `"S: Pool"` / `"S: PoolPeriod=%d PoolNum=%d"` tokens are OBSERVED at `
 file offsets `0x18d318` / `0x18d34c`). `[HIGH/OBSERVED string; MED/CARRIED routing]`
 
 **(B) The Q7 `kernel_info_table`** (the compute back-end). The carved CAYMAN POOL `EXTISA_0` image binds
-opcode `0x45` to the Pool entry funcVA. From SX-FW-70's carve: `kernel_info_table` @ VMA `0x02000380`
+opcode `0x45` to the Pool entry funcVA. From the carved image: `kernel_info_table` @ VMA `0x02000380`
 (file `0x7400`, 17 entries, 8-byte stride); **idx3 = `{spec 0, opcode 0x45 (69), funcVA 0x01000b90}`** — the
 only relocated field is the funcVA. The dispatcher's linear scan matches the packed `(spec, opcode)` key
 then `callx8 0x01000b90`. The per-core trace prints
-`"P%i: In dispatch, CPU ID: %0d, got opcode 0x%x."` (= `0x45`). `[HIGH/CARRIED — SX-FW-70 carve; opcode HIGH/OBSERVED]`
+`"P%i: In dispatch, CPU ID: %0d, got opcode 0x%x."` (= `0x45`). `[HIGH/CARRIED — prior carve; opcode HIGH/OBSERVED]`
 
 **(C) The entry trampoline → the body.** The standard POOL kernel entry: a thin trampoline @ `0x01000b90`
 (`entry a1, 64`; a setup `callx8`; a work `callx8` into `0x01006ee8` → the `decode_pool` body; `retw.n`)
-tails into **`decode_pool` @ funcVA `0x01000bc0`** (`entry a1, 32`). `[HIGH/CARRIED — SX-FW-70 §2C disasm]`
+tails into **`decode_pool` @ funcVA `0x01000bc0`** (`entry a1, 32`). `[HIGH/CARRIED — prior disasm]`
 
 > **NOTE — `0x45` is the only pool opcode in the GPSIMD Q7 ucode.** `instruction_mapping.json`
-> (`struct2opcode`, read this pass) binds the `S4D4_PL` struct to **two** opcodes —
+> (`struct2opcode`) binds the `S4D4_PL` struct to **two** opcodes —
 > `NEURON_ISA_TPB_OPCODE_POOL` and `NEURON_ISA_TPB_OPCODE_MAX_POOL_SELECT` — but only `0x45` (`Pool`) is
 > registered in the CAYMAN `kernel_info_table` and reaches `decode_pool`; `0x58` (`MaxPoolSelect`,
 > `chr(0x58) == 'X'`) is a hardware-datapath op absent from the Q7 firmware (§7). `[HIGH/OBSERVED — instruction_mapping.json + the kernel_info_table idx set]`
@@ -123,7 +122,7 @@ names it: *"Neuron 'S4D4_PL' Format — one 4d SRC Tensor, one 4d DST Tensor. Us
 ]
 ```
 
-> **The `sizeof == 64` static-assert is *compile-verified* this pass.** Reproducing the header's
+> **The `sizeof == 64` static-assert is *compile-verified*.** Reproducing the header's
 > `typedef struct NEURON_ISA_TPB_S4D4_PL_STRUCT` (with `NEURON_ISA_PACKED = __attribute__((packed))` and
 > the 1-byte packed `POOL_TYPE`/`TENSOR_SUBDIM`/`DTYPE` enums), `gcc -std=c11` confirms
 > **`sizeof == 64`**, `sizeof(TENSOR4D) == 20`, `sizeof(POOL_TYPE) == 1`, and every field offset:
@@ -148,7 +147,7 @@ names it: *"Neuron 'S4D4_PL' Format — one 4d SRC Tensor, one 4d DST Tensor. Us
 | **40–43** | 4 | **`pool_scale`** | `float` (fp32) | **the AVG_POOL 1/N multiplier (= 1/(R·S), §6)** |
 | 44–63 | 20 | `dst_mem_pattern` | `NEURON_ISA_TPB_TENSOR4D` | OUTPUT tensor |
 
-`4 + 8 + 20 + 1 + 1 + 1 + 1 + 1 + 1 + 2 + 4 + 20 = 64`. `[HIGH/OBSERVED — compile-verified]`
+`4 + 8 + 20 + 1 + 1 + 1 + 1 + 1 + 1 + 2 + 4 + 20 = 64`.
 
 ### 3.2 `NEURON_ISA_TPB_TENSOR4D` (20 bytes, `common.h:660`)
 
@@ -223,7 +222,7 @@ The `pool_dim` field tells the engine **which source dimensions form one pooling
 `NEURON_ISA_TPB_DTYPE` (4-bit, `common.h:722-739`): `INVALID 0x0`, `UINT64 0x1`, `INT8 0x2`, `UINT8 0x3`,
 `INT16 0x4`, `UINT16 0x5`, `BFLOAT16 0x6`, `FP16 0x7`, `INT32 0x8`, `UINT32 0x9`, `FP32 0xA`, `FP32R 0xB`,
 `INT64 0xC`, `FP8_EXP3/4/5 0xD/0xE/0xF`. The header's *recommended-usage* table fixes the pool-supported
-sets (§5.2). `[HIGH/OBSERVED]`
+sets (§5.2).
 
 ### 3.6 Validity predicates (`is_valid_s4d4_pl`, OBSERVED verbatim)
 
@@ -249,7 +248,6 @@ sets (§5.2). `[HIGH/OBSERVED]`
 > **NOTE — `in_dtype` may NOT be `FP32R`, but `out_dtype` MAY be** (same asymmetry as CrossLaneReduce).
 > The src is read with `DtypeAllowFP32R::False`, the dst with `True`. A reimplementer who accepts the
 > round-mode `FP32R` (`0xB`) on the *input* side accepts an instruction the hardware decoder rejects.
-> `[HIGH/OBSERVED]`
 
 > **NOTE — pool src and dst may live in EITHER SBUF or PSUM** (`AllowedInPSUM::True, AllowedInSBUF::True`
 > for both), unlike CrossLaneReduce whose `S4D4_CR` tensors are SBUF-only (`AllowedInPSUM::False`). The src
@@ -264,12 +262,12 @@ sets (§5.2). `[HIGH/OBSERVED]`
 `decode_pool(bool)` — `.xt.prop` `_Z11decode_poolb` @ funcVA `0x01000bc0`, the `kernel_info_table` idx3
 work body reached via the `0x01000b90` trampoline. The `bool` argument is the per-instruction
 descriptor/decode flag handed by the dispatcher (the same convention as `cross_lane_reduce_impl(bool)`); the
-`MAX`/`AVG` selection is read from the operand struct at `off 36`, **not** from this bool. `[HIGH sig — mangled name; MED bool-role — CARRIED SX-FW-70]`
+`MAX`/`AVG` selection is read from the operand struct at `off 36`, **not** from this bool. `[HIGH sig — mangled name; MED/CARRIED bool-role]`
 
 The body is ~`0x1da` bytes of hand-scheduled **FLIX/VLIW** with eight interleaved literal/data spans (the
 `.xt.prop` records carry a function-start record then alternating code/`DATA` spans). Those embedded
 literal pools are why stock `xtensa-elf-objdump`'s linear sweep loses bundle sync inside `decode_pool` (the
-documented native-disasm limitation; SX-FW-70 measured ~25 % `.byte` mis-decode in the `0xbc0..0xdff`
+documented native-disasm limitation; ~25 % `.byte` mis-decode measured in the `0xbc0..0xdff`
 window). The function-start, the `entry a1,32` prologue, the code/data span boundaries, and the
 cross-references are HIGH/OBSERVED; the exact **mid-bundle dispatch arms are reported structurally**
 (MED/INFERRED), never byte-fabricated.
@@ -290,7 +288,7 @@ PERF/RELEASE image). Carved from `libnrtucode_internal.so` `.rodata`, **OBSERVED
 0x269bd1  "P%i: pool_num = %0d, pool_per = %0d"                       (the pool count + per-pool size)
 ```
 
-`[HIGH/OBSERVED — string offsets read from the shipped `internal.so`]`
+`[HIGH/OBSERVED — string offsets from the shipped internal.so]`
 
 The control flow these strings + the `POOL_TYPE` enum + the header behavior pin (the structure is
 HIGH; the exact in-bundle register binding is MED):
@@ -374,14 +372,13 @@ The header (§recommended-usage + §Notes):
 
 * *"All pooling calculations are performed in FP32 data-type."* / *"Internal accumulation must be done at
   fp32 single precision."* The `in_dtype` is **converted to internal fp32**, the fold runs in fp32, the
-  result is cast to `out_dtype` on store. `[HIGH/OBSERVED]`
+  result is cast to `out_dtype` on store.
 * **Supported pool IN dtypes:** `UINT8 / INT32 / FP16 / BFLOAT16 / FP32 / INT64`.
 * **Supported pool OUT dtypes:** `UINT8 / INT32 / FP16 / BFLOAT16 / FP32` (`INT64` not writable to SB/PSUM —
   header: *"pooling engine can't write INT64 results to SB/PSUM"*).
 * There is **no int-widening accumulator scheme** (unlike CrossLaneReduce-ADD which widens int8→16/16→32).
   Pooling *always* accumulates in fp32, so overflow is bounded by fp32 range — which is exactly what
   licenses the scale-before-sum order for AVG (the header warns fp32/bf16 sums could overflow fp32, §6).
-  `[HIGH/OBSERVED]`
 
 > **NOTE — `UINT8`/`INT32` "advanced" max-pool runs on the quantized representation but still converts to
 > internal fp32.** The header's UINT8-option2 path performs MaxPooling directly on the quantized form (no
@@ -391,7 +388,7 @@ The header (§recommended-usage + §Notes):
 
 ### 5.3 The value primitives
 
-The per-element value primitives the image issues (SX-FW-70 image-wide census; these are inlined Xtensa
+The per-element value primitives the image issues (image-wide census; these are inlined Xtensa
 TIE intrinsics, not symbol-table strings, so they're pinned by the disasm op-set, not a string grep —
 `[HIGH presence / MED exact in-body slot]`):
 
@@ -402,10 +399,10 @@ TIE intrinsics, not symbol-table strings, so they're pinned by the disasm op-set
 | `ivp_muln_2xf32t` | fp32 vector MULTIPLY — the `avg_pool` × `pool_scale`(1/N) step |
 | `ivp_mulsonen_2xf32` | fp32 multiply-by-one — the `pool_scale == 1.0` / no-op-scale path |
 
-Their exact scalar semantics (signed max, IEEE binary32 add/mul) are pinned by the SX-ISS-13 `xdref`
+Their exact scalar semantics (signed max, IEEE binary32 add/mul) are pinned by the `xdref`
 oracle (`xdref max_16_16_16` signed-max; `xdref add_*_32f` IEEE binary32 add; the fp32 multiply) — the same
 `libfiss-base.so` ground-truth that the [CrossLaneReduce §5 live drive](cross-lane-reduce.md) executes.
-`[HIGH op-set / HIGH ISS semantics — CARRIED SX-ISS-13]`
+`[HIGH op-set; CARRIED ISS semantics]`
 
 ### 5.4 SIMD vectorization (lanes = channels)
 
@@ -413,7 +410,7 @@ The SIMD lanes are the `num_active_channels` (the FMAP/neuron channel axis); the
 `NEURON_ISA_TPB_POOLING_NUM_CHANNELS = 128` (`common.h:35`). The kernel processes the pool stream for all
 active channels **in parallel across the vector lanes** (the `"num_chans = %0d"` log), while the window
 fold (`period`) runs **serially along the stream**. Each Q7 pool core (`P%i`) handles its
-`get_cpu_id()`-assigned share of the channels (the SX-FW-14 work-partition gate; the firmware asserts
+`get_cpu_id()`-assigned share of the channels (the work-partition gate; the firmware asserts
 `total_cpus == 1 || total_cpus == NUM_POOL_CORES`, OBSERVED at `internal.so` `0x4d281`). **Two orthogonal
 axes: the LANE axis (channels, 128-wide vector) × the STREAM axis (the window, serial fold of `period`
 elements).** This is not a lane-fold. `[HIGH/OBSERVED — POOLING_NUM_CHANNELS + the num_chans log + the cpu-count assert]`
@@ -446,7 +443,7 @@ and the device step is `ivp_muln_2xf32t` (§5.3). `[HIGH/OBSERVED — header §p
 > intermediate sum could overflow an FP32 number."* So the device may compute `Σ(x_i · scale)`
 > (scale-then-sum) **or** `(Σ x_i) · scale` (sum-then-scale); both produce the average, but they are *not*
 > bit-identical in fp32 — a reimplementer matching exact bits must determine the chosen order per kernel
-> build. `[HIGH/OBSERVED]`
+> build.
 
 > **CORRECTION — pooling does NOT use the batch-norm reciprocal Parameter-RAM.** The Newton
 > reciprocal/rsqrt machinery (`recip0`/`rsqrt0`/`div0`/`divn` over a Param-RAM seed table) belongs to
@@ -504,7 +501,7 @@ different selector enums, and — crucially — different *reduce geometries*.**
   lanes (= the SBUF/PSUM partitions, since the partition dim is laid out across the register lanes) → a
   scalar. The reduce axis is the *partition/lane* axis.
 
-They use the **same ground-truth element math** (the ISS-13 `xdref` max/add/mul primitives) — both even
+They use the **same ground-truth element math** (the `xdref` max/add/mul primitives) — both even
 carry an "average"/"avg" mode — but they fold over **orthogonal axes**. They *compose* in a full CNN
 reduce: a spatial-window reduce (POOL) followed by a channel/partition reduce (CrossLaneReduce →
 Tensor-Reduce → SDMA-CCE cross-core). Each is associative, so the global order is free. `[HIGH]`
@@ -524,19 +521,19 @@ Tensor-Reduce → SDMA-CCE cross-core). Each is associative, so the global order
 * `decode_pool` sits in the `0xa260` `EXTISA_0` POOL image shared CAYMAN / MARIANA / MARIANA_PLUS; the
   MARIANA carve carries the **identical** `_Z11decode_poolb` `.xt.prop` section at the same function VMA
   `0x01000bc0` and the same dispatch. The mangled symbol occurs **6×** across the embedded POOL blobs of
-  `libnrtucode_extisa.so` (one per generation/variant blob). `[HIGH/OBSERVED — symbol census; per-VMA CARRIED SX-FW-70]`
+  `libnrtucode_extisa.so` (one per generation/variant blob). `[HIGH/OBSERVED symbol census; CARRIED per-VMA]`
 * The `S4D4_PL` struct (64 B), the `POOL_TYPE` enum `{NONE 0, MAX 1, AVG 2}`, `pool_func@36` / `pool_dim@37`
   / `pool_scale@40`, and the full 64-byte layout are **byte-identical across the CAYMAN, MARIANA, MAVERICK,
-  and SUNDA arch-isa headers** (verified this pass: `diff` of the enum and struct bodies = identical).
+  and SUNDA arch-isa headers** (`diff` of the enum and struct bodies = identical).
   Opcode `0x45 = Pool` is stable across all four gens. `instruction_mapping.json` binds `S4D4_PL →
-  {POOL, MAX_POOL_SELECT}` identically in the CAYMAN and SUNDA maps. `[HIGH/OBSERVED]`
+  {POOL, MAX_POOL_SELECT}` identically in the CAYMAN and SUNDA maps.
 * The firmware core-kind assert at `internal.so` `0x4b9a` enumerates all five POOL cores —
   `SUNDA_NX_POOL`, `CAYMAN_NX_POOL`, `MARIANA_NX_POOL`, `MARIANA_PLUS_NX_POOL`, `MAVERICK_NX_POOL` — the
-  cross-gen breadth of the same pool ucode. `[HIGH/OBSERVED]`
+  cross-gen breadth of the same pool ucode.
 
 > **NOTE — v5 / MAVERICK.** The MAVERICK (NC-v5) arch-isa header exposes the identical `S4D4_PL` struct,
 > `POOL_TYPE` enum, and `0x45` opcode (**header-OBSERVED**), but the v5 kernel *interior* (the `decode_pool`
-> body micro-schedule) was not byte-grounded this pass — the v2–v4 (cayman/mariana/sunda) device bodies are
+> body micro-schedule) is not byte-grounded — the v2–v4 (cayman/mariana/sunda) device bodies are
 > the byte-verified substrate; the v5 interior is `[INFERRED]` from header + opcode-map parity.
 > `[HIGH header / INFERRED interior]`
 
@@ -548,26 +545,26 @@ Tensor-Reduce → SDMA-CCE cross-core). Each is associative, so the global order
    *compiling* the header struct: `gcc -std=c11` reports `sizeof == 64`, `sizeof(TENSOR4D) == 20`,
    `sizeof(POOL_TYPE) == 1`, and offsets `header@0 events@4 src@12 in_dtype@32 out_dtype@33
    num_active_channels@34 reserved0@35 pool_func@36 pool_dim@37 reserved1@38 pool_scale@40 dst@44`. The
-   header's `ISA_STATIC_ASSERT(sizeof == 64)` holds. **Holds — compile-verified.** `[HIGH/OBSERVED]`
+   header's `ISA_STATIC_ASSERT(sizeof == 64)` holds. **Holds — compile-verified.**
 2. **"`POOL_TYPE = {NONE 0, MAX_POOL 1, AVG_POOL 2}`, a closed 3-value enum."** Re-challenged: read
    byte-exact from `aws_neuron_isa_tpb_s4d4_pl.h:277-281`; `diff` confirms it is **identical across
-   cayman/sunda/maverick**; the enum closes at `0x2`. **Holds.** `[HIGH/OBSERVED]`
+   cayman/sunda/maverick**; the enum closes at `0x2`. **Holds.**
 3. **"Windowing is SW-streamed window-major; `period` = `pool_size`, `num` = #outputs."** Re-challenged
    against the header §"Pool instruction behavior" (the worked 4×4 → 2×2 example with explicit
    `x/y/z/w_num`/`step`, `pool_size = x_num · y_num = 4`) and the DEBUG strings `"Running max_pool with
    period = %0d and num = %0d"` (`0x269a1f`). The header *names the SW-stream dependency verbatim*.
-   **Holds.** `[HIGH/OBSERVED]`
+   **Holds.**
 4. **"avg-divide = × `pool_scale`(1/N) fp32 multiply, NOT a device divide and NOT the batch-norm Param-RAM
    reciprocal."** Re-challenged against the header §`pool_scale` verbatim (*"1/(RS) … 0.25 for 2x2 …
    to … scale the input values and then accumulate, without the need to count"*) and §Notes (the
    scale-before/after-sum license), plus `s4d4_pool_scale_valid` forcing `1.0` for non-avg ops, plus the
    `ivp_muln_2xf32t` op presence. No division/reciprocal-seed primitive is in the pool path. **Holds.**
-   `[HIGH/OBSERVED]`
+
 5. **"dtype set: IN `{UINT8,INT32,FP16,BF16,FP32,INT64}`, OUT `{UINT8,INT32,FP16,BF16,FP32}`, calc always
    fp32."** Re-challenged against the header §in/out_dtype (*"Supported input dtypes are
    UINT8/INT32/FP16/BFLOAT16/FP32/INT64 … Supported output dtypes are UINT8/INT32/FP16/BFLOAT16/FP32"*) and
    the recommended-usage table (`CALC_DTYPE = FP32` on every row; INT64 not writable to SB/PSUM).
-   **Holds.** `[HIGH/OBSERVED]`
+   **Holds.**
 
 **Flagged items.** (i) The `decode_pool` **body mid-bundle arms** are FLIX-desynced under stock objdump's
 linear sweep (~25 % `.byte` in the `0xbc0..0xdff` window); the `pool_func` switch, the period/num loops, and
@@ -577,8 +574,8 @@ the desynced body — the format-string args are HIGH, the live regs are MED. (i
 HW-datapath routing is `[INFERRED-HIGH]` (absence in Q7 ucode + argmax/training semantics). (iv) The
 `ivp_*` in-body slot order is desynced — the op *set* is pinned (§5.3), the in-`decode_pool` slot order is
 not. (v) **v5/MAVERICK interior** is header-OBSERVED / interior-INFERRED (§9). The funcVA `0x01000bc0` /
-`kernel_info_table` idx3 / trampoline bytes are CARRIED from SX-FW-70's carve (the IDA host-lib disasm does
-not cover the embedded Xtensa POOL blobs).
+`kernel_info_table` idx3 / trampoline bytes are CARRIED from the prior carve (the IDA host-lib disasm
+does not cover the embedded Xtensa POOL blobs).
 
 ---
 
@@ -605,12 +602,12 @@ predicates are read byte-exact from the CAYMAN/MARIANA/MAVERICK/SUNDA arch-isa i
 (`aws_neuron_isa_tpb_s4d4_pl.h`, `aws_neuron_isa_tpb_common.h`) shipped in the
 `aws-neuronx-gpsimd-customop-lib` package, cross-checked against `instruction_mapping.json`
 (`struct2opcode`: `S4D4_PL → {POOL, MAX_POOL_SELECT}`). The `S4D4_PL` `sizeof == 64` and every field offset
-are **compile-verified** with `gcc` this pass. The `decode_pool` symbol (`_Z11decode_poolb`) is read from
+are **compile-verified** with `gcc`. The `decode_pool` symbol (`_Z11decode_poolb`) is read from
 the carved POOL `EXTISA` blobs of `libnrtucode_extisa.so`; the `P%i:` Pool DEBUG runner strings are read at
 the cited byte offsets (`0x2699db..0x269bd1`) of the shipped `libnrtucode_internal.so` `.rodata` with stock
 `strings`/`xxd`. The funcVA `0x01000bc0` / `kernel_info_table` idx3 binding / trampoline disasm are carried
-from SX-FW-70 (the carved-blob `xtensa-elf-objdump` pass, `XTENSA_CORE=ncore2gp`); the per-element value
-semantics are carried from the SX-ISS-13 `libfiss-base.so` `xdref` oracle. The `extracted/` tree is
+from a prior carved-blob `xtensa-elf-objdump` pass (`XTENSA_CORE=ncore2gp`); the per-element value
+semantics are carried from the `libfiss-base.so` `xdref` oracle. The `extracted/` tree is
 gitignored (reached with absolute paths). `.text` VMA == file-offset; config-DLL `.data.rel.ro` file =
 VMA − `0x200000` (`readelf -SW`-confirmed). All prose is derived from static analysis of the shipped
 artifacts only; nothing here is read from a vendor source tree.*

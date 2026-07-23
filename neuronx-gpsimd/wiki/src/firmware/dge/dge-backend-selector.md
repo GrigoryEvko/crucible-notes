@@ -61,8 +61,6 @@ carve = ar p $AR <member> > t.o ; \
 | `img_SUNDA_NX_POOL_DEBUG_DRAM`          | DRAM | 14 432  | `298ae996c1a3`  |
 | `img_CAYMAN_Q7_POOL_DEBUG_DRAM`         | DRAM | 89 344  | `226f4254d475`  |
 
-*(All hashes re-computed this task; all match.)* **[HIGH / OBSERVED]**
-
 **Addressing rule.** The DRAM image loads at device VA `0x80000`, so a DRAM
 string VA = file-offset + `0x80000`; IRAM file-offset == IRAM device VA.
 
@@ -107,7 +105,7 @@ f5a5: 656509   call8   0x18bfc      ; 'S:' logger("NO BACKEND FOUND ...")
 f5a8: 62622f   s32i    a6, a2, 188  ; store the 0 return value; retw.n
 ```
 
-**[HIGH / OBSERVED — re-disassembled + raw `xxd` this task.]**
+**[HIGH/OBSERVED]**
 
 As annotated C pseudocode, naming the real symbols/addresses:
 
@@ -143,8 +141,7 @@ zero → NO BACKEND (log + return 0, do nothing).** The RTL / software dispatch
 lives in the `dge_backend_rtl.cpp` body, which references the *same* table base
 in a desynced span — so the exact table index each backend's availability lives
 at and the full Pool→RTL→software fall-through order are **not byte-recoverable
-beyond `table[0]=Pool`** (MED). **[`table[0]=Pool` read + `beqz`→NO-BACKEND
-HIGH/OBSERVED; RTL/software slot indices MED.]**
+beyond `table[0]=Pool`** (MED). **[HIGH/OBSERVED `table[0]`; MED slot indices]**
 
 ### The decision strings (byte-exact `.rodata`)
 
@@ -160,14 +157,14 @@ Read from CAYMAN NX‑POOL DEBUG DRAM `.rodata` (VA = off + `0x80000`):
 | `0x83529`  | `0x3529` | `dge_backend_rtl.cpp`  (`__FILE__`)             |
 | `0x8353d`  | `0x353d` | `dge_backend_rtl`      (`__func__` / symbol)    |
 
-**[HIGH / OBSERVED — `rg -a -b -o` byte offsets confirmed this task.]**
+**[HIGH/OBSERVED]**
 
 > **QUIRK — 2 "Select" labels, 3 backend log lines.** There are **two**
 > `Select backend` labels (Pool, RTL) but **three** backend descriptor log lines
 > (Pool / RTL / software, below). The **software backend has no "Select backend
 > software" label** — it is reached via the context `sw=%d` flag and the
 > `dge_decode_fast` SW decode, not as an arm of the availability-table selector
-> that logs `Select`. **[count asymmetry HIGH/OBSERVED; the reading INFERRED-HIGH.]**
+> that logs `Select`. **[HIGH/OBSERVED count; INFERRED reading]**
 
 ### The availability table
 
@@ -180,8 +177,7 @@ generation**: the two Pool-select arms plus one `dge_backend_rtl.cpp` body site:
 | MARIANA       | `0x5fe0`   | (same shape)                       |
 | MARIANA_PLUS  | `0x5fe0`   | `0xf9b0`, `0xfee6`, `0x10de4`      |
 
-**[HIGH / OBSERVED — `objdump | rg 'const16.*0x5da0'` / `0x5fe0` give exactly
-these three each.]** The first two sites load into `a4`; the third
+**[HIGH/OBSERVED]** The first two sites load into `a4`; the third
 (`0x108ff` CAYMAN / `0x10de4` MP) loads into `a2` and immediately desyncs — this
 is the RTL/software dispatch site.
 
@@ -189,16 +185,15 @@ The table is in the DGE BSS context region (CAYMAN `0x5d90..0x5e20`, the
 per-context struct the setup function packs from). Because the SRAM/BSS carve is
 **zero**, the table is **runtime-populated at boot/setup** from a HW-capability
 probe — so "which backend is available" is decided at init, not baked into
-`.rodata`. **[base + 3 sites HIGH/OBSERVED; populate-at-setup INFERRED-HIGH —
-BSS-zero OBSERVED + the setup struct-pack OBSERVED.]**
+`.rodata`. **[HIGH/OBSERVED base + 3 sites; INFERRED populate-at-setup]**
 
 > **NOTE — two-tier selection.** Backend selection is **two-tier**: (1) the
 > context binds an `sw`/`hw` mode at setup — `DGE contexts ... init sw=%d ...`
 > (VA `0x834b0`) — where `sw=1` ⇒ the Q7 software backend and `sw=0` ⇒ a HW
 > backend; (2) the per-descriptor availability table gate then picks Pool vs RTL
 > vs NO-BACKEND among the HW backends. The `sw=%d` flag is documented in
-> [DGE Setup + Context Init](dge-setup.md). **[`sw=%d` OBSERVED; two-tier reading
-> INFERRED-HIGH.]**
+> [DGE Setup + Context Init](dge-setup.md). **[HIGH/OBSERVED `sw=%d`; INFERRED
+> two-tier reading]**
 
 ---
 
@@ -236,8 +231,7 @@ S: DGE software backend: $S[%i]+=%i@dmacomplete
 `reshape_kind` — the richest feature set (gather/scatter + dtype cast +
 arbitrary reshape).
 
-**[All three log lines HIGH / OBSERVED — byte-exact strings at the cited
-offsets.]**
+**[HIGH/OBSERVED — byte-exact strings at the cited offsets]**
 
 > **Decode.** Descriptor *width* grows Pool(2) < software(4) < RTL(5+2=7), but
 > the *feature* set is richest on software (cast+indirection+reshape) and barest
@@ -251,8 +245,7 @@ offsets.]**
 | **software** | 4     | yes  | yes   | yes     | no (in log)| firmware  | Q7 cores (SW‑DGE)    | context `sw=1` — general gather/scatter + dtype cast + arbitrary reshape |
 | **RTL**      | 5+2   | no   | no    | no      | no         | **hardware** | RTL DGE + RDM     | RTL slot available — widest pure transport; HW does the multi-dim expansion |
 
-**[field sets HIGH/OBSERVED; expansion-locus + exec-engine split
-HIGH/INFERRED from field-set width + the `sw=%d` flag.]**
+**[HIGH/OBSERVED field sets; INFERRED expansion-locus + exec engine]**
 
 All three ultimately emit **16‑B `SDMA_CME_BD_DESC`** ring entries into the
 **DGE_MEMORY** carveout (1 GiB @ `0x2040000000`) and ring the **same M2S/S2M
@@ -263,8 +256,8 @@ is **where** the multi-dim expansion happens: Pool/software = firmware-side
 ### Per-backend descriptor field grounding (compile-verified)
 
 The Pool 2‑dim descriptor maps onto the shipped 64‑B ISA struct
-`NEURON_ISA_TPB_DMA_DIRECT2D_STRUCT` (`ISA_STATIC_ASSERT(sizeof == 64)`,
-re-checked this task). The struct fields are exactly the Pool log field set:
+`NEURON_ISA_TPB_DMA_DIRECT2D_STRUCT` (`ISA_STATIC_ASSERT(sizeof == 64)`).
+The struct fields are exactly the Pool log field set:
 
 ```c
 typedef struct NEURON_ISA_TPB_DMA_DIRECT2D_STRUCT {
@@ -303,8 +296,7 @@ The software backend's `indirection_dim` is the ISA enum
 `NEURON_ISA_TPB_INDIRECT_DIM` (`X=0, Y=1, Z=2, W=3`). The RTL **5+2** descriptor
 has **no single 64‑B ISA struct** that enumerates a 5+2 split — it is the RTL
 DGE's **HW-internal** wide form the backend programs into the rings, not a
-shipped struct. **[DIRECT2D struct + enums HIGH/OBSERVED; RTL HW-internal-form
-INFERRED-MED — no shipped struct enumerates 5+2.]**
+shipped struct. **[HIGH/OBSERVED struct + enums; MED/INFERRED RTL HW form]**
 
 > **The software backend is NOT a legacy iDMA path.** The software backend is the
 > *active, feature-rich* general path. The shipped ISA header names it verbatim:
@@ -312,8 +304,7 @@ INFERRED-MED — no shipped struct enumerates 5+2.]**
 > processors in the Gpsimd engine**"
 > (`aws_neuron_isa_tpb_dma_gather_xpose.h:17`). It handles exactly the
 > gather/cast/reshape cases the Pool/RTL fixed-function descriptors cannot, is
-> present CAYMAN-onward, and has its own Q7 execution leg. **[HIGH/OBSERVED —
-> header verbatim + the 4‑dim+indirection field set + the Q7 decode/spray chain.]**
+> present CAYMAN-onward, and has its own Q7 execution leg. **[HIGH/OBSERVED]**
 > For the iDMA cache-fill path it is *contrasted with*, see
 > [iDMA / Legacy DMA](idma-legacy-dma.md).
 
@@ -356,9 +347,7 @@ multi-dim expansion** the firmware (Pool/software) does in software.
 > ties `dge_backend_rtl.cpp` to a specific RDM or glr register, so the
 > "RTL backend programs *this*" edge is INFERRED.
 
-**[RDM 24-queue ring/tail-writeback/ringId schema HIGH/OBSERVED (byte-exact
-JSON); the `rx.base`/`tx.base` + tail-ptr doorbell OBSERVED; the
-RTL-programs-this edge HIGH/INFERRED.]**
+**[HIGH/OBSERVED RDM schema + ring doorbell; INFERRED RTL-programs-this edge]**
 
 ---
 
@@ -380,9 +369,9 @@ typedef struct NEURON_ISA_TPB_DMA_CONFIGS {
 //    && (dma_configs.reserved_bitfield == 0)
 ```
 
-Compile-verified this task: `sizeof(NEURON_ISA_TPB_DMA_CONFIGS) == 1`; the
+Compile-verified: `sizeof(NEURON_ISA_TPB_DMA_CONFIGS) == 1`; the
 `priority_class <= 4` predicate is at `aws_neuron_isa_tpb_common.h:2071`.
-**[HIGH / OBSERVED — header read + `gcc` sizeof check.]**
+**[HIGH/OBSERVED]**
 
 **Where it is read and how it affects selection.** The priority class is a field
 of the descriptor every backend builds, but it is the **RTL / HW backend** that
@@ -394,19 +383,18 @@ host-side wiring (which host queue feeds which device class) is documented
 forward in Part 8.
 
 > **NOTE — forward links.** The host-side **priority-class map** is documented in
-> [runtime/dge-host-api.md](../../runtime/dge-host-api.md) (Part 8 — *not yet
-> authored*), and the **QoS/builder** side in
-> [dma/dge-builder-qos.md](../../dma/dge-builder-qos.md) (Part 9 — *not yet
-> authored*). This page covers only the device-side `priority_class` field the
-> selector consults.
+> [runtime/dge-host-api.md](../../runtime/dge-host-api.md) (Part 8), and the
+> **QoS/builder** side in
+> [dma/dge-builder-qos.md](../../dma/dge-builder-qos.md) (Part 9). This page
+> covers only the device-side `priority_class` field the selector consults.
 
 > **CORRECTION — shape-register count symbol.** The `$S[%i]` shape-register file
 > all three backend logs print is **4‑deep**, but the backing report cited the
-> symbol as `NUM_DGE_SHAPE_REGISTERS == 4`. Re-grepping the shipped headers, the
-> actual symbol is `NEURON_ISA_TPB_n = 4U`, with the validity check indexing
+> symbol as `NUM_DGE_SHAPE_REGISTERS == 4`. In the shipped headers the actual
+> symbol is `NEURON_ISA_TPB_n = 4U`, with the validity check indexing
 > `shape_registers[0..3]` (`aws_neuron_isa_tpb_ctrl_ms.h` /
 > `aws_neuron_isa_tpb_assert.h`). The **4-deep fact holds**; the symbol name does
-> not. **[HIGH / OBSERVED — `rg` over headers this task.]**
+> not. **[HIGH/OBSERVED]**
 
 ---
 
@@ -426,14 +414,14 @@ The whole selector + all three backends are **CAYMAN-onward (NC‑v3+)** and
 | `S: DGE software backend`               | 0     | 1      | 1       | 1            | 0         |
 | `dge_backend_rtl`                       | 0     | 1      | 1       | 1            | 0         |
 
-**[HIGH / OBSERVED — `rg -c -a` this task.]**
+**[HIGH/OBSERVED]**
 
 - **SUNDA (NC‑v2): absent.** Every selector string counts **0** — SUNDA's NX_POOL
   has only a reshape stub and no DGE selector. This is the per-gen wall:
   **HWDGE (the RTL backend) and the whole selector arrive with CAYMAN.**
 - **CAYMAN / MARIANA / MARIANA_PLUS (NC‑v3 / v4): present** and **byte-identical
   in field set**. Only string *offsets* shift by the inserted MARIANA_PLUS
-  fast-path strings (verified this task): Pool `0x3157 → 0x3197`, RTL
+  fast-path strings: Pool `0x3157 → 0x3197`, RTL
   `0x3173 → 0x31b3`, NO-BACKEND `0x312f → 0x316f` (all `+0x40`).
 - **CAYMAN_Q7: absent.** The Q7 image carries **none** of the selector strings —
   the selector is **NX‑POOL-only** (the NX sequencer runs the backend pick); the
@@ -446,8 +434,7 @@ The whole selector + all three backends are **CAYMAN-onward (NC‑v3+)** and
   descriptor with the same "SW-DGE backend with Q7 processors" comment — so the
   DGE ISA surface survives into Maverick. Whether Maverick's NX_POOL firmware
   retains the same 3-backend selector is **INFERRED / out of scope**.
-  **[no-Maverick-firmware fact HIGH/OBSERVED; any Maverick runtime claim
-  LOW/flagged.]**
+  **[HIGH/OBSERVED absence; LOW any Maverick runtime claim]**
 
 > **NOTE — RDM hardware is gen-wide.** The RTL backend's *hardware* (the RDM) is
 > byte-identical across SUNDA/CAYMAN/MARIANA/MARIANA_PLUS (Maverick header-only).
@@ -458,7 +445,7 @@ The whole selector + all three backends are **CAYMAN-onward (NC‑v3+)** and
 The `dge_backend_rtl` string is also present in the symbol-bearing
 `img_CAYMAN_NX_POOL_TEST_DRAM` `.rodata` — confirming `dge_backend_rtl` is a
 **real compiled function** whose name was retained, not merely a DEBUG format
-string. **[HIGH / OBSERVED.]**
+string.
 
 ---
 
@@ -508,9 +495,9 @@ ERRORS (dge-errors.md): bounds OOB / NO BACKEND -> report-and-continue
 - [iDMA / Legacy DMA](idma-legacy-dma.md) — the legacy IRAM cache-fill DMA path
   the software backend is contrasted with, and the glr CSRs (Part 5, #682).
 - [runtime/dge-host-api.md](../../runtime/dge-host-api.md) — the host-side
-  priority-class map (Part 8, #825 — **forward link, not yet authored**).
+  priority-class map (Part 8, #825).
 - [dma/dge-builder-qos.md](../../dma/dge-builder-qos.md) — the host QoS/builder
-  side (Part 9, #837 — **forward link, not yet authored**).
+  side (Part 9, #837).
 - [Confidence model](../../reference/confidence-model.md) — the
   HIGH/MED/LOW × OBSERVED/INFERRED tagging used throughout.
 

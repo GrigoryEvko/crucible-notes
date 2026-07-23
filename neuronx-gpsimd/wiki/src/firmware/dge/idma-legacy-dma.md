@@ -17,7 +17,7 @@ This page reconstructs the *transfer itself*: the flat `src[len] → dst` descri
 backends it can drive (the Xtensa core's own iDMA hardware port through the general
 local-register CSR mailbox, or a software DRAM ring), the poll-only completion, and — the
 key framing — **why this is the "legacy" path** versus the modern descriptor-generation
-engine (DGE) that fills the rest of this cluster. Everything below is re-disassembled from
+engine (DGE) that fills the rest of this cluster. Everything below is disassembled from
 the carved device image; no DMA hardware was run.
 
 The substrate is the carved `CAYMAN_NX_POOL` **DEBUG** firmware image — the same object the
@@ -31,7 +31,7 @@ from the string it references. The carve:
 - IRAM blob `CAYMAN_NX_POOL_DEBUG_IRAM_get.data`, **116768 B**, sha256
   `8e4412b99201f62d97110c7c641cf420fee361140763019c7f944c40ab9ed70a`.
 
-Both were carved this pass from members `img_CAYMAN_NX_POOL_DEBUG_{DRAM,IRAM}_contents.c.o`
+Both are carved from members `img_CAYMAN_NX_POOL_DEBUG_{DRAM,IRAM}_contents.c.o`
 of `libnrtucode.a` (the firmware image is stored as a host-x86 `.rodata` OBJECT inside the
 `.c.o`; `dd skip=0x60 count=<symsize>`), and both sha256 values match the
 [`iram-cache.md`](../seq/iram-cache.md) anchors exactly. IRAM offsets equal device IRAM
@@ -39,11 +39,11 @@ virtual addresses (`.rodata` VMA == file offset for this carve). DRAM string add
 device DRAM VAs; the file offset into the carved DRAM blob is `VA − 0x80000`.
 
 Confidence tags follow [the Confidence & Walls Model](../../reference/confidence-model.md):
-`OBSERVED` = a byte / string / instruction read or re-disassembled from the carved image
-**this pass**; `INFERRED` = reasoned over those reads; `CARRIED` = taken from a cited sibling
+`OBSERVED` = a byte / string / instruction read from the carved image;
+`INFERRED` = reasoned over those reads; `CARRIED` = taken from a cited sibling
 page at its original confidence. Crossed with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK**
 (counter-intuitive but real), **GOTCHA** (a reimplementation trap), **CORRECTION** (overturns
-a naive reading), **NOTE** (orientation). Everything was re-disassembled with the native
+a naive reading), **NOTE** (orientation). Disassembly used the native
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, GNU Binutils 2.34.20200201 / Xtensa Tools
 14.09, FLIX/VLIW 32 B). Decoding the raw image as `-b binary -m xtensa` and forcing
 `--start-address=` at each true function entry sidesteps the FLIX format-marker desync that
@@ -71,7 +71,7 @@ compute op, no second backend table. The DEBUG log binds the three fields in one
 ```
 0x81578   "S: DMA enqueue 0x%llx[%u] -> 0x%llx"          // src[len] -> dst
 ```
-`[HIGH/OBSERVED — string carved byte-exact from the DRAM blob @0x81578.]`
+`[HIGH/OBSERVED]`
 
 > **NOTE.** "One transfer = one cache line." Every iDMA call moves exactly `block_size` bytes
 > (one line) from the instruction stream into the cache window. There is no scatter/gather
@@ -103,17 +103,17 @@ strings are present in CAYMAN, MARIANA, and MARIANA_PLUS; **none** are present i
 ## 2. The transfer descriptor — `src[len] → dst`
 
 `start_fill_siram` @`0x6217` is the per-line entry that turns a cache index into one DMA
-transfer. Instruction-exact (`ncore2gp`, this pass), the descriptor-build prologue:
+transfer. Instruction-exact (`ncore2gp`), the descriptor-build prologue:
 
 ```
 6231: const16  a4, 8
-6234: const16  a4, 0x5654         ; a4 = &g_block_size  ([0x85654])     [HIGH/OBSERVED]
+6234: const16  a4, 0x5654         ; a4 = &g_block_size  ([0x85654])
 6237: l32i.n   a4, a4, 0          ; a4 = block_size
-6239: mull     a3, a3, a4         ; fetch_addr = idx * block_size       [HIGH/OBSERVED]
+6239: mull     a3, a3, a4         ; fetch_addr = idx * block_size
 623c: s32i.n   a3, a1, 4          ; line[+4] = fetch_addr (the source offset)
 6252: const16  a10, 0x152d        ; "S: start_fill_siram: fetch_addr=0x%llx"
 6255: call8    0x18b84            ; printf
-6260: const16  a3, 0x5658         ; a3 = &g_dma_backend  ([0x85658])    [HIGH/OBSERVED]
+6260: const16  a3, 0x5658         ; a3 = &g_dma_backend  ([0x85658])
 6263: l8ui     a3, a3, 0          ; backend byte (one byte)
 6266: bbci     a3, 0, 0x62ac      ; bit0 clear -> HW path @0x62ac ; set -> SW ring
 ```
@@ -129,8 +129,7 @@ the cache manager handed in) and the `"0x%llx[%u]->0x%llx"` log:
 
 `fetch_addr` is a pure linear map `idx → idx·block_size` — a `mull`, not a shift — so
 `block_size` need not be a power of two at the iDMA level even though the cache initialises
-it to one. `[src=fetch_addr HIGH/OBSERVED; len=block_size HIGH/OBSERVED; dst=line slot
-HIGH/OBSERVED.]`
+it to one. `[HIGH/OBSERVED]`
 
 > **GOTCHA.** `block_size` is read **indirectly** through the global pointer slot
 > `[0x85654]`, not from an immediate. A reimplementation that bakes a constant line size
@@ -150,20 +149,20 @@ contract, but touch completely different surfaces.
 
 ### 3a. Backend (a) — the Xtensa core's own iDMA port (`glr[9..12]` CSR mailbox)
 
-The HW arm @`0x62ac..0x62db`, byte-exact this pass:
+The HW arm @`0x62ac..0x62db`, byte-exact:
 
 ```
 62ac: l32i.n   a3, a1, 16        ; a3 = line[+16]  (dst word 0)
 62b1: const16  a4, 0x1140        ; a4 = 0x1140 = glr[10]
-62b4: s32i.n   a3, a4, 0         ; REG(0x1140) = line[+16]           desc word 0   [HIGH]
+62b4: s32i.n   a3, a4, 0         ; REG(0x1140) = line[+16]           desc word 0
 62b6: l32i.n   a3, a1, 20        ; a3 = line[+20]  (dst word 1)
-62be: s32i.n   a3, a4, 32        ; REG(0x1140+32 = 0x1160) = line[+20]  word 1     [HIGH]
+62be: s32i.n   a3, a4, 32        ; REG(0x1140+32 = 0x1160) = line[+20]  word 1
 62c0: l32i.n   a3, a1, 4         ; a3 = line[+4] = fetch_addr  (the source offset)
 62c5: const16  a4, 0x1180        ; a4 = 0x1180 = glr[12]
-62c8: s32i.n   a3, a4, 0         ; REG(0x1180) = fetch_addr           desc word 2   [HIGH]
+62c8: s32i.n   a3, a4, 0         ; REG(0x1180) = fetch_addr           desc word 2
 62cd: const16  a3, 0x1120        ; a3 = 0x1120 = glr[9]
 62d0: movi.n   a4, 1
-62d2: s32i.n   a4, a3, 0         ; REG(0x1120) = 1                    *** KICK ***   [HIGH]
+62d2: s32i.n   a4, a3, 0         ; REG(0x1120) = 1                    *** KICK ***
 62d7: l32i.n   a3, a1, 8         ; a3 = line[+8] = idx
 62d9: s32i.n   a3, a2, 32        ; cache[+32] = idx  (pending-DMA slot)
 62db: retw.n
@@ -194,16 +193,15 @@ The four CSRs are the `tpb_xt_local_reg.general` block (base `0x1000`, ArraySize
 **generic scratch local registers the SEQ firmware repurposes as the iDMA descriptor
 mailbox** — the same trick the Setup-Halt path uses to stash a resume PC in `glr` slots. The
 underlying engine is the `ncore2gp` `IDMAInterface = ACELite … target dataidma`, the Xtensa
-core's *local* DMA port — **not** the SoC SDMA. `[glr identities HIGH/OBSERVED; the absolute
-aperture-base alias carries the 0x0-vs-0x400000 ambiguity but does not change the register
-identity.]`
+core's *local* DMA port — **not** the SoC SDMA. `[HIGH/OBSERVED glr identities; MED absolute
+aperture base — a 0x0-vs-0x400000 alias ambiguity that does not change register identity]`
 
 > **QUIRK.** `glr[11]@0x1160` is written **without its own `const16`**: the code reuses
 > `a4 = 0x1140` from the `glr[10]` write and stores at `+32` (`0x1140 + 0x20 = 0x1160`). So
 > the descriptor-build path emits only **one** `const16 …,0x1140` for two writes. A
 > reimplementation that counts CSR writes by counting `const16` immediates will undercount
 > the `0x1160` write. The four CSR const16 counts over the whole image (`rg -c`): `0x1120`=3,
-> `0x1140`=1, `0x1160`=1, `0x1180`=1. `[HIGH/OBSERVED.]`
+> `0x1140`=1, `0x1160`=1, `0x1180`=1.
 
 ### 3b. Backend (b) — the software `DramRingDMA`
 
@@ -221,7 +219,7 @@ the low `fetch_addr` offset; the SW path adds the stream base with carry):
             -> cache[+48] / cache[+52]
 ```
 
-The enqueue body @`0x6354` (`entry a1, 96` — large frame), byte-exact this pass:
+The enqueue body @`0x6354` (`entry a1, 96` — large frame), byte-exact:
 
 ```
 6354: entry    a1, 96
@@ -253,12 +251,11 @@ ring_slot_t start_fill_siram_sw(line_t *line, cache_t *cache,
 }
 ```
 
-`[HIGH on the enqueue identity + assert/log/alloc structure; the exact per-slot byte layout
-inside 0x6514/0x6538 is reachable but INFERRED-HIGH; the carried tuple
-(src-lo/src-hi/dst/len) is HIGH from the "0x%llx[%u]->0x%llx" log + the §3b address build.]`
+`[HIGH enqueue identity + assert/log/alloc structure; INFERRED the exact per-slot byte layout
+inside 0x6514/0x6538]`
 
 > **CORRECTION.** The companion cache page labelled the two recorded slot ids
-> `cache[+48]`=submit / `cache[+52]`=comp. The byte-exact stores this pass are
+> `cache[+48]`=submit / `cache[+52]`=comp. The byte-exact stores are
 > `line[+28]→cache[+52]` and `line[+24]→cache[+48]`. Both ids are recorded, and the poll
 > (§4) reads **both** back, so the submit-vs-comp labelling does not affect the mechanism —
 > it is the one residual ambiguity here. `[slots recorded HIGH; the +48/+52 labelling MED.]`
@@ -269,7 +266,7 @@ inside 0x6514/0x6538 is reachable but INFERRED-HIGH; the carried tuple
 
 `wait_for_dma_fill` @`0x61a8` is a **busy-spin**. There is no interrupt, no surprise handler,
 and no notification-queue hop in the fill path: the SEQ core stalls its own fetch on the spin
-until the line is resident. Byte-exact this pass:
+until the line is resident. Byte-exact:
 
 ```
 61a8: entry    a1, 48
@@ -279,7 +276,7 @@ until the line is resident. Byte-exact this pass:
 61c5: j        0x61c8            ; --- spin head ---
 61c8: mov.n    a10, a2
 61ca: call8    0x3b4c            ; r = fill_done_poll(cache)
-61cd: bnez     a10, 0x61c5       ; while (busy) spin                            [HIGH]
+61cd: bnez     a10, 0x61c5       ; while (busy) spin
 ...
 61f0: ...                        ; --- on done (HW) ---
 6201: l32i     a3, a2, 64        ; tag_base = cache[+64]
@@ -287,7 +284,7 @@ until the line is resident. Byte-exact this pass:
 6206: slli     a2, a2, 4         ; idx << 4   (16-B per-line descriptors)
 6209: add.n    a2, a3, a2        ; entry = tag_base + idx*16
 620b: movi.n   a3, 2
-620d: s32i.n   a3, a2, 0         ; entry[0] = 2  => line VALID / READY            [HIGH]
+620d: s32i.n   a3, a2, 0         ; entry[0] = 2  => line VALID / READY
 6215: retw.n
 ```
 
@@ -317,7 +314,7 @@ The poll @`0x3b4c` branches on the **same** backend byte `[0x85658]`:
 3b8e: const16  a2, 0x1120        ; glr[9]
 3b94: l32i.n   a2, a2, 0         ; v = REG(0x1120)
 3b96: movi.n   a3, 0
-3b98: saltu    a2, a3, a2        ; busy = (0 < v) = (v != 0)                     [HIGH]
+3b98: saltu    a2, a3, a2        ; busy = (0 < v) = (v != 0)
 ```
 
 ```c
@@ -337,7 +334,7 @@ int fill_done_poll(cache_t *cache) {
 `glr[9]@0x1120`; the core iDMA port clears it to `0` on completion, and the poll's
 `saltu a2, 0, v` reports busy iff `v != 0`. This is *identical* to the
 [`iram-cache.md`](../seq/iram-cache.md) statement — **KICK = write 1 to `0x1120`, completion
-= read-back 0** — and was re-confirmed here byte-exact. `[HIGH/OBSERVED.]`
+= read-back 0** — and is byte-exact here. `[HIGH/OBSERVED]`
 
 The SW ring completion @`0x3c04` reads a ring-slot header, extracts a 3-bit and two 2-bit
 fields (`extui @0x3c1d/0x3c29/0x3c3f`), compares a phase/seq field (`bne @0x3c48`), and sets
@@ -345,7 +342,7 @@ the completed flag — a textbook phase-bit ring poll. Ring reset @`0x3ba8` (the
 `DramRingDMA` ctor/reset) zeroes `cache[+32]` and `cache[+56]`, seeds the round-robin victim
 at `cache[+36] = num_blocks − 1` (so the first `+1` wraps to 0), and, in SW mode
 (`descr[+60]` bit 0), walks the `num_blocks` ring slots (`cache[+64]`, stride 16) initialising
-each. `[HIGH/OBSERVED.]`
+each.
 
 > **NOTE.** Because completion is a spin and not an interrupt, the iDMA cannot overlap a fill
 > with useful SEQ work: the core *is* the consumer and *is* the waiter. That single-threaded,
@@ -380,8 +377,7 @@ four `glr` CSRs. The state map (offsets relative to the cache control base):
 | `0x1180` | `glr[12]` | descriptor word 2 (`= line[+4] = fetch_addr`, src offset) |
 | `0x1260` | `glr[19]` | `block_size` source config (→ `[0x85654]`) |
 
-`[CSR identities and writes HIGH/OBSERVED; the glr[19]→[0x85654] plumbing is CARRIED from the
-cache page.]`
+`[HIGH/OBSERVED CSR identities + writes; CARRIED glr[19]→[0x85654] plumbing]`
 
 ---
 
@@ -412,12 +408,12 @@ What makes the iDMA **legacy**, grounded:
    emit shapes are disjoint.]`
 2. **Fixed registers vs a backend selector + reshape.** The iDMA hard-wires four scratch
    `glr` CSRs (or one SW ring); the DGE picks among Pool/RTL/software backends and a
-   reshape. `[HIGH/OBSERVED.]`
+   reshape. `[HIGH/OBSERVED]`
 3. **The literal name.** In SUNDA the source file is `legacy_dma.hpp`; in CAYMAN+ it was
    renamed/re-abstracted to `iram_dma.hpp` and wrapped in the `DramRingDMA` class (§7). That
    rename — not a deprecation — is where "legacy" comes from. The only `"legacy"` *string* in
    the CAYMAN image is the unrelated branch-hint `"…to preserve legacy behavior"` (`0x83d42`),
-   which is about branch-NT handling, not DMA. `[rename HIGH/OBSERVED.]`
+   which is about branch-NT handling, not DMA. `[HIGH/OBSERVED rename]`
 
 > **CORRECTION.** "Legacy" here does **not** mean dead or dropped. The path is the **active**
 > I-cache fill engine in every generation that ships it, called from the live cache-miss path.
@@ -428,8 +424,8 @@ What makes the iDMA **legacy**, grounded:
 
 > **NOTE — links.** See [DGE Setup + Context Init](dge-setup.md) for the descriptor-context
 > init that this page contrasts against. The SoC SDMA hardware the DGE drives — and which the
-> iDMA pointedly does *not* — will be documented at
-> [UDMA Hardware Engine](../../dma/udma-hw-engine.md) (Part 9, **not yet authored**).
+> iDMA pointedly does *not* — is documented at
+> [UDMA Hardware Engine](../../dma/udma-hw-engine.md) (Part 9).
 
 ---
 
@@ -456,7 +452,7 @@ iram_dma.hpp    (CAYMAN+: C++ class DramRingDMA  allocate/submit_pending/drain_c
                  cache-side names also shift: prepare_cache_line -> wait_for_cache_line)
 ```
 
-`[All counts HIGH/OBSERVED via rg -c -a over the carved DRAM blobs this pass.]`
+`[HIGH/OBSERVED — rg -c -a over the carved DRAM blobs]`
 
 **The consumer.** The sole proven client is the SEQ software I-cache documented in
 [`iram-cache.md`](../seq/iram-cache.md). The live call chain:
@@ -475,8 +471,8 @@ The iDMA exists to keep the 64 KiB IRAM aperture fed from the ≈114 KiB instruc
 the image is larger than the aperture, so the high vector body is paged in on demand. It is
 **not** used by the external-lib loader (a host-side prelink + `kernel_info_table` install,
 no DMA of its own), **not** by the host-resident segment loader, and **not** by the DGE
-tensor copies (which use the SoC SDMA). `[positive cache linkage HIGH/OBSERVED; "sole
-consumer" MED — an absence claim over the decoded SEQ span and the Q7 grep.]`
+tensor copies (which use the SoC SDMA). `[HIGH/OBSERVED cache linkage; MED "sole consumer" —
+an absence claim over the decoded SEQ span and the Q7 grep]`
 
 ---
 
@@ -486,7 +482,7 @@ consumer" MED — an absence claim over the decoded SEQ span and the Q7 grep.]`
   `0x3c04`) decode cleanly as scalar windowed-ABI code; only short literal-pool `.byte` runs
   (FLIX format markers) sit *between* functions. Every descriptor→CSR write, the `1`/`2`
   state constants, the `mull`/`saltu` arithmetic, the backend-select `bbci`, and the poll
-  loops are instruction-exact. `[HIGH/OBSERVED.]`
+  loops are instruction-exact. `[HIGH/OBSERVED]`
 - The `cache[+48]`/`cache[+52]` submit-vs-comp **labelling** is the one residual ambiguity
   (§3b CORRECTION). Both ids are recorded and both are read back by the poll, so the
   labelling does not affect correctness. `[MED.]`
@@ -507,6 +503,6 @@ consumer" MED — an absence claim over the decoded SEQ span and the Q7 grep.]`
   `0x1120/40/60/80`.
 - [DGE Setup + Context Init](dge-setup.md) — the modern engine this page contrasts against.
 - [UDMA Hardware Engine](../../dma/udma-hw-engine.md) — the SoC SDMA the DGE drives and the
-  iDMA does **not** *(Part 9 — not yet authored)*.
+  iDMA does **not** *(Part 9)*.
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the meaning of the
   `[HIGH/OBSERVED]`-style tags used throughout.

@@ -9,24 +9,24 @@ push micro-ops** — `GENERATE`, `DIMPUSH`, `REGWRITE` — guarded by a **per-de
 bounds check**, and it produces a **64-byte high-level TPB DMA instruction word** that the
 backend lowers into **16-byte SDMA BD ring entries**.
 
-Everything here is **byte-pinned to shipped artifacts disassembled / read this session**: the
+Everything here is **byte-pinned to shipped artifacts**: the
 DEBUG NX-POOL firmware images carved out of `libnrtucode.a`, decoded with the native
 `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`, FLIX/VLIW, `IsaMaxInstructionSize=32`), and the
 shipped clean C ISA headers (`neuron_cayman_arch_isa`), compile-checked with `gcc`. The push
 ops are recovered from the firmware's **own embedded format strings** (`S:` prefix); the
 descriptor structs and the bounds-check predicate from the **shipped ISA-header struct/predicate
-definitions** (`ISA_STATIC_ASSERT`ed `sizeof == 64`). Where the backing reading disagrees with
-the re-disassembly, **the binary wins**, and an in-place **CORRECTION** says so.
+definitions** (`ISA_STATIC_ASSERT`ed `sizeof == 64`). Where a prior reading disagrees with the
+binary, **the binary wins**, and an in-place **CORRECTION** says so.
 
 Confidence tags follow the [project model](../../reference/confidence-model.md): `OBSERVED` = a
-byte / string / instruction / header read from a shipped artifact this session; `INFERRED` =
+byte / string / instruction / header read from a shipped artifact; `INFERRED` =
 reasoned over OBSERVED facts; `CARRIED` = consolidated from a cited cross-page anchor; crossed
 with `HIGH` / `MED` / `LOW`. Callouts: **QUIRK** (counter-intuitive but real), **GOTCHA** (a
 reimplementation trap), **CORRECTION** (overturns a naive reading), **NOTE** (orientation).
 
 > **GOTCHA — emit *bodies* are FLIX-desynced; strings + structs are ground truth.** The push-op
 > function bodies load their format strings from a **string-pool base register** (`0x83400`,
-> confirmed as an IRAM literal **51×** this session) plus a small displacement, **not** via
+> an IRAM literal appearing **51×**) plus a small displacement, **not** via
 > `const16` hi/lo pairs — so `objdump`'s linear sweep loses bundle sync inside the emit bodies
 > and the per-instruction body is **not byte-recoverable**. This is documented, not hidden. The
 > authoritative artifacts on this page are therefore (a) the **byte-exact format strings**
@@ -80,8 +80,8 @@ The emit ops live in the **NX-POOL sequencer firmware** (the `*_NX_POOL` members
 `libnrtucode.a`), **not** the Q7 image — the Q7 leg builds the low-level SDMA BD rings
 (`rdma_desc_gen`/`start`, the `P%i:` corpus), while the NX/POOL leg runs the
 decode → reshape → backend-select → push lowering. The three `S: push …` strings are present
-**only** in the `*_NX_POOL` DEBUG DRAMs and **absent** from the Q7 DRAM. All carves were
-re-computed and sha-confirmed this session (`ar p … | objcopy -O binary --only-section=.rodata`):
+**only** in the `*_NX_POOL` DEBUG DRAMs and **absent** from the Q7 DRAM. Carves are
+`ar p … | objcopy -O binary --only-section=.rodata`:
 
 | Member (DEBUG)                          | Seg  | `.rodata` size      | sha256[:12]    | Role here |
 |-----------------------------------------|------|---------------------|----------------|-----------|
@@ -92,8 +92,8 @@ re-computed and sha-confirmed this session (`ar p … | objcopy -O binary --only
 | `img_CAYMAN_Q7_POOL_DEBUG_DRAM`         | DRAM | 89344 B             | `226f4254d475`  | descriptor-count guard strings (`ring_ndesc`) |
 | `img_SUNDA_NX_POOL_DEBUG_DRAM`          | DRAM | 14432 B             | `298ae996c1a3`  | v2 baseline — **no** emit ops |
 
-**[HIGH / OBSERVED — `stat -c%s` + `sha256sum` this session; all six match the
-[setup](dge-setup.md) / [selector](dge-backend-selector.md) carves.]**
+**[HIGH/OBSERVED — all six match the [setup](dge-setup.md) /
+[selector](dge-backend-selector.md) carves]**
 
 **Addressing rule.** The DRAM image loads at device VA `0x80000`, so a **DRAM-string VA =
 file-offset + `0x80000`** (every VA below uses this); IRAM file-offset == IRAM device VA.
@@ -102,8 +102,8 @@ file-offset + `0x80000`** (every VA below uses this); IRAM file-offset == IRAM d
 
 ## 2. The emit format-string corpus — ground truth
 
-Read byte-exact from the `CAYMAN_NX_POOL` DEBUG DRAM `.rodata` (`strings -a -t x`, offsets
-re-confirmed this session). These strings *encode* the emit ops, their operand sets, and the
+Read byte-exact from the `CAYMAN_NX_POOL` DEBUG DRAM `.rodata` (`strings -a -t x`).
+These strings *encode* the emit ops, their operand sets, and the
 bounds check; they are the single most reliable artifact for the emit path.
 
 **The three push ops:**
@@ -132,26 +132,25 @@ embedded `bounds:` field*; the full field grammar is decoded on the
 | `0x354d` | `0x8354d` | RTL (5+2-dim) | *(no `bounds:` — pure wide transport)* |
 | `0x3940` | `0x83940` | software (4-dim) | *(no `bounds:`; carries `indirection_dim`, `reshape_kind`)* |
 
-**[HIGH / OBSERVED — `strings -a -t x` byte offsets + exact text re-confirmed this session; the
-`bounds:` field appears only in the Pool dump line.]**
+**[HIGH/OBSERVED — the `bounds:` field appears only in the Pool dump line]**
 
 > **NOTE — the `%s` direction tag is `RD` / `WR`, byte-resolved inline.** The GENERATE format
 > string ends (NUL) at off `0x3869`; the two NUL-separated literals **`RD` (off `0x386a`)** and
-> **`WR` (off `0x386d`)** sit in the gap before the REGWRITE string at `0x3870` (byte-read this
-> session). So the `%s` of `push GENERATE … %s : addr=…` resolves to **`RD`** (the M2S /
+> **`WR` (off `0x386d`)** sit in the gap before the REGWRITE string at `0x3870`.
+> So the `%s` of `push GENERATE … %s : addr=…` resolves to **`RD`** (the M2S /
 > read-from-source leg, `addr` = src SoC) or **`WR`** (the S2M / write-to-dest leg, `addr` = dst
 > SoC) — the descriptor's transfer direction. The two literals are byte-adjacent in `.rodata`.
-> **[HIGH/OBSERVED — `RD`@`0x386a`, `WR`@`0x386d` byte-read inline after the GENERATE string.]**
+> **[HIGH/OBSERVED]**
 
 > **NOTE — string-pool base, why the bodies desync.** The push strings are reached as
 > `base(0x83400) + displacement` (GENERATE `0x83821` = `0x83400 + 0x421`; DIMPUSH
 > `0x837ea` = `+0x3ea`; REGWRITE `0x83870` = `+0x470`), where the IRAM literal `0x00083400`
 > appears **51×** and the `dge_shape`-dump pool literal `0x00082400` appears **102×**
-> (`python3 … d.count(…)` this session, metric: 4-byte little-endian literal count over
-> `caynx_iram.bin`). Because the loads come off a base-pointer register and not a `const16`
+> (metric: 4-byte little-endian literal count over `caynx_iram.bin`).
+> Because the loads come off a base-pointer register and not a `const16`
 > hi/lo immediate pair, they are **not `const16`-visible** and the emit bodies render as `.byte`
 > — the FLIX-desync ceiling from §0. The *clean*-decoding DGE strings (`Select backend Pool`
-> `0x3157`, `NO BACKEND` `0x312f`) *are* `const16`-loaded by contrast. **[HIGH/OBSERVED.]**
+> `0x3157`, `NO BACKEND` `0x312f`) *are* `const16`-loaded by contrast.
 
 ---
 
@@ -159,14 +158,14 @@ embedded `bounds:` field*; the full field grammar is decoded on the
 
 The high-level descriptor `GENERATE` emits is **one of three 64-byte ISA structs**, selected by
 the Reshape Kind: `DIRECT2D` (Pool / 2-dim), `INDIRECT1D` (indexed copy), `GATHER_XPOSE`
-(gather-transpose). All three carry `ISA_STATIC_ASSERT(sizeof == 64)` and were re-read **and
-`gcc`-compiled** from the shipped `neuron_cayman_arch_isa/tpb` headers this session (the compile
-emitted `DIRECT2D/INDIRECT1D/GATHER_XPOSE sizeof = 64`). The full `DIRECT2D` field table + the
+(gather-transpose). All three carry `ISA_STATIC_ASSERT(sizeof == 64)` in the shipped
+`neuron_cayman_arch_isa/tpb` headers, and `gcc` confirms
+`DIRECT2D/INDIRECT1D/GATHER_XPOSE sizeof = 64`. The full `DIRECT2D` field table + the
 `compute_op` enum live on the [backend-selector page §2](dge-backend-selector.md); this page
 reproduces only the **fields the push ops fill** and the **bound-reg offsets** the §5 check
 references, so the 64-B↔16-B mapping (§6) is self-contained.
 
-**Where each struct keeps its two `BOUND_CHECK_REG`s** (compile-verified offsets this session):
+**Where each struct keeps its two `BOUND_CHECK_REG`s** (compile-verified offsets):
 
 | 64-B struct | bound regs (offset) | what they gate | the addr each guards |
 |---|---|---|---|
@@ -174,16 +173,16 @@ references, so the 64-B↔16-B mapping (§6) is self-contained.
 | `NEURON_ISA_TPB_DMA_INDIRECT1D_STRUCT` | `src_idx_bound_reg` `+58`, `dst_idx_bound_reg` `+59` | the **index arrays** (addressing is index-driven) | `src_idx_start_addr` `+48`, `dst_idx_start_addr` `+52` |
 | `NEURON_ISA_TPB_DMA_GATHER_XPOSE_STRUCT` | `src_idx_bound_reg` `+15`, `dst_bound_reg` `+51` | the gather **index** + the **data dst** | `src_idx_start_addr` `+36`, `dst_start_addr` `+40` |
 
-**[HIGH / OBSERVED — every offset measured (header read + `gcc offsetof`) this session; the
-`DIRECT2D` `ISA_STATIC_ASSERT(sizeof == 64)` is at `aws_neuron_isa_tpb_dma_direct2d.h:45`,
-`INDIRECT1D` at `…dma_indirect1d.h:23`, `GATHER_XPOSE` at `…dma_gather_xpose.h:40/61`.]**
+**[HIGH/OBSERVED — offsets measured with `gcc offsetof`; the `DIRECT2D`
+`ISA_STATIC_ASSERT(sizeof == 64)` is at `aws_neuron_isa_tpb_dma_direct2d.h:45`,
+`INDIRECT1D` at `…dma_indirect1d.h:23`, `GATHER_XPOSE` at `…dma_gather_xpose.h:40/61`]**
 
-> **GOTCHA — `INDIRECT1D` and `GATHER_XPOSE` bound the *index* stream, not the data.** Re-read
-> from the headers this session: `INDIRECT1D` carries **`src_idx_bound_reg` / `dst_idx_bound_reg`**
+> **GOTCHA — `INDIRECT1D` and `GATHER_XPOSE` bound the *index* stream, not the data.** Per the
+> headers, `INDIRECT1D` carries **`src_idx_bound_reg` / `dst_idx_bound_reg`**
 > (the index-array bounds), and `GATHER_XPOSE` carries **`src_idx_bound_reg`** (index) plus a
 > data-side **`dst_bound_reg`**. A reimplementer must wire the bound register to the right
 > address per Kind: for an indexed copy the descriptor's effective address is *index-driven*, so
-> the bound that matters is on the **index** read, not the data base. **[HIGH/OBSERVED.]**
+> the bound that matters is on the **index** read, not the data base.
 
 ---
 
@@ -223,18 +222,18 @@ void push_GENERATE(int d, const char *dir, uint64_t addr,
 }
 ```
 
-| operand | meaning | 64-B field | 16-B BD (§6) | tag |
-|---|---|---|---|---|
-| `%d` (`DMA[d]`) | target DMA channel index within the engine's allotted DMAs | — (channel, not in-word) | selects which ring | `[HIGH/OBSERVED]` |
-| `%s` (`RD`/`WR`) | transfer direction: read-from-src (M2S) vs write-to-dst (S2M) | direction of the BD | M2S vs S2M ring | `[HIGH/OBSERVED]` |
-| `addr=0x%llx` | 64-bit SoC address read/written | `src_start_addr`/`dst_start_addr` (ADDR8) | `buf_ptr` | `[addr field HIGH/OBSERVED; BD-slot map HIGH/INFERRED]` |
-| `elem_size=%d` | per-element byte size | `src_elem_size`/`dst_elem_size` (u16) | (× DIMPUSH counts) → BD length | `[HIGH/OBSERVED]` |
-| `sem_num=%i` | completion-semaphore index | `semaphore`(+13) + `sem_increment`(+14) | BD completion sem | `[HIGH/OBSERVED]` |
+| operand | meaning | 64-B field | 16-B BD (§6) |
+|---|---|---|---|
+| `%d` (`DMA[d]`) | target DMA channel index within the engine's allotted DMAs | — (channel, not in-word) | selects which ring |
+| `%s` (`RD`/`WR`) | transfer direction: read-from-src (M2S) vs write-to-dst (S2M) | direction of the BD | M2S vs S2M ring |
+| `addr=0x%llx` | 64-bit SoC address read/written | `src_start_addr`/`dst_start_addr` (ADDR8) | `buf_ptr` |
+| `elem_size=%d` | per-element byte size | `src_elem_size`/`dst_elem_size` (u16) | (× DIMPUSH counts) → BD length |
+| `sem_num=%i` | completion-semaphore index | `semaphore`(+13) + `sem_increment`(+14) | BD completion sem |
 
 The `@dmacomplete` token in the backend dump line (`$S[%i]+=%i@dmacomplete`) is this `sem_num`:
 on DMA-complete the engine bumps shape register `$S[i]` by the descriptor's increment, releasing
-the consumer. **[HIGH/OBSERVED string; the `addr`/`elem_size`/`sem_num`→BD-slot map HIGH/INFERRED
-from the §3 struct + the §6 lowering.]**
+the consumer. **[HIGH/OBSERVED operands + 64-B fields; INFERRED BD-slot map (from the §3
+struct + the §6 lowering)]**
 
 ### 4.2 `DIMPUSH` — push one loop/dimension level
 
@@ -264,8 +263,7 @@ void push_DIMPUSH(int d, uint16_t num_src, uint16_t num_dst,
 The `%u` are u16 (matching the `0x%04x`-printed `dge_shape` num fields); the `%d` are **signed**
 i32 (the struct's `int32_t … step_elem[2]` — header-verbatim). **The signedness is the point**:
 a negative stride is a reverse-axis walk, which is exactly how a transpose realizes an axis
-permutation by reordering `step_elem[]` rather than touching data. **[HIGH/OBSERVED — the
-`[%u,%u]`/`[%d,%d]` widths + the `int32_t step_elem[]` header read.]**
+permutation by reordering `step_elem[]` rather than touching data. **[HIGH/OBSERVED]**
 
 How `DIMPUSH` builds the N-D iteration: the emit walks the reshape's `num_elem[4]` / `step_elem[4]`
 and issues **one `DIMPUSH` per dimension**; the pushed `(num,step)` pairs accumulate into the
@@ -273,16 +271,15 @@ descriptor's nested loop-nest, which the engine then expands into the BD stream 
 dims fold into one 2-D strided BD via `src/dst_step_elem[2]` + `num_elem[2]`). This is why a
 `DIRECT2D` descriptor carries **2** dims, the software backend **4**, and the RTL backend **5+2**
 (the three [backend dump lines](dge-backend-selector.md)): **`#DIMPUSH == the descriptor's dim
-count for the chosen backend.** **[`DIMPUSH` op + the num/step arrays HIGH/OBSERVED; "one DIMPUSH
-per dim feeding the loop-nest → BD walk" HIGH/INFERRED; the exact inner-fold rule MED.]**
+count for the chosen backend.** **[HIGH/OBSERVED op + num/step arrays; INFERRED one-DIMPUSH-per-dim
+→ BD walk; MED exact inner-fold rule]**
 
 > **QUIRK — `DIMPUSH` is a *pair of pairs*, advancing src and dst cursors in lock-step.**
 > `[%u,%u][%d,%d]` is **not** a single `(num,step)`. The two entries in each bracket are the
 > **src** and **dst** legs of *this* dimension: `DIMPUSH` advances both cursors for the
 > dimension together, matching the descriptor's parallel `src_*` / `dst_*` `step`/`num` arrays.
-> A reimplementer who reads it as one `(count,stride)` will mis-walk the dst. **[`[%u,%u][%d,%d]`
-> shape HIGH/OBSERVED; the src/dst pairing reading MED — inferred from the two-pair log shape +
-> the symmetric src/dst struct arrays.]**
+> A reimplementer who reads it as one `(count,stride)` will mis-walk the dst.
+> **[HIGH/OBSERVED log shape; MED src/dst pairing]**
 
 ### 4.3 `REGWRITE` — push an inline control-register write
 
@@ -304,12 +301,11 @@ void push_REGWRITE(int d /*, reg, value (FLIX-desynced) */)
 }
 ```
 
-**[op existence + "control/trigger" role HIGH/OBSERVED (string + the §6/§7 stream model); the
-exact control-op BD-word encoding INFERRED-MED — the REGWRITE body is FLIX-desynced and the
-16-B BD COPY/ctrl optype is a forward Part-9 fact (§6).]**
+**[HIGH/OBSERVED op + "control/trigger" role; MED/INFERRED control-op BD-word encoding — the
+REGWRITE body is FLIX-desynced and the 16-B BD COPY/ctrl optype is a forward Part-9 fact (§6)]**
 
-> **QUIRK — `REGWRITE` is RETIRED on MARIANA_PLUS.** Re-grepped this session (metric:
-> `rg -c -a` pattern-occurrence over the carved DRAM `.rodata`):
+> **QUIRK — `REGWRITE` is RETIRED on MARIANA_PLUS.** Metric: `rg -c -a`
+> pattern-occurrence over the carved DRAM `.rodata`:
 >
 > | gen (DRAM) | `push GENERATE` | `push DIMPUSH` | `push REGWRITE` |
 > |---|---|---|---|
@@ -323,8 +319,7 @@ exact control-op BD-word encoding INFERRED-MED — the REGWRITE body is FLIX-des
 > v2 at all). The v4+ streamlined fast-path folds the trigger/register programming into the
 > GENERATE/DIMPUSH emit, so a separate `REGWRITE` descriptor is no longer pushed; the other two
 > ops + the bounds check + setup survive (counts 1 / 1 / bounds-check 1 / Setting-up 1 on
-> MARIANA_PLUS, re-confirmed). **[per-gen counts HIGH/OBSERVED — `rg -c -a` this session;
-> "folded into the fast path" reading INFERRED-HIGH.]**
+> MARIANA_PLUS). **[HIGH/OBSERVED per-gen counts; INFERRED "folded into the fast path"]**
 
 ---
 
@@ -334,7 +329,7 @@ Every emitted descriptor carries **two** `NEURON_ISA_TPB_BOUND_CHECK_REG`s (one 
 §3). The bound register is a **1-byte bitfield** (compile-verified `sizeof == 1`):
 
 ```c
-/* aws_neuron_isa_tpb_common.h:707 — read verbatim this session */
+/* aws_neuron_isa_tpb_common.h:707 */
 typedef struct NEURON_ISA_TPB_BOUND_CHECK_REG {
     NEURON_ISA_TPB_REG_NUM bc_reg : 6;                     // bound-register number;
                                                            //   if WIDE offset, bc_reg+1 holds
@@ -347,12 +342,12 @@ typedef struct NEURON_ISA_TPB_BOUND_CHECK_REG {
 `bc_reg` (6 bits) is a **hardware bound-register number** holding the buffer's upper LIMIT; the
 check compares the descriptor's effective address against that register's value. In wide-offset
 mode `bc_reg+1` supplies the high 32 bits (a 64-bit limit across a register pair).
-**[HIGH/OBSERVED — header read + `sizeof == 1` this session.]**
+**[HIGH/OBSERVED]**
 
 ### 5.1 The compile-time validity predicate (header, verbatim)
 
 The shipped header carries the validity predicates as **commented spec-language pseudocode**
-(Rust-like `fn`, not compiled C) — read verbatim this session:
+(Rust-like `fn`, not compiled C):
 
 ```c
 /* aws_neuron_isa_tpb_common.h:1370 */
@@ -369,16 +364,14 @@ i.e. the bound-reg is valid **either** fully disabled (all three fields zero) **
 referencing a valid register read for the address's table marker. The address-side companion is
 `is_valid_dge_shape_reg(start_addr, reg_num)` (`…common.h:2075`): when the address is
 shape-from-register, its shape-reg index must be `< NEURON_ISA_TPB_NUM_DGE_SHAPE_REGISTERS`
-(`= 4U`, `aws_neuron_isa_tpb_common.h:34`, the 4-deep `$S[i]` file). **[HIGH/OBSERVED — both
-predicates + the `= 4U` constant read this session.]**
+(`= 4U`, `aws_neuron_isa_tpb_common.h:34`, the 4-deep `$S[i]` file). **[HIGH/OBSERVED]**
 
 > **GOTCHA — the index-bound variant adds a flags gate.** For the index-driven descriptors
 > (`INDIRECT1D`/`GATHER_XPOSE`), the header also defines `has_valid_idx_bound_check_reg(bcr,
 > flags)` = `has_valid_idx_bound_check_reg_no_flags(bcr) && (flags.idx_bound_is_err == 1 ||
-> bcr.bc_disable_oob_error_notif == 0)` (read verbatim, `…common.h:1382`). So the *index* bound
+> bcr.bc_disable_oob_error_notif == 0)` (`…common.h:1382`). So the *index* bound
 > couples to a `DmaIndirectFlags.idx_bound_is_err` bit: a reimplementer cannot reuse the plain
-> data-bound validity for the index stream. **[HIGH/OBSERVED — header read this session; sharper
-> than the backing report, which named only the data-side predicate.]**
+> data-bound validity for the index stream. **[HIGH/OBSERVED]**
 
 ### 5.2 The runtime check (backend dump line, byte-exact)
 
@@ -391,8 +384,7 @@ bounds:(%1d 0x%llx<=0x%llx, %1d 0x%llx<=0x%llx)
 This is **two** `{bc_enabled-flag(%1d), effective_addr(0x%llx) <= bound_limit(0x%llx)}` pairs —
 the **first pair is the SRC** check, the **second the DST**. The DGE evaluates `addr <= limit`
 per direction before issuing the descriptor; the `%1d` is the `bc_enabled` flag (`0` ⇒ the check
-is skipped). **[HIGH/OBSERVED — the `bounds:` grammar byte-exact; src-then-dst order INFERRED
-from the `src=…`-then-`dst=…` ordering of the same dump line.]**
+is skipped). **[HIGH/OBSERVED grammar; INFERRED src-then-dst order]**
 
 ### 5.3 The overflow path (the trigger the errors page consumes)
 
@@ -402,9 +394,8 @@ iteration cursor past the bound. Unless `bc_disable_oob_error_notif` is set, the
 **`S: DGE: Dispatched error notification`** (`0x8318e`). The notification *delivery* — the packet/
 RDM-completion side, gated by `NEURON_FEATURE_FLAGS` bit 1 = **"DGE packet notification - Sets if
 packet notifications are enabled"** (local-reg **38**,
-`aws_neuron_isa_xt_general_local_reg_defines.h` verbatim this session) — is owned by the
-[errors page](dge-errors.md). **[bounds-fail + dispatch strings + the feature-flag bit
-HIGH/OBSERVED; the delivery mechanism is the errors-page boundary, noted.]**
+`aws_neuron_isa_xt_general_local_reg_defines.h`) — is owned by the
+[errors page](dge-errors.md). **[HIGH/OBSERVED strings + feature-flag bit]**
 
 ### 5.4 Three orthogonal bound layers
 
@@ -422,7 +413,7 @@ address gate:
    descriptor count against the ring size — and `MEMCOPY_CARVEOUT_CFG` "limits the maximum number
    of descriptors in a single memcopy" (§6).
 
-**[all three predicates / strings HIGH/OBSERVED this session.]**
+**[HIGH/OBSERVED]**
 
 ---
 
@@ -443,8 +434,8 @@ push ops supply the high-level fields; the lowering does the fan-out:
 
 > **CORRECTION — the 16-B BD struct is *not* a header artifact in this distribution.** The
 > backing report cited `SDMA_CME_BD_DESC` as the 16-byte BD struct and implied it is
-> compile-verifiable here. Re-checking this session (`rg --no-ignore` across the whole
-> `…/c10/include` tree), **no `SDMA_CME_BD_DESC` C struct exists in this `0.21.2.0`
+> compile-verifiable here. Across the whole `…/c10/include` tree,
+> **no `SDMA_CME_BD_DESC` C struct exists in this `0.21.2.0`
 > distribution** — the identifier appears only in carried prior-analysis notes, and the
 > `etl/buffer_descriptors.h` hit is an unrelated template library. So the 16-byte BD *layout*
 > (`buf_ptr` @ +8, the u16 length_meta with 64-KiB chunking, the RD=M2S/WR=S2M binding) is
@@ -452,12 +443,12 @@ push ops supply the high-level fields; the lowering does the fan-out:
 > **16-byte descriptor unit itself** (pinned in §6.1 below) and the 64-B high-level structs (§3).
 > The per-field MAPPING is `[HIGH/INFERRED]` (the consistent reading of the §3 struct + the §2
 > push strings); the bit-exact 16-B word0/word1 packing is a **forward Part-9 fact**, see the
-> NOTE below. **[16-B unit HIGH/OBSERVED; the BD field layout CARRIED; the mapping HIGH/INFERRED.]**
+> NOTE below. **[HIGH/OBSERVED 16-B unit; CARRIED BD field layout; INFERRED mapping]**
 
 ### 6.1 What PINS the 16-byte unit
 
 The 16-byte descriptor granularity is not assumed — it is **fixed by `MEMCOPY_CARVEOUT_CFG`**
-(local-reg **39**, `aws_neuron_isa_xt_general_local_reg_defines.h`, verbatim this session):
+(local-reg **39**, `aws_neuron_isa_xt_general_local_reg_defines.h`):
 
 ```text
 // DGE Pool carveout configuration (only usable on Pool).
@@ -475,8 +466,7 @@ The carveout offset is **"byte offset / 16" in number of descriptors** — i.e. 
 queues }` — the `lo16` bitfield is the **`DMA[d]` index space** the push ops target. So the
 descriptor program emitted by `GENERATE`/`DIMPUSH`/`REGWRITE` lands in the Pool carveout window
 as a sequence of 16-byte BDs, and the per-memcopy descriptor count is hard-capped by the
-carveout size. **[HIGH/OBSERVED — both local-reg defines + the "byte offset / 16" comment read
-verbatim this session.]**
+carveout size. **[HIGH/OBSERVED]**
 
 > **NOTE — the exact 16-B BD bitfield packing is a forward Part-9 fact.** The 64-B high-level
 > field → 16-B BD word0/word1 bit packing (the COPY-op vs control-op `optype`, the `length_meta`
@@ -484,7 +474,7 @@ verbatim this session.]**
 > [`../../dma/dge-microop-encoding.md`](../../dma/dge-microop-encoding.md) and the per-queue ring
 > field layout in
 > [`../../dma/descriptor-ring-field-tables.md`](../../dma/descriptor-ring-field-tables.md). Both
-> are **Part 9 forward links — not yet authored.** This page establishes the *mapping* (which
+> are **Part 9 forward links.** This page establishes the *mapping* (which
 > high-level field feeds which BD slot) and the *16-byte unit* (pinned above); the bit-exact BD
 > encoding is deferred to those pages. **[mapping HIGH/INFERRED; bit-exact encoding = forward.]**
 
@@ -515,10 +505,8 @@ channel `DMA[d]` from the three ops, in the order the backend issues them:
   [setup page §7](dge-setup.md) `@IRAM 0x17388` — handing the producer's stream to the RDM, which
   write-backs the tail and injects the 2-bit `ringId`.
 
-**[the (1)–(4) composition HIGH/OBSERVED (string presence + carveout/DMA-cfg regs + the §7
-doorbell); the *exact* issue order of (1)–(3) is MED — the bodies are FLIX-desynced, the order is
-the consistent reading of the op set + the [setup](dge-setup.md) / [selector](dge-backend-selector.md)
-flow.]**
+**[HIGH/OBSERVED (1)–(4) composition; MED exact issue order of (1)–(3) — the bodies are
+FLIX-desynced]**
 
 > **NOTE — emit (NX) ↔ `rdma_desc_gen` (Q7) are two legs of one model.** For the local memcopy
 > leg, the NX `push` ops fill the Pool carveout + bump the tail-pointer here. For the SB2SB /
@@ -555,11 +543,8 @@ file** (`NEURON_ISA_TPB_NUM_DGE_SHAPE_REGISTERS = 4U`). The descriptor **Kind**
         ▼  M2S/S2M tail-pointer doorbell → DMA engine executes → RDM tail write-back
 ```
 
-**[the 64-B struct fields HIGH/OBSERVED; the `dge_shape` → struct fill HIGH/INFERRED (the working
-state is OBSERVED on the [setup](dge-setup.md) / [reshape](dge-reshape.md) pages); the
-reshape→push per-dim edge HIGH/INFERRED — both the reshape output (num/step) and the push ops are
-OBSERVED, the "reshape feeds the push per dim" mapping is the consistent reading, MED on the exact
-issue order.]**
+**[HIGH/OBSERVED 64-B struct fields; INFERRED `dge_shape`→struct fill and reshape→push per-dim
+edge; MED exact issue order]**
 
 ---
 
@@ -567,22 +552,20 @@ issue order.]**
 
 - [DGE Setup + Context Init](dge-setup.md) — the upstream `dge_decode_fast` 3-KIND decode, the
   `dge_shape = { num[4], step[4] }` IR this page emits, and the **tail-pointer doorbell §7** that
-  launches the assembled stream (Part 5, #683 — authored).
+  launches the assembled stream (Part 5, #683).
 - [DGE 3-Backend Selector](dge-backend-selector.md) — the Pool/RTL/software pick that precedes
   emit, the full `DIRECT2D` 64-B field table + `compute_op` enum + the three backend dump lines
-  whose `bounds:` tail §5.2 reads, and the RDM 24-queue ring schema (Part 5, #684 — authored).
+  whose `bounds:` tail §5.2 reads, and the RDM 24-queue ring schema (Part 5, #684).
 - [DGE Reshape Engine](dge-reshape.md) — `analyze_tensor_reshape` / `tensor_reshape_transpose`:
   the post-transpose `num[4]`/`step[4]` the `DIMPUSH` ops consume (Part 5, #685).
 - [DGE Error Notifications](dge-errors.md) — the consumer of §5.3: the OOB-error notification
   *delivery* + RDM completion that `Failed bounds check` / `Dispatched error notification` feed,
-  gated by `NEURON_FEATURE_FLAGS` bit 1 (Part 5, #687 — **concurrently authored; currently a
-  stub. NOTE: link forward.**).
+  gated by `NEURON_FEATURE_FLAGS` bit 1 (Part 5, #687).
 - [`../../dma/dge-microop-encoding.md`](../../dma/dge-microop-encoding.md) — the bit-exact 16-B
-  SDMA BD word0/word1 packing the GENERATE/DIMPUSH/REGWRITE pushes lower into (Part 9, #840 —
-  **forward link, not yet authored. NOTE.**).
+  SDMA BD word0/word1 packing the GENERATE/DIMPUSH/REGWRITE pushes lower into (Part 9, #840).
 - [`../../dma/descriptor-ring-field-tables.md`](../../dma/descriptor-ring-field-tables.md) — the
   per-queue descriptor-ring field tables (`buf_ptr`, length, ringId) the 16-B BDs populate
-  (Part 9, #842 — **forward link, not yet authored. NOTE.**).
+  (Part 9, #842).
 - [The Confidence & Walls Model](../../reference/confidence-model.md) — the normative
   `[CONF/PROV]` tag definitions and the FLIX-desync MED ceiling cited throughout.
 

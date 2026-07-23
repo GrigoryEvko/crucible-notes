@@ -16,8 +16,8 @@
 
 The `alu_op.cpp` file name and the line numbers `141/196/220/231/262` are the firmware DEBUG build's
 **own baked assert strings** — used here purely as structure/order anchors. Every confidence tag is
-`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`. The arch-isa C headers were compiled-and-read this
-session; the firmware was disassembled with the shipped Cadence `xtensa-elf-objdump`
+`HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED`. The arch-isa C headers were compiled and read;
+the firmware was disassembled with the shipped Cadence `xtensa-elf-objdump`
 (`XTENSA_CORE=ncore2gp`). FLIX/literal-pool desync of the function *bodies* is flagged honestly and
 never papered over.
 
@@ -31,7 +31,7 @@ never papered over.
 linked into *every* NeuronCore engine firmware of *every* generation.
 
 **Universal linkage (byte-grounded).** The bare assert string `alu_op.cpp:262 0` occurs in **59**
-distinct firmware images inside the host loader. `[HIGH/OBSERVED]`
+distinct firmware images inside the host loader.
 
 ```text
 $ strings libnrtucode_internal.so | rg -c 'alu_op\.cpp:262'
@@ -48,7 +48,7 @@ this container — a packaging gap, **not** a code absence.) Every NeuronCore en
 carries the **same** ALU evaluator. `[HIGH/OBSERVED — 59-image string map]`
 
 **The operand model.** The DEBUG self-trace strings, all byte-read in the carved DVE DRAM, prove the
-two operand shapes and the per-element evaluator. `[HIGH/OBSERVED]`
+two operand shapes and the per-element evaluator.
 
 ```text
 $ strings libnrtucode_internal.so | rg '^S: (OP|AluOp|64-bit|BRCMP)'
@@ -67,12 +67,12 @@ So `alu_op.cpp` evaluates element-wise on the scalar `R[]` file (`R[d] = OP(R[s0
 [Tensor-Scalar](tensor-scalar.md) (`S3D3_TS`, tensor + scalar) decode at the wire level, both
 delegating the per-element `OP` here. The two trace strings sit **adjacent** in DVE DRAM (the
 `…OP(R[d], imm)` scalar trace immediately followed by the `…OP(R[d], R[d])` tensor trace) — the
-byte-level proof the two kernels share one datapath. `[HIGH/OBSERVED]`
+byte-level proof the two kernels share one datapath.
 
 **The branch reuse.** `BranchCompare` (`branch.cpp:75 0` — byte-present) calls the *same* compare
 evaluator to compute its taken/not-taken predicate (the `S: BRCMP: CMPOP=%x OP(%x, %x)=%x` trace). The
 compare ops (`IS_EQ`/`IS_GT`/`IS_LT`/…, `0x12..0x18`) live in `alu_op.cpp` and are shared by
-conditional branches. `[HIGH/OBSERVED]`
+conditional branches.
 
 **The on-device evaluator.** The CAYMAN `NX_DVE` DEBUG IRAM scalar evaluator `@~0x11330` loads
 `S: OP(%x,%x)=%x` (`const16 a10,0x2afc @0x113a6`), reads four packed 16-bit register lanes
@@ -87,8 +87,7 @@ scalar primitive at the operand width**:
 0x1139a  addx4 a5,a4,a2 ; addx2 a8,a4,a2            ; scale-by-op jump
 ```
 
-`[HIGH for the primitives + dispatch shape / OBSERVED ; MED for the exact per-op arm bodies through
-the FLIX desync]`
+`[HIGH/OBSERVED primitives + dispatch shape; MED per-op arm bodies (FLIX desync)]`
 
 > **NOTE — `R[]` is read as packed 16-bit lanes.** The evaluator reads operand register slots at byte
 > offsets 28/30/32/34 with `l16ui` (four 16-bit fields), then a per-op + per-dtype switch picks the
@@ -217,7 +216,6 @@ typedef enum NEURON_ISA_TPB_ALU_OP {
 > snapshot, and it is byte-identical to this page's CAYMAN column. The **64th** op (relative to CAYMAN's
 > 60) is the MARIANA set `{ABS_MAX, ABS_MIN, RE_LU, SQUARE}` at `0x20..0x23`; the **65th** is MAVERICK's
 > `SYMMETRIC_CLAMP` at `0x24`. SUNDA's 33 is the floor (base 30 + 3 int). No op is ever removed.
-> `[HIGH/OBSERVED]`
 
 > **QUIRK — the integer band is a *disjoint* high-code range, not a flag on the base ops.** `ADD_INT`
 > (`0xC4`) is a **distinct enum value**, *not* `ADD` (`0x04`) with an "int" modifier. The base
@@ -238,9 +236,8 @@ typedef enum NEURON_ISA_TPB_ALU_OP {
 
 The arch-isa header carries the op-class predicates as Rust-pseudocode comments (the ISA-generator
 source). The consumer validity functions (`S3S3D3_TT` / `S3D3_TS` / `S4D4_PL`) call them to gate which
-`ALU_OP` is legal for which opcode-class — **before** the `alu_op.cpp` evaluator runs. The bodies were
-read field-exact this session. `[HIGH/OBSERVED — predicate bodies, cayman; mariana adds the 4
-activation ops]`
+`ALU_OP` is legal for which opcode-class — **before** the `alu_op.cpp` evaluator runs. The predicate
+bodies are read field-exact. `[HIGH/OBSERVED — cayman; mariana adds the 4 activation ops]`
 
 ```c
 // is_bitvec_op(op)  [common.h:1653] — the bitwise/shift set (10 ops)
@@ -299,7 +296,7 @@ none in `is_valid_int_aluop`), so `is_general_arith_op` becomes **21 ops** (the 
 > `is_general_arith_op` exclusions plus the five int-aluop overlaps leave exactly **17**. This page
 > pins **17 (SUNDA/CAYMAN) / 21 (MARIANA+)**, and is consistent with the
 > [Tensor-Scalar](tensor-scalar.md) §1 note that the MARIANA general-arith set *includes*
-> `AbsMax/AbsMin/ReLU/Square`. `[HIGH/OBSERVED]`
+> `AbsMax/AbsMin/ReLU/Square`.
 
 ### 3.2 The signedness partition (int band)
 
@@ -338,7 +335,7 @@ is_valid_int_aluop_dve = { Bypass, AddInt, MultInt, SubtractInt, MaxInt, MinInt,
 
 This is the integer-engine subset the [Tensor-Scalar](tensor-scalar.md) DVE op-relaxation cites — it
 omits divide/mod/abs-value/argmax-argmin and the entire `_UINT` half, keeping the cheap
-add/sub/mult/min/max/abs/compare ops the DVE lane datapath can host. `[HIGH/OBSERVED]`
+add/sub/mult/min/max/abs/compare ops the DVE lane datapath can host.
 
 ### 3.4 The shift-composition rule
 
@@ -348,7 +345,7 @@ add/sub/mult/min/max/abs/compare ops the DVE lane datapath can host. `[HIGH/OBSE
 ```
 
 A shift-left `op0` paired with a shift-right `op1` (or any arith-shift-right) requires
-`type_size_check(dtype, 4)` — i.e. the two-op shift composition needs a **4-byte** dtype. `[HIGH/OBSERVED]`
+`type_size_check(dtype, 4)` — i.e. the two-op shift composition needs a **4-byte** dtype.
 
 ---
 
@@ -357,7 +354,7 @@ A shift-left `op0` paired with a shift-right `op1` (or any arith-shift-right) re
 The five assert sites are the switch-defaults of (at least) **four distinct** dispatch functions,
 mapped on-device in the CAYMAN `NX_DVE` DEBUG IRAM (VA == in-image offset; the `const16` string-loaders
 are byte-clean). The assert strings themselves are byte-confirmed in the container at file offsets
-`0xf120/0xf157/0xf1a4/0xf1f1` (and 58 more image copies): `[HIGH/OBSERVED]`
+`0xf120/0xf157/0xf1a4/0xf1f1` (and 58 more image copies):
 
 ```text
 /opt/workspace/NeuronUcode/src/decode/alu_op.cpp:262 0
@@ -367,7 +364,7 @@ are byte-clean). The assert strings themselves are byte-confirmed in the contain
 /opt/workspace/NeuronUcode/src/decode/alu_op.cpp:231 0 && "not supported dtype"
 ```
 
-| `alu_op.cpp` line | on-device loader | role `[structure HIGH / arm-body MED]` |
+| `alu_op.cpp` line | on-device loader | role `[HIGH structure / MED arm body]` |
 |---|---|---|
 | `:141` "not sup op" | `const16 a10,0x2c17 @0xd571` | **default of the 64-bit ALU-OP switch** (the int-64-bit op dispatch, reached after the dtype gate) |
 | `:231` "not sup dtype" | `const16 a10,0x2c64 @0xd633` | **default of the 64-bit DTYPE switch** — accepts only UINT64/INT64 (below) |
@@ -391,8 +388,7 @@ So the 64-bit ALU path admits **only** `UINT64(0x1)` and `INT64(0xC)`. This reco
 [tensor-tensor-64bit.md](tensor-tensor-64bit.md)'s `is_valid_64b_int_dtype(d) == (d==INT64 || d==UINT64)`
 gate (`common.h:2451`) and the two `S: 64-bit:` traces (the 2-dtype **arith** form, the 1-dtype
 **bitvec** form). The `ncore2gp` has **no native 64-bit ALU**; 64-bit is synthesised from 32-bit halves
-in these handlers. `[HIGH/OBSERVED for the bnei dtype tests + default ; LOW for the per-op 32×2
-synthesis bodies — not byte-walked]`
+in these handlers. `[HIGH/OBSERVED bnei dtype tests + default; LOW per-op 32×2 synthesis bodies]`
 
 > **CONSISTENCY — 64-bit `MUL`/`DIV`/`MOD` *are* admitted; only the 4 argmax/argmin are excluded.**
 > [tensor-tensor-64bit.md](tensor-tensor-64bit.md) §4.3 establishes the 64-bit ARITH arm fires on the
@@ -401,7 +397,7 @@ synthesis bodies — not byte-walked]`
 > excluded from `is_valid_int_aluop` (and hence from the 64-bit arm) are the four
 > `AMAX_INT`/`AMIN_INT`/`AMAX_UINT`/`AMIN_UINT`. There is **no fp64** anywhere. This page does not
 > contradict that — the §2 enum + §3 `is_valid_int_aluop` + this §4.1 gate are exactly the same set
-> viewed from the evaluator side. `[HIGH/OBSERVED]`
+> viewed from the evaluator side.
 
 ### 4.2 The 32-bit per-op scalar evaluator + the discrete jump table
 
@@ -423,7 +419,7 @@ The table is a 32-entry array of IRAM targets at DRAM `0x2a98/0x2aa0` (entries
 (`@0x1139a`): `const16` loads the table base, `addx4` scales the op index, `l32i`+`jx` jumps —
 complementary, not a contradiction with [tensor-tensor.md](tensor-tensor.md)'s "compiled switch, no
 discrete `.rodata` op→address table" (which held for the *vectorized FLIX* POOL compute; the
-DVE/scalar `alu_op.cpp` path **does** carry discrete DRAM jump tables). `[HIGH/OBSERVED]`
+DVE/scalar `alu_op.cpp` path **does** carry discrete DRAM jump tables).
 
 The leaf handlers are **one native Xtensa instruction each** — ground truth for "what each op computes"
 on the scalar path. Each computes into `[a1+12]` and tail-jumps to `j 0xdb95` (`l32i.n a2,[a1+12];
@@ -456,7 +452,6 @@ retw.n`). Byte-observed: `[HIGH/OBSERVED — every cited handler disassembled by
 > This is the byte-exact realisation of the §5 "s\|u" cells. The **vector** path instead uses
 > *distinct* signed/unsigned IVP opcodes (§6) — the semantics agree, the encodings differ. A
 > reimplementation choosing the scalar style must read the dtype-signedness flag at compute time.
-> `[HIGH/OBSERVED]`
 
 > **FLIX-DESYNC FLAG.** The `alu_op.cpp` function bodies are hand-scheduled FLIX VLIW with interleaved
 > literal pools that desync under stock `objdump` (~18% `.byte` in the `0xcae0..0xe200` region, the
@@ -504,13 +499,12 @@ is_valid_dtype = dtype_invalid_check(dtype)                          // dtype !=
   `is_valid_dtype_64` (the §4.1 path).
 * **BITVEC** ops (`TensorTensorBitvec 0x51` / `TensorScalarBitvec 0x53`): `out_dtype` must be a valid
   **INT** dtype (bitvec is integer-only); the Tensor-Scalar bitvec form additionally requires
-  `in == out ∈ {INT8/16/32, UINT8/16/32}` (identity in/out). `[HIGH/OBSERVED]`
+  `in == out ∈ {INT8/16/32, UINT8/16/32}` (identity in/out).
 
 ### 5.3 The complete table (legal dtype set per op)
 
 `SUPPORTED` = the op-class gate ∧ the dtype gate ∧ an on-device handler exists. Columns: `i8/u8`,
-`i16/u16`, `i32/u32`, `i64/u64`, `fp16`, `bf16`, `fp32`, `fp32r`, `fp8(E3/E4/E5)`. `[HIGH for the
-gate-derived legality / MED for the exact per-cell on-device handler-existence through the FLIX desync]`
+`i16/u16`, `i32/u32`, `i64/u64`, `fp16`, `bf16`, `fp32`, `fp32r`, `fp8(E3/E4/E5)`. `[HIGH/OBSERVED gate-derived legality; MED per-cell on-device handler existence]`
 
 | op | i8/u8 | i16/u16 | i32/u32 | i64/u64 | fp16 | bf16 | fp32 | fp32r | fp8 |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
@@ -570,16 +564,13 @@ realisation only. `fp8(E3/E4/E5)` is legal at the dtype gate and reached for the
 ops, but **computed through the fp16/fp32 soft-float** (no native fp8 ALU value-path); `–` for the
 int-only / Newton ops.
 
-`[CONFIDENCE: the op-class × dtype-gate legality is HIGH/OBSERVED (header predicates); the per-cell
-on-device handler-existence is MED — the 16-bit (`mul16s`/`beqi a2,4/5`) and 32-bit (`mull`) width arms
-and the 64-bit `bnei a2,1/12` tests are OBSERVED; not every cell's switch-arm was byte-walked through
-the FLIX desync. The argmax/argmin `out_dtype=u32` rule is HIGH (header comment).]`
+`[HIGH/OBSERVED op-class × dtype-gate legality (header predicates); MED per-cell on-device
+handler existence through the FLIX desync]`
 
 ### 5.4 The unsupported-combo error paths
 
 The §4 asserts are the on-device realisation of [Tensor-Tensor](tensor-tensor.md)'s "Unimplemented
 tensor-tensor ALU op(0x%x)" and [Tensor-Scalar](tensor-scalar.md)'s "not supported op/dtype":
-`[HIGH/OBSERVED]`
 
 * op outside the dispatched class → `"not supported op"` (`alu_op.cpp:141/196/220`)
 * dtype outside the dispatched width set → `"not supported dtype"` (`alu_op.cpp:231`; the 64-bit path's
@@ -594,8 +585,7 @@ On the DVE/POOL **vector** path the *same* `ALU_OP` selects an IVP intrinsic. Th
 below was harvested from the CAYMAN `NX_DVE` PERF IRAM (the PERF image has clean-FLIX bundles). This
 pins the op→mnemonic *family*; the exact per-op selection arithmetic sits in the desynced compute (MED).
 The same mnemonics appear in the ISA batches [b01](../../isa/ref/b01-vec-alu-int.md) /
-[b02](../../isa/ref/b02-vec-alu-fp.md) / [b03](../../isa/ref/b03-vec-alu-rest.md). `[HIGH presence
-(PERF byte-clean) / MED exact per-op binding]`
+[b02](../../isa/ref/b02-vec-alu-fp.md) / [b03](../../isa/ref/b03-vec-alu-rest.md). `[HIGH/OBSERVED presence (PERF byte-clean); MED exact per-op binding]`
 
 | `ALU_OP` | IVP intrinsic family (DVE PERF, OBSERVED) | sat / round / sign |
 |---|---|---|
@@ -650,15 +640,14 @@ The same mnemonics appear in the ISA batches [b01](../../isa/ref/b01-vec-alu-int
   Integer `ADD`/`SUB`/`MULT` **wrap** (2's-complement modular: the scalar `add.n`/`sub`/`mull`, the
   vector `ivp_add*`/`sub*`); the saturating IVP variants (`ivp_addsnx16t`/`subsnx16t`) are **distinct**
   opcodes the tensor-engine selects in a separate clamp/dtype stage and have **no own `ALU_OP` enum
-  value** (bound by name). The narrowing cross-dtype casts saturate (`sats`/`packv*`). `[HIGH int-wrap
-  /OBSERVED ; MED sat-stage]`
+  value** (bound by name). The narrowing cross-dtype casts saturate (`sats`/`packv*`). `[HIGH/OBSERVED int-wrap; MED sat-stage]`
 * **ROUNDING.** Integer ops carry **no** rounding. Float ops round per the **FSR** special register
   (RoundMode; default **RNE**): int→fp and fp32→fp16-narrow round per FSR; **fp→int trunc is always
-  round-toward-zero** (ignores FSR); fp16→fp32 widen is lossless. `[HIGH/OBSERVED]`
+  round-toward-zero** (ignores FSR); fp16→fp32 widen is lossless.
 * **SIGNEDNESS.** A per-op property of the int-band ops (`is_signed_alu_op`/`is_unsigned_alu_op`, §3.2)
   *and* of the chosen IVP variant (`ivp_bmaxnx16` signed vs `ivp_bmaxunx16` unsigned are distinct
   opcodes). The src/dst dtype signedness **must match** the op's signedness. On the scalar path one leaf
-  serves both via the runtime `bbci` signedness-flag branch (§4.2 GOTCHA). `[HIGH/OBSERVED]`
+  serves both via the runtime `bbci` signedness-flag branch (§4.2 GOTCHA).
 
 ---
 

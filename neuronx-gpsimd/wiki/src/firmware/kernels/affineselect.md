@@ -25,8 +25,8 @@
 >
 > Confidence tags use the `HIGH/MED/LOW × OBSERVED/INFERRED/CARRIED` model in
 > [`../../reference/confidence-model.md`](../../reference/confidence-model.md). Every host-ISA fact is
-> read out of the shipped public `aws_neuron_isa_tpb_*.h` headers and was re-compile-verified this
-> session; every device fact is byte-pinned to the shipped firmware containers, disassembled with the
+> read out of the shipped public `aws_neuron_isa_tpb_*.h` headers and compile-verified;
+> every device fact is byte-pinned to the shipped firmware containers, disassembled with the
 > native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`). All prose is derived from static binary analysis
 > of the shipped artifacts only.
 
@@ -34,16 +34,16 @@
 
 ## 1. TL;DR — the pinned facts
 
-| # | Fact | Evidence | Tag |
-|---|------|----------|-----|
-| 1 | **Opcode `= 0x92`** (`TENSOR_SCALAR_AFFINE_SELECT`, `// Y` maintained), **byte-identical value + flag on all four gens**, and — unlike [RangeSelect](rangeselect.md) (`0xbc`, absent on SUNDA) — **defined on SUNDA**. | `common.h` sunda `:229` / cayman `:226` / mariana `:231` / maverick `:234`, all `= 0x92, // Y` | HIGH/OBSERVED |
-| 2 | Binds the **64-byte struct `NEURON_ISA_TPB_S2D2_TS_AS_STRUCT`** mapped **1:1** to the opcode in `struct2opcode` on all four gens. `ISA_STATIC_ASSERT(==64)`; `gcc offsetof/sizeof` byte-identical four gens. | `instruction_mapping.json` + `s2d2_ts_as.h:66` + compile-verify | HIGH/OBSERVED |
-| 3 | The select condition is an **affine, on-chip-generated mask**: `mask[k] = base + Σ index·step (+ channel·channel_multiplier)`, *"calculated as described in Iota"*, **does not point to memory**, compared against the **literal `0`**. | header doc-block `s2d2_ts_as.h:24-38` (verbatim) + `mask_pattern` = `DATA4D` @16 + `channel_multiplier` @60 | HIGH/OBSERVED |
-| 4 | The op `<op>` is `fill_mode` @14, an `AFFINE_SELECT_CMP` ∈ `{GreaterThan=0, GreaterThanEq=1, Eq=2, NotEq=3}` — **only these four**, and all **vs `0`** (no programmable bound). | `s2d2_ts_as.h:46-51` enum, compile-verified | HIGH/OBSERVED |
-| 5 | The two arms are **`in[k]`** (the straight `src` element, `src_mem_pattern` @36, `TENSOR2D`) and a **programmable FP32 fill** read from register `fill_reg` @15 — *"must be stored as FP32, regardless of input and output dtype."* | header `s2d2_ts_as.h:36-38` + struct + `is_valid_register_read(fill_reg)` | HIGH/OBSERVED |
-| 6 | **Engine = POOL**, confirmed by `POOLING_NUM_CHANNELS` (=128) in the validator (not `DVE_NUM_CHANNELS`), by the SUNDA `pool_…affine_select` POOL kernel, and by the **3-copy** `"S: TensorScalarAffineSelect"` self-name (POOL/ACT/PE multiplicity, **not** DVE's 4), each beside `"S: Iota"`. | `is_valid_s2d2_ts_as` uses `POOLING_NUM_CHANNELS`; 3× self-name @ `0x1d03e0`/`0x469da0`/`0x734220` in `libnrtucode_internal.so`; 3× `"S: Iota"` | HIGH/OBSERVED |
-| 7 | The datapath is **ramp-generate → compare-vs-`0` → `vbool` → `ivp_sel…t` blend (`in[k]` vs fill)** — Iota's `movva32`/`addn_2x32`/`muln_2x32`/`packln` ramp primitives, four `fill_mode`-guarded compare legs, one vbool-gated select. **Zero gather ops** (the no-index-into-`src` proof). | SUNDA POOL worker body, native disasm (FLIX-resync) | HIGH/OBSERVED ops; field-bind INFERRED-HIGH |
-| 8 | `in_out_dtype` @13 is a **`DTYPE_PAIR`** `{dtype_lo=in, dtype_hi=out}`: copy-with-cast `in→out`, integer **and** FP symmetric (no FP-only restriction). Output admits FP32R; input does not. Fill always FP32. | `s2d2_ts_as_valid_dtypes` + `is_valid_dtype(hi, AllowFP32R::True)` / `(lo, …::False)` | HIGH/OBSERVED |
+| # | Fact | Evidence |
+|---|------|----------|
+| 1 | **Opcode `= 0x92`** (`TENSOR_SCALAR_AFFINE_SELECT`, `// Y` maintained), **byte-identical value + flag on all four gens**, and — unlike [RangeSelect](rangeselect.md) (`0xbc`, absent on SUNDA) — **defined on SUNDA**. | `common.h` sunda `:229` / cayman `:226` / mariana `:231` / maverick `:234`, all `= 0x92, // Y` |
+| 2 | Binds the **64-byte struct `NEURON_ISA_TPB_S2D2_TS_AS_STRUCT`** mapped **1:1** to the opcode in `struct2opcode` on all four gens. `ISA_STATIC_ASSERT(==64)`; `gcc offsetof/sizeof` byte-identical four gens. | `instruction_mapping.json` + `s2d2_ts_as.h:66` + compile-verify |
+| 3 | The select condition is an **affine, on-chip-generated mask**: `mask[k] = base + Σ index·step (+ channel·channel_multiplier)`, *"calculated as described in Iota"*, **does not point to memory**, compared against the **literal `0`**. | header doc-block `s2d2_ts_as.h:24-38` (verbatim) + `mask_pattern` = `DATA4D` @16 + `channel_multiplier` @60 |
+| 4 | The op `<op>` is `fill_mode` @14, an `AFFINE_SELECT_CMP` ∈ `{GreaterThan=0, GreaterThanEq=1, Eq=2, NotEq=3}` — **only these four**, and all **vs `0`** (no programmable bound). | `s2d2_ts_as.h:46-51` enum, compile-verified |
+| 5 | The two arms are **`in[k]`** (the straight `src` element, `src_mem_pattern` @36, `TENSOR2D`) and a **programmable FP32 fill** read from register `fill_reg` @15 — *"must be stored as FP32, regardless of input and output dtype."* | header `s2d2_ts_as.h:36-38` + struct + `is_valid_register_read(fill_reg)` |
+| 6 | **Engine = POOL**, confirmed by `POOLING_NUM_CHANNELS` (=128) in the validator (not `DVE_NUM_CHANNELS`), by the SUNDA `pool_…affine_select` POOL kernel, and by the **3-copy** `"S: TensorScalarAffineSelect"` self-name (POOL/ACT/PE multiplicity, **not** DVE's 4), each beside `"S: Iota"`. | `is_valid_s2d2_ts_as` uses `POOLING_NUM_CHANNELS`; 3× self-name @ `0x1d03e0`/`0x469da0`/`0x734220` in `libnrtucode_internal.so`; 3× `"S: Iota"` |
+| 7 | The datapath is **ramp-generate → compare-vs-`0` → `vbool` → `ivp_sel…t` blend (`in[k]` vs fill)** — Iota's `movva32`/`addn_2x32`/`muln_2x32`/`packln` ramp primitives, four `fill_mode`-guarded compare legs, one vbool-gated select. **Zero gather ops** (the no-index-into-`src` proof). | SUNDA POOL worker body, native disasm (FLIX-resync); ops OBSERVED, field-bind INFERRED-HIGH |
+| 8 | `in_out_dtype` @13 is a **`DTYPE_PAIR`** `{dtype_lo=in, dtype_hi=out}`: copy-with-cast `in→out`, integer **and** FP symmetric (no FP-only restriction). Output admits FP32R; input does not. Fill always FP32. | `s2d2_ts_as_valid_dtypes` + `is_valid_dtype(hi, AllowFP32R::True)` / `(lo, …::False)` |
 
 > **CORRECTION (struct label).** An adjacent op-matrix survey cell lists the `0x92` struct as
 > "`S3D3_TS`". **That is wrong.** Three independent sources — `struct2opcode` (all four gens), the
@@ -62,23 +62,23 @@
 | Struct→opcode | `…/neuron_<gen>_arch_isa/tpb/instruction_mapping.json` (`struct2opcode`) |
 | Validator | `…/aws_neuron_isa_tpb_assert.h` `is_valid_s2d2_ts_as` (sunda `:14552`); `debug_assert.h:260` binds `OPCODE_TENSOR_SCALAR_AFFINE_SELECT → dbg_is_valid_s2d2_ts_as` |
 | Firmware container | `…/custom_op/c10/lib/libnrtucode_internal.so` |
-| Container sha256 | `b7c67e898a116454…` (re-verified in-task; == the [Iota](./iota.md) / [TensorScalarSelect](./ts-select.md) container) |
+| Container sha256 | `b7c67e898a116454…` (== the [Iota](./iota.md) / [TensorScalarSelect](./ts-select.md) container) |
 | `"S: TensorScalarAffineSelect"` (3×) | file offsets `0x1d03e0` / `0x469da0` / `0x734220` (SUNDA-region / CAYMAN / MARIANA DEBUG blobs), each adjacent to `"S: Iota"` |
 | Disassembler | `gpsimd_tools/…/bin/xtensa-elf-objdump`, `XTENSA_CORE=ncore2gp`, Vision-Q7 FLIX/VLIW |
 
 The `S2D2_TS_AS` struct is **byte-identical** (`sizeof 64`, same offsets) on all four gens —
-compile-verified this session (§3). `[HIGH/OBSERVED]`
+compile-verified (§3). `[HIGH/OBSERVED]`
 
 > **NOTE — which firmware facts re-verify on disk, and which are report-CARRIED.** Only
 > `libnrtucode_internal.so` (sha `b7c67e89…`, the customop-lib container) is in the checked-in tree; it
 > holds the **CAYMAN / MARIANA / MARIANA_PLUS** EXTISA images, but **not** a SUNDA image — the SUNDA
-> EXTISA container (`libnrtucode_extisa.so`) and the GX-OP-02 `/tmp` carves are gone. So this session
+> EXTISA container (`libnrtucode_extisa.so`) and the earlier scratch carves are gone. So this page
 > **independently re-confirms** the **CAYMAN POOL-table absence of `0x92`** (§4c, byte-exact, with the
 > table's iota / RangeSelect rows cross-checking the decoder). The four **SUNDA-only** firmware facts —
 > the POOL-table location, `idx17 {0x92 → 0x0100a118}`, the `idx15/16 {0x43/0x44}` context, and the
 > worker entry shape (§4b, §5) — are **not reproducible on disk** (no SUNDA image present) and are tagged
-> `[CARRIED]` from GX-OP-02. The entire *header / struct / validator / enum / self-name-offset* surface
-> (§1–§3, §6 dtype, §7 per-gen, and the §4a engine conclusion) is re-grounded this session against the
+> `[CARRIED]` from the prior SUNDA carve. The entire *header / struct / validator / enum / self-name-offset* surface
+> (§1–§3, §6 dtype, §7 per-gen, and the §4a engine conclusion) is grounded against the
 > on-disk headers and `libnrtucode_internal.so` bytes. `[flagged]`
 
 ---
@@ -87,8 +87,8 @@ compile-verified this session (§3). `[HIGH/OBSERVED]`
 
 The operand is `NEURON_ISA_TPB_S2D2_TS_AS_STRUCT`, declared verbatim in `aws_neuron_isa_tpb_s2d2_ts_as.h`
 (present under every `neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/`).
-`instruction_mapping.json`'s `struct2opcode` binds it 1:1 to `OPCODE_TENSOR_SCALAR_AFFINE_SELECT`. This
-session `gcc -I<hdr>` + `sizeof`/`offsetof` reproduced the layout for **all four** generations —
+`instruction_mapping.json`'s `struct2opcode` binds it 1:1 to `OPCODE_TENSOR_SCALAR_AFFINE_SELECT`.
+`gcc -I<hdr>` + `sizeof`/`offsetof` reproduce the layout for **all four** generations —
 **byte-identical**.
 
 ```c
@@ -108,7 +108,7 @@ typedef struct NEURON_ISA_TPB_S2D2_TS_AS_STRUCT {  /* s2d2_ts_as.h:53 — 64 B, 
 ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_S2D2_TS_AS_STRUCT) == 64, "…NOT 64B.");
 ```
 
-`offsetof` output (this session, **identical** on sunda / cayman / mariana / maverick):
+`offsetof` output (**identical** on sunda / cayman / mariana / maverick):
 
 ```text
 sizeof S2D2_TS_AS = 64
@@ -148,7 +148,7 @@ walk. `[HIGH/OBSERVED — header + DATA4D + validator]`
 > (`d4d_element_count == t2d_element_count`); the extra ramp dims simply fold into the same total. The
 > header itself flags the dimension squeeze (`s2d2_ts_as.h:40-43`): the src/dst *"may not fit in the
 > instruction's tensor dimensions … A future revision will backport shape registers,"* the same
-> `shape_from_register` escape CAYMAN+ already wires into the elem-count check (§7). `[HIGH/OBSERVED]`
+> `shape_from_register` escape CAYMAN+ already wires into the elem-count check (§7).
 
 ### 3.2. `channel_multiplier` (@60) — the per-partition mask phase
 
@@ -229,20 +229,20 @@ Three confirmations, the same POOL-vs-DVE discriminator method the family pages 
    (`0x98`) and [RangeSelect](rangeselect.md) (`0xbc`) use `DVE_NUM_CHANNELS` (`common.h:36`, also 128 but
    a *distinct symbol* — the symbol, not the value, is the tell). `[HIGH/OBSERVED]`
 2. **POOL software kernel.** On SUNDA, `0x92` is a `Q7_POOL kernel_info_table` member named
-   `pool_tensor_scalar_affine_select` (the `pool_` prefix). `[CARRIED — GX-OP-02 byte-decode of the carved
+   `pool_tensor_scalar_affine_select` (the `pool_` prefix). `[CARRIED — prior byte-decode of the carved
    SUNDA POOL table; the table file is not in the checked-in tree, §2 NOTE]`
 3. **Self-name multiplicity.** `"S: TensorScalarAffineSelect"` appears **3 times** in
    `libnrtucode_internal.so` (`0x1d03e0` / `0x469da0` / `0x734220`) — multiplicity **3** = the POOL/ACT/PE
    family (cf. the DVE selects' multiplicity 4). Each copy sits **immediately beside `"S: Iota"`** (also
    3×) — AffineSelect co-resides in the POOL kernel cluster with the very ramp generator whose math it
-   reuses. `[HIGH/OBSERVED — byte-scan this session]`
+   reuses. `[HIGH/OBSERVED — byte-scan]`
 
 This is the decisive separation from the two DVE selects (`0x98`/`0xbc`): AffineSelect is the **POOL**
 member of the select family.
 
 ### 4b. The SUNDA POOL-KIT row + the canonical chain `[CARRIED]`
 
-Per GX-OP-02's byte-decode of the carved `extisa_SUNDA_POOL_PERF_EXTISA_0.so` (kernel_info_table @ VMA
+Per a prior byte-decode of the carved `extisa_SUNDA_POOL_PERF_EXTISA_0.so` (kernel_info_table @ VMA
 `0x02000760` / file `0xb260`, 18 entries, record `{u8 0; u8 0; u8 spec; u8 opcode; u32_le funcVA}`):
 
 ```text
@@ -264,7 +264,7 @@ AffineSelect (SUNDA, the byte-grounded chain — table hop [CARRIED], rest HIGH/
 
 ### 4c. CAYMAN+ — `0x92` absent from the POOL kernel table (non-KIT) `[re-confirmed on disk]`
 
-The CAYMAN POOL `kernel_info_table` is byte-decoded **this session** from the EXTISA image embedded in
+The CAYMAN POOL `kernel_info_table` is byte-decoded from the EXTISA image embedded in
 `libnrtucode_internal.so` (CAYMAN MAIN table @ file `0x2f6be0`, 17 entries): the opcodes are
 `7e 7c 7d 45 51 41 f0 f0 f0 f0 f0(spec0-4) 52 46 47 be f2 7b` — **`0x92` is not present**. The decoder is
 cross-checked by `idx0 {0x7e → 0x01000080}` (iota, matching [iota.md](./iota.md)) and `idx14 {0xbe →
@@ -275,19 +275,18 @@ SUNDA carries them flat in the POOL table; CAYMAN+ serves them through a differe
 POOL) surface. The op is **still defined** on CAYMAN+ (opcode `0x92 // Y` + the `S2D2_TS_AS` header + the
 `"S: TensorScalarAffineSelect"` DEBUG self-names `0x469da0`/`0x734220`), so the worker is present — just
 not reached via a POOL-table funcVA hop. The exact CAYMAN+ surface is **not** byte-pinned.
-`[0x92-absent-from-CAYMAN-KIT HIGH/OBSERVED — re-decoded on disk this session; the CAYMAN+ alternative
-surface MED]`
+`[HIGH/OBSERVED 0x92-absent-from-CAYMAN-KIT — decoded on disk; MED the CAYMAN+ alternative surface]`
 
 ---
 
 ## 5. The algorithm — Iota ramp + compare-vs-`0` + vbool select
 
-The SUNDA worker body (funcVA `0x0100a118`, per the GX-OP-02 native disasm, FLIX desync handled by
+The SUNDA worker body (funcVA `0x0100a118`, per the prior native disasm, FLIX desync handled by
 reading the live IVP slots within each bundle) splits **cleanly into the three phases of the header
 semantics** — and the IVP census *is* the algorithm signature. The op vocabulary is byte-OBSERVED in the
 carve; the binding of each register to a struct field is INFERRED-HIGH from the field names + Iota's
-identical ramp chain (Iota §3). `[ramp/compare/select ops CARRIED from GX-OP-02; the ramp vocabulary is the
-*same* set the [Iota](./iota.md) page re-grounds HIGH/OBSERVED on SUNDA]`
+identical ramp chain (Iota §3). `[CARRIED ramp/compare/select ops; the ramp vocabulary is the
+*same* set the [Iota](./iota.md) page grounds HIGH/OBSERVED on SUNDA]`
 
 ### 5.1. Phase 1 — the Iota mask ramp (`mask[k] = base + Σ idx·step + channel·mult`)
 
@@ -321,9 +320,8 @@ The four `fill_mode` values map onto the compare ops `{len/ltn` (with their inve
 `eqn` (EQ), `neqn` (NE)`}` against the mask reference held in `v4`/`v14` — i.e. the `mask[k] <op> 0`
 predicate. The interleaved `ivp_addn_2x32 v5,v5,v1` is the **per-element ramp-step advance** — the mask
 regenerates as the walk proceeds (no precomputed mask buffer). The `bnei.w15 a5,3` / `beqz.w15 a5` guards
-are the `fill_mode` discriminator selecting the leg. `[compare ops + fill_mode branch CARRIED from
-GX-OP-02; the exact GT/GE-vs-LT/LE polarity per leg is MED through the FLIX `.w15` desync — the inverted
-`len`/`ltn` legs realize GT/GE]`
+are the `fill_mode` discriminator selecting the leg. `[CARRIED compare ops + fill_mode branch; MED the exact GT/GE-vs-LT/LE polarity per leg
+through the FLIX .w15 desync — the inverted len/ltn legs realize GT/GE]`
 
 ### 5.3. Phase 3 — the select/blend (`in[k]` vs fill, gated by the vbool)
 
@@ -337,15 +335,14 @@ is exactly the [B21 Select / Shuffle crossbar](../../isa/ref/b21-select-shuffle.
 v3,v1,v2,v4,vb2` merge-`t` form (the "compare → vbool → `ivp_sel…t`" predicated-select datapath that page
 documents) — and it is the **identical select datapath** [TensorScalarSelect](./ts-select.md) (§5.2) uses
 for its blend. The difference is purely *where the vbool comes from*: TensorScalarSelect **loads** the
-predicate; AffineSelect **generates** it from the Iota ramp + compare-vs-`0`. `[selnx16t CARRIED from
-GX-OP-02; the merge-`t` vbool-gated select form is HIGH/OBSERVED in b21 and ts-select.md]`
+predicate; AffineSelect **generates** it from the Iota ramp + compare-vs-`0`. `[CARRIED selnx16t; the merge-t vbool-gated select form is HIGH/OBSERVED in b21 and ts-select.md]`
 
 ### 5.4. No gather — the decisive exclusion of "affine-indexed `src`"
 
 The worker census has **zero** `ivp_gather*`/`ivp_gatheran`/`ivp_gatherdnx` ops. `src` is read by a
 straight strided `TENSOR2D` walk (`ivp_lsn_2x32_xp` stream-load), element *k* → element *k*. AffineSelect
 does **not** index `src` by the mask — contrast a true gather (`0x68`, `S4D4_GT`, `table[index]→dst` via
-`ivp_gatheran_2x32t`, [indirection-gather](./indirection-gather.md)). `[CARRIED from GX-OP-02 census = 0
+`ivp_gatheran_2x32t`, [indirection-gather](./indirection-gather.md)). `[CARRIED — prior census = 0
 gather ops]`
 
 ### 5.5. The recovered contract
@@ -424,19 +421,19 @@ is_valid_dtype(get_dtype_from_pair(in_out_dtype.dtype_hi), DtypeAllowFP32R::True
   INT32(0x8), UINT32(0x9), FP32(0xA), FP8_E3/E4/E5(0xD/0xE/0xF)}`.
 * **OUTPUT (`dtype_hi`, `AllowFP32R::True`)** — the same set **plus `FP32R(0xB)`**.
 
-| arm | field | dtype set | tag |
+| arm | field | dtype set | note |
 |---|---|---|---|
-| input `in[k]` | `dtype_lo` @13 lo-nibble | broad set exc `{FP32R, UINT64, INT64, FP4}` | `[HIGH/OBS]` (`AllowFP32R::False`) |
-| output `out[k]` | `dtype_hi` @13 hi-nibble | broad set **+ FP32R** | `[HIGH/OBS]` (`AllowFP32R::True`) |
-| fill | `fill_reg` @15 | **always FP32** (cast to `dtype_hi` on the FAIL arm) | `[HIGH/OBS]` (header `:37-38`) |
-| mask | `mask_pattern` @16 | int/FP ramp, compared vs the int/FP constant `0` | `[HIGH/OBS]` |
+| input `in[k]` | `dtype_lo` @13 lo-nibble | broad set exc `{FP32R, UINT64, INT64, FP4}` | `AllowFP32R::False` |
+| output `out[k]` | `dtype_hi` @13 hi-nibble | broad set **+ FP32R** | `AllowFP32R::True` |
+| fill | `fill_reg` @15 | **always FP32** (cast to `dtype_hi` on the FAIL arm) | header `:37-38` |
+| mask | `mask_pattern` @16 | int/FP ramp, compared vs the int/FP constant `0` | — |
 
 > **QUIRK — integer + FP symmetric; the data is *never* compared.** Unlike [RangeSelect](rangeselect.md)
 > (FP-only, FP32-compare hub), AffineSelect accepts **integer and FP** dtypes on `src`/`dst`, and casts
 > `in→out` (a `DTYPE_PAIR`). It can do so because **the data is never compared** — only the synthesized
 > *mask* is thresholded. AffineSelect is a value-copy-with-cast gated by a positional predicate, so there
 > is no FP-compare restriction on the data path. The fill is the one fixed-format operand: **always FP32**
-> regardless of `in`/`out` (`fill_reg` read as FP32, cast to `dtype_hi`). `[HIGH/OBSERVED]`
+> regardless of `in`/`out` (`fill_reg` read as FP32, cast to `dtype_hi`).
 
 DTYPE ordinals (`common.h:705-720`): `INVALID 0x0, UINT64 0x1, INT8 0x2, UINT8 0x3, INT16 0x4, UINT16 0x5,
 BF16 0x6, FP16 0x7, INT32 0x8, UINT32 0x9, FP32 0xA, FP32R 0xB, INT64 0xC, FP8_E3 0xD, FP8_E4 0xE, FP8_E5
@@ -455,7 +452,7 @@ BF16 0x6, FP16 0x7, INT32 0x8, UINT32 0x9, FP32 0xA, FP32R 0xB, INT64 0xC, FP8_E
 | MAVERICK (NC-v5) | `// Y` | 64 B (compile) | not byte-checked (CAYMAN-like) | (carve stripped) | header-grounded |
 
 Opcode `0x92` + the `// Y` flag + the `S2D2_TS_AS` struct (`offsetof`/`sizeof`) are **byte-identical on
-all four gens, including SUNDA** (this session). **Unlike** [RangeSelect](rangeselect.md) (`0xbc`, first at
+all four gens, including SUNDA**. **Unlike** [RangeSelect](rangeselect.md) (`0xbc`, first at
 CAYMAN), AffineSelect is **defined on SUNDA** — like [Iota](./iota.md) (`0x7e`) and
 [TensorScalarSelect](./ts-select.md) (`0x98`).
 
@@ -474,9 +471,8 @@ The **dispatch surface** shifts across gens: SUNDA carries `0x92` as a flat POOL
 kernel (idx17); CAYMAN+ does **not** (served via the non-KIT POOL/SEQ-decode path — the same
 SUNDA-flat-vs-CAYMAN-routed pattern as the gather/indirect family). The 3-copy
 `"S: TensorScalarAffineSelect"` self-names (each beside `"S: Iota"`) confirm the worker is present on the
-three DEBUG gens. The op is a **core maintained `// Y` op**, not a deprecated stub. `[opcode/struct/header
-deltas HIGH/OBSERVED this session; the POOL-KIT-membership per gen CARRIED from GX-OP-02; MAVERICK interior
-INFERRED — header-OBSERVED only]`
+three DEBUG gens. The op is a **core maintained `// Y` op**, not a deprecated stub. `[HIGH/OBSERVED opcode/struct/header
+deltas; CARRIED per-gen POOL-KIT membership; INFERRED MAVERICK interior — header-OBSERVED only]`
 
 ---
 
@@ -550,8 +546,8 @@ For a Vision-Q7-compatible GPSIMD rebuild, AffineSelect requires:
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED** (direct header / struct compile / validator / enum / self-name byte read this
-session): opcode `TENSOR_SCALAR_AFFINE_SELECT = 0x92 // Y` byte-identical four gens incl SUNDA
+**HIGH / OBSERVED** (direct header / struct compile / validator / enum / self-name byte read):
+opcode `TENSOR_SCALAR_AFFINE_SELECT = 0x92 // Y` byte-identical four gens incl SUNDA
 (`common.h` sunda `:229` / cayman `:226` / mariana `:231` / maverick `:234`); `S2D2_TS_AS` binds `0x92`
 1:1 (`struct2opcode`, all four gens); the 64-B struct (`num_active_channels`@12, `in_out_dtype`@13,
 `fill_mode`@14, `fill_reg`@15, `mask_pattern`@16 `DATA4D`, `src`@36, `dst`@48, `channel_multiplier`@60)
@@ -572,12 +568,12 @@ chain; the exact GT/GE-vs-LT/LE polarity of each compare leg (the inverted `len`
 through the FLIX `.w15` desync; the specific triu/tril coefficient assignment (§8 NOTE); the CAYMAN+
 dispatch surface (non-KIT, by analogy to the gather/indirect family).
 
-**HIGH / OBSERVED (firmware, re-decoded on disk this session):** the **CAYMAN POOL `kernel_info_table`
+**HIGH / OBSERVED (firmware, decoded on disk):** the **CAYMAN POOL `kernel_info_table`
 absence of `0x92`** — the CAYMAN MAIN table (embedded in `libnrtucode_internal.so` @ file `0x2f6be0`, 17
 entries) decodes to `7e 7c 7d 45 51 41 f0(×5) 52 46 47 be f2 7b` with no `0x92`, cross-checked by `idx0
 {0x7e→0x01000080}` (iota) and `idx14 {0xbe→0x01004204}` (RangeSelect); MARIANA / MARIANA_PLUS identical.
 
-**CARRIED (from GX-OP-02; SUNDA EXTISA container + the `/tmp` carves not in the checked-in tree):** the
+**CARRIED (prior SUNDA carve; the SUNDA EXTISA container is not in the checked-in tree):** the
 SUNDA POOL `kernel_info_table` row `idx17 {0x92 → 0x0100a118}` + the `idx15/16 {0x43/0x44}` context + the
 `pool_tensor_scalar_affine_select` JSON name; the SUNDA worker body IVP census
 (`movva32×6/addn_2x32×9/muln_2x32/packln`, the four `fill_mode`-guarded compare legs, the `ivp_selnx16t`
@@ -588,12 +584,12 @@ of the absent SUNDA carve.
 
 **LOW / NOT CLAIMED:** the MAVERICK firmware body bytes + its POOL-KIT membership (carve stripped;
 header-grounded, v5 interior INFERRED); the exact CAYMAN+ non-KIT handler entry; any NKI `affine_select`
-op surface (the planned [VAL-12 predicate/classify validation](../../validation/predicate-classify.md)
+op surface (the [VAL-12 predicate/classify validation](../../validation/predicate-classify.md)
 will reconcile the live AffineSelect signature against this decode).
 
 **FLIX-desync flag:** the SUNDA POOL worker desyncs under stock objdump on the recurring
 `.byte 0x2f/0x4f/0x5f/0x6f/0x8f` literal-pool/FLIX lead bytes (the documented limit). The live IVP slots
-within each bundle (the §5 ramp/compare/select ops) are real and byte-cited in GX-OP-02; the surrounding
+within each bundle (the §5 ramp/compare/select ops) are real and byte-cited in the prior carve; the surrounding
 `.w15` branch *targets* in a linear sweep are reported structurally. The opcode/struct/validator/enum/
 self-name-offset bytes are decode-immune (header compile + `readelf` + byte-scan, no instruction decode).
 
@@ -610,4 +606,4 @@ self-name-offset bytes are decode-immune (header compile + `readelf` + byte-scan
 * [ISA Batch 21 — Select / Shuffle / Compress](../../isa/ref/b21-select-shuffle.md) — the vbool-gated
   `ivp_selnx16t`/`SEL`/`DSEL` crossbar that realizes the blend.
 * [VAL-12 — Predicate / Classify / Compare family validation](../../validation/predicate-classify.md)
-  *(planned)* — the live AffineSelect validation that reconciles this decode against the runtime op.
+  — the live AffineSelect validation that reconciles this decode against the runtime op.
