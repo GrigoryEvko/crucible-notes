@@ -6,7 +6,7 @@
 
 The Penguin middle-end is **not** a monolithic optimizer. It is a *catalog* of compiled pass modules — one Cython `.so` per pass — plus a small set of **driver generators** that sequence a subset of them into an ordered pipeline at run time. There is no `addPass(...); addPass(...)` registry hard-coded in one function the way LLVM's `PassBuilder` works. Instead, each per-target `CodeGenFlow` driver is a Cython *generator* that `yield`s pass *specifications* (`PassType` objects, each a `(pass_class, kwargs, required|optional)` triple) into a `PassConstructorBuilder`, which folds them via the Python `+`/`+=` operators into a list a `PassManager` then runs. This page is the index for that whole machine: the roster (which passes exist), the driver (which order they run in), the runner (`DotTransform`/`PassManager`/`IterativePassManager`), and the gate (`OptLevel`).
 
-The roster splits cleanly by target-dependence. `penguin/transforms/` holds **71** target-independent IR passes (DCE, value numbering, LICM, the simplifier family, delinearization, predicate resolution). `penguin/targets/transforms/` holds **131** target-oriented passes shared across the Sunda and Tonga backends (allocation/spill, layout, tiling, collective lowering, DMA, type legalization, Tritium fusion). Two thin per-target packages — `targets/sunda/passes/` (**6**) and `targets/tonga/passes/` (**40**) — add the backend-specific ISel/tiling/scheduler passes. Counts are `ls`-verified below and differ from earlier "~70 / ~140" estimates; the numbers here are exact module counts excluding `__init__`.
+The roster splits cleanly by target-dependence. `penguin/transforms/` holds **71** target-independent IR passes (DCE, value numbering, LICM, the simplifier family, delinearization, predicate resolution). `penguin/targets/transforms/` holds **131** target-oriented passes shared across the Sunda and Tonga backends (allocation/spill, layout, tiling, collective lowering, DMA, type legalization, Tritium fusion). Two thin per-target packages — `targets/sunda/passes/` (**6**) and `targets/tonga/passes/` (**40**) — add the backend-specific ISel/tiling/scheduler passes. Counts are `ls`-verified below and are exact module counts excluding `__init__`.
 
 The driver core lives in one unstripped, fully-decompiled file: `targets/sunda/SharedCodeGenFlow.{py→.so}`, banner `"Driver functions for Sunda CodeGen"`. It exposes exactly four generator functions — `peephole_optimizations`, `legalize_pe_insts`, `nki_codegen`, and the centerpiece `codegen_optimization_post_tritium_fusion` — and both the Sunda and Tonga `CodeGenFlow` drivers import and call them. The reimplementation frame the rest of this page builds on: **roster (catalog) → `PassType` specs → `PassConstructorBuilder` (assemble) → `PassManager`/`DotTransform` (run, with `run_or_rollback` safety) → `OptLevel` (skip whole stages at lower `-O`).**
 
@@ -47,26 +47,26 @@ ls targets/sunda/passes/*.so| grep -v __init__ | wc -l    # -> 6
 ls targets/tonga/passes/*.so| grep -v __init__ | wc -l    # -> 40
 ```
 
-> **CORRECTION (ROSTER-1) —** earlier estimates put `transforms/` at "~70" and `targets/transforms/` at "~140". The `ls`-verified counts are **71** and **131** respectively (excluding `__init__`). The "~140" figure conflated `targets/transforms/` with the per-target `tonga/passes/` (40) and `sunda/passes/` (6) packs; `131 + 40 + 6 ≈ 177` target-oriented modules total across all three directories, of which 131 are the *shared* target transforms. The tonga pack is **40**, not 41 — the 41st in the earlier list was `__init__`.
+> **GOTCHA — count the three target directories separately.** `targets/transforms/` holds **131** *shared* target transforms; the per-target packs add **40** (tonga) and **6** (sunda), for 177 target-oriented modules across all three. A single "~140 target passes" figure is what you get by half-merging them. Each count already excludes `__init__` — the tonga pack is 40, not 41.
 
 ### `transforms/` — target-independent (71 modules)
 
-These operate on op-level tensoriser-IR and never name a target. Grouped by role; names are the literal module stems (`<Name>.cpython-310-….so`), CONFIRMED by `ls`.
+These operate on op-level tensoriser-IR and never name a target. Grouped by role; names are the literal module stems (`<Name>.cpython-310-….so`).
 
 | Group | Modules | Confidence |
 |---|---|---|
-| Alias / dependency | `AliasDependencyElimination` `AliasDependencyInduction` `AliasDependencyReset` `AliasDependencyVerificationPass` `AliasDependencyVerifier` `TransformMustAlias` `LegalizeOpLevelAlias` `OptimizeAliasedCopyChain` | CONFIRMED |
-| DCE / DSE / VN | `DeadCodeElimination` `DeadStoreElimination` `ValueNumbering` `MemcpyElimination` `ZeroSizeTensorElimination` | CONFIRMED |
-| Op-elimination | `CastOpElimination` `ConcatOpElimination` `ReshapeOpElimination` `SliceOpElimination` `TransposeOpElimination` `PadElimination` | CONFIRMED |
-| Simplify | `Simplifier` `SuperSimplifier` `SimplifySlice` `TensorOpSimplifier` `GenericAccessSimplifier` `IPSimplifier` `SimplifyPredicates` | CONFIRMED |
-| Loop / affine | `LICM` `LoopFusion` `FlattenLoop` `PerfectLoopNest` `EliminateDivs` `ModDivDelinear` `Delinearization` `DelinearizationBase` `ConcatDelinearizer` `AffinePredicateResolution` | CONFIRMED |
-| Predicate | `ResolvePredicates` `ResolveComplicatePredicates` `PredicateAffineSelect` `MaskPropagation` `InsertConflictResolutionOps` | CONFIRMED |
-| Tensor-op | `LowerTensorOp` `LateLowerTensorOp` `TensorOpTransform` `RecognizeOpIdiom` `InferIntrinsic` `MutateDataType` | CONFIRMED |
-| Analysis | `RangeAnalysis` `LoadStoreDependencyAnalysis` `IPLiveInterval` `IPSubgraphTensorAnalysis` `AnalyzeKernel` `AxesGroup` `DynamicInstEstimator` `DetailDynInst` | CONFIRMED |
-| Codegen / IR / debug | `NkiCodegenPass` `SimulatorPass` `PrintFunction` `DataflowViewer` `LayoutViewer` `DoNothing` `Region` `PatternMatch` `CanonicalizeIR` `HoistAllGather` | CONFIRMED |
-| Helper (no Pass class) | `DataflowUtil` `InstTransformUtils` `IPUtils` `LoopTransformUtils` `TensorContractUtils` `TensorOpUtils` | STRONG |
+| Alias / dependency | `AliasDependencyElimination` `AliasDependencyInduction` `AliasDependencyReset` `AliasDependencyVerificationPass` `AliasDependencyVerifier` `TransformMustAlias` `LegalizeOpLevelAlias` `OptimizeAliasedCopyChain` | CERTAIN |
+| DCE / DSE / VN | `DeadCodeElimination` `DeadStoreElimination` `ValueNumbering` `MemcpyElimination` `ZeroSizeTensorElimination` | CERTAIN |
+| Op-elimination | `CastOpElimination` `ConcatOpElimination` `ReshapeOpElimination` `SliceOpElimination` `TransposeOpElimination` `PadElimination` | CERTAIN |
+| Simplify | `Simplifier` `SuperSimplifier` `SimplifySlice` `TensorOpSimplifier` `GenericAccessSimplifier` `IPSimplifier` `SimplifyPredicates` | CERTAIN |
+| Loop / affine | `LICM` `LoopFusion` `FlattenLoop` `PerfectLoopNest` `EliminateDivs` `ModDivDelinear` `Delinearization` `DelinearizationBase` `ConcatDelinearizer` `AffinePredicateResolution` | CERTAIN |
+| Predicate | `ResolvePredicates` `ResolveComplicatePredicates` `PredicateAffineSelect` `MaskPropagation` `InsertConflictResolutionOps` | CERTAIN |
+| Tensor-op | `LowerTensorOp` `LateLowerTensorOp` `TensorOpTransform` `RecognizeOpIdiom` `InferIntrinsic` `MutateDataType` | CERTAIN |
+| Analysis | `RangeAnalysis` `LoadStoreDependencyAnalysis` `IPLiveInterval` `IPSubgraphTensorAnalysis` `AnalyzeKernel` `AxesGroup` `DynamicInstEstimator` `DetailDynInst` | CERTAIN |
+| Codegen / IR / debug | `NkiCodegenPass` `SimulatorPass` `PrintFunction` `DataflowViewer` `LayoutViewer` `DoNothing` `Region` `PatternMatch` `CanonicalizeIR` `HoistAllGather` | CERTAIN |
+| Helper (no Pass class) | `DataflowUtil` `InstTransformUtils` `IPUtils` `LoopTransformUtils` `TensorContractUtils` `TensorOpUtils` | HIGH |
 
-> **NOTE —** `CanonicalizeIR` and `HoistAllGather` live in `transforms/` (not `targets/`), and several names the earlier roster placed here (`IntegerSetAnalysis`, `IslSimplifier`, `KernelMetrics`, `InferInitValue`, `InferSharedMemLoc`, `InferNonlocalTensors`) are **not** present as `transforms/` modules in this wheel — the Infer\* passes live in `targets/transforms/`, and the Isl/IntegerSet machinery is folded into [the AffineExpr algebra](affine-expr-algebra.md) rather than shipped as a standalone pass module.
+> **NOTE —** `CanonicalizeIR` and `HoistAllGather` live in `transforms/`, not under `targets/`. Several names that read as target-independent are not `transforms/` modules in this wheel at all: the `Infer*` passes (`InferInitValue`, `InferSharedMemLoc`, `InferNonlocalTensors`) live in `targets/transforms/`, and the Isl/IntegerSet machinery (`IntegerSetAnalysis`, `IslSimplifier`) is folded into [the AffineExpr algebra](affine-expr-algebra.md) rather than shipped as a standalone pass module.
 
 ### `targets/transforms/` — target-oriented (131 modules)
 
@@ -74,18 +74,18 @@ Shared across Sunda and Tonga. The high-population groups (counts are within-gro
 
 | Group | Representative modules | Confidence |
 |---|---|---|
-| Alloc / spill | `AllocateBlocks` `AllocationDecision` `AllocatorState` `BufferState` `GlobalSpillCtx` `MaxLiveSpiller` `FastSpillGeneration` `SpillPSum` `SpillFreeKernel` `StackAllocator` `ModuloAllocation` `IntervalMinCut` `AnnotateNoSpill` `NeuronStackLiveInterval` `CachedLiveInterval` `TensorLifetimeAnalysis` `TensorLiveRange` | CONFIRMED |
-| Layout | `LayoutPreprocessing` `LayoutRequirementAnalysis` `LayoutTilingPipeline` `LocalLayoutOpt` `CycleBasedLayoutCostModel` `NKIKernelLayout` `PAGLayoutAnalysis` `PAGLayoutGreedySearchAlgorithm` `PAGLayoutHelpers` `OperatorLayoutVisualizer` | CONFIRMED |
-| Tiling / vectorize | `FlattenAxesForTiling` `FactorizeBlkDims` `FactorizeFreeDims` `LoopSplitting` `PartitionVectorization` `PackParDim` `PartialLoopFusion` `PartialSimdFusion` `VectorizeLoop` `VectorizeMatMult` `Vectorizer` `SFKVectorizer` `PGAnalysis` `PGAnalysisForTiling` `PGAnalysisHelpers` `PGTilingHelpers` `BFComputeCutting` `PComputeCutting` | CONFIRMED |
-| Collective (SPMD/CC) | `AGOrderingAnalysis` `BucketizeCCOp` `CCOpFusion` `CCOpAxesGroupAnalysis` `CCOpAxesGroupDelinearizer` `CoalesceCCOp` `FineGrainedCCOpFusion` `LowerCCOpBlockAxis` `TileCCOps` `LegalizeCCOpLayout` `LowerToSendRecv` `SimpleAllReduceTiling` `HoistFSDPCollectives` `RewriteReplicationMatmul` `SPMDCodeGen` `SpmdDCE` `TensorParallel` `ShardingUtils` `LowerShardAxis` `InferShardAxis` `InsertImplicitShardAxis` `ReinsertShardAxis` `RemoveShardedPartitionAxes` | CONFIRMED |
-| DMA | `DMALegalizer` `DMALocalityOpt` `AssignDMAQoSLabels` `DataStreaming` `DataLocalityOpt` `DramToDramTranspose` `InsertOffloadedTransposes` | CONFIRMED |
-| Lowering / legalize | `TargetLowering` `LowerIntrinsics` `LowerBroadcast` `LowerTranspose` `LegalizeType` `LegalizeSundaAccess` `LegalizeTongaAccess` `LocalLegalizeType` `RelaxPredicates` `TransformConvOp` `MacroGeneration` `SoftwarePipelineCodeGen` | CONFIRMED |
-| Tonga-flavored | `TongaCpyElim` `TongaDelinear` `TongaInstComb` `TongaIslSimplifier` `TongaLICM` `TongaLiveInterval` `TongaLoopFusion` `TongaLoopInterchange` `TongaSimplifier` `TongaSimplifyPredicates` | CONFIRMED |
-| Tritium fusion | `TritiumFusion` `TritiumFusionBase` (the "post_tritium_fusion" pre-stage; autotuner host — see [§ autotuner](#where-the-autotuner-hooks-in)) | CONFIRMED |
-| Type / cast | `DTypeMutator` `EnforceAluDTAcc` `DemoteLargeTensors` `ExpandBatchNorm` | CONFIRMED |
-| Verify / sim / latency | `NeuronVerifier` `UnshardBIRKernelForSimulation` `InstructionLatencyModel` `KernelLatencyInfo` | CONFIRMED |
-| Infer | `InferInitValue` `InferNonlocalTensors` `InferPSumTensor` `InferSharedMemLoc` | CONFIRMED |
-| Misc | `DeConcat` `MatMultCombine` `Rematerialization` `RewriteWeights` `RoundtripTranspose` `SimplifyMacroPredicates` `SimplifyTensor` `SoftmaxDivisionDelay` `StaticTransposeLocalTensor` `SplitAPUnionSets` `FlattenAPIndices` `TensorContract` `TensorInitialization` `InlineNKIKernels` `InsertCoreBarrier` `CanonicalizeDAG` | CONFIRMED |
+| Alloc / spill | `AllocateBlocks` `AllocationDecision` `AllocatorState` `BufferState` `GlobalSpillCtx` `MaxLiveSpiller` `FastSpillGeneration` `SpillPSum` `SpillFreeKernel` `StackAllocator` `ModuloAllocation` `IntervalMinCut` `AnnotateNoSpill` `NeuronStackLiveInterval` `CachedLiveInterval` `TensorLifetimeAnalysis` `TensorLiveRange` | CERTAIN |
+| Layout | `LayoutPreprocessing` `LayoutRequirementAnalysis` `LayoutTilingPipeline` `LocalLayoutOpt` `CycleBasedLayoutCostModel` `NKIKernelLayout` `PAGLayoutAnalysis` `PAGLayoutGreedySearchAlgorithm` `PAGLayoutHelpers` `OperatorLayoutVisualizer` | CERTAIN |
+| Tiling / vectorize | `FlattenAxesForTiling` `FactorizeBlkDims` `FactorizeFreeDims` `LoopSplitting` `PartitionVectorization` `PackParDim` `PartialLoopFusion` `PartialSimdFusion` `VectorizeLoop` `VectorizeMatMult` `Vectorizer` `SFKVectorizer` `PGAnalysis` `PGAnalysisForTiling` `PGAnalysisHelpers` `PGTilingHelpers` `BFComputeCutting` `PComputeCutting` | CERTAIN |
+| Collective (SPMD/CC) | `AGOrderingAnalysis` `BucketizeCCOp` `CCOpFusion` `CCOpAxesGroupAnalysis` `CCOpAxesGroupDelinearizer` `CoalesceCCOp` `FineGrainedCCOpFusion` `LowerCCOpBlockAxis` `TileCCOps` `LegalizeCCOpLayout` `LowerToSendRecv` `SimpleAllReduceTiling` `HoistFSDPCollectives` `RewriteReplicationMatmul` `SPMDCodeGen` `SpmdDCE` `TensorParallel` `ShardingUtils` `LowerShardAxis` `InferShardAxis` `InsertImplicitShardAxis` `ReinsertShardAxis` `RemoveShardedPartitionAxes` | CERTAIN |
+| DMA | `DMALegalizer` `DMALocalityOpt` `AssignDMAQoSLabels` `DataStreaming` `DataLocalityOpt` `DramToDramTranspose` `InsertOffloadedTransposes` | CERTAIN |
+| Lowering / legalize | `TargetLowering` `LowerIntrinsics` `LowerBroadcast` `LowerTranspose` `LegalizeType` `LegalizeSundaAccess` `LegalizeTongaAccess` `LocalLegalizeType` `RelaxPredicates` `TransformConvOp` `MacroGeneration` `SoftwarePipelineCodeGen` | CERTAIN |
+| Tonga-flavored | `TongaCpyElim` `TongaDelinear` `TongaInstComb` `TongaIslSimplifier` `TongaLICM` `TongaLiveInterval` `TongaLoopFusion` `TongaLoopInterchange` `TongaSimplifier` `TongaSimplifyPredicates` | CERTAIN |
+| Tritium fusion | `TritiumFusion` `TritiumFusionBase` (the "post_tritium_fusion" pre-stage; autotuner host — see [§ autotuner](#where-the-autotuner-hooks-in)) | CERTAIN |
+| Type / cast | `DTypeMutator` `EnforceAluDTAcc` `DemoteLargeTensors` `ExpandBatchNorm` | CERTAIN |
+| Verify / sim / latency | `NeuronVerifier` `UnshardBIRKernelForSimulation` `InstructionLatencyModel` `KernelLatencyInfo` | CERTAIN |
+| Infer | `InferInitValue` `InferNonlocalTensors` `InferPSumTensor` `InferSharedMemLoc` | CERTAIN |
+| Misc | `DeConcat` `MatMultCombine` `Rematerialization` `RewriteWeights` `RoundtripTranspose` `SimplifyMacroPredicates` `SimplifyTensor` `SoftmaxDivisionDelay` `StaticTransposeLocalTensor` `SplitAPUnionSets` `FlattenAPIndices` `TensorContract` `TensorInitialization` `InlineNKIKernels` `InsertCoreBarrier` `CanonicalizeDAG` | CERTAIN |
 
 ### Per-target packs
 
@@ -122,11 +122,11 @@ Every pass — target-independent or not — subclasses one base, `DotTransform`
 
 ### Method Map
 
-| Method group | Symbols (`DotTransform.<name>`, CONFIRMED via `strings`) | Role |
+| Method group | Symbols (`DotTransform.<name>`) | Role |
 |---|---|---|
 | Drive | `runOnModule` `runOnFunction` `run_` `timed_run_` `runTransforms` | top-level entry; `timed_run_` wraps `run_` with timing |
 | IR walk | `transformModule` `transformFunction` `transformBasicBlock` `transformBlock` `transformScopeRegion` `transformStmts` `transformWhile` `transformMacro` `transform` | recursive descent; `transform` is the leaf node hook |
-| Per-stmt hooks | `beforeStmtTransform` `afterStmtTransform` | overridden by passes (and by `BirCodeGenLoop` — STRONG cross-bin link) |
+| Per-stmt hooks | `beforeStmtTransform` `afterStmtTransform` | overridden by passes, and by `BirCodeGenLoop` across the binary boundary |
 | Safety | `run_or_rollback` `always_rollback` `run_with_exception_handling` `rethrow_exception` `verify` | a pass that fails `verify` or raises `TransformError` is rolled back |
 | Bookkeeping | `changed` `print_changed` `enter_pass_scope` `pass_name` `createPass` `should_skip_tensor` `_noop` | `changed` drives the fixpoint loop |
 | Debug / dump | `dump_files` `dump_function` `dump_git` `set_cur_debug_location` `is_debug_mode` `LogContext` | per-pass dumps gated on debug mode |
@@ -135,7 +135,7 @@ Every pass — target-independent or not — subclasses one base, `DotTransform`
 ### The runners
 
 ```c
-// DotTransform.PassManager — the top-level runner (CONFIRMED method symbols)
+// DotTransform.PassManager — the top-level runner
 class PassManager:
     transformModule(module):     // run each spec's pass over the whole comp-unit
         for spec in self.pass_list:        // spec is a PassType (see next section)
@@ -146,7 +146,7 @@ class PassManager:
     verify(module): ...                     // run the registered verifiers
     dumpJson(out) / fromJson(in): ...       // the whole manager is JSON-serialisable
 
-// DotTransform.IterativePassManager — run a pass set to FIXED POINT (CONFIRMED)
+// DotTransform.IterativePassManager — run a pass set to FIXED POINT
 class IterativePassManager:
     transformFunction(fn):
         do:
@@ -176,7 +176,7 @@ A `PassType` wraps a pass **class** plus its `kwargs`, a `required=`/`optional=`
 
 ### `PassConstructorBuilder` — fold via `+` / `+=`
 
-`PassConstructorBuilder` (in `PassConstructor.cpython-310-….so`) defines the numeric `nb_add` and `nb_inplace_add` slots (CONFIRMED via `nm -D`), so a driver appends a spec with Python operator syntax:
+`PassConstructorBuilder` (in `PassConstructor.cpython-310-….so`) defines the numeric `nb_add` and `nb_inplace_add` slots, so a driver appends a spec with Python operator syntax:
 
 ```c
 // inside a CodeGenFlow generator (Cython generator body)
@@ -188,7 +188,7 @@ builder += PassType(LateNeuronInstComb, optional=True) //   "Pass must be a Pass
 pipeline = builder.build_pass_constructor(...)
 ```
 
-Guard strings CONFIRMED in the binary: `"Pass must be a PassType"` (rejects a bare class) and `"PassConstructorBuilder does not have target but %s requires target"` (a `target=`-tagged spec yielded into an untargeted builder fails loudly). The constructed pipeline is round-trippable: `PassConstructor.dumpJson` / `.fromJson` (`inputJson`/`outputJson`) serialise the entire spec list — so a pipeline can be cached, diffed, or introspected without instantiating a single pass.
+Two guard strings police this: `"Pass must be a PassType"` (rejects a bare class) and `"PassConstructorBuilder does not have target but %s requires target"` (a `target=`-tagged spec yielded into an untargeted builder fails loudly). The constructed pipeline is round-trippable: `PassConstructor.dumpJson` / `.fromJson` (`inputJson`/`outputJson`) serialise the entire spec list — so a pipeline can be cached, diffed, or introspected without instantiating a single pass.
 
 > **NOTE —** the `+=` fold is why the driver functions are *generators*: each `yield PassType(...)` is consumed by a `for spec in gen: builder += spec` loop in the calling `CodeGenFlow`. The generator's *source order* therefore is the pipeline order — and because Cython interns each pass name as a `__pyx_n_s_<Name>` global fetched through a version-counter, sorting those lookups recovers the literal in-source order even from a stripped generator body.
 
@@ -196,7 +196,7 @@ Guard strings CONFIRMED in the binary: `"Pass must be a PassType"` (rejects a ba
 
 ## The Driver — `SharedCodeGenFlow`'s four generators
 
-`targets/sunda/SharedCodeGenFlow.cpython-310-….so` is unstripped (full IDA decompile available) and defines exactly four module-level generator functions, CONFIRMED by their qualified-name and `__pyx_scope_struct` symbols:
+`targets/sunda/SharedCodeGenFlow.cpython-310-….so` is unstripped (full IDA decompile available) and defines exactly four module-level generator functions, named by their qualified-name and `__pyx_scope_struct` symbols:
 
 ```text
 peephole_optimizations               -> __pyx_scope_struct_1_peephole_optimizations
@@ -206,7 +206,7 @@ codegen_optimization_post_tritium_fusion
                                      -> __pyx_scope_struct_3_codegen_optimization_post_tritium_fusion
 ```
 
-Both `targets/sunda/CodeGenFlow.so` and `targets/tonga/CodeGenFlow.so` `from …targets.sunda import SharedCodeGenFlow` and call these four. The Sunda driver exposes `optimize` / `codegen_prepare` / `codegen_optimization` and their `_eager` variants (define-by-run single-shot mode); Tonga exposes the three staged ones only (no `_eager`). All entry-function names CONFIRMED via `strings`.
+Both `targets/sunda/CodeGenFlow.so` and `targets/tonga/CodeGenFlow.so` `from …targets.sunda import SharedCodeGenFlow` and call these four. The Sunda driver exposes `optimize` / `codegen_prepare` / `codegen_optimization` and their `_eager` variants (define-by-run single-shot mode); Tonga exposes the three staged ones only (no `_eager`).
 
 ### `peephole_optimizations()` — local cleanup, all optional
 
@@ -218,7 +218,7 @@ function peephole_optimizations(builder):   // gen1; all yields optional=True
     yield PassType(NeuronInstComb,       optional=True)   // re-run after VN
 ```
 
-The `InstComb → VN → InstComb` sandwich is the classic GVN-then-recombine shape: value numbering exposes redundancies that a second instruction-combine pass can fold. Pass-name tokens (`FactorizeBlkDims`, `NeuronInstComb`, `NeuronValueNumbering`) CONFIRMED in `SharedCodeGenFlow.so`'s `__pyx_n_s_` table.
+The `InstComb → VN → InstComb` sandwich is the classic GVN-then-recombine shape: value numbering exposes redundancies that a second instruction-combine pass can fold. The pass-name tokens `FactorizeBlkDims`, `NeuronInstComb` and `NeuronValueNumbering` all sit in `SharedCodeGenFlow.so`'s `__pyx_n_s_` table.
 
 ### `legalize_pe_insts()` — PE-engine instruction legalization
 
@@ -231,7 +231,7 @@ function legalize_pe_insts(builder):        // gen
     yield PassType(SpillPSum,         optional=True)   // PSUM-bank spill
 ```
 
-The two `required` lowerings make every transpose/broadcast expressible on the PE (tensor) engine; the optional tail does late cleanup and PSUM spilling. All five names CONFIRMED in the binary.
+The two `required` lowerings make every transpose/broadcast expressible on the PE (tensor) engine; the optional tail does late cleanup and PSUM spilling.
 
 ### `nki_codegen()` — emit NKI text
 
@@ -242,11 +242,11 @@ function nki_codegen(builder, nki_dl, nki_debug_mode):  // gen2
                    nki_debug_mode=nki_debug_mode) // debug-mode kwarg
 ```
 
-A single required pass — `NkiCodegenPass` from `penguin/transforms/` — with the debug-location (`nki_dl`) and debug-mode (`nki_debug_mode`) flags forwarded as kwargs. Both kwarg names CONFIRMED as `__pyx_n_u_nki_dl` / `__pyx_n_u_nki_debug_mode` unicode tokens.
+A single required pass — `NkiCodegenPass` from `penguin/transforms/` — with the debug-location (`nki_dl`) and debug-mode (`nki_debug_mode`) flags forwarded as kwargs. Both kwarg names appear as the unicode tokens `__pyx_n_u_nki_dl` / `__pyx_n_u_nki_debug_mode`.
 
 ### `codegen_optimization_post_tritium_fusion()` — the main middle-end list
 
-This is the canonical post-fusion optimization sequence, run after Tritium fusion and before the engine-legalize / NKI / BIR tail. Recovered by the version-counter name-trace (source order). The whole generator is itself gated by `Options.clOptBool('enable_post_tritium_fusion_passes')` (CONFIRMED `__pyx_n_s_enable_post_tritium_fusion_passes`).
+This is the canonical post-fusion optimization sequence, run after Tritium fusion and before the engine-legalize / NKI / BIR tail. Recovered by the version-counter name-trace (source order). The whole generator is itself gated by `Options.clOptBool('enable_post_tritium_fusion_passes')` (interned as `__pyx_n_s_enable_post_tritium_fusion_passes`).
 
 ```c
 function codegen_optimization_post_tritium_fusion(target, nki_dl, nki_debug_mode):  // gen3
@@ -273,7 +273,7 @@ function codegen_optimization_post_tritium_fusion(target, nki_dl, nki_debug_mode
     builder += PassType(FastSpillGeneration,  optional=True)   // re-run spill after vectorize
     if clOptBool('annotate-no-spill-hint'):
         builder += PassType(AnnotateNoSpill,  optional=True)
-    builder += PassType(/* sunda.<pass> */,   required=True)   // attr on the `sunda` module (STRONG)
+    builder += PassType(/* sunda.<pass> */,   required=True)   // attr on the `sunda` module; name not pinned
     builder += PassType(CoalesceCCOp,         required=True)   // collective-op coalescing
     if not clOptBool('disable-tiling-allreduce'):
         builder += PassType(SimpleAllReduceTiling, required=True)
@@ -282,7 +282,7 @@ function codegen_optimization_post_tritium_fusion(target, nki_dl, nki_debug_mode
     return builder.build_pass_constructor(...)
 ```
 
-Every pass-name token above is CONFIRMED present in `SharedCodeGenFlow.so`'s interned-name table (`__pyx_n_s_NeuronLICM` … `__pyx_n_s_DMAProfiler`). The `required`/`optional` qualifier on each is the FINE gate of [the opt-level model](#the-gate--optlevel): `required` passes are correctness legalizations that always run; `optional` passes are the perf passes dropped at lower `-O`. The exact intra-list ordering is STRONG (from the version-counter trace, source order); the two `FastSpillGeneration` instances bracketing `SFKVectorizer` are the spill-vectorize-respill pattern, mirroring the InstComb sandwich in `peephole_optimizations`.
+Every pass-name token above is present in `SharedCodeGenFlow.so`'s interned-name table (`__pyx_n_s_NeuronLICM` … `__pyx_n_s_DMAProfiler`). The `required`/`optional` qualifier on each is the FINE gate of [the opt-level model](#the-gate--optlevel): `required` passes are correctness legalizations that always run; `optional` passes are the perf passes dropped at lower `-O`. The intra-list ordering comes from the version-counter trace (source order) rather than a direct read; the two `FastSpillGeneration` instances bracketing `SFKVectorizer` are the spill-vectorize-respill pattern, mirroring the InstComb sandwich in `peephole_optimizations`.
 
 > **QUIRK — the list re-runs `nki_codegen` and `FastSpillGeneration`.** A pass appearing twice in the spec list is not a bug: `FastSpillGeneration` runs once before vectorization and again after (vectorization creates new live ranges that may need spilling), and the leading `nki_codegen` sub-flow is chained in so the post-fusion list can itself drive NKI emission on the NKI path. A `set`-based reimplementation that de-dups specs by class will silently drop the second spill and miscompile spill-heavy kernels.
 
@@ -290,9 +290,9 @@ Every pass-name token above is CONFIRMED present in `SharedCodeGenFlow.so`'s int
 
 ## The Gate — `OptLevel`
 
-`ir/OptLevel.cpython-310-….so` defines the optimization-level enum. It is `@unique` and `@total_ordering` with a custom `__gt__` (all CONFIRMED as `__pyx_n_s_unique` / `__pyx_n_s_total_ordering` / `OptLevel.__gt__`). Docstring, verbatim: **"The optimization level of an penguin function."** (the *less-optimization-toward-the-end* ordering note is in the source comment).
+`ir/OptLevel.cpython-310-….so` defines the optimization-level enum. It is `@unique` and `@total_ordering` with a custom `__gt__` (`__pyx_n_s_unique` / `__pyx_n_s_total_ordering` / `OptLevel.__gt__`). Docstring, verbatim: **"The optimization level of an penguin function."** (the *less-optimization-toward-the-end* ordering note is in the source comment).
 
-This is an **inverted** enum: members later in the list run *fewer* optimizations. The CONFIRMED member tokens (consumed by `NKICodeGenFlow.so`):
+This is an **inverted** enum: members later in the list run *fewer* optimizations. The member tokens, consumed by `NKICodeGenFlow.so`:
 
 ```text
 default_level   — full optimization (the implicit top)
@@ -305,10 +305,10 @@ prepare         — prepare-only (the bottom; least optimization)
 
 ### Two-level gating
 
-**Coarse (flow-level).** The `CodeGenFlow` / `NKICodeGenFlow` drivers branch on `if opt_level > OptLevel.skip_middle_end` / `… skip_loop_level_transformations` / `… skip_allocators` and skip whole phases. CONFIRMED: `OptLevel.__gt__` plus these three member tokens are consumed *only* by `NKICodeGenFlow.so` — opt-level decisions are made at the flow level, not buried per-pass. `skip_allocators` is also threaded as a kwarg through `NKICodeGenFlow` (CONFIRMED `__pyx_n_s_skip_allocators`).
+**Coarse (flow-level).** The `CodeGenFlow` / `NKICodeGenFlow` drivers branch on `if opt_level > OptLevel.skip_middle_end` / `… skip_loop_level_transformations` / `… skip_allocators` and skip whole phases. `OptLevel.__gt__` plus these three member tokens are consumed *only* by `NKICodeGenFlow.so` — opt-level decisions are made at the flow level, not buried per-pass. `skip_allocators` is also threaded as a kwarg through `NKICodeGenFlow`.
 
 ```c
-// flow-level gating shape (STRONG — exact thresholds INFERRED)
+// flow-level gating shape — exact thresholds INFERRED
 function codegen_optimization(fn, opt_level):
     if opt_level > OptLevel.skip_middle_end:                  // run the middle-end at all?
         run TritiumFusion, fusion, simplify, …
@@ -321,18 +321,18 @@ function codegen_optimization(fn, opt_level):
     run SharedCodeGenFlow.peephole_optimizations(...)         // final cleanup
 ```
 
-**Fine (per-pass).** Inside `codegen_optimization_post_tritium_fusion`, each spec's `required=`/`optional=` qualifier is the per-pass gate, plus the `Options.clOptBool('<flag>')` toggles. CONFIRMED flag strings: `enable-local-legalize-type`, `annotate-no-spill-hint`, `disable-tiling-allreduce`, `enable-tritium-loopfusion`, and the generator-level `enable_post_tritium_fusion_passes`.
+**Fine (per-pass).** Inside `codegen_optimization_post_tritium_fusion`, each spec's `required=`/`optional=` qualifier is the per-pass gate, plus the `Options.clOptBool('<flag>')` toggles. The flag strings are `enable-local-legalize-type`, `annotate-no-spill-hint`, `disable-tiling-allreduce`, `enable-tritium-loopfusion`, and the generator-level `enable_post_tritium_fusion_passes`.
 
-> **GOTCHA — the level→pass cutoff table is not statically recoverable.** The `>` comparisons live in `CodeGenFlow.so` (no IDA decompile for that module in this build). The *staged-skip taxonomy* above is firm (member names + `__gt__` + the consuming flow are CONFIRMED), but the exact numeric `OptLevel` value each `-O` maps to, and which optional passes survive at each level, is **INFERRED**. The driver-CLI `--optlevel "0".."3"` (default `"2"`, [3.10](../frontend/opt-level-planes.md)) maps to these enum members upstream; that map is not in this binary's recoverable text. Do not invent a cutoff table — gate on the *named stage* boundary, not a guessed integer.
+> **GOTCHA — the level→pass cutoff table is not statically recoverable.** The `>` comparisons live in `CodeGenFlow.so` (no IDA decompile for that module in this build). The *staged-skip taxonomy* above is firm — member names, `__gt__`, and the consuming flow are all directly readable — but the exact numeric `OptLevel` value each `-O` maps to, and which optional passes survive at each level, is **INFERRED**. The driver-CLI `--optlevel "0".."3"` (default `"2"`, [3.10](../frontend/opt-level-planes.md)) maps to these enum members upstream; that map is not in this binary's recoverable text. Do not invent a cutoff table — gate on the *named stage* boundary, not a guessed integer.
 
 ---
 
 ## Where the Autotuner Hooks In
 
-The L-strand autotuner is **not** a pipeline stage. It is embedded in one middle-end pass: `targets/transforms/TritiumFusion.cpython-310-….so` (145 `autotun*` string hits — the only pass binary with heavy autotune integration; CONFIRMED `strings | grep -ci autotun` → 145). Mechanism:
+The L-strand autotuner is **not** a pipeline stage. It is embedded in one middle-end pass: `targets/transforms/TritiumFusion.cpython-310-….so` with 145 `autotun*` string hits, the only pass binary with heavy autotune integration. Mechanism:
 
-- `AutotuneFusionPlanGenerator` (CONFIRMED class) enumerates candidate matmul fusion plans: `build`, `best_fusion_plan`, `best_fusion_plan_search`, `generate_fusion_plans_for_search_more_trip`, `force_tripcount`, `get_axes_info`.
-- Plans are submitted via `add_plans` to `Autotuner` (`autotune/Autotuner.so`, docstring CONFIRMED verbatim: *"Autotuner -- Automatically benchmark and tune decisions within penguin during compilation."*), which benchmark-drives through `_Compiler` / `_Search` / `_TreeSearch` / `_PerformanceMetric` and returns the winner via `apply_plan`.
+- `AutotuneFusionPlanGenerator` enumerates candidate matmul fusion plans: `build`, `best_fusion_plan`, `best_fusion_plan_search`, `generate_fusion_plans_for_search_more_trip`, `force_tripcount`, `get_axes_info`.
+- Plans are submitted via `add_plans` to `Autotuner` (`autotune/Autotuner.so`, docstring verbatim: *"Autotuner -- Automatically benchmark and tune decisions within penguin during compilation."*), which benchmark-drives through `_Compiler` / `_Search` / `_TreeSearch` / `_PerformanceMetric` and returns the winner via `apply_plan`.
 - Gating: `_autotune_enabled` / `_autotune_config`; when disabled, a `_BypassedAutotuner` / `add_no_change_plan` short-circuits to a deterministic heuristic.
 
 So at default opt the fusion decision is a deterministic heuristic; with `-autotune` it becomes a benchmarked search over a *re-run* of the same middle-end (each plan = a re-tiling). The autotuner sits **inside** `codegen_optimization`, at the `TritiumFusion` pass, *before* ISel — downstream passes are deterministic given the chosen plan.
@@ -360,17 +360,17 @@ There is **no serialization between passes** — it is one live Python object gr
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Summary
 
-The five strongest claims, re-challenged against the binary:
+The five strongest claims and their anchors:
 
-1. **Pass counts: transforms/ = 71, targets/transforms/ = 131, sunda = 6, tonga = 40.** `ls *.so | grep -v __init__ | wc -l` in each directory. CONFIRMED, exact. This *overturns* the backing report's "~70 / ~140 / 41" — see CORRECTION (ROSTER-1). The 131 excludes the `autotune/` subdir (6 modules) and `__init__`. **Status: CONFIRMED** (directory enumeration; pass-*class* subset is a few smaller because ~8–10 modules are helper libs, flagged inline).
-2. **The four `SharedCodeGenFlow` driver generators exist and are generators.** CONFIRMED: `__pyx_scope_struct_{1,2,3,_}` for `peephole_optimizations`/`nki_codegen`/`codegen_optimization_post_tritium_fusion`/`legalize_pe_insts`, plus `__pyx_mdef_…` method-defs and the banner `"Driver functions for Sunda CodeGen"`. **Status: CONFIRMED.**
-3. **`codegen_optimization_post_tritium_fusion` runs the §-driver list in that order.** Every pass-name token (`NeuronLICM`…`DMAProfiler`) is CONFIRMED in the interned `__pyx_n_s_` table; the *order* is from the version-counter name-trace (source order) on the unstripped decompile — **STRONG** for intra-list ordering (the trace methodology is sound but the per-position index was not re-derived in this session; the membership and qualifiers are CONFIRMED). The generator-level `enable_post_tritium_fusion_passes` gate is CONFIRMED. **Status: membership CONFIRMED, order STRONG.**
-4. **`OptLevel` is an inverted staged-skip enum with members `prepare`/`skip_middle_end`/`skip_loop_level_transformations`/`skip_allocators`/`default_level`/`allow_none`, `@unique @total_ordering`, custom `__gt__`.** All tokens + docstring CONFIRMED via `strings ir/OptLevel.so`. The flow-level vs per-pass split is CONFIRMED (members consumed only by `NKICodeGenFlow`). The exact `-O`→member→pass cutoff table is **INFERRED** and flagged as such (the `>` comparisons are in IDA-skipped `CodeGenFlow.so`). **Status: enum CONFIRMED, thresholds INFERRED.**
-5. **`PassConstructorBuilder` folds `PassType` specs via `nb_add`/`nb_inplace_add`; `DotTransform`/`PassManager`/`IterativePassManager` run them with `run_or_rollback`.** CONFIRMED: `nm -D` shows `nb_add`/`nb_inplace_add`; guard strings `"Pass must be a PassType"` and `"PassConstructorBuilder does not have target but %s requires target"`; `PassManager.transformModule/transformFunction/verify/dumpJson/fromJson` + `IterativePassManager.transformFunction` + `run_or_rollback`/`always_rollback`/`verify` all present in `DotTransform.so`. **Status: CONFIRMED.**
+1. **Pass counts: transforms/ = 71, targets/transforms/ = 131, sunda = 6, tonga = 40.** Directory enumeration, exact. The 131 excludes the `autotune/` subdir (6 modules) and `__init__`. **CERTAIN** as a module count; the pass-*class* subset is a few smaller because ~8–10 modules are helper libraries, flagged inline.
+2. **The four `SharedCodeGenFlow` driver generators exist and are generators.** `__pyx_scope_struct_{1,2,3,_}` for `peephole_optimizations`/`nki_codegen`/`codegen_optimization_post_tritium_fusion`/`legalize_pe_insts`, plus `__pyx_mdef_…` method-defs and the banner `"Driver functions for Sunda CodeGen"`. **CERTAIN.**
+3. **`codegen_optimization_post_tritium_fusion` runs the §-driver list in that order.** Every pass-name token (`NeuronLICM`…`DMAProfiler`) is in the interned `__pyx_n_s_` table, and the qualifiers with them. The *order* comes from the version-counter name-trace on the unstripped decompile. **Membership CERTAIN, order HIGH.**
+4. **`OptLevel` is an inverted staged-skip enum with members `prepare`/`skip_middle_end`/`skip_loop_level_transformations`/`skip_allocators`/`default_level`/`allow_none`, `@unique @total_ordering`, custom `__gt__`.** All tokens and the docstring are in `ir/OptLevel.so`, and the flow-level vs per-pass split follows from the members being consumed only by `NKICodeGenFlow`. The exact `-O`→member→pass cutoff table is **INFERRED** — the `>` comparisons live in `CodeGenFlow.so`, which has no decompile here. **Enum CERTAIN, thresholds INFERRED.**
+5. **`PassConstructorBuilder` folds `PassType` specs via `nb_add`/`nb_inplace_add`; `DotTransform`/`PassManager`/`IterativePassManager` run them with `run_or_rollback`.** `nm -D` shows `nb_add`/`nb_inplace_add`; the guard strings `"Pass must be a PassType"` and `"PassConstructorBuilder does not have target but %s requires target"`; `PassManager.transformModule/transformFunction/verify/dumpJson/fromJson` + `IterativePassManager.transformFunction` + `run_or_rollback`/`always_rollback`/`verify` are all present in `DotTransform.so`. **CERTAIN.**
 
-Honest gaps: the `codegen_prepare`/`codegen_optimization` *intra-phase ordering* in [§ placement](#placement--entry-and-exit) is STRONG (pass set CONFIRMED referenced; order from vocabulary + the SharedCodeGen internal order); the `sunda.<pass>` spec at position 18 of the §-driver list resolves to an attribute on the `sunda` module (name STRONG, not pinned); the `Job → CodeGenFlow` call site is in the compiled-opaque driver (INFERRED from [3.16/the pipeline](../front/pipeline.md)).
+Remaining gaps: the `codegen_prepare`/`codegen_optimization` *intra-phase ordering* in [§ placement](#placement--entry-and-exit) rests on the pass set plus the SharedCodeGen internal order rather than a direct read; the `sunda.<pass>` spec at position 18 of the driver list resolves to an attribute on the `sunda` module whose name is not pinned; and the `Job → CodeGenFlow` call site is **INFERRED** from [the pipeline page](../front/pipeline.md), since that driver is compiled-opaque.
 
 ---
 

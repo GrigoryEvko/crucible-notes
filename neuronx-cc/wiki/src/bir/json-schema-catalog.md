@@ -146,7 +146,7 @@ The 13 fields lie on a regular 0x28-byte stride from `+0xF0` (counting `tile_siz
 
 > **GOTCHA —** the "MX-ness" of `MatmultMx`/`QuantizeMx` (FP8/E8M0 packed weights, block scaling) is **not** in any JSON scalar field. It is carried by (a) the operand tensors' `dtype` (the FP4/FP8/E8M0 `Dtype` ordinals — see [the dtype tables](./dtype-tables.md)) and (b) an extra scale-tensor operand in `ins`. The MX `block_size`=32 is an HLO `backend_config` baked at codegen — it is **absent from BIR-JSON**. A reimplementer searching for a `block_size`/`scale`/`scale_method` key will find none; they do not exist in `libBIR`.
 
-> **CORRECTION (E05-C1) —** the seed key `quant_kernel` is **not** a matmul/MX field. It belongs to `InstBIRKernel` (`readFields` `0x433d40`, key at `+0x250`; see [§ Kernel family](#kernel--custom-op-family)).
+> **NOTE —** `quant_kernel` is not a matmul/MX field despite the name. It belongs to `InstBIRKernel` (`readFields` `0x433d40`, key at `+0x250`; see [§ Kernel family](#kernel--custom-op-family)).
 
 ---
 
@@ -308,7 +308,21 @@ The DMACopy subclass starts its own block at `+0x128` (the InstDMA base block en
 | `InstAbstractCopy` (3) | `0x416b30` / `0x4352d0` | `dma_qos` `+0xF0` `DMAQoSClass` Unassigned(0) (parent = `InstEventSemaphore`) |
 | `InstDMABlock` (107) | (no flat reader) `createFromJson` `0x252300` / `toJson` `0x251c40` | `dma_trigger` (sub-block) · `block_id` uint · `section_start` bool · `priority_class` · `sync_info` · `remote_notifications` (plural) · `on_wait` · `on_update` |
 
-> **CORRECTION (E07-C1) —** of the nine "dma/dge" seed keys, only `dge_type` is an `InstDMA` field; `dma_qos` is per-subclass; `dma_blocks` is BasicBlock-level (`createFromJsonRecursivelyPass2`, `sub_273300`); `dma_trigger` is an `InstDMABlock` sub-block; `num_dma_engines` belongs to the `DMAQueue` record (`DMAQueue::toJson` `0x257160`), and `eng_dma` to `ModuleArtifactInfo` — neither is an instruction field. `use_gpsimd_dma` is an `InstDMACopy` field (`+0x1DC`).
+### Where each DMA-ish key actually lives
+
+The DMA-flavoured key names are spread across four different record levels, and only one of them is an `InstDMA` field:
+
+| Key | Owner |
+|---|---|
+| `dge_type` | `InstDMA` base (the only DMA-wide instruction field) |
+| `dma_qos` | per-subclass (`Load`/`Save` `+0x150`, `DMACopy` `+0x1D8`, `AbstractCopy` `+0xF0`) |
+| `use_gpsimd_dma` | `InstDMACopy` `+0x1DC` |
+| `dma_blocks` | BasicBlock level, resolved by `createFromJsonRecursivelyPass2` |
+| `dma_trigger` | an `InstDMABlock` sub-block |
+| `num_dma_engines` | the `DMAQueue` record (`DMAQueue::toJson` `0x257160`) |
+| `eng_dma` | `ModuleArtifactInfo` |
+
+The last four are not instruction fields at all, so a per-op reader that tries to parse them will never see them.
 
 > **NOTE —** `InstDMACopy` uses `remote_notification` (singular); `InstDMABlock` uses `remote_notifications` (plural). Two distinct keys — do not conflate.
 
@@ -320,7 +334,7 @@ Three structural classes here. **Rich** ops parse named keys; **degenerate** ops
 
 ### Collective ops
 
-`InstCollectiveCompute` (IT 48) multiplexes all 11 `CollectiveKind`s; it is the only collective carrying the seed keys `cc_dim`/`cc_type_hint`. `readFields` `0x432110` (6466 B) / `toJson` `0x438fe0`.
+`InstCollectiveCompute` (IT 48) multiplexes all 11 `CollectiveKind`s; it is the only collective carrying `cc_dim`/`cc_type_hint`. `readFields` `0x432110` (6466 B) / `toJson` `0x438fe0`.
 
 | Key | Offset | Type | Default | Conf |
 |---|---|---|---|---|
@@ -348,7 +362,7 @@ Three structural classes here. **Rich** ops parse named keys; **degenerate** ops
 | `InstGetGlobalRankId` (11) | `0x420900` / `0x436050` | `world_size` `+0xF0` MaybeAffine\<uint\> (tag `+0x110`) **req** |
 | `InstGetCurProcessingRankID` (66) | `0x431d30` / `0x43c300` | `iter_id` `+0xF0` MA\<uint\> req · `channel_id` `+0x118` MA\<uint\> req · `stream_id` `+0x140` MA\<int\> opt · `replica_groups` `+0x168` `vector<vector<u32>>` req |
 
-> **CORRECTION (E09-C1) —** `neff_collective_has_offset` is **not** a literal `libBIR` readFields key — no such operand string appears in `0x432110`. It is a paraphrase; the real offset-bearing keys are `recv_from_rank` / `send_to_rank` / `src_target_pairs`. The literal top-level `CollectiveCompute` key set is exactly the table above plus the inherited `queue`.
+> **NOTE —** the literal top-level `CollectiveCompute` key set is exactly the table above plus the inherited `queue`. The offset-bearing keys are `recv_from_rank` / `send_to_rank` / `src_target_pairs`; there is no `neff_collective_has_offset` key in `libBIR`.
 
 ### BatchNorm ops
 
@@ -397,7 +411,9 @@ The fine-grained indirect access-pattern descriptors are **operand-object** keys
 
 `IndirectDim` wire enum: `{W=0, Z1, Y2, X3}` (`IndirectDim2string` `0x4021a0`).
 
-> **CORRECTION (E10-C3) —** the seed indirect-AP keys — `indirect_dim`, `indirect_dim_max_index`, `num_tensor_indirect_indices`, `offset_expr`, `tensor_indirect_arg_id`, `reg_ap_offset`, `num_indirect_args` — are **operand-object** keys nested under `ins`/`indirection_ins`, owned by `bir::DynamicAPINFO::toJson` (`0x268c00`), `bir::SymbolicAccessPattern::toJson`, `bir::Argument::createFromJson`, and `getIndirectArgumentById`. The **only** per-op top-level indirect key is `indirect_dims` (on `GenericIndirectLoad`/`GenericIndirectSave`). The seed keys `indirect_loadsave` / `is_regloc_offset` / `const_ap_offset` have **no xref** in `libBIR` at all.
+The fine-grained indirect keys — `indirect_dim`, `indirect_dim_max_index`, `num_tensor_indirect_indices`, `offset_expr`, `tensor_indirect_arg_id`, `reg_ap_offset`, `num_indirect_args` — all live one level down, on the **operand objects** nested under `ins`/`indirection_ins`. They are owned by `bir::DynamicAPINFO::toJson` (`0x268c00`), `bir::SymbolicAccessPattern::toJson`, `bir::Argument::createFromJson`, and `getIndirectArgumentById`.
+
+> **GOTCHA —** the only per-op *top-level* indirect key in the whole catalog is `indirect_dims`, on `GenericIndirectLoad`/`GenericIndirectSave`. Everything else indirect is an operand key. (`indirect_loadsave`, `is_regloc_offset`, and `const_ap_offset` are not keys anywhere in `libBIR`.)
 
 ---
 
@@ -430,7 +446,7 @@ Instruction
 | `InstNoOp` (12) | `0x405060` (`ret`) | **none** |
 | `InstGeneric` (0) | (inherit) | **none** (base Generic) |
 
-> **CORRECTION (E10-C4) —** the loop-bound keys are `lb`/`ub`/`stride` and `name`. The seed keys `loop_count`/`trip_count`/`branch_target` do **not** appear in `libBIR`. `BranchHint` (80) has its own keys but is **excluded** from the EventSemaphore thunk chain (consistent with `byte_7858CE[3]=0`). The `Loop`/`DynamicForLoop`/`DoWhile` container fields are parsed inline in `createFromJson` (`0x3243b0`/`0x325380`/`0x25e8e0`), not a flat `readFieldsFromJson`; their offsets are read from `toJson` only (HIGH).
+Three structural notes on this family. The loop bounds are spelled `lb`/`ub`/`stride` alongside `name` — there is no `loop_count`, `trip_count`, or `branch_target` key anywhere in `libBIR`. `BranchHint` (80) carries its own keys but sits **outside** the `EventSemaphore` thunk chain (consistent with `byte_7858CE[3]=0`), which is why it is drawn detached in the tree above. And the `Loop`/`DynamicForLoop`/`DoWhile` container fields are parsed inline inside `createFromJson` (`0x3243b0`/`0x325380`/`0x25e8e0`) rather than by a flat `readFieldsFromJson`, so their offsets here are read off `toJson` alone and carry HIGH rather than CERTAIN confidence.
 
 ---
 
@@ -450,7 +466,7 @@ Instruction
 
 `EventSemaphoreClearMode` is carried by exactly one op (`GroupResetSemaphores`).
 
-> **CORRECTION (E10-C2) —** the seed sync keys `num_semaphores`/`user_event`/`wait_mode` are **not** `libBIR`-JSON keys (rodata literals with zero xref to any (de)serializer). The real per-op sync keys are exactly the table above. `runtime_semaphore_wait_value` (the Indirect{Load,Save} key) is distinct from `runtime_semaphore` (the CoreBarrier key).
+> **GOTCHA —** `runtime_semaphore_wait_value` (an `Indirect{Load,Save}` key) and `runtime_semaphore` (the `CoreBarrier` key) are two different fields on two different ops. Also: `num_semaphores`, `user_event`, and `wait_mode` exist as rodata literals but are wired to no (de)serializer — the per-op sync key set is exactly the table above.
 
 ---
 
@@ -465,7 +481,7 @@ The kernel ops are the richest records in BIR-JSON. Non-`MaybeAffine` vector/str
 | `InstNKIKernel` (55) | `0x430410` / `0x43a4f0` | `func` `+0xF8` `FunctionArgumentMap` · `func_args` `+0x120` `FunctionArgumentMap` · `func_outs` `+0x148` vector (HIGH) · `sb_buf_shape` `+0x150` · `psum_buf_shape` `+0x158` · `address_rotation_scope_val` `+0x15C` `AddressRotationScope` · `kernel_source_val` `+0x160` `KernelSource` |
 | `InstNKIKLIRKernel` (56) | `0x434870` / `0x43a990` | `klir_binary` `+0xF0` string/blob · `kernel_format` `+0x110` string · `nki_binary_version_identifier` `+0x130` string · `enable_device_dump` `+0x150` MA\<bool\> · `func_args` `+0x1B0` (HIGH) · `func_outs` `+0x1DC` · `sb_buf_shape` `+0x1E0` · `psum_buf_shape` `+0x1EC` · `address_rotation_scope_val` (HIGH) |
 
-> **CORRECTION (E10-C5) —** the kernel ops are **not** keyed `function_name`/`lib_file_name`/`kernel_text`/`opaque` (no xref). They use `opFunctionName`/`opLibFile` (CustomOp) and `func`/`klir_binary` (NKI*). `quant_kernel` lives here (BIRKernel `+0x250`), confirming it is not a matmul key. `NKIKernel`/`NKIKLIRKernel`/`Call` assert "Not Implemented" only in `sameInst` (structural equality) — they have **full** JSON (de)serializers regardless.
+> **GOTCHA —** the kernel ops use `opFunctionName`/`opLibFile` (CustomOp) and `func`/`klir_binary` (the NKI trio). There is no `function_name`, `lib_file_name`, `kernel_text`, or `opaque` key. Separately: `NKIKernel`, `NKIKLIRKernel`, and `Call` assert "Not Implemented" in `sameInst` (structural equality) only — their JSON (de)serializers are complete.
 
 ---
 
@@ -505,17 +521,17 @@ The dominant shape of the catalog: **a large fraction of ops carry zero op-speci
 
 ---
 
-## Confidence & re-verification
+## Evidence summary
 
-The strongest claims on this page were re-verified against `libBIR.so` cp310 directly, not only against the source reports:
+The strongest claims on this page and their anchors in `libBIR.so` cp310:
 
-- **`InstMatmultBase::toJson` (`0x4358b0`)** references exactly the 13 key literals tabulated, no more — confirmed by enumerating the `lea …, a<Key>` sites. **CERTAIN.**
+- **`InstMatmultBase::toJson` (`0x4358b0`)** references exactly the 13 key literals tabulated and no more, by enumeration of its `lea …, a<Key>` sites. **CERTAIN.**
 - **`InstActivation::toJson` (`0x435450`)** references exactly 11 keys; `op0`/`op1` resolve via the rodata substrings `aCompareOp0+8`/`aCompareOp1+8` at `0x43571f`/`0x4356df`. **CERTAIN.**
 - **The DMA tree split**: `InstDMADescriptor::toJson` (`0x43c3e0`) chains `Instruction::toJson` and emits `num_tiling_dimensions`, while `InstDMA::toJson` (`0x4363d0`) emits `queue` and chains `Instruction::toJson` — the descriptor subtree is provably **not** under `InstDMA`. **CERTAIN.**
 - **`InstAbstractCopy::readFieldsFromJson` (`0x416b30`)** reads `dma_qos` into `[r12+0F0h]` via `from_json<DMAQoSClass>` (jmp `0x416ca8`). **CERTAIN.**
 - **The 110-op partition** is cross-checked against the 110-case `InstructionType2string` (`0x2d5bf0`), verified in [the opcode-enum page](./instruction-type.md). **CERTAIN.**
 
-Honest ceiling on the rest: families **fully covered** at CERTAIN for their primary keys are matmul/MX, activation/reduce/pool, copy/tensor-scalar/tensor-tensor, the three DMA trees, BN, RNG, and the control-flow/queue/sync core. **Sampled/HIGH** (offset-precise but not every member byte-pinned): the deep `CollectiveCompute` field block below `cc_type_hint` (`pipe_id`/`recv_from_rank`/`permute_chain`/`src1_bitmap`/`unique_tensors`), the kernel-op non-`MaybeAffine` vector/string offsets (`srcsShape`/`sb_buf_shape`/`func_outs`/`kernel_attrs`/`lower_bound`), and the structured-control container offsets (`Loop`/`DynamicForLoop`/`DoWhile`, read from `toJson` only). The `MaybeAffine<T>` per-field ctor defaults (beyond `perf_mode`=None and the bool-false sentinels) are the uniform 0x28-B zero/identity init and are marked "ctor", not byte-traced per field. No NEFF/BIR-JSON fixture round-trip byte-diff was performed.
+Ceiling on the rest: families fully covered at CERTAIN for their primary keys are matmul/MX, activation/reduce/pool, copy/tensor-scalar/tensor-tensor, the three DMA trees, BN, RNG, and the control-flow/queue/sync core. Sampled at **HIGH** (offset-precise but not every member byte-pinned): the deep `CollectiveCompute` field block below `cc_type_hint` (`pipe_id`/`recv_from_rank`/`permute_chain`/`src1_bitmap`/`unique_tensors`), the kernel-op non-`MaybeAffine` vector/string offsets (`srcsShape`/`sb_buf_shape`/`func_outs`/`kernel_attrs`/`lower_bound`), and the structured-control container offsets (`Loop`/`DynamicForLoop`/`DoWhile`, read from `toJson` only). The `MaybeAffine<T>` per-field ctor defaults (beyond `perf_mode`=None and the bool-false sentinels) are the uniform 0x28-B zero/identity init and are marked "ctor", not byte-traced per field. No NEFF/BIR-JSON fixture round-trip byte-diff was performed.
 
 ---
 

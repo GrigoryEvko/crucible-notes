@@ -77,11 +77,11 @@ One integer — call it `N`, the NeuronCores-per-Logical-NeuronCore fan-out — 
 
 `N` is plumbed end-to-end from the front-end to the backend under three names that all denote the same value:
 
-- **Front-end** (`CompileCommand`): `--logical-nc-config` / `--lnc` sets `self.logical_nc_config`; default **2 on Trn2 (`sunda`)**, forced **1** elsewhere. This seeds the SPMD device mesh. *(STRONG — front-end default established in the driver; the CLI→`PassOptions` plumbing is not traced through one symbol on this page, see [Part 8](../walrus/).)*
-- **Backend** (`PassOptions`): `lnc_size = *(uint*)(PassOptions+0x1A4)`, default 1. This is the single field every backend pass reads. *(CONFIRMED — the `+0x1A4` field is read at every site below.)*
-- **Splitter / fork passes**: `LncSplitter`, `CoreForkPass`, `getRemoteCores`/`getAllCores` all re-read `PassOptions+0x1A4` to learn the clone count and the peer set. *(CONFIRMED at the `CoreForkPass` site below.)*
+- **Front-end** (`CompileCommand`): `--logical-nc-config` / `--lnc` sets `self.logical_nc_config`; default **2 on Trn2 (`sunda`)**, forced **1** elsewhere. This seeds the SPMD device mesh. The front-end default is established in the driver; the CLI→`PassOptions` plumbing is not traced through a single symbol here (see [Part 8](../walrus/)).
+- **Backend** (`PassOptions`): `lnc_size = *(uint*)(PassOptions+0x1A4)`, default 1. This is the single field every backend pass reads, at every site below.
+- **Splitter / fork passes**: `LncSplitter`, `CoreForkPass`, `getRemoteCores`/`getAllCores` all re-read `PassOptions+0x1A4` to learn the clone count and the peer set.
 
-The field offset `+0x1A4` is **CONFIRMED** at multiple independent read sites this page disassembled:
+The field offset `+0x1A4` shows up at multiple independent read sites:
 
 ```asm
 ; CoreForkPass::run — read N, branch on the single-core fast path
@@ -99,16 +99,16 @@ The field offset `+0x1A4` is **CONFIRMED** at multiple independent read sites th
 
 ### The `cores-per-LNC = 2` hard-coding
 
-The `arch+0x1A4 == 2` immediate is not incidental: the **only** on-chip cross-core machine instruction in the ISA, the GPSIMD State-Buffer→State-Buffer copy (`InstGPSIMDSB2SB`), is gated on it. The encoder asserts `arch+0x1A4 == 2` at two sites (`@0x1359a67` GENERATE, `@0x1359da1` CHECK), the libBIR legality check `isCompatible` opens with `cmp rdi,0x2` (ctx must be 2), and the simulator asserts `getNumCoresPerLNC() == 2` with peer arithmetic `partner = (coreId + 1) & 1`. There is **no core-index field and no peer-count field anywhere** in that encoder, verifier, or simulator: the two-core topology is *structural*. A `4`-core LNC would fail the encoder assert outright — "the other core" is only unambiguous when there are exactly two. *(CONFIRMED — three `+0x1A4`/`==2` sites disassembled; the GPSIMD instruction itself is [1.12](gpsimd-engine.md).)*
+The `arch+0x1A4 == 2` immediate is not incidental: the **only** on-chip cross-core machine instruction in the ISA, the GPSIMD State-Buffer→State-Buffer copy (`InstGPSIMDSB2SB`), is gated on it. The encoder asserts `arch+0x1A4 == 2` at two sites (`@0x1359a67` GENERATE, `@0x1359da1` CHECK), the libBIR legality check `isCompatible` opens with `cmp rdi,0x2` (ctx must be 2), and the simulator asserts `getNumCoresPerLNC() == 2` with peer arithmetic `partner = (coreId + 1) & 1`. There is **no core-index field and no peer-count field anywhere** in that encoder, verifier, or simulator: the two-core topology is *structural*. A `4`-core LNC would fail the encoder assert outright — "the other core" is only unambiguous when there are exactly two. The GPSIMD instruction itself is [1.12](gpsimd-engine.md).
 
-> **Re-challenge of the `== 2` immediate (adversarial).** The `cmpl $0x2,0x1a4(%rax)` byte at `@0x1359a67` is read directly from the GPSIMD encoder — it is the *consumer's* assertion that the arch context equals 2, not the *definition* of `N`. The definition is `PassOptions+0x1A4`, and the GPSIMD `arch+0x1A4` is the per-arch mirror of the same cores-per-LNC value (both fields are at offset `+0x1A4` of their respective context objects, and the strings/symbol evidence ties them to one notion: `lnc_size` == `cores-per-LNC` == this GPSIMD context). So the immediate `2` is **CONFIRMED** as "this cross-core op is legal only in a 2-core LNC", and the *general* claim "`N` can be other values" is true for the framework (`lnc_size` is a variable, default 1) but the *only shipped non-trivial value with a legal cross-core op is 2*. A reimplementer should treat `N` as a parameter but note that this build's cross-core instruction encoding only expresses `N = 2`.
+> **NOTE — what the `== 2` immediate does and does not say.** The `cmpl $0x2,0x1a4(%rax)` at `@0x1359a67` is the *consumer's* assertion that the arch context equals 2; it is not the definition of `N`. The definition is `PassOptions+0x1A4`, and the GPSIMD `arch+0x1A4` is the per-arch mirror of the same cores-per-LNC value (both sit at `+0x1A4` of their respective context objects). So the immediate means "this cross-core op is legal only in a 2-core LNC." `N` remains a variable with default 1, but this build's cross-core instruction encoding can only express `N = 2` — treat `N` as a parameter and that encoding as the constraint.
 
 ### Two "core" notions
 
 Do not conflate them — both matter for memory:
 
 - **Logical NeuronCore (LNC) index** `0..N-1` — the SPMD shard index the splitter stamps as the `NeuronCoreId` module attribute. This is the **compile-time** partition unit.
-- **Physical core** — the runtime rank. `birsim::NeuronCoresManager` exposes both `getNumCoresPerLNC()` and `getNumPhysicalCores()` / `getRankIdforCore(core)`. At runtime the `N` logical cores map onto physical cores. SBUF and PSUM are **per-physical-core hardware** — each physical core has its own State Buffer and PSUM banks — and the compiler's per-LNC-core private SBUF/PSUM address space lands 1:1 on that hardware. *(CONFIRMED — the `NeuronCoresManager` method set is present: `getNumCoresPerLNC`, `getNumPhysicalCores`, `getRankIdforCore`, `getSharedDRAMforRank`, `doSyncPhysicalCores`.)*
+- **Physical core** — the runtime rank. `birsim::NeuronCoresManager` exposes both `getNumCoresPerLNC()` and `getNumPhysicalCores()` / `getRankIdforCore(core)`. At runtime the `N` logical cores map onto physical cores. SBUF and PSUM are **per-physical-core hardware** — each physical core has its own State Buffer and PSUM banks — and the compiler's per-LNC-core private SBUF/PSUM address space lands 1:1 on that hardware. The `NeuronCoresManager` method set is `getNumCoresPerLNC`, `getNumPhysicalCores`, `getRankIdforCore`, `getSharedDRAMforRank`, `doSyncPhysicalCores`.
 
 "Each LNC core owns the full SBUF" is true *precisely because* each LNC core is realized on its own physical core whose SBUF is physically private.
 
@@ -135,14 +135,14 @@ a97bbd:  89 81 b8 02 00 00     mov    %eax,0x2b8(%rcx)      ; allocator+0x2b8 = 
 a97bc3:  41 83 fe 0a           cmp    $0xa,%r14d            ; ArchLevel 10 (gen1) fork — NOT an N fork
 ```
 
-The value stored at `allocator+0x2b8` is the **whole-core** `SB_SIZE`. The `cmp $0xa` immediately after is the Inferentia (gen1) byte-budget fork ([1.05](sbuf-psum-geometry.md)), **not** a per-core division. Because the allocator is constructed **per per-core Module/Function** (the post-split pre-codegen pipeline runs per core — [Part 8](../walrus/)), every core's allocator receives the full `SB_SIZE` budget. **No per-core fraction exists.** *(CONFIRMED — chain re-disassembled for this page; matches [1.05](sbuf-psum-geometry.md)'s read-chain byte-for-byte.)*
+The value stored at `allocator+0x2b8` is the **whole-core** `SB_SIZE`. The `cmp $0xa` immediately after is the Inferentia (gen1) byte-budget fork ([1.05](sbuf-psum-geometry.md)), **not** a per-core division. Because the allocator is constructed **per per-core Module/Function** (the post-split pre-codegen pipeline runs per core — [Part 8](../walrus/)), every core's allocator receives the full `SB_SIZE` budget. **No per-core fraction exists.** The chain matches [1.05](sbuf-psum-geometry.md)'s read-chain byte-for-byte.
 
 The same conclusion is reinforced two further ways:
 
-- The SBUF tile-legality assertion in `.rodata` caps partition accesses at `ArchModel.device.core.statebuf.numPartitions` — the constant **128**, the same on every core — not at `128/N`. A per-core program may therefore legally touch **all 128** partitions, which is only possible if each core owns the full partition array. *(CONFIRMED — the assert string references `statebuf.numPartitions`; the constant is 128 per [1.05](sbuf-psum-geometry.md).)*
-- `KlirToBirCodegen::getSbufMaxBytes()` `@0xf14420` and `getPsumMaxBankId()` `@0xf14430` are per-codegen-instance getters (return `codegen+0x118` and a PSUM ceiling). Codegen runs per core (per `Function`), so each core's codegen carries its **own** full SBUF byte budget and PSUM bank ceiling — no `N`-division. *(CONFIRMED — both symbols present as 2-instruction getters.)*
+- The SBUF tile-legality assertion in `.rodata` caps partition accesses at `ArchModel.device.core.statebuf.numPartitions` — the constant **128**, the same on every core — not at `128/N`. A per-core program may therefore legally touch **all 128** partitions, which is only possible if each core owns the full partition array. The assert string references `statebuf.numPartitions`, whose value is 128 per [1.05](sbuf-psum-geometry.md).
+- `KlirToBirCodegen::getSbufMaxBytes()` `@0xf14420` and `getPsumMaxBankId()` `@0xf14430` are per-codegen-instance getters (return `codegen+0x118` and a PSUM ceiling). Codegen runs per core (per `Function`), so each core's codegen carries its **own** full SBUF byte budget and PSUM bank ceiling — no `N`-division. Both are 2-instruction getters.
 
-> **Disambiguation — the other partition asserts are intra-core alignment, not slicing.** Rules like *"Sunda PSUM accesses must start at a %32 partition"*, *"CoreV1 PSUM accesses must start at partition 0"*, *"Matmult inputs must start at SB Partition 0"* pin where an **engine** may begin inside **one core's full** SBUF/PSUM. They constrain access *within* a core and are unchanged by `N`. None of them slice the memory across cores. *(CONFIRMED — strings are intra-core engine alignment rules.)*
+> **Disambiguation — the other partition asserts are intra-core alignment, not slicing.** Rules like *"Sunda PSUM accesses must start at a %32 partition"*, *"CoreV1 PSUM accesses must start at partition 0"*, *"Matmult inputs must start at SB Partition 0"* pin where an **engine** may begin inside **one core's full** SBUF/PSUM. They constrain access *within* a core and are unchanged by `N`. None of them slice the memory across cores.
 
 ### Support 2 (negative): there is no shared on-chip memory
 
@@ -155,13 +155,13 @@ $ nm -DC {libwalrus,libBIR}.so | rg -i shared | rg -i 'sbuf|statebuf|psum'
   ...AntiDependencyAnalyzer::populatePsumUseMaps(... std::shared_ptr<bir::PhysicalAccessPattern> ...)
 ```
 
-The single hit is the C++ STL token `std::shared_ptr<bir::PhysicalAccessPattern>` inside an anti-dependency *PSUM use-map* builder — a smart-pointer type, **not** a shared-PSUM concept. *(CONFIRMED — verified on both binaries this build; the lone hit is `std::shared_ptr`.)*
+The single hit is the C++ STL token `std::shared_ptr<bir::PhysicalAccessPattern>` inside an anti-dependency *PSUM use-map* builder — a smart-pointer type, **not** a shared-PSUM concept. The sweep covers both binaries for this build.
 
 > **Why a negative is sound here.** A negative ("symbol X does not exist") is weaker than a positive in general, but it is sound when (a) the *positive* counterpart for the other memory class **does** exist and is found (every `getSharedDRAMforRank` / `isSharedPostDRAMAlloc` symbol is present), and (b) the search is exhaustive over the naming space. Both hold: shared **DRAM** has a full, discoverable symbol family; shared **SBUF/PSUM** has none, across two independently-compiled binaries. The asymmetry is the evidence — the developers built cross-core sharing for exactly one memory class and named it after that class.
 
 ### Why "replicated" is the right word
 
-Each core reads the **same** full `Core` geometry, allocates **independently** into its own full address space, and cannot reach any other core's on-chip memory. The replication is in the **data**, not the hardware: the logical tensor is grown into per-replica copies *before* the split (on the one symbolic module), so after the split each core's full-SBUF program operates on its **own slice** of that replicated data within its **own full** State Buffer. The SBUF hardware is never sub-partitioned. *(STRONG — the "binding selects this core's shard within its full SBUF" reading is a join of the per-core full-partition ceiling (CONFIRMED above) with the splitter's shard-id binding ([Part 8](../walrus/)); the exact grown-buffer byte layout is an `expand_replication` detail and is INFERRED — see [Part 8](../walrus/).)*
+Each core reads the **same** full `Core` geometry, allocates **independently** into its own full address space, and cannot reach any other core's on-chip memory. The replication is in the **data**, not the hardware: the logical tensor is grown into per-replica copies *before* the split (on the one symbolic module), so after the split each core's full-SBUF program operates on its **own slice** of that replicated data within its **own full** State Buffer. The SBUF hardware is never sub-partitioned. The "binding selects this core's shard within its full SBUF" reading joins the per-core full-partition ceiling established above with the splitter's shard-id binding ([Part 8](../walrus/)); the exact grown-buffer byte layout is an `expand_replication` detail and is **INFERRED** — see [Part 8](../walrus/).
 
 ---
 
@@ -171,9 +171,9 @@ Each core reads the **same** full `Core` geometry, allocates **independently** i
 
 DRAM is the only memory with cross-core structure, and it has three tiers:
 
-- **(i) Per-core private DRAM** — each core's own spills and intermediates, allocated bottom-up into that core's own HBM window. Not visible to other cores. PARTITIONED. *(CONFIRMED.)*
-- **(ii) Shared cross-core DRAM** — one region every core addresses at the **same** physical address, marked by `bir::MemoryLocation::setIsSharedPostDRAMAlloc(true)`. SHARED. *(CONFIRMED — the marker symbol is present; it is the single source of truth for "this loc is one physical buffer for all `N` cores".)*
-- **(iii) Input/output/weight DRAM** — pre-addressed host-tensor bindings, kept in place (whole-program, not per-core). *(CONFIRMED — separate from the per-core split.)*
+- **(i) Per-core private DRAM** — each core's own spills and intermediates, allocated bottom-up into that core's own HBM window. Not visible to other cores. PARTITIONED.
+- **(ii) Shared cross-core DRAM** — one region every core addresses at the **same** physical address, marked by `bir::MemoryLocation::setIsSharedPostDRAMAlloc(true)`. SHARED — that marker is the single source of truth for "this loc is one physical buffer for all `N` cores".
+- **(iii) Input/output/weight DRAM** — pre-addressed host-tensor bindings, kept in place (whole-program, not per-core), separate from the per-core split.
 
 ### The per-core HBM window is the budget ceiling
 
@@ -197,11 +197,11 @@ a7a867:  49 63 97 04 02 00 00  movslq 0x204(%r15),%rdx       ; CC/allreduce buff
 a7a87c:  48 c1 e2 14           shl    $0x14,%rdx             ; << 20 → bytes
 ```
 
-*(CONFIRMED — `HBMUsage` and `select_impl` re-disassembled for this page; both match [1.06](dram-hbm-geometry.md).)*
+Both match [1.06](dram-hbm-geometry.md).
 
 ### Address equalization (the shared region)
 
-The shared region is the one place where two cores must agree on a physical address. That agreement is reached at **compile time**, before the linker runs: each core records, for a buffer it shares, a `RemoteLocalTarget {remote_name, coreIdx}`, and a sync pass copies the owning core's physical `{address, basePartition, bankId}` into every peer core's view of the buffer — so every core's copy of a shared DRAM tensor resolves to **one identical physical address**. The dual path places a shared tensor **once** (on the owning core) and gives other cores a remote pointer instead of a second allocation — the recovered log line *"Skipping shared tensor allocations on core 1, marking as remoteLocalTarget instead"* and *"…based on its remote local target"* are present in the binary. *(CONFIRMED — both strings verified this page; the `RemoteLocalTarget` and `setIsSharedPostDRAMAlloc` symbols are present.)*
+The shared region is the one place where two cores must agree on a physical address. That agreement is reached at **compile time**, before the linker runs: each core records, for a buffer it shares, a `RemoteLocalTarget {remote_name, coreIdx}`, and a sync pass copies the owning core's physical `{address, basePartition, bankId}` into every peer core's view of the buffer — so every core's copy of a shared DRAM tensor resolves to **one identical physical address**. The dual path places a shared tensor **once** (on the owning core) and gives other cores a remote pointer instead of a second allocation — the recovered log line *"Skipping shared tensor allocations on core 1, marking as remoteLocalTarget instead"* and *"…based on its remote local target"* are present in the binary, alongside the `RemoteLocalTarget` and `setIsSharedPostDRAMAlloc` symbols.
 
 The linker (Part 8) then unifies the per-core **names** for the shared region into one module-level `MemoryLocation` and adds producer↔consumer alias edges; it never re-allocates or merges SBUF/PSUM. **This page does not re-document those mechanisms** — the splitter, the per-core allocators, `sync_shared_allocations`, `bir_linker`, and the VNC cross-core link all live in [Part 8](../walrus/). The model fact is: **`N` private HBM windows + one address-equalized shared region.**
 
@@ -222,11 +222,11 @@ When core *J* needs core *K*'s data, the bridge is **always** DRAM. SBUF and PSU
 110b860:  e8 ..  call  birsim::NeuronCoresManager::getSharedMemLoc2MemObjMapforRank(unsigned long)
 ```
 
-*(CONFIRMED — the `isLNC → getSharedDRAMforRank → getSharedMemLoc2MemObjMapforRank` sequence re-disassembled this page; there is no analogous `getSharedSBUFforRank`.)*
+There is no analogous `getSharedSBUFforRank`.
 
 ### The one on-chip exception that is not a counterexample
 
-There is exactly one machine instruction that copies on-chip memory **between** cores without going through DRAM: the GPSIMD State-Buffer→State-Buffer copy, `InstGPSIMDSB2SB` ([1.12](gpsimd-engine.md)). It is **not** a shared address space — it is a **peer-to-peer point copy**: one bundle reads a tile from this core's SBUF and writes the peer core's SBUF, addressing the peer by a *single scalar SB partition address* plus a one-bit "go cross-core" enable, with **no shared mapping and no core index**. The instruction is gated on `arch+0x1A4 == 2` (the cores-per-LNC == 2 hard-coding above) and is a narrow small-transfer fast path; anything larger or shape-incompatible falls back to DMA, and reductions/all-reduce are built from DMA + barriers. It moves data; it does not make any SBUF address visible to another core's allocator or program. The model — "on-chip memory is private; cross-core data exchange is through DRAM" — stands; `InstGPSIMDSB2SB` is a copy *between* two private SBUFs, not a window *into* a peer's SBUF. *(CONFIRMED — the instruction's cross-core addressing has no shared mapping; see [1.12](gpsimd-engine.md).)*
+There is exactly one machine instruction that copies on-chip memory **between** cores without going through DRAM: the GPSIMD State-Buffer→State-Buffer copy, `InstGPSIMDSB2SB` ([1.12](gpsimd-engine.md)). It is **not** a shared address space — it is a **peer-to-peer point copy**: one bundle reads a tile from this core's SBUF and writes the peer core's SBUF, addressing the peer by a *single scalar SB partition address* plus a one-bit "go cross-core" enable, with **no shared mapping and no core index**. The instruction is gated on `arch+0x1A4 == 2` (the cores-per-LNC == 2 hard-coding above) and is a narrow small-transfer fast path; anything larger or shape-incompatible falls back to DMA, and reductions/all-reduce are built from DMA + barriers. It moves data; it does not make any SBUF address visible to another core's allocator or program. The model — "on-chip memory is private; cross-core data exchange is through DRAM" — stands; `InstGPSIMDSB2SB` is a copy *between* two private SBUFs, not a window *into* a peer's SBUF. See [1.12](gpsimd-engine.md).
 
 ---
 
@@ -244,22 +244,22 @@ The whole-program tiers (I/O/weight DRAM, the collective-compute buffer) sit out
 
 ---
 
-## Confidence ledger
+## Evidence ledger
 
 | Claim | Tag | Basis (this page) |
 |---|---|---|
-| SBUF allocator reads full `SB_SIZE`, no `/N` | CONFIRMED | `SB_Allocator` ctor `@0xa97b82`–`@0xa97bc3` re-disassembled |
-| No `sharedSBUF`/`sharedPSUM` symbol or string | CONFIRMED | exhaustive `nm`/`strings` sweep of `libwalrus.so` + `libBIR.so` (lone hit = `std::shared_ptr`) |
-| Per-core HBM window = `Core+0x30 << 30`, no `×N` | CONFIRMED | `HBMUsage::run` `@0x16ba31f` re-disassembled |
-| Per-core DRAM slab/CC caps are per-instance | CONFIRMED | `select_impl` `@0xa7a860` (`this+0x1e8`/`+0x204 << 20`) |
-| `N` read from `PassOptions+0x1A4` | CONFIRMED | `CoreForkPass` `@0x173e2dd` (`mov 0x1a4(%rax),%esi`) |
-| GPSIMD cross-core op gated on `arch+0x1A4 == 2` | CONFIRMED | encoder `@0x1359a67`/`@0x1359da1` (`cmpl $0x2,0x1a4(%rax)`) |
-| Runtime cross-core mapping is DRAM-only | CONFIRMED | `runPhysicalCore` `@0x110b82c`–`@0x110b860` (no per-rank SBUF/PSUM fetch) |
-| Shared-DRAM machinery present (`isSharedPostDRAMAlloc`, `getSharedDRAMforRank`, `RemoteLocalTarget`) | CONFIRMED | symbols + `mark_remote` strings verified |
-| `NeuronCoresManager` method set (logical/physical core mapping) | CONFIRMED | `getNumCoresPerLNC`/`getNumPhysicalCores`/`getRankIdforCore` present |
-| Front-end `logical_nc_config == backend lnc_size` is one `N` | STRONG | three-layer plumbing; CLI→`+0x1A4` not traced through one symbol here |
-| Each core's bound access selects its shard within its full SBUF | STRONG | join of full-partition ceiling (CONFIRMED) + shard-id binding ([Part 8](../walrus/)) |
-| Exact grown replicated-buffer byte layout | INFERRED | `expand_replication` detail; [Part 8](../walrus/) |
+| SBUF allocator reads full `SB_SIZE`, no `/N` | CERTAIN | `SB_Allocator` ctor `@0xa97b82`–`@0xa97bc3` re-disassembled |
+| No `sharedSBUF`/`sharedPSUM` symbol or string | CERTAIN | exhaustive `nm`/`strings` sweep of `libwalrus.so` + `libBIR.so` (lone hit = `std::shared_ptr`) |
+| Per-core HBM window = `Core+0x30 << 30`, no `×N` | CERTAIN | `HBMUsage::run` `@0x16ba31f` re-disassembled |
+| Per-core DRAM slab/CC caps are per-instance | CERTAIN | `select_impl` `@0xa7a860` (`this+0x1e8`/`+0x204 << 20`) |
+| `N` read from `PassOptions+0x1A4` | CERTAIN | `CoreForkPass` `@0x173e2dd` (`mov 0x1a4(%rax),%esi`) |
+| GPSIMD cross-core op gated on `arch+0x1A4 == 2` | CERTAIN | encoder `@0x1359a67`/`@0x1359da1` (`cmpl $0x2,0x1a4(%rax)`) |
+| Runtime cross-core mapping is DRAM-only | CERTAIN | `runPhysicalCore` `@0x110b82c`–`@0x110b860` (no per-rank SBUF/PSUM fetch) |
+| Shared-DRAM machinery present (`isSharedPostDRAMAlloc`, `getSharedDRAMforRank`, `RemoteLocalTarget`) | CERTAIN | symbols + `mark_remote` strings verified |
+| `NeuronCoresManager` method set (logical/physical core mapping) | CERTAIN | `getNumCoresPerLNC`/`getNumPhysicalCores`/`getRankIdforCore` present |
+| Front-end `logical_nc_config == backend lnc_size` is one `N` | HIGH | three-layer plumbing; CLI→`+0x1A4` not traced through one symbol here |
+| Each core's bound access selects its shard within its full SBUF | HIGH | join of the full-partition ceiling above + shard-id binding ([Part 8](../walrus/)) |
+| Exact grown replicated-buffer byte layout | MEDIUM | `expand_replication` detail; [Part 8](../walrus/) |
 
 ---
 
