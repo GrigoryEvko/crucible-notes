@@ -13,7 +13,8 @@ headers (`aws-neuronx-gpsimd-customop-lib_0.21.2.0`), the per-arch
 `instruction_mapping.json`, the host ucode decoder `libnrtucode_internal.so`,
 and the committed sibling pages cited inline. The struct layout below is
 **compile-verified** (`gcc` `sizeof`/`offsetof` against the real shipped
-headers) on **all four** arch variants.
+headers) on **all four** arch variants. The page default is `[HIGH / OBSERVED]`;
+claims that depart from it carry an explicit tag.
 
 > **TL;DR.** `0xD8` is a 64-byte **pseudo** instruction whose doc comment is
 > verbatim *"Neuron ISA / TPB / vnc barrier — Pseudo instruction that translates
@@ -54,7 +55,7 @@ typedef struct NEURON_ISA_TPB_PSEUDO_CORE_BARRIER_STRUCT {
 | 20 | 44 | `reserved1` | `uint8_t[44]` | padding to 64 B; emit `0`, ignore on decode. | HIGH / OBSERVED |
 | **64** | | | | one TPB instruction word. | HIGH / OBSERVED |
 
-Compile-verified this session (`gcc`, real shipped header `#include`d):
+Compile-verified (`gcc`, real shipped header `#include`d):
 
 ```
 NEURON_ISA_TPB_HEADER                        sizeof=4
@@ -68,26 +69,28 @@ NEURON_ISA_TPB_PSEUDO_CORE_BARRIER_STRUCT    sizeof=64
 `NEURON_ISA_PACKED = __attribute__((__packed__))`
 (`aws_neuron_isa_tpb_common.h:8`, `:305`) so it occupies exactly **1 byte**
 (`sizeof(NEURON_ISA_TPB_OPCODE)==1`, verified). That is what makes the 4-byte
-header (and the byte positions above) exact. **[HIGH / OBSERVED]**
+header (and the byte positions above) exact.
 
 ### 1.1. The four arch copies — what actually differs
 
 A diff of the `pseudo_core_barrier.h` file across the four arch packages found
-**exactly one** differing line — the version tag in the copyright comment:
+**exactly one** differing line — the version tag in the copyright comment. Every
+row below is compile-OBSERVED:
 
-| arch dir | NC version (header L3) | CORE struct | tag |
-|---|---|---|---|
-| `neuron_sunda_arch_isa` | `ISA header for NC-v2` | `sizeof=64, id@12, sem@16, op=0xd8` | HIGH / OBSERVED (compile) |
-| `neuron_cayman_arch_isa` | `ISA header for NC-v3` | `sizeof=64, id@12, sem@16, op=0xd8` | HIGH / OBSERVED (compile) |
-| `neuron_mariana_arch_isa` | `ISA header for NC-v4` | `sizeof=64, id@12, sem@16, op=0xd8` | HIGH / OBSERVED (compile) |
-| `neuron_maverick_arch_isa` | `ISA header for NC-v5` | `sizeof=64, id@12, sem@16, op=0xd8` | HIGH / OBSERVED (compile) |
+| arch dir | NC version (header L3) | CORE struct |
+|---|---|---|
+| `neuron_sunda_arch_isa` | `ISA header for NC-v2` | `sizeof=64, id@12, sem@16, op=0xd8` |
+| `neuron_cayman_arch_isa` | `ISA header for NC-v3` | `sizeof=64, id@12, sem@16, op=0xd8` |
+| `neuron_mariana_arch_isa` | `ISA header for NC-v4` | `sizeof=64, id@12, sem@16, op=0xd8` |
+| `neuron_maverick_arch_isa` | `ISA header for NC-v5` | `sizeof=64, id@12, sem@16, op=0xd8` |
 
 The struct body, every field offset, the opcode constant, and the doc comment
 (*"used to sync pcores within a VNC"*) are byte-identical across all four; only
 the `NC-vN` tag changes. CAYMAN = **NC-v3**.
 
-> **CORRECTION (vs. an earlier survey note that flagged MAVERICK/v5 interiors as
-> header-OBSERVED-only).** For *this* struct the maverick (v5) header compiles to
+> **CORRECTION — for this struct MAVERICK/v5 is compile-OBSERVED, not merely
+> header-observed.** The book's general v5 caveat flags MAVERICK interiors as
+> header-OBSERVED-only. For *this* struct the maverick (v5) header compiles to
 > the identical 64-byte / `id@12` / `sem@16` layout as v2–v4 — it is
 > **compile-OBSERVED**, not merely header-observed. The byte-grounded claim holds
 > on all four ISA generations. (Other maverick-only structs may still warrant the
@@ -126,7 +129,7 @@ all four arch JSONs):
 `0xD8` is in `is_valid_enum_opcode` (`aws_neuron_isa_tpb_enums.h:328`). Like
 [TriggerCollective `0xC8`](trigger-collective.md) and the rank-id pseudo-op,
 `0xD8` is **validated and lowered by the runtime, not by the static ISA assert
-layer**. **[HIGH / OBSERVED]**
+layer**.
 
 ### 1.4. Example 64-byte image (layout-illustrative)
 
@@ -182,7 +185,7 @@ typedef struct NEURON_ISA_TPB_EVENTS {
 
 `sizeof(NEURON_ISA_TPB_WAIT_MODE)==1` and `sizeof(NEURON_ISA_TPB_UPDATE_MODE)==1`
 (both packed, verified) — so the 4 single-byte mode/idx fields pack tightly
-before the u32. **[HIGH / OBSERVED]**
+before the u32.
 
 The 8-bit `wait_idx`/`update_idx` (0..255) index **exactly** the 256-entry
 `EVT_SEM` semaphore array (`2^8 = 256`, §5). The u32 `semaphore_value` matches
@@ -229,7 +232,7 @@ single shared HW semaphore. The relevant enum values are all OBSERVED, packed
 
 The `_READ` vs `_COMPLETE` suffix selects whether the update fires after the
 instruction's reads are done versus when the instruction fully completes
-(common.h `UpdateMode` comment). **[HIGH / OBSERVED]**
+(common.h `UpdateMode` comment).
 
 The counted barrier built from these is:
 
@@ -417,7 +420,7 @@ MED.]**
 
 All three are 64-byte **pseudo**-ops carrying the common header + the 8-byte
 `events` block; they differ in barrier-specific payload and scope. Field
-inventories compile-verified this session (all `sizeof==64`):
+inventories are compile-verified (all `sizeof==64`):
 
 | opcode | pseudo-op | barrier-specific fields | scope (verbatim doc comment) |
 |---|---|---|---|
@@ -426,7 +429,7 @@ inventories compile-verified this session (all `sizeof==64`):
 | `0xC3` | `PSEUDO_DMABARRIER` | `barrier_metadata` u32 @12 + `reserved0[48]` @16 | *"DmaBarrier assures that writes to SBUF are completed ... replaced by Nop(NUM_ROWS), by KRT"* — **DMA-ORDERING** (SBUF staggered-write fence) |
 
 Compile-verified offsets: SYNC `events@4` then `reserved0@12 size=52`; DMA
-`barrier_metadata@12 size=4` then `reserved0@16 size=48`. **[HIGH / OBSERVED]**
+`barrier_metadata@12 size=4` then `reserved0@16 size=48`.
 
 The boundaries, from the verbatim doc comments:
 
@@ -463,7 +466,7 @@ One-line taxonomy:
 > does). The struct/util.h member also use the underscored `pseudo_dma_barrier`.
 > This cosmetic mismatch affects the **DMA barrier only** — CORE_BARRIER and
 > SYNC_BARRIER's mapping tokens match their enum names exactly. See
-> [dma-barrier.md](dma-barrier.md). **[OBSERVED HIGH — grepped both spellings.]**
+> [dma-barrier.md](dma-barrier.md).
 
 See [collective-enums.md](collective-enums.md) for the full pseudo-op opcode map.
 
@@ -515,11 +518,11 @@ firmware's `add_semaphore_inc` (ucode `0x10A0` subop `21`) writes the
 (`+0x1000`) for `>= target` then writes `SEMAPHORE_DEC` (`+0x1C00`) (wait+reset).
 The TOP_SP `POLL_SEM` (`0xb3`) is the per-iteration poll accelerator. **These**
 are the handlers the lowered CORE_BARRIER runs through. **[the no-`0xD8`-handler
-sweep is OBSERVED HIGH (nm/strings/rg this session); that the lowering uses the
-EVT_SEM ucode ops is INFERRED MED.]**
+sweep is OBSERVED HIGH (nm/strings/rg); that the lowering uses the EVT_SEM ucode
+ops is INFERRED MED.]**
 
 > **NOTE — section-offset deltas on this binary.**
-> `libnrtucode_internal.so` section layout this session:
+> `libnrtucode_internal.so` section layout:
 > `.rodata` VMA `0x46b0` == file `0x46b0` (no delta); but `.data` VMA `0x9ba4a8`
 > vs file `0x9b74a8` (**delta `0x3000`**) and `.text` VMA `0x9b01a0` vs file
 > `0x9af1a0` (delta `0x1000`). Confirm per-section with `readelf -SW` before any

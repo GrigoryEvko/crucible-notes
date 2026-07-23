@@ -26,8 +26,9 @@ C ISA headers of `aws-neuronx-gpsimd-customop-lib 0.21.2.0` (arch
 the cayman register-schema JSON (`tpb_events_semaphores_axi.json`), the
 `instruction_mapping.json` struct→opcode table, and the device microcode
 `libnrtucode_internal.so`. All are binary-derived artifacts of the package and
-are cited directly. Struct layouts were re-checked with a self-contained `gcc`
-probe printing `sizeof`/`offsetof` for every field.
+are cited directly. Struct layouts are checked with a self-contained `gcc`
+probe printing `sizeof`/`offsetof` for every field. The page default is
+`[HIGH / OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — pseudo-op, never executed as-is.** `0xD5` lives in the pseudo range
 > `0xC0..0xDF`. The OPCODE enum states the rule verbatim at
@@ -37,7 +38,7 @@ probe printing `sizeof`/`offsetof` for every field.
 > instructions by NRT."* `0xD5 = 0b110_10101` ✓. The device-side GPSIMD
 > microcode (`libnrtucode_internal.so`) has **no** decoder string for any
 > barrier — it decodes the *lowered* legs (`Event_Semaphore`, `POLL_SEM`),
-> confirming the rewrite happens host-side. *(HIGH / OBSERVED.)*
+> confirming the rewrite happens host-side.
 
 ---
 
@@ -64,10 +65,10 @@ typedef struct NEURON_ISA_TPB_PSEUDO_SYNC_BARRIER_STRUCT {
 | 12 | 52 | `reserved0` | `uint8_t[52]` | padding to 64 B; **no `id`, no `semaphore`, no metadata** |
 | **64** | | **total** | | one 64-B TPB instruction word |
 
-Probe output (independently reproduced): `sizeof == 64`, `off events == 4`,
+Probe output: `sizeof == 64`, `off events == 4`,
 `off reserved0 == 12`. The `NEURON_ISA_TPB_OPCODE` enum is `NEURON_ISA_PACKED`
 (1 byte; probe `sizeof(NEURON_ISA_TPB_OPCODE) == 1`), so `header.opcode` occupies
-exactly byte 0. *(HIGH / OBSERVED.)*
+exactly byte 0.
 
 The **decisive structural fact**: `SYNC_BARRIER` carries the common header + the
 inline `events` block **and nothing else**. There is no barrier identifier, no
@@ -82,7 +83,6 @@ word. This events-only shape is the encoding fingerprint of the binary-flag
 > (`:12654`) markers are likewise empty. Contrast `ctrl_es.h:55` (the lowering
 > target), which carries a full `ISA_STATIC_ASSERT` *and* an `is_valid_ctrl_es`
 > predicate. Barriers are **runtime-validated, not statically asserted**.
-> *(HIGH / OBSERVED.)*
 
 ### 1.1 · Binding (mapping + union)
 
@@ -96,7 +96,7 @@ word. This events-only shape is the encoding fingerprint of the binary-flag
 - `aws_neuron_isa_tpb_enums.h:325`: member of `is_valid_enum_opcode` (a valid
   TPB opcode). It is **not** a member of `is_valid_enum_pseudo_opcode`
   (`enums.h:352-356`), which is the unrelated tiny set
-  `{INVALID, PSEUDO_EXIT_EXECUTION, PSEUDO_LIBRARY_RELOAD_INDEX}`. *(HIGH / OBSERVED.)*
+  `{INVALID, PSEUDO_EXIT_EXECUTION, PSEUDO_LIBRARY_RELOAD_INDEX}`.
 
 > **CORRECTION — `SYNC` is clean; the naming anomaly is `DMA`'s alone.** The DMA
 > sibling's enum constant is `NEURON_ISA_TPB_OPCODE_PSEUDO_DMABARRIER` (no
@@ -106,7 +106,7 @@ word. This events-only shape is the encoding fingerprint of the binary-flag
 > mapping). `SYNC_BARRIER` has no such mismatch: `OPCODE_PSEUDO_SYNC_BARRIER`
 > resolves in **both** files (`rg -c` → 1, 1). When wiring a decoder, key
 > `0xD5`/`0xD8` off the enum value, not the mapping string; for `0xC3` the
-> mapping string is a dangling reference. *(HIGH / OBSERVED.)*
+> mapping string is a dangling reference.
 
 ### 1.2 · Cross-arch invariance
 
@@ -115,7 +115,6 @@ The struct body is **byte-identical** on cayman / mariana / maverick / sunda —
 banner) is empty; only the `ISA header for NC-vN` comment line differs
 (mariana = NC-v4, maverick = NC-v5, sunda = NC-v2, cayman = NC-v3). Opcode `0xD5`,
 the mapping binding, and the union member are identical on all four.
-*(HIGH / OBSERVED for the four ISA-header families.)*
 
 > **NOTE — v5/MAVERICK interiors are inferred.** The ISA struct exists for
 > maverick, but maverick ships a **different** register-schema format: there is
@@ -149,7 +148,7 @@ TPB instruction that can synchronize — the barriers, `EVENT_SEMAPHORE`
 (`ctrl_es.h:48`), `POLL_SEM` (`ctrl_poll_sem.h:45`),
 [`TriggerCollective`](trigger-collective.md). What distinguishes `SYNC_BARRIER`
 from `CORE_BARRIER` is **which mode family** the lowered block selects
-(event vs semaphore), not the field types. *(HIGH / OBSERVED.)*
+(event vs semaphore), not the field types.
 
 ---
 
@@ -197,7 +196,7 @@ the two HW window families below.)*
 
 One physical block holds **both** primitives. From
 `cayman-arch-regs/csrs/tpb/tpb_events_semaphores_axi.json`
-(`RegFile.RegistersBundleArrays`, `AddrWidth 20` / `DataWidth 32`), re-verified
+(`RegFile.RegistersBundleArrays`, `AddrWidth 20` / `DataWidth 32`), verified
 byte-identical in the sunda (`v2`) copy:
 
 | window | offset | array | stride | access | inner-reg desc |
@@ -303,8 +302,7 @@ instruction-name printer table (the `"S: …"` strings) contains
 `"S: Event_Semaphore\n"`, `"S: Event_Semaphore Rng Clr\n"`, `"S: POLL_SEM\n"`,
 `"S: EngineNop\n"`, `"S: NOP\n"`, `"S: SB2SB_Collective\n"` — but **no**
 `SyncBarrier`/`CoreBarrier`/`DmaBarrier` string. The interpreter logs
-`"S: Dispatch opcode=0x%x\n"` and decodes only the lowered legs. *(HIGH /
-OBSERVED — exhaustive `rg` + the binary string table.)*
+`"S: Dispatch opcode=0x%x\n"` and decodes only the lowered legs.
 
 **(c) The lowering target is `EVENT_SEMAPHORE` (`0xA0`).** Its op struct is
 `CTRL_ES` (`ctrl_es.h`), bound `CTRL_ES_STRUCT → OPCODE_EVENT_SEMAPHORE`
@@ -348,7 +346,7 @@ list is not in the shipped headers, lives in NRT/KRT.)*
 > + `event_idx`, validity-checked, 64 B) and an `EventSet` op
 > (`aws_tonga_isa_tpb_event_set.h`: *"sets a local TPB event"*). The modern
 > `EVENT_SEMAPHORE` (`0xA0`) **generalizes** both into one wait+set nop carrying
-> the events block — which is exactly why `SYNC` lowers onto it. *(HIGH / OBSERVED.)*
+> the events block — which is exactly why `SYNC` lowers onto it.
 
 So the "device handler" for `SYNC_BARRIER` is the `EVENT_SEMAPHORE` (`0xA0`) /
 `POLL_SEM` (`0xB3`) HW path over the `tpb_events` array @`0x0` — there is **no
@@ -386,8 +384,7 @@ prints the delta). **`SYNC_BARRIER` is exactly `CORE_BARRIER` with the
 `{id, semaphore}` u32 pair removed and folded into the reserved padding** — same
 header, same `events` block, at the same offsets. The removed pair is the
 counted-semaphore handle that `SYNC` does not need: it counts nothing, it sets
-and polls per-engine event flags. *(HIGH / OBSERVED — both headers read,
-compile-verified.)*
+and polls per-engine event flags.
 
 ### 6.2 · The `DMA` barrier is orthogonal
 
@@ -398,7 +395,7 @@ explains: TPB SBUF reads/writes are **staggered** across partitions, so a
 partition before partition 0 and break the staggering. `DmaBarrier` before a
 `DmaTrigger` prevents that race. KRT lowers it to `Nop(NUM_ROWS)` — **not** to
 `EVENT_SEMAPHORE`. (The two NOP opcodes are `ENGINE_NOP = 0x9f` (`common.h:238`)
-and `NOP = 0xa4` (`common.h:244`).) *(HIGH / OBSERVED.)*
+and `NOP = 0xa4` (`common.h:244`).)
 
 ### 6.3 · The scope ladder
 

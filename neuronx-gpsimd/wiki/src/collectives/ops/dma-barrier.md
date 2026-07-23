@@ -18,11 +18,11 @@ different things.
 against a following DMA read. It is the *only* member of the three that is a
 single-actor memory fence with no rendezvous and no event/semaphore traffic at all.
 
-All claims are tagged `[CONFIDENCE × PROVENANCE]`: `HIGH/MED/LOW` ×
-`OBSERVED` (read directly from a header / JSON / binary), `INFERRED`, or `CARRIED`
-(established on a sibling page). v2–v4 struct facts are byte-grounded; v5/MAVERICK
-is header-observed; the TONGA (v1) copy is tagged as **legacy-lineage** evidence
-wherever it is the source.
+The page default is `[HIGH/OBSERVED]`; claims that depart from it carry an explicit
+`[CONFIDENCE × PROVENANCE]` tag — `HIGH/MED/LOW` × `OBSERVED` (read directly from a
+header / JSON / binary), `INFERRED`, or `CARRIED` (established on a sibling page).
+v2–v4 struct facts are byte-grounded; v5/MAVERICK is header-observed; the TONGA (v1)
+copy is tagged as **legacy-lineage** evidence wherever it is the source.
 
 > **Provenance.** ISA headers + `instruction_mapping.json` from
 > `aws-neuronx-gpsimd-customop-lib 0.21.2.0` — the **Cayman = NC-v3** tree, with the
@@ -97,16 +97,13 @@ Compile-verified (`gcc`, real header `#include`d; `sizeof`/`offsetof`):
 | 16  | 48   | `reserved0[48]`    | `uint8_t[48]`           | padding to 64 B; treat as `0` |
 | **64** | | **total** | | one 64-B TPB instruction word |
 
-`[HIGH/OBSERVED — compile-verified: sizeof==64, header@0, events@4,`
-`barrier_metadata@12, reserved0@16; HEADER==4, EVENTS==8.]`
-
 **INST_UNION binding** (`aws_neuron_isa_tpb_util.h:40`):
-`NEURON_ISA_TPB_PSEUDO_DMA_BARRIER_STRUCT pseudo_dma_barrier;`  `[HIGH/OBSERVED]`
+`NEURON_ISA_TPB_PSEUDO_DMA_BARRIER_STRUCT pseudo_dma_barrier;`
 
 **Mapping JSON** (`instruction_mapping.json:108-109`):
 `"NEURON_ISA_TPB_PSEUDO_DMA_BARRIER_STRUCT" → ["NEURON_ISA_TPB_OPCODE_PSEUDO_DMA_BARRIER"]`
 — note the **with-underscore** opcode token; that token is the dangling reference of
-§6. `[HIGH/OBSERVED]`
+§6.
 
 **Classifier membership.** `0xC3` is a member of `is_pseudo_op`
 (`aws_neuron_isa_tpb_instr_assert.h:594`, clause at `:597` — sitting in the DMA-pseudo
@@ -116,7 +113,7 @@ and of `is_control_instruction` (`:1143`, clause at `:1159`). It is in
 *valid TPB opcode* — and is **not** a member of the unrelated tiny
 `is_valid_enum_pseudo_opcode` set `{INVALID, PSEUDO_EXIT_EXECUTION,
 PSEUDO_LIBRARY_RELOAD_INDEX}` (`:352-355`). All references use the **no-underscore**
-spelling. `[HIGH/OBSERVED]`
+spelling.
 
 > **GOTCHA — no static validator body.** `aws_neuron_isa_tpb_assert.h:12654` carries
 > only the empty section marker `//* pseudo_dma_barrier_assert.h`, immediately
@@ -126,7 +123,6 @@ spelling. `[HIGH/OBSERVED]`
 > The pseudo-op is validated and lowered by the runtime, not by the static assert
 > layer. Do not look for a field-range checker in the headers — there isn't one.
 > (The legacy TONGA header *did* ship one; the modern ISA dropped it, §6.)
-> `[HIGH/OBSERVED]`
 
 > **QUIRK — byte-identical across arches.** Diffing the four modern copies, the
 > struct body is identical on Cayman (v3) / Mariana (v4) / Maverick (v5) / Sunda
@@ -183,7 +179,6 @@ uint32_t barrier_metadata; /* barrier metadata (implementation hint to runtime) 
 So `barrier_metadata` is an **opaque implementation hint** consumed by KRT during
 lowering. The field type/width (a bare `u32`), the TONGA annotation, and the absence
 of any mask/count semantics in either header together make it decisively **NOT**:
-`[HIGH/OBSERVED]`
 
 - **Not** a DMA-queue bitmask. There is no queue enumeration; the DMA queue is named
   by the *separate* `DmaTrigger`'s `int8_t dma_queue_name[32]`
@@ -232,7 +227,7 @@ A **DMA does not honor the staggering.** A DMA engine reading the SBUF can read 
 *high* partition **before** partition 0. So a DMA launched right after a `WR_DONE`
 could read partition *k* before the producer's staggered write reached *k* — a
 producer-vs-DMA-consumer **data race**: the DMA captures stale data in the
-not-yet-drained high partitions. `[OBSERVED HIGH.]`
+not-yet-drained high partitions.
 
 ### The fence and its realisation
 
@@ -334,7 +329,7 @@ finding for a pseudo-op, exactly mirroring [`CORE` `0xD8`](core-barrier.md) and
    `instruction_mapping.json`. A `strings | rg -c` over the runtime ucode binaries
    `libnrtucode.so`, `libnrtucode_internal.so`, and `libnrtucode.a` returns **0 hits
    each**; an `rg -l` over all of `extracted/` finds **zero** non-`.h`/non-`.json`
-   occurrences. `[HIGH/OBSERVED — exhaustive rg / strings over extracted/.]`
+   occurrences.
 3. The actual device-side execution is a plain `NOP` idling the engine for
    `cycle_cnt` cycles (§4) — no semaphore/event traffic, no DMA-ring interaction. The
    "device handler" for `DMABARRIER` *is* the engine's NOP timed-stall path, nothing
@@ -350,14 +345,13 @@ event-semaphore array.
 
 ## 6 · CORRECTION — the `DMABARRIER`-vs-`DMA_BARRIER` token mismatch, resolved
 
-> **CORRECTION.** An early pass flagged a `DMABARRIER`/`DMA_BARRIER` *naming
-> inconsistency* and left open whether two opcodes or a struct/opcode confusion was
-> involved. **Resolved: it is one opcode (`0xC3`, value 195).** The
+> **CORRECTION.** The `DMABARRIER`/`DMA_BARRIER` *naming inconsistency* reads at
+> first like two opcodes, or like a struct/opcode confusion. **It is neither: it is
+> one opcode (`0xC3`, value 195).** The
 > `instruction_mapping.json` opcode token `…OPCODE_PSEUDO_DMA_BARRIER` (with
 > underscore) is a **dangling reference** — a stale TONGA-era underscore token left
 > behind by the TONGA→Neuron *no-underscore* rename of the DMA-pseudo family. No
-> current Neuron enum constant resolves it. `[HIGH/OBSERVED — grepped both directions;`
-> `lineage OBSERVED in the TONGA copy.]`
+> current Neuron enum constant resolves it.
 
 Byte-exact inventory of every spelling:
 
@@ -382,22 +376,21 @@ Two consistent spelling clusters, one stray token:
   `OPCODE_PSEUDO_DMABARRIER (= 0xc3)`. This matches the entire modern DMA-pseudo
   cluster's convention — `DMATRIGGER:263 / DMAREARM:264 / DMABARRIER:265 /
   DMAMEMCPY_FULL_IND:266` are *all* collapsed to no-underscore — and every static
-  classifier uses that form. `[HIGH/OBSERVED]`
+  classifier uses that form.
 - The **struct / union-member / mapping-key** use the **with-underscore**
-  `PSEUDO_DMA_BARRIER` form; these three are internally consistent. `[HIGH/OBSERVED]`
+  `PSEUDO_DMA_BARRIER` form; these three are internally consistent.
 - The **anomaly is exactly one token**: the mapping JSON's *opcode* binding
   `OPCODE_PSEUDO_DMA_BARRIER` (with underscore) names an enum constant that exists in
   **no** modern Neuron header — the only modern enum constant is the no-underscore
   `…DMABARRIER`. Grep-verified **both directions**:
   `OPCODE_PSEUDO_DMA_BARRIER` (underscore) is **absent from all modern `*.h` headers**;
   `OPCODE_PSEUDO_DMABARRIER` (no underscore) is **absent from `instruction_mapping.json`**.
-  `[HIGH/OBSERVED]`
 
 > **GOTCHA — `CORE`/`SYNC` are clean; only `DMABARRIER` dangles.** The
 > [`CORE`](core-barrier.md) and [`SYNC`](sync-barrier.md) JSON opcode tokens
 > (`OPCODE_PSEUDO_CORE_BARRIER` `:103`, `OPCODE_PSEUDO_SYNC_BARRIER` `:176`) **do**
 > appear in `common.h` (`:286`, `:283`) — they resolve. Only `DMABARRIER` has the
-> split. `[HIGH/OBSERVED — `rg -c` of each token in headers vs JSON.]`
+> split.
 
 ### The lineage / resolution
 
@@ -448,17 +441,15 @@ too. No token resolution is involved.)
 
 All three barriers are 64-B pseudo-ops carrying the common 4-B header + the 8-B
 `events` block; they differ in their barrier-specific payload (always at **offset
-12**), their lowering target, and their scope. Field inventories compile-verified from
-the headers directly (all `sizeof == 64`):
+12**), their lowering target, and their scope. Field inventories are compile-verified
+from the headers directly — `sync-barrier.h:25-29`, `core-barrier.h:19-25`,
+`dma_barrier.h:32-37`, all `sizeof == 64`:
 
 | opcode | pseudo-op             | offset-12 payload                          | lowers to              | scope / nature |
 |--------|-----------------------|--------------------------------------------|------------------------|----------------|
 | `0xD5` | `PSEUDO_SYNC_BARRIER`  | *(none — events-only)* + `reserved0[52]`   | `EVENT_SEMA` `0xA0`    | ENGINE rendezvous within a core (1-bit EVENTS) |
 | `0xD8` | `PSEUDO_CORE_BARRIER`  | `id u32@12` + `semaphore u32@16` + `reserved1[44]` | `EVENT_SEMA` `0xA0` | PCORE rendezvous within a VNC (32-bit SEMA) |
 | `0xC3` | `PSEUDO_DMABARRIER`    | `barrier_metadata u32@12` + `reserved0[48]` | `NOP 0xa4` (timed stall) | SBUF write-ordering **MEMORY** fence (no rendezvous) |
-
-`[all three structs read directly: sync-barrier.h:25-29, core-barrier.h:19-25,`
-`dma_barrier.h:32-37; all sizeof==64 compile-verified.]`
 
 **The offset-12 story** is a clean structural mnemonic. All three put their
 distinguishing payload at offset 12, where `SYNC` has nothing:
@@ -497,7 +488,6 @@ The naming anomaly of §6 is unique to `DMABARRIER`; `CORE` and `SYNC` resolve c
 ## 8 · Error / timeout — there is none
 
 The modern `DMABARRIER` path has **no timeout, no error field, no validator**:
-`[HIGH/OBSERVED]`
 
 - The struct carries only `header` / `events` / `barrier_metadata` / `reserved0` — no
   timeout, no error-code (compile-verify + header read, §2).

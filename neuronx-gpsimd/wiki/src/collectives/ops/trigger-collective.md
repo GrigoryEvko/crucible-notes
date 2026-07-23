@@ -16,7 +16,8 @@ headers of `aws-neuronx-gpsimd-customop-lib 0.21.2.0` (arch `neuron_cayman_arch_
 header banner `ISA header for NC-v3` → **CAYMAN = NC-v3**) and a self-contained
 `gcc` probe that printed `sizeof`/`offsetof` for every field. Headers, the
 microcode binary `libnrtucode_internal.so`, and `instruction_mapping.json` are
-all binary-derived artifacts of the package and are cited directly.
+all binary-derived artifacts of the package and are cited directly. The page
+default is `[HIGH / OBSERVED]`; claims that depart from it carry an explicit tag.
 
 > **NOTE — pseudo-op, never executed as-is.** `0xC8` lives in the pseudo range
 > `0xC0..0xDF`. The OPCODE enum documents the rule verbatim at
@@ -26,7 +27,7 @@ all binary-derived artifacts of the package and are cited directly.
 > `0xC8 = 0b110_01000` ✓. The device-side GPSIMD microcode
 > (`libnrtucode_internal.so`) has **no** decoder for `0xC8` — it decodes the
 > *lowered* legs (`SB2SB_Collective` `0xBF`, `POLL_SEM` `0xB3`), confirming the
-> rewrite happens host-side. *(HIGH / OBSERVED.)*
+> rewrite happens host-side.
 
 ---
 
@@ -55,11 +56,8 @@ padding for 8 byte field"*.
 | 56 | 8 | `dst_offset_elems` | `uint64_t` | Element offset into the DST tensor where the write window begins. |
 | **64** | | | | one 64B TPB instruction word. |
 
-*(HIGH / OBSERVED — `gcc` probe over the single header printed `sizeof==64` and
-each `offsetof` above verbatim.)*
-
 ```c
-// gcc probe output, /tmp/gpsimd-p10/probe (single header, -I tpb/)
+// gcc probe output (single header, -I tpb/)
 // sizeof STRUCT = 64
 //   header 0  events 4  op 12  dtype 13  group_id 14
 //   input_tensor_id 16  output_tensor_id 20  num_elements 24
@@ -68,8 +66,8 @@ each `offsetof` above verbatim.)*
 //   OPCODE_PSEUDO_TRIGGER_COLLECTIVE = 0xC8   ENGINE_TOP_SP = 5
 ```
 
-> **CORRECTION — field order vs the task brief.** The brief listed
-> `group_id` *before* `op` and implied `ctype` near the front. The shipped
+> **CORRECTION — field order.** The intuitive ordering — `group_id` *before*
+> `op`, with `ctype` near the front — is **not** what ships. The shipped
 > header order is **`op, dtype, group_id`** (offsets 12/13/14), and `ctype`
 > sits **after** `num_elements` at **offset 32**, not at the front.
 > `num_elements` is `uint64_t` (not `uint16/uint32`), and `src/dst_offset_elems`
@@ -80,7 +78,6 @@ instruction union:
 `NEURON_ISA_TPB_PSEUDO_TRIGGER_COLLECTIVE_STRUCT pseudo_trigger_collective;`.
 `instruction_mapping.json:190-191` binds the struct to its single opcode:
 `"NEURON_ISA_TPB_PSEUDO_TRIGGER_COLLECTIVE_STRUCT" → ["NEURON_ISA_TPB_OPCODE_PSEUDO_TRIGGER_COLLECTIVE"]`.
-*(HIGH / OBSERVED.)*
 
 > **QUIRK — no static validator.** `aws_neuron_isa_tpb_assert.h:13574` contains
 > only the section marker `//* pseudo_trigger_collective_assert.h` with **no
@@ -89,7 +86,7 @@ instruction union:
 > `is_valid_s3d3_collective()` block checking `lnc_size_fmt`, `num_active_channels`,
 > tensor patterns, and reserved-zero. **TriggerCollective is validated and lowered
 > by the runtime, not by the static ISA assert layer** — consistent with it being
-> erased before hardware sees it. *(HIGH / OBSERVED.)*
+> erased before hardware sees it.
 
 ---
 
@@ -123,11 +120,11 @@ typedef struct NEURON_ISA_TPB_EVENTS {
 `WAIT_FOR_EVT_SET=0x6`, `WAIT_FOR_EVT_SET_THEN_CLEAR=0x7`. For a collective the
 `events` block is how the lowered TOP_SP program rendezvouses with the
 producing/consuming engines — but for the v1 pseudo-op the runtime overwrites
-most of it during lowering. *(HIGH / OBSERVED.)*
+most of it during lowering.
 
 All field enums used by this struct are `__attribute__((__packed__))`,
 probe-verified to **1 byte each**: `ALU_OP=1`, `DTYPE=1`, `COLLECTIVE_TYPE=1`,
-`OPCODE=1`, `NEURON_ENGINE=1`. *(HIGH / OBSERVED.)*
+`OPCODE=1`, `NEURON_ENGINE=1`.
 
 ---
 
@@ -168,11 +165,11 @@ comes from the DMA reduce ops in §5.)*
 **`NEURON_ISA_TPB_DTYPE`** — `dtype` @ off 13 (common.h:722-739):
 `INVALID=0x0`, `UINT64=0x1`, `INT8=0x2`, `UINT8=0x3`, `INT16=0x4`, `UINT16=0x5`,
 `BFLOAT16=0x6`, `FP16=0x7`, `INT32=0x8`, `UINT32=0x9`, `FP32=0xA`, `FP32R=0xB`,
-`INT64=0xC`, `FP8_EXP3=0xD`, `FP8_EXP4=0xE`, `FP8_EXP5=0xF`. *(HIGH / OBSERVED.)*
+`INT64=0xC`, `FP8_EXP3=0xD`, `FP8_EXP4=0xE`, `FP8_EXP5=0xF`.
 
 **`NEURON_ISA_TPB_NEURON_ENGINE`** — context for "TOP SP" (common.h:139-146):
 `PE=0`, `ACT=1`, `POOL=2`, `DVE=3`, `TPB_SP=4`, **`TOP_SP=5`**. The collective
-lowers onto engine **5**. *(HIGH / OBSERVED — probe `ENGINE_TOP_SP == 5`.)*
+lowers onto engine **5** (probe: `ENGINE_TOP_SP == 5`).
 
 ---
 
@@ -196,9 +193,9 @@ the full set the runtime collective framework consumes:
 > runtime supplies topology defaults during lowering. The richer knobs
 > (`channel_id`, `stream_id`, `cc_buf_*`, DMA `priority_class`, A2Av bitmaps)
 > appear only on the v2 path (§6,
-> [TriggerCollective2 + Ext](trigger-collective2-ext.md)). *(HIGH / OBSERVED —
-> `cur_processing_rank_id` struct: `group_id`/`channel_id`/`iteration_id`/
-> `dst_reg`/`stream_id` at offsets 12/14/16/18/20.)*
+> [TriggerCollective2 + Ext](trigger-collective2-ext.md)). The
+> `cur_processing_rank_id` struct itself carries `group_id`/`channel_id`/
+> `iteration_id`/`dst_reg`/`stream_id` at offsets 12/14/16/18/20.
 
 The runtime layer that fills per-rank / per-iteration values and replaces the
 pseudo-op with concrete TOP_SP/DMA instructions is the collective framework
@@ -304,7 +301,7 @@ The static validator (commented in the header) requires `n_read in 1..16`,
 `op == AluOp::Min`, both addresses 4-byte aligned, and all reserved bytes zero —
 i.e. *"select the minimum of a number of semaphores and decrement all of them by
 that amount."* This is exactly the AllReduce credit/scoreboard sync done once per
-ring step. *(HIGH / OBSERVED.)*
+ring step.
 
 ### 5.3 · The reduce is done **in-DMA** (CCE / DGE compute-op)
 
@@ -346,10 +343,10 @@ form a local group; comment *"LncSize setting for sb2sb collective using q7
 iDMA"*, common.h:814) and `num_active_channels`. The device kernel that decodes
 and executes it lives in the Cairo firmware — see
 [SB2SB Remote-Copy Collective Kernel](../../firmware/kernels/sb2sb-remote-copy.md)
-and [S3D3 Collective (SB2SB, 0xBF)](s3d3-collective.md). *(HIGH / OBSERVED — the
-microcode binary `libnrtucode_internal.so` carries `decode_sb2sb_collective`,
-`S: SB2SB_Collective`, and `S: POLL_SEM` strings, confirming both legs are
-decoded on the device while `0xC8` is not.)*
+and [S3D3 Collective (SB2SB, 0xBF)](s3d3-collective.md). The microcode binary
+`libnrtucode_internal.so` carries `decode_sb2sb_collective` plus the
+`S: SB2SB_Collective` and `S: POLL_SEM` strings, confirming both legs are
+decoded on the device while `0xC8` is not.
 
 ---
 
@@ -373,15 +370,14 @@ probe-verified 64 B unless noted. Every entry below has opcode upper-3-bits
 > the knobs the v1 single-word `0xC8` lets the runtime pick. The
 > `dma_configs.priority_class` is a **3-bit** field
 > (`NEURON_ISA_TPB_DMA_CONFIGS.priority_class : 3`, common.h:714); the host maps
-> it to the 5-value priority class **P0..P4**. Full detail in
-> [TriggerCollective2 + Ext](trigger-collective2-ext.md). *(HIGH / OBSERVED —
-> v2/ext field offsets confirmed in `..._collective2_ext.h:58-90`.)*
+> it to the 5-value priority class **P0..P4**. The v2/ext field offsets are
+> confirmed in `..._collective2_ext.h:58-90`; full detail in
+> [TriggerCollective2 + Ext](trigger-collective2-ext.md).
 
-Supporting glue ops a lowered collective sequence draws on:
-`0xDB PSEUDO_CUR_PROCESSING_RANK_ID` (rank loop, §4),
+Supporting glue ops a lowered collective sequence draws on (opcode enum
+`common.h:263-293`): `0xDB PSEUDO_CUR_PROCESSING_RANK_ID` (rank loop, §4),
 `0xD8 PSEUDO_CORE_BARRIER`, `0xD5 PSEUDO_SYNC_BARRIER`,
-`0xC1 PSEUDO_DMATRIGGER` (§5.1), `0xC3 PSEUDO_DMABARRIER`. *(HIGH / OBSERVED —
-opcode enum common.h:263-293.)*
+`0xC1 PSEUDO_DMATRIGGER` (§5.1), `0xC3 PSEUDO_DMABARRIER`.
 
 ---
 
