@@ -160,7 +160,7 @@ Three enums parametrize collective communication, and all three live on a single
 | `CollectiveDimension` | `0:Partition` `1:Free` | `cc_dim` | CERTAIN |
 | `CollectiveComputeTypeHint` | `0:TP` `1:FSDP` `2:None` | `cc_type_hint` | CERTAIN |
 
-> **CORRECTION (D-D07) —** `CollectiveComputeTypeHint` is a **tensor/data-parallelism-strategy classifier** (Tensor-Parallel vs Fully-Sharded-Data-Parallel vs unspecified), *not* a "sum/max/min reduction-op hint" as earlier rosters supposed. The upstream is the HLO stream-id injector (`stream_id "0"`=TP, `"1"`=FSDP). Both directions of the enum body and the read/write key↔offset wiring confirm it.
+> **GOTCHA — `CollectiveComputeTypeHint` is a parallelism-strategy tag, not a reduction-op hint.** The name suggests "sum / max / min". It actually classifies Tensor-Parallel vs Fully-Sharded-Data-Parallel vs unspecified, and its upstream is the HLO stream-id injector, where `stream_id "0"` means TP and `"1"` means FSDP. Both directions of the enum body and the read/write key↔offset wiring agree on this.
 
 The constructor (`InstCollectiveCompute C1 @0x4106c0`) defaults `kind = AllReduce(2)` and `cc_type_hint = None(2)`; `toJson` *suppresses* emitting `cc_type_hint` when it equals `2` (`cmp [rbx+244h],2; jz` @`0x4395b2`) — `None` is the silent default.
 
@@ -181,7 +181,7 @@ The constructor (`InstCollectiveCompute C1 @0x4106c0`) defaults `kind = AllReduc
 | `RandomAlgorithmKind` | `0:LFSR` `1:PCG32` `2:PHILOX_1` | `random_algorithm` (`InstRand+240`) | CERTAIN |
 | `RandomDistributionKind` | `0:Raw` `1:Uniform` `2:Normal` `3:Binomial` | `distribution` (`InstRand+288`) | CERTAIN |
 
-> **CORRECTION (D-D10) —** earlier rosters had `RandomAlgorithmKind` as `PCG32=0` (the order was wrong; the body's `if(a2) fatal` guard proves only `a2==0` reaches `LFSR`, so `LFSR=0`), and `RandomDistributionKind` listed only `{Normal,Binomial,Raw}` — **missing `Uniform`**. The true sets are above, byte-verified both directions.
+Both RNG enums are worth reading off the table rather than from memory. `RandomAlgorithmKind` starts at `LFSR`, not `PCG32`: the body's `if(a2) fatal` guard means only `a2 == 0` reaches the `LFSR` arm. And `RandomDistributionKind` has four members, not three — `Uniform` sits at `1`, between `Raw` and `Normal`. Both sets are read in both directions from the enum bodies.
 
 `InstRand::readFieldsFromJson @0x420ab0` is the *sole* caller of both `from_json<Random*>` overloads — proven by the xrefs census. The near-duplicate RNG ops carry neither enum: `InstRand2` (IT `97`), `InstRng` (IT `100`), `InstGetRandState` (`58`), `InstSetRandState` (`59`), `InstRandGetState` (`99`), `InstRandSetState` (`98`) all have degenerate (`retn`) `readFieldsFromJson` — their data flows through tensor operands. The RNG state itself resides in `MemoryType RNGSTATE`, which is the **bit flag `64` (`0x40`)**, not ordinal `6` (`MemoryType` is a power-of-two bitmask; see § Master Crosswalk).
 
@@ -194,7 +194,7 @@ The constructor (`InstCollectiveCompute C1 @0x4106c0`) defaults `kind = AllReduc
 | 0 | `SemaphoreZero` | reset each semaphore in the group to value `0` (full counter zero) | CERTAIN |
 | 1 | `SemaphoreZeroBitmask` | zero only the masked bits of each semaphore (selective clear; value preserved outside the mask) | CERTAIN |
 
-> **CORRECTION (D-D10) —** `EventSemaphoreClearMode` is the `"mode"` field of `InstGroupResetSemaphores` (IT `14`), parsed at `+240` by `readFieldsFromJson @0x4307e0` (alongside the optional `sema_group` vector). `InstEventSemaphore` (IT `13`) does **not** carry it — its `readFieldsFromJson @0x405090` is a bare `retn`, and the only `ClearMode` (de)serializer callers are `GroupResetSemaphores` methods. Earlier rosters that pinned the clear behavior on op `13` were wrong.
+> **GOTCHA — the clear mode belongs to op `14`, not op `13`.** Its name points at `InstEventSemaphore` (IT `13`), but `EventSemaphoreClearMode` is the `"mode"` field of `InstGroupResetSemaphores` (IT `14`), parsed at `+240` by `readFieldsFromJson @0x4307e0` alongside the optional `sema_group` vector. `InstEventSemaphore`'s own `readFieldsFromJson @0x405090` is a bare `retn`, and every `ClearMode` (de)serializer caller is a `GroupResetSemaphores` method.
 
 ---
 
@@ -302,7 +302,7 @@ To close the 45-symbol census, the metadata/structural enums not covered above a
 | `FunctionAttribute` | `0x26c2a0` | `0:no_spill … 24:ready_for_codegen` (25 vals) | Function-level pass-progress flags | CERTAIN |
 | `ModuleAttribute` | `0x39e3e0` | `0:previous_pass … 22:neff_feature_large_tensor_support` (23 vals) | Module-level NEFF feature gates | CERTAIN |
 
-> **CORRECTION (D-D13) —** three orderings in the public roster were inverted, all proven from the `2string` body: `AddressRotationScope` is `None=0/Kernel=1/Global=2` (not `Kernel=0`); `InstSyncType` is `datapath=0/sequencer=1/dma=2` (not `sequencer=0`); and `RandomAlgorithmKind` is `LFSR=0` (covered above). A consumer that hard-coded the old orderings is mis-decoding the wire.
+> **GOTCHA — three enums do not start where their public rosters say.** Read from the `2string` bodies, `AddressRotationScope` is `None=0 / Kernel=1 / Global=2` (not `Kernel=0`), `InstSyncType` is `datapath=0 / sequencer=1 / dma=2` (not `sequencer=0`), and `RandomAlgorithmKind` is `LFSR=0` (see above). A consumer that hard-codes the other orderings mis-decodes the wire silently.
 
 `FunctionAttribute` and `ModuleAttribute` are large boolean/flag sets reconstructed from SSE-loaded `.rodata` prefixes plus packed tail immediates; the member meaning is in the name (pass-progress bookkeeping and per-NEFF capability gates), and they never reach L3 as a byte. The full 45-symbol completion checklist (every enum → covering source report) is the BIR enum appendix's job; this page owns the op-family subset and the crosswalk.
 
@@ -405,21 +405,21 @@ The columns are: **L1** (libBIR ordinal); **L2** (BIR-JSON form — a *name* unl
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary and limits of this reading
 
-Five strongest claims, re-checked against the cp310 binaries this pass:
+The page's sharpest counts and mappings each land on a specific artifact.
 
-| Claim | Method | Result |
+| Claim | Where it is read | What it shows |
 |---|---|---|
-| `ActivationFunctionType` = 31 members | read `2string @0x4002a0` decompiled body | cases `0..30` present, case `30="Unknown"` an explicit member, `default` = brewer.py FATAL — **31, CERTAIN** |
-| `CollectiveKind` = 11 members | `xxd` of `.rodata 0x70bc94` (VA==fileoff) | byte-exact pool `SendRecv … PermuteReduceImplicit` + `"Unknown CollectiveKind"` — **11, CERTAIN** |
-| M1 `QuantizeMx` 96→`0xE3` | `libwalrus` disasm `visitInstQuantizeMx @0x143dc60` | `mov byte [rbp-0D0h], 0E3h` @`0x143ddd2` + `mov esi, 10E3h` @`0x143ddea` — **CERTAIN** |
-| M2 AluOp comparison reorder | `libwalrus` disasm `sub_142E030` | case 29 abs→`0x19`, 28 rsqrt→`0x1D`, 27 mod→`0x1B`, 22 is_lt→`0x16`, 20 is_gt→`0x13`, 19 not_equal→`0x18` — **CERTAIN** |
-| md5 + VA==fileoff | `md5sum` + `readelf -S` | `libBIR` `12bb979f…`, `libwalrus` `1d93972b…`; `.text @0x1820c0`, `.rodata @0x708000` addr==offset — **CERTAIN** |
+| `ActivationFunctionType` = 31 members | `2string @0x4002a0` | cases `0..30` all present, with case `30 = "Unknown"` an explicit member and the `default` arm a FATAL |
+| `CollectiveKind` = 11 members | `.rodata 0x70bc94` (VA == file offset) | the byte-exact string pool `SendRecv … PermuteReduceImplicit`, followed by `"Unknown CollectiveKind"` |
+| `QuantizeMx` 96 → `0xE3` | `libwalrus` `visitInstQuantizeMx @0x143dc60` | `mov byte [rbp-0D0h], 0E3h` @`0x143ddd2` and `mov esi, 10E3h` @`0x143ddea` |
+| AluOp comparison reorder | `libwalrus` `sub_142E030` | case 29 abs→`0x19`, 28 rsqrt→`0x1D`, 27 mod→`0x1B`, 22 is_lt→`0x16`, 20 is_gt→`0x13`, 19 not_equal→`0x18` |
+| binary identity | `libBIR` `12bb979f…`, `libwalrus` `1d93972b…` | `.text @0x1820c0` and `.rodata @0x708000` both have VA == file offset |
 
-Re-verification ceiling (honest gaps):
+Four things this page does not itself establish:
 
-- **M3/M4 not re-disassembled this pass.** The `Dtype` wire-tag LUT and the `DMAQoSClass` `class−1` encoder are taken from the sibling pages' verified derivations ([dtype-tables](dtype-tables.md), [aluop-modes](aluop-modes.md)) and D-D09/D-D14, not re-walked here. CERTAIN at the source, cited not re-proven.
+- **The M3/M4 derivations are cited, not re-walked.** The `Dtype` wire-tag LUT and the `DMAQoSClass` `class−1` encoder come from [dtype-tables](dtype-tables.md) and [aluop-modes](aluop-modes.md), where they are derived from the binaries.
 - **The full 110→opcode L3 table is not claimed.** Only the CoreV4 MX overrides (`QuantizeMx`, `MatmultMx`) are byte-pinned; the remaining ~104 `setupHeader` words are a `libwalrus` backend deliverable.
 - **Per-kind/per-engine legality is not in `libBIR`.** The "required reduce-op" column for collectives, the per-engine legal-activation set, and the per-target QoS budget are all enforced in the `libwalrus` `birverifier`; `libBIR` holds the data, not the gate.
 - **`DMAQueueAttribute` names are unrecoverable** from this build (FATAL-stub `2string` + empty `string2` map). The enum is live but its members are not statically present.

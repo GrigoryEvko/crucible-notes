@@ -49,7 +49,7 @@ The simplifier builds a comma-delimited token string and stores it in a string f
 | `,dsidxnow=` | `0x21cd8d` | comma-prefixed variant |
 | `iterationidx=` | `0x26e876` | the surrounding loop's now-constant iteration number; read by **both** passes |
 
-> **CORRECTION (B21) —** the backing reconstruction placed the bare `dsidxnow=` token at `0x21cd8d`. The binary string table shows `0x21cd8d` is the **comma-prefixed** `,dsidxnow=`; the bare `dsidxnow=` lives at `0x230955`. The page is grounded on the binary. The two-address pattern (bare key + comma-prefixed key) holds for both DUS and DS tokens and is how the builder distinguishes "first token in the field" from "append to existing CSV".
+> **GOTCHA — each token key has two `.rodata` addresses.** Every DUS and DS token ships twice: a bare form and a comma-prefixed one — `dsidxnow=` at `0x230955`, `,dsidxnow=` at `0x21cd8d`. The pair is how the builder distinguishes "first token in the field" from "append to an existing CSV". Grabbing the wrong one silently produces a leading or missing comma.
 
 The grammar a reimplementer must reproduce: a flat CSV where each entry is `<key><base-10 int>` and entries are joined by `,`. Multi-dimensional indices are emitted one entry per dimension and rejoined with `absl::JoinRange<vector<string>>(",")` (@`0x1f975e0`, confirmed as a callee of the index engine). A populated field reads like:
 
@@ -101,7 +101,7 @@ pair<bool,int64> GetInstructionId(inst):
 
 Discover the now-constant DUS/DS start indices (constant because upstream loop unrolling — `unroll-while-loop` #25 / `while_loop_unroller` #112 — substituted literals for induction variables) and record them as `dusidxnow=`/`dsidxnow=`/`iterationidx=` tokens on the original instructions. Strip `NeuronBoundaryMarker` custom-calls. Emit no structural rewrite of the DUS∘DS chain itself: that is deferred to #87 and #108, which read the tokens.
 
-> **CORRECTION (S2-02) —** an earlier survey labeled #80 "Simplify DUS∘DS index chains" and read it as a structural peephole. The `Run` body emits no `dus(base, ds(x)) → x` graft into the live graph — there is no `Replace*` of a DUS base in the body. It is a clone+constant-fold **index-materialization** pass whose product is metadata. The workhorse is `UpdateDynamicInstructionMetadataWithConstantIndices` @`0x1f98670`, whose only "rewrite" of the live module is the GTE/tuple-user splice in §Run pass 4.
+Despite the name, this is not a structural peephole. The `Run` body never grafts `dus(base, ds(x)) → x` into the live graph — there is no `Replace*` of a DUS base anywhere in it. It is a clone-and-constant-fold **index-materialization** pass whose product is metadata. The workhorse is `UpdateDynamicInstructionMetadataWithConstantIndices` @`0x1f98670`, and the only live-module rewrite it performs is the GTE/tuple-user splice in §Run pass 4.
 
 ### Entry Point
 
@@ -204,7 +204,7 @@ void UpdateDynamicInstructionMetadataWithConstantIndices(HloModule* orig, HloMod
 
 Hoist a `dynamic-slice` out of a called computation (a `kCall` body — typically an unrolled loop body or a fusion over a tuple parameter) across the call boundary, so the slice executes on the caller side over a narrower shape. Where the iteration index is now constant (via the `iterationidx=` token from #80), additionally lower the `dynamic-slice` to a static `slice`. Legality is a single-use-GTE predicate; motion rewires the call's tuple/parameter/GTE plumbing.
 
-> **CORRECTION (S2-02) —** #87 was rated MED and labeled a generic "hoist/sink". It is specifically a hoist of a `dynamic-slice` *outward* from a `kCall` body to its caller (param-replace + tuple/GTE rebuild), with static-slice lowering when the iteration index is constant. There is no "sink" direction. Engine = `MoveDynamicSliceOutsideCall` @`0x1fa1cc0`.
+The motion is one-directional: a `dynamic-slice` moves *outward* from a `kCall` body to its caller, via param-replace plus a tuple/GTE rebuild, with static-slice lowering when the iteration index is constant. There is no sink direction. The engine is `MoveDynamicSliceOutsideCall` @`0x1fa1cc0`.
 
 ### Entry Point
 
@@ -307,17 +307,32 @@ The id helpers exist because the pass mutates a *clone* and must apply moves to 
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary and limits of this reading
 
-Five strongest claims, re-challenged against the binary:
+Every function address and size on this page resolves to the named demangled symbol in the
+symbol table, with the stated size and basic-block count: `0x1f9a940`, `0x1fa5730`,
+`0x1f98670`, `0x1f97ff0`, `0x1f97330`, `0x1fa1cc0`, `0x1f9f210`, `0x1f9eb50`, `0x1fa01f0`,
+`0x1fa0ff0`, `0x1f9e140`, `0x1f9d7f0`, `0x1f9da90`, `0x1f9e770`, `0x1ebe700`.
 
-1. **"#80 emits no structural DUS∘DS graft; it only tags metadata."** — CONFIRMED. `Run`'s only live-module mutation is the boundary-marker strip (pass 2) and the GTE/tuple-user splice (pass 4); the index engine `0x1f98670` writes `OpMetadata` and calls `try_emplace`/`JoinRange`/`GetConstantOperandValue` — no `Replace*`-of-DUS-base in the body. Anchored to the callee set of `0x1f9a940`/`0x1f98670`.
-2. **"`dsidxnow=` lives at `0x21cd8d`."** — FAILED → corrected. Binary string table: `0x21cd8d` = `,dsidxnow=` (comma-prefixed), bare `dsidxnow=` = `0x230955`. Page corrected with a CORRECTION callout.
-3. **"The kill-switch is `NEURON_DISABLE_MOVEMENT_OF_SLICE_FROM_PARAM` and gates only param-sourced motion."** — CONFIRMED. cstr `0x2c2dd0`; `EnvVarSetToOne` @`0x1ebe700` has exactly one caller (`MoveDynamicSliceOutsideCall` @`0x1fa1cc0`); the "PRARAMS" log strings are referenced by that function.
-4. **"#87 lowers DS to a static `slice` via `iterationidx=` and `CreateSlice`."** — CONFIRMED. `CreateStaticSliceFromDynamicSlice` @`0x1f9f210` callee set includes `HloInstruction::CreateSlice`, `dynamic_slice_sizes`, `safe_strto64_base`, `ByChar::Find`, `OpMetadata::CopyFrom`, `AddInstruction`.
-5. **"All function addresses/sizes match the binary symbol table."** — CONFIRMED. Every cited address (`0x1f9a940`, `0x1fa5730`, `0x1f98670`, `0x1f97ff0`, `0x1f97330`, `0x1fa1cc0`, `0x1f9f210`, `0x1f9eb50`, `0x1fa01f0`, `0x1fa0ff0`, `0x1f9e140`, `0x1f9d7f0`, `0x1f9da90`, `0x1f9e770`, `0x1ebe700`) resolves to the named demangled symbol with the stated size and basic-block count in `functions.json`.
+The negative claim about #80 — that it grafts nothing structural — is anchored to the callee
+sets of `0x1f9a940` and `0x1f98670`. The only live-module mutations in `Run` are the
+boundary-marker strip in pass 2 and the GTE/tuple-user splice in pass 4; the index engine
+writes `OpMetadata` and calls `try_emplace` / `JoinRange` / `GetConstantOperandValue`, with
+no `Replace*` of a DUS base anywhere.
 
-Residual gaps (MED): `GetConstantOperandValue`'s 66-bb PrimitiveType dispatch is not enumerated dtype-by-dtype; the exact field-by-field token assembly inside the 371-bb index engine is inferred from its callees; control flow is reconstructed from call-target order + embedded source-line constants (`Run` bodies are decompile-skipped 7-line stubs), so branch structure is HIGH-for-evidence / MED-for-exact-control-flow.
+The kill-switch story is equally tight: the cstr sits at `0x2c2dd0`, and `EnvVarSetToOne`
+@`0x1ebe700` has exactly one caller, `MoveDynamicSliceOutsideCall` @`0x1fa1cc0`, which is
+also the function referencing the "PRARAMS" log strings. The static-slice lowering is
+visible in `CreateStaticSliceFromDynamicSlice` @`0x1f9f210`, whose callee set includes
+`HloInstruction::CreateSlice`, `dynamic_slice_sizes`, `safe_strto64_base`, `ByChar::Find`,
+`OpMetadata::CopyFrom`, and `AddInstruction`.
+
+Three things stay coarse. `GetConstantOperandValue`'s 66-block `PrimitiveType` dispatch is
+not enumerated dtype by dtype. The field-by-field token assembly inside the 371-block index
+engine is inferred from its callees rather than transcribed. And because the `Run` bodies
+ship as decompile-skipped stubs, control flow throughout is reconstructed from call-target
+order plus embedded source-line constants — the evidence for *what* happens is strong, the
+exact branch structure less so.
 
 ---
 
