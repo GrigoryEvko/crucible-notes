@@ -1,6 +1,6 @@
 # The SpmdPartitioner Driver and Options
 
-> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22, binary `neuronxcc/starfish/bin/hlo-opt` (cp310 build). Other wheels differ; treat every address as version-pinned. Provenance: D-AB01.*
+> *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22, binary `neuronxcc/starfish/bin/hlo-opt` (cp310 build). Other wheels differ; treat every address as version-pinned.*
 
 ## Abstract
 
@@ -34,7 +34,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`Run` takes a fully-sharded `HloModule` and rewrites every computation into per-partition shapes, inserting collectives so the partitions cooperate. It is the `HloPassInterface::Run` entry point — it has no direct callers (CONFIRMED: `is_entry`), so it is reached only through the pass vtable by `HloPassPipeline::Run`. The demangled signature is the pass-interface one:
+`Run` takes a fully-sharded `HloModule` and rewrites every computation into per-partition shapes, inserting collectives so the partitions cooperate. It is the `HloPassInterface::Run` entry point and has no direct callers at all, so it is reached only through the pass vtable, from `HloPassPipeline::Run`. The demangled signature is the pass-interface one:
 
 ```c
 // _ZN3xla4spmd15SpmdPartitioner3RunE... @ 0x2ab76d0
@@ -62,7 +62,7 @@ HloPassPipeline::Run                              ── stock XLA pass manager
 
 ### Algorithm
 
-The call trace below is reconstructed from the disassembly of `Run` in address order (cold/cleanup/dtor calls elided). Every call site address is CONFIRMED from the disasm of `0x2ab76d0`; the six phase labels (A–F) are INFERRED by matching the call sequence and the `RET_CHECK` strings to the embedded `spmd_partitioner.cc` source semantics.
+The call trace below is reconstructed from the disassembly of `Run` in address order, with cold/cleanup/dtor calls elided. Every call-site address comes straight from the disasm of `0x2ab76d0`; the six phase labels (A–F) are INFERRED, by matching the call sequence and the `RET_CHECK` strings against the semantics of the embedded `spmd_partitioner.cc`.
 
 ```c
 function SpmdPartitioner_Run(module, execution_threads):     // 0x2ab76d0
@@ -185,7 +185,7 @@ From the ctor store offsets (`this=rbx`):
 
 `SpmdPartitioner` is the base; `CreateVisitor` is virtual (called via vtable slot `[visitor_factory+0x428]` inside `PartitionComputation @0x2a9470e`). The pass XLA actually registers is the subclass:
 
-- **`StatefulRngSpmdPartitioner`** (RTTI `@0x483ca8`) overrides `CreateVisitor` (`@0x2a10a20`) to build a `StatefulRngSpmdPartitioningVisitor` that handles `HandleRngGetAndUpdateState` (`@0x2a11160`) — so RNG state is partitioned deterministically. (CONFIRMED RTTI; that this is the *registered* one is STRONG.)
+- **`StatefulRngSpmdPartitioner`** (RTTI `@0x483ca8`) overrides `CreateVisitor` (`@0x2a10a20`) to build a `StatefulRngSpmdPartitioningVisitor` that handles `HandleRngGetAndUpdateState` (`@0x2a11160`) — so RNG state is partitioned deterministically. The RTTI is unambiguous; that this is the *registered* partitioner is a structural reading of the pipeline.
 - **`ShardBarrierPartitioner` / `ShardBarrierFromPartitioner` / `ShardBarrierToPartitioner`** (RTTI `@0x486928` / `@0x486970` / `@0x4869c8`) — auxiliary partitioners for the `SPMDFullToShardShape` / `SPMDShardToFullShape` shard-barrier custom-call boundaries.
 
 ---
@@ -194,7 +194,7 @@ From the ctor store offsets (`this=rbx`):
 
 ### Purpose
 
-`SpmdPartitionerOptions` is a stock upstream XLA POD (`xla/service/spmd/spmd_partitioner.h`) carrying the knobs that tune partitioning — chiefly the windowed-einsum (collective-matmul) heuristics and the conv halo-exchange policy. The binary gives the **exact default-ctor stores**; the field *names* are the canonical upstream names, matched by type/default/use (STRONG).
+`SpmdPartitionerOptions` is a stock upstream XLA POD (`xla/service/spmd/spmd_partitioner.h`) carrying the knobs that tune partitioning — chiefly the windowed-einsum (collective-matmul) heuristics and the conv halo-exchange policy. The binary gives the **exact default-ctor stores**; the field *names* below are the canonical upstream names, matched to those stores by type, default, and use.
 
 ### Default-ctor stores
 
@@ -202,21 +202,21 @@ From `SpmdPartitionerOptions::SpmdPartitionerOptions() @0x2038870` (181 B, `this
 
 | Offset | Default written | Field (upstream name) | Confidence |
 |---|---|---|---|
-| `+0x00` | `1` (byte) | `conv_halo_exchange_always_on_lhs` = **true** | CONFIRMED |
-| `+0x08` | `5` (qword) | report-level / count limit | HIGH (offset INFERRED) |
-| `+0x10` | `0x100` (256) | a windowed-einsum chunk param | HIGH (offset INFERRED) |
-| `+0x18` | `0x0100000001000000` | packed two int32 (=`0x01000000` each) / flags | INFERRED |
-| `+0x20` | `1` (word) | `bidirectional_windowed_einsum` = **true** | CONFIRMED |
-| `+0x22` | `0` (byte) | a bool flag | CONFIRMED |
-| `+0x28` | `new(8)`+empty | std::vector / InlinedVector (id/skip list) | CONFIRMED |
-| `+0x40` | `new(8)`+empty | second container | CONFIRMED |
-| `+0x60` | `0` (byte) | windowed-einsum (a2a) enable = **false** | CONFIRMED |
+| `+0x00` | `1` (byte) | `conv_halo_exchange_always_on_lhs` = **true** | CERTAIN |
+| `+0x08` | `5` (qword) | report-level / count limit | HIGH (offset MEDIUM) |
+| `+0x10` | `0x100` (256) | a windowed-einsum chunk param | HIGH (offset MEDIUM) |
+| `+0x18` | `0x0100000001000000` | packed two int32 (=`0x01000000` each) / flags | MEDIUM |
+| `+0x20` | `1` (word) | `bidirectional_windowed_einsum` = **true** | CERTAIN |
+| `+0x22` | `0` (byte) | a bool flag | CERTAIN |
+| `+0x28` | `new(8)`+empty | std::vector / InlinedVector (id/skip list) | CERTAIN |
+| `+0x40` | `new(8)`+empty | second container | CERTAIN |
+| `+0x60` | `0` (byte) | windowed-einsum (a2a) enable = **false** | CERTAIN |
 
 Container members occupy `0x28..0x60`. Past the POD prefix the struct continues with std::string / std::vector members (copied by the `SpmdPartitioner` ctor up to `~0x190` in the object), consistent with options holding several string members (dump tags) and vectors.
 
 ### The windowed-einsum threshold gate
 
-The one consumer whose offsets are CONFIRMED is the threshold gate, from `should_enable_windowed_einsum_with_threshold(const SpmdPartitionerOptions&, const HloInstruction*, const HloInstruction*, long) @0x2a29c00`:
+One consumer pins its offsets exactly — the threshold gate, from `should_enable_windowed_einsum_with_threshold(const SpmdPartitionerOptions&, const HloInstruction*, const HloInstruction*, long) @0x2a29c00`:
 
 ```c
 // 0x2a29c00 — disasm
@@ -229,8 +229,8 @@ This pins two fields the **default** ctor leaves unset (they are written by the 
 
 | Offset | Field | Confidence |
 |---|---|---|
-| `+0x58` | `int64` windowed-einsum size threshold (`operand_bytes_threshold`) | CONFIRMED |
-| `+0x60` | `bool` windowed-einsum enable | CONFIRMED |
+| `+0x58` | `int64` windowed-einsum size threshold (`operand_bytes_threshold`) | CERTAIN |
+| `+0x60` | `bool` windowed-einsum enable | CERTAIN |
 
 ### Related Knobs
 
@@ -244,7 +244,7 @@ The XLA debug-flag strings that *populate* these options are embedded verbatim i
 | `xla_gpu_experimental_enable_alltoall_windowed_einsum` | bool | — | Windowed-einsum rewrite for all-to-all+gemm (experimental) |
 | `skip_checking_windowed_einsum_users` | bool | — | Skip the windowed-einsum user check |
 
-> **GOTCHA — the default ctor and the pipeline-patched ctor disagree on the threshold.** The default ctor (`0x2038870`) leaves `+0x58` unset and `+0x60`=false. The pipeline that actually instantiates the partitioner *patches* the threshold to `0x186A0` (=100000) right before constructing it (`@0x2046809`, see below). A reimplementer who reads only the default ctor will see a disabled, unset windowed-einsum threshold and conclude the feature is off — it is the **pipeline** that turns it on. The middle-field offset assignment (`+0x08`/`+0x10`/`+0x18`) is INFERRED; the `+0x00`/`+0x20`/`+0x58`/`+0x60` offsets and the `5`/`256`/packed-int defaults are CONFIRMED.
+> **GOTCHA — the default ctor and the pipeline-patched ctor disagree on the threshold.** The default ctor (`0x2038870`) leaves `+0x58` unset and `+0x60`=false. The pipeline that actually instantiates the partitioner *patches* the threshold to `0x186A0` (=100000) right before constructing it (`@0x2046809`, see below). A reimplementer who reads only the default ctor will see a disabled, unset windowed-einsum threshold and conclude the feature is off — it is the **pipeline** that turns it on. Note that the middle-field offset assignment (`+0x08`/`+0x10`/`+0x18`) is INFERRED; the `+0x00`/`+0x20`/`+0x58`/`+0x60` offsets and the `5`/`256`/packed-int defaults are read directly.
 
 ---
 
@@ -261,11 +261,11 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 // 201 BB, 41 callees — builds the pre-layout-assignment pass pipeline.
 ```
 
-> **NOTE — the assembler is `xla::cpu::CpuCompiler`, i.e. stock XLA.** `RunHloPassesThroughLayoutAssn @0x2046400` is the XLA **CPU** compiler's pipeline method, not a Neuron-namespaced one (CONFIRMED by demangle). This is the clearest single piece of evidence that the SPMD seat itself is unmodified XLA: Neuron reuses the CPU compiler's HLO pipeline wholesale and feeds it a sharded module.
+> **NOTE — the assembler is `xla::cpu::CpuCompiler`, i.e. stock XLA.** `RunHloPassesThroughLayoutAssn @0x2046400` is the XLA **CPU** compiler's pipeline method, not a Neuron-namespaced one — the demangled name says so outright. This is the clearest single piece of evidence that the SPMD seat itself is unmodified XLA: Neuron reuses the CPU compiler's HLO pipeline wholesale and feeds it a sharded module.
 
 ### The ordered construction
 
-From the disassembly of `0x2046400`, in address order (CONFIRMED):
+From the disassembly of `0x2046400`, in address order:
 
 ```c
 function RunHloPassesThroughLayoutAssn(module, is_aot, features):   // 0x2046400
@@ -298,7 +298,7 @@ function RunHloPassesThroughLayoutAssn(module, is_aot, features):   // 0x2046400
     AddPass<ChangeOpDataType>(...)                       // 0x2048b1e
 ```
 
-The confirmed pipeline order within `RunHloPassesThroughLayoutAssn`:
+The resulting pipeline order within `RunHloPassesThroughLayoutAssn`:
 
 ```text
 ... HloVerifier ...
@@ -316,14 +316,14 @@ This matches upstream XLA's "sharding-propagate → spmd-partition → collectiv
 
 ### Gating
 
-The entire SPMD block — both the `ShardingPropagation` and the `SpmdPartitioner` emplacements — is guarded by a single config predicate held in `var_2B8` and tested as `cmp [rbp+var_2B8], 0 ; jnz <skip>` throughout the construction region (e.g. `@0x20465f6`, `@0x2046796`). Upstream this is `module->config().use_spmd_partitioning()` (STRONG). When false, **neither pass is emplaced** and the module is left unpartitioned.
+The entire SPMD block — both the `ShardingPropagation` and the `SpmdPartitioner` emplacements — is guarded by a single config predicate held in `var_2B8` and tested as `cmp [rbp+var_2B8], 0 ; jnz <skip>` throughout the construction region (e.g. `@0x20465f6`, `@0x2046796`). Upstream this is `module->config().use_spmd_partitioning()`. When false, **neither pass is emplaced** and the module is left unpartitioned.
 
 The flags that flip the gate are **Neuron front-end** flags, set in the driver/walrus layer, *not* in `hlo-opt` itself:
 
 - `--enable-experimental-spmd` → sets `HloModuleConfig::use_spmd_partitioning = true`.
 - `--distribution-strategy` → selects the sharding strategy; populates the module's sharding annotations + `num_partitions`/`replica_count` in `HloModuleConfig`.
 
-> **GOTCHA — the Neuron CLI flags do not appear inside `hlo-opt`.** There is no `--distribution-strategy` string in the `hlo-opt` strings table (CONFIRMED absent). `hlo-opt` sees only the *resulting* config plus the `mhlo.*` attributes the front-end stamped onto the module: `mhlo.use_auto_spmd_partitioning` (`@0x2fdb60`/`0x487240`/`0xbb8000`), `mhlo.num_partitions` (`@0xbb8080`), and `mhlo.spmd_output_sharding` (`@0x487280`/`0xbb8040`) — all CONFIRMED. The `num_partitions`/`replica_count` are read from config ("`Initial num_partitions from config = `" / "`Initial replica_count from config = `" strings, emitted by the Neuron hilo layer that feeds the config). A reimplementer driving the gate off a CLI string in `hlo-opt` will find nothing; the gate is a config bool.
+> **GOTCHA — the Neuron CLI flags do not appear inside `hlo-opt`.** There is no `--distribution-strategy` string anywhere in the `hlo-opt` strings table. `hlo-opt` sees only the *resulting* config plus the `mhlo.*` attributes the front-end stamped onto the module: `mhlo.use_auto_spmd_partitioning` (`@0x2fdb60`/`0x487240`/`0xbb8000`), `mhlo.num_partitions` (`@0xbb8080`), and `mhlo.spmd_output_sharding` (`@0x487280`/`0xbb8040`). The `num_partitions`/`replica_count` are read from config ("`Initial num_partitions from config = `" / "`Initial replica_count from config = `" strings, emitted by the Neuron hilo layer that feeds the config). A reimplementer driving the gate off a CLI string in `hlo-opt` will find nothing; the gate is a config bool.
 
 ---
 
@@ -333,7 +333,7 @@ The partitioner's value depends on two invariants the driver enforces at its bou
 
 ### Entry contract — what Run requires on input
 
-Enforced by `PreprocessSharding(module, execution_threads) @0x2ab0560` (called first in `Run`). The exact CHECK/FATAL strings (CONFIRMED from its context):
+Enforced by `PreprocessSharding(module, execution_threads) @0x2ab0560` (called first in `Run`). The exact CHECK/FATAL strings, read from its context:
 
 ```c
 function PreprocessSharding(module, execution_threads):     // 0x2ab0560
@@ -375,7 +375,7 @@ function CanSideEffectingHaveReplicatedSharding(hlo):       // 0x2a8e260 (127 B)
 
 ### Exit contract — what Run guarantees on output
 
-After `PartitionComputation` rewrites every computation to per-partition shapes, `Run` re-derives the entry program shape and enforces three `RET_CHECK`s (CONFIRMED strings):
+After `PartitionComputation` rewrites every computation to per-partition shapes, `Run` re-derives the entry program shape and enforces three `RET_CHECK`s, each with a verbatim FATAL string:
 
 | Invariant | FATAL string | Addr |
 |---|---|---|
@@ -387,9 +387,9 @@ The comparison is `Shape::Equal().MinorToMajorOnlyInLayout()` on `saved.paramete
 
 ### Sharded-HLO shape convention
 
-- **Internal ops** carry the per-partition (local) shape. A dim sharded over `k` devices has local size `ceil(global_dim / k)`; halo/padding for windowed/convolution cases is handled by the visitor (`conv_halo_exchange_always_on_lhs` default true, see Options). (STRONG)
-- **Entry boundary** keeps params and root at global shape (Replicated/Manual only). `RecordInputsOutputsSharding @0x2ab2dc0` walks `parameter_instruction(i)->sharding()` and builds the `spmd_parameters_sharding` / `spmd_output_sharding` records (cf. the `mhlo.spmd_*_sharding` strings) so the caller knows how to scatter/gather. (CONFIRMED)
-- **Channel ids**: every emitted collective gets a fresh id from the `&next_channel_id` counter seeded by `hlo_query::NextChannelId`. Neuron later re-stamps these via `NeuronUniqueChannelIdEnforcer` / `NeuronCollectiveStreamIdInjector` ([13.6](spmd-collective-emission.md)). (CONFIRMED)
+- **Internal ops** carry the per-partition (local) shape. A dim sharded over `k` devices has local size `ceil(global_dim / k)`; halo/padding for windowed/convolution cases is handled by the visitor (`conv_halo_exchange_always_on_lhs` default true, see Options).
+- **Entry boundary** keeps params and root at global shape (Replicated/Manual only). `RecordInputsOutputsSharding @0x2ab2dc0` walks `parameter_instruction(i)->sharding()` and builds the `spmd_parameters_sharding` / `spmd_output_sharding` records (cf. the `mhlo.spmd_*_sharding` strings) so the caller knows how to scatter/gather.
+- **Channel ids**: every emitted collective gets a fresh id from the `&next_channel_id` counter seeded by `hlo_query::NextChannelId`. Neuron later re-stamps these via `NeuronUniqueChannelIdEnforcer` / `NeuronCollectiveStreamIdInjector` ([13.6](spmd-collective-emission.md)).
 
 ---
 
@@ -401,7 +401,7 @@ The SPMD partitioner **driver is unmodified upstream XLA** (namespace `xla::spmd
 2. **It feeds shardings** via `mhlo.*` attributes produced by the Neuron front-end (`--distribution-strategy` / `--enable-experimental-spmd` → config + annotations).
 3. **It wraps the partitioner** with a family of `xla::hilo` HLO passes that run *after* partitioning to lower and optimize the emitted collectives for the Neuron device.
 
-The Neuron `xla::hilo` collective-adjacent passes (CONFIRMED present), all post-partition:
+The Neuron `xla::hilo` collective-adjacent passes, all post-partition:
 
 | Neuron pass (`xla::hilo`) | Register fn / RTTI | Role |
 |---|---|---|

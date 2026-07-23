@@ -54,7 +54,7 @@ function NeuronOpFusion_runOnOperation():            // 0x2101680
 
 > **NOTE —** `fuseSubExp` (the stable log-sum-exp) is **always-on**, never behind a flag. That placement is itself evidence it is a numerical-stability transform rather than a perf knob: the matched form is already the numerically-stable `max + log(Σ exp(x−max))`, and the pass exists to keep that tree glued together so a later pass cannot re-associate the `x−max` cancellation away from its `exp` and re-introduce overflow. (Pass-ordering CERTAIN from disasm @0x2101680; the exact flag→`fuseMulRedSqrt` coupling is HIGH.)
 
-The `cl::opt` objects have stride 0xC0 with the bool value at +0x78 (two-point verified). The `generalElementwiseFusion` flag carries the key string `general-elementwise-fusion` / help "General elementwise-op fusion." Two related help strings survive verbatim in `.rodata` — `aEnableTheNeuronOpFusionFlagToProperlyFuseLog1popBefo` and `...FuseExpm1opBefo` — confirming the Log1p/Expm1 expanders are tied to this flag (CONFIRMED, names.json).
+The `cl::opt` objects have stride 0xC0 with the bool value at +0x78 (two-point verified). The `generalElementwiseFusion` flag carries the key string `general-elementwise-fusion` / help "General elementwise-op fusion." Two related help strings survive verbatim in `.rodata` — `aEnableTheNeuronOpFusionFlagToProperlyFuseLog1popBefo` and `...FuseExpm1opBefo` — which ties the Log1p/Expm1 expanders to this flag.
 
 > **GOTCHA —** because `fuseElementwiseOps` runs *after* `fuseExpm1Op`/`fuseLog1pOp` under the same flag, the `exp`/`log`/`sub`/`add` ops those expanders synthesize are themselves candidates for the elementwise grower — but they are already inside an `mhlo.fusion` region, and the elementwise seed-walk **skips ops whose parent is a `FusionOp`** (§ Elementwise, seed lambda). A reimplementation that re-seeds inside fusion regions will double-fuse.
 
@@ -69,7 +69,7 @@ The `cl::opt` objects have stride 0xC0 with the bool value at +0x78 (two-point v
 - **Pass A — cluster collector:** matches `dot → logistic [→ mul]`, builds a `FusionCluster` named `"DotLogistic"`, and lowers it via `codeGen`.
 - **Pass B — reshape reassociation:** matches `dot → reshape(2 users) → logistic → mul` and **reorders** it to `dot → logistic → mul → reshape`, sinking the reshape below the elementwise ops so they run on the un-reshaped dot output. Pass B builds *no* cluster and emits *no* composite — it is a pure SSA rewrite.
 
-> **CORRECTION (D-C01) —** an earlier surface scan described this function as a single "match `dot→logistic`, build cluster, erase, emit DotLogistic composite". That conflates the two machineries. Pass A clusters; Pass B reassociates. They share only the collected `LogisticOp` vector. CERTAIN.
+> **GOTCHA — one function, two unrelated machineries.** It is tempting to read `fuseDotLogisticOp` as a single "match `dot→logistic`, build cluster, emit composite" routine. It is not: Pass A clusters and emits a composite, Pass B reassociates SSA and emits nothing. The two share only the collected `LogisticOp` vector.
 
 ### Entry Point
 
@@ -171,7 +171,7 @@ The three "Number of … users = " strings (`LogisticOp` @0x25e53f, `reshapeOp` 
 | `mhlo.concatenate` or `mhlo.reshape` | `"Elementwise"` |
 | `mhlo.reduce` | `"MulRedSqrt"` |
 
-> **CORRECTION (D-C02) —** an earlier scan attributed `"MulRedSqrt"` solely to the separate `fuseMulRedSqrt` @0x20ff510 and listed only `"Elementwise"` for this function. In fact the reduce-anchored elementwise grower *also* tags `"MulRedSqrt"`. Both passes emit the same kind. CERTAIN (string @0x2560e7 set @0x20fe4a4).
+> **NOTE — `"MulRedSqrt"` is not exclusive to `fuseMulRedSqrt`.** The separate `fuseMulRedSqrt` @0x20ff510 is the obvious source of that kind string, but the reduce-anchored elementwise grower emits it too: the string at `0x2560e7` is set at `0x20fe4a4` inside *this* function. Both passes produce the same `FusionKind`.
 
 ### Entry Point
 
@@ -230,7 +230,7 @@ The full elementwise set (CERTAIN, transcribed from the `isa<>` type list):
 
 ### Algorithm — `growFusionOpUpwards` (inlined greedy grower)
 
-There is no standalone `growFusionOpUpwards` symbol; it is inlined, but its signature survives in the mangled lambda symbols (CONFIRMED, names.json): it takes one growing `SetVector<Operation*, SmallVector<Op*,0>, DenseSet<Op*>>` — a DenseSet for O(1) `contains` plus an ordered SmallVector for iteration.
+There is no standalone `growFusionOpUpwards` symbol — it is inlined — but its signature survives in the mangled lambda symbols: it takes one growing `SetVector<Operation*, SmallVector<Op*,0>, DenseSet<Op*>>` — a DenseSet for O(1) `contains` plus an ordered SmallVector for iteration.
 
 ```c
 function growFusionOpUpwards(SetVector<Op*>& cluster): // inlined @0x20fcd4e..0x20fd0b8
@@ -303,7 +303,7 @@ Three sub-passes recognize transcendental idioms. One *encapsulates* an existing
 | `fuseExpm1Op` | 0x20ff1e0 | `{lambda(mhlo::Expm1Op)#1}` @0x20fae00 | **expand** `expm1(x) → exp(x) − 1.0` |
 | `fuseLog1pOp` | 0x20feeb0 | `{lambda(mhlo::Log1pOp)#1}` @0x20fbcc0 | **expand** `log1p(x) → log(x + 1.0)` |
 
-> **CORRECTION (D-C04) —** the brief named these "exp(x)−1 → expm1" and "log(1+x) → log1p" folders, and "sub∘exp" for the first. All three directions are wrong. `fuseSubExp` matches the full 8-op log-sum-exp tree and does **no** math rewrite. `fuseExpm1Op`/`fuseLog1pOp` are **expanders**: they consume an existing `mhlo.expm1`/`mhlo.log1p`, **synthesize** the constant 1.0, and emit the two-/three-op expansion — the opposite direction. CERTAIN.
+> **GOTCHA — these three run in the opposite direction from their names.** `fuseExpm1Op` and `fuseLog1pOp` are **expanders**, not folders: each consumes an existing `mhlo.expm1` / `mhlo.log1p`, synthesizes the constant 1.0, and emits the two- or three-op expansion. And `fuseSubExp` is not a `sub∘exp` fold at all — it matches the full 8-op log-sum-exp tree and performs no math rewrite whatsoever.
 
 ### Algorithm — `fuseSubExp` matcher (lambda @0x20fb540)
 
@@ -440,7 +440,7 @@ function codeGen(dom, postdom):                        // 0x2104640
 
 The result is a single `mhlo.fusion { <ordered body> ; mhlo.return <liveOuts> } {FusionKind="<kind>"}`.
 
-> **CORRECTION (D-C01) —** `codeGen` is called with **`PostDominanceInfo = nullptr`** from `fuseDotLogisticOp` (`xor edx,edx` @0x2100683). The signature takes a post-dom pointer but it is unused on that path — dominance flows only into `recursivelyMoveDependentOps`, which tolerates a null post-dom. Other callers (e.g. `fuseElementwiseOps`) may pass it. CERTAIN.
+> **GOTCHA — the post-dominance argument is null on the DotLogistic path.** `fuseDotLogisticOp` calls `codeGen` with `PostDominanceInfo = nullptr` (`xor edx,edx` @0x2100683). The signature takes a post-dom pointer, but nothing on that path reads it — dominance flows only into `recursivelyMoveDependentOps`, which tolerates a null. Other callers, such as `fuseElementwiseOps`, may pass a real one.
 
 > **GOTCHA —** the *only* attribute `codeGen` writes is `FusionKind`. There is no numeric `composite.version` or `backend_config` emitted here. Any `composite.version`/`composite.attributes` on the StableHLO side are added by a downstream FusionToComposite stage, not by this routine. (`composite.name` @0x27713d / `composite.attributes` @0x2122ce exist for the StableHLO twin only.)
 
@@ -450,17 +450,19 @@ The result is a single `mhlo.fusion { <ordered body> ; mhlo.return <liveOuts> } 
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+**Read directly from the binary.**
 
-1. **All sub-pass entry addresses.** `fuseDotLogisticOp@0x2100160`, `fuseElementwiseOps@0x20fcac0`, `fuseSubExp@0x20ff720`, `fuseExpm1Op@0x20ff1e0`, `fuseLog1pOp@0x20feeb0`, `fuseMulRedSqrt@0x20ff510`, `runOnOperation@0x2101680`, `FusionCluster::FusionCluster@0x20faa20`, `codeGen@0x2104640`, `isElementwiseOp@0x21c3e90`, `getNumUsers@0x21bfee0` — **re-resolved via `names.json` jq query; every address matches the reports verbatim. CONFIRMED.**
-2. **TypeID resolver symbols.** SubtractOp=0x9d304a0, ReshapeOp=0x9d30558, MulOp=0x9d305f8, MaxOp=0x9d30610, LogisticOp=0x9d30620, LogOp=0x9d30628, Log1pOp=0x9d30630, Expm1Op=0x9d30690, ExpOp=0x9d30698, DotOp=0x9d306f0, DotGeneralOp=0x9d306f8, AddOp=0x9d30830 — **all 12 re-resolved in `names.json`, exact match. CONFIRMED.**
-3. **FusionKind strings.** `Elementwise`@0x669e3, `DotLogistic`@0x15ec2, `FusionKind`@0x66931, `MulRedSqrt`@0x560e7, `Expm1`@0x327b3, `Log1p`@0x1a2eb, `DotSoftmax`@0x5e528 (file offsets) — **`dd`-dumped from the binary; every byte matches. CONFIRMED.** (An early test of `MulRedSqrt` used a wrong offset; recomputed VA 0x2560e7−0x200000=0x560e7 confirms it.)
-4. **`growFusionOpUpwards` signature and the R4 all_of gate.** The mangled symbol confirms the exact type `SetVector<Operation*, SmallVector<Op*,0u>, DenseSet<Op*>>` and the nested `all_of(...{lambda(OpOperand)})` over `ValueUserIterator<ResultRange::UseIterator, OpOperand>` — **demangled verbatim in `names.json`. CONFIRMED** that growth is upward over operands and gated by an all-users-in-cluster predicate.
-5. **Flag-gated ordering / always-on `fuseSubExp`.** The two help strings `aEnableTheNeuronOpFusionFlagToProperlyFuseLog1popBefo` / `...Expm1opBefo` and `general-elementwise-fusion` confirm Log1p/Expm1/Elementwise are flag-gated; `fuseSubExp` being called unconditionally first is from disasm @0x2101680. **String evidence CONFIRMED; the precise `fuseMulRedSqrt`-under-DotLogistic-flag coupling is STRONG (disasm-derived, not independently re-traced here).**
+- **Every sub-pass entry address** resolves in `names.json`: `fuseDotLogisticOp@0x2100160`, `fuseElementwiseOps@0x20fcac0`, `fuseSubExp@0x20ff720`, `fuseExpm1Op@0x20ff1e0`, `fuseLog1pOp@0x20feeb0`, `fuseMulRedSqrt@0x20ff510`, `runOnOperation@0x2101680`, `FusionCluster::FusionCluster@0x20faa20`, `codeGen@0x2104640`, `isElementwiseOp@0x21c3e90`, `getNumUsers@0x21bfee0`.
+- **All twelve TypeID resolver symbols** likewise: SubtractOp=0x9d304a0, ReshapeOp=0x9d30558, MulOp=0x9d305f8, MaxOp=0x9d30610, LogisticOp=0x9d30620, LogOp=0x9d30628, Log1pOp=0x9d30630, Expm1Op=0x9d30690, ExpOp=0x9d30698, DotOp=0x9d306f0, DotGeneralOp=0x9d306f8, AddOp=0x9d30830.
+- **The FusionKind strings**, dumped byte-for-byte at their file offsets: `Elementwise`@0x669e3, `DotLogistic`@0x15ec2, `FusionKind`@0x66931, `MulRedSqrt`@0x560e7, `Expm1`@0x327b3, `Log1p`@0x1a2eb, `DotSoftmax`@0x5e528. Note the VA-to-file-offset conversion for `MulRedSqrt`: 0x2560e7 − 0x200000 = 0x560e7.
+- **The `growFusionOpUpwards` signature and its all-users gate.** The mangled symbol demangles to the exact type `SetVector<Operation*, SmallVector<Op*,0u>, DenseSet<Op*>>` with a nested `all_of(...{lambda(OpOperand)})` over `ValueUserIterator<ResultRange::UseIterator, OpOperand>`, which is what establishes that growth runs upward over operands under an all-users-in-cluster predicate.
+- **The flag gating.** The help strings `aEnableTheNeuronOpFusionFlagToProperlyFuseLog1popBefo`, `...Expm1opBefo`, and `general-elementwise-fusion` place Log1p, Expm1, and Elementwise behind the flag; the disasm at `0x2101680` shows `fuseSubExp` called unconditionally first.
 
-**Tagged INFERRED / not independently re-traced on this pass:** the `[op+0x2E]` sign-bit = `hasOneUse` reading (HIGH — inlined, no helper symbol; consistent across all three transcendental matchers); `recursivelyMoveDependentOps` @0x2103a10 internal dominance walk (role-only); the StableHLO twins (`StableHLONeuronOpFusion::*`) assumed byte-parallel by symmetry. No address, offset, or string on this page is fabricated; uncited internals are marked.
+### Limits of this reading
+
+Four things are weaker. The precise coupling of `fuseMulRedSqrt` to the DotLogistic flag is disasm-derived rather than independently re-traced. The `[op+0x2E]` sign-bit reading as `hasOneUse` is **INFERRED** — the helper is inlined with no symbol of its own, though the interpretation is consistent across all three transcendental matchers. `recursivelyMoveDependentOps` @0x2103a10 is documented at role level only; its internal dominance walk was not traced. And the StableHLO twins (`StableHLONeuronOpFusion::*`) are assumed byte-parallel to the MHLO originals by symmetry, not compared.
 
 ---
 

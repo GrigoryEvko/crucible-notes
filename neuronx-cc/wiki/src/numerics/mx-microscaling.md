@@ -8,7 +8,7 @@ The OCP **MX** (microscaling) format replaces one floating-point value per eleme
 
 The piece worth understanding is the **EMAX scale method**. A block's shared exponent is *not* the average or the L2 norm — it is derived purely from the single largest-magnitude element's IEEE-754 exponent, measured against the destination format's maximum-normal exponent. The shared exponent is whatever power of two divides the block down so the biggest element lands at or just below the format's largest representable value. That makes the narrow rarely saturate: the EMAX bias is exactly the budget that maps the block max into the format's normal range. The math is a handful of integer operations on the raw bit patterns — no `ilogbf`, no logarithm, no division — which is why it maps cleanly to hardware.
 
-This page is the *standalone* quantize path: BF16/F16 input → `{quantized FP4/FP8 data (x4-packed), E8M0 scale}`. It is distinct from the matmul-fused **dequantize** path (page 9.9), which consumes an existing E8M0 scale and applies it. Here we document how the scale is *computed* and how each element is *rounded into the grid*. Evidence is D-F13.
+This page is the *standalone* quantize path: BF16/F16 input → `{quantized FP4/FP8 data (x4-packed), E8M0 scale}`. It is distinct from the matmul-fused **dequantize** path (page 9.9), which consumes an existing E8M0 scale and applies it. Here we document how the scale is *computed* and how each element is *rounded into the grid*.
 
 For reimplementation, the contract is:
 
@@ -54,7 +54,9 @@ visitInstQuantizeMx (0x1f6920)        ── opcode-96 standalone visitor
   └─ Memory::write(data) / Memory::write(scale)  ── vtable+72, narrow happens HERE
 ```
 
-The 1-input/2-output shape *is* the HLO 2-tuple. (CONFIRMED — operand fetches and the two `call qword ptr [rax+48h]` writes at `0x1f703f` / `0x1f7061` read end-to-end.)
+The 1-input/2-output shape *is* the HLO 2-tuple.
+
+*Anchors: the operand fetches and the two `call qword ptr [rax+48h]` writes at `0x1f703f` and `0x1f7061` read end-to-end.*
 
 ### Algorithm
 
@@ -115,7 +117,7 @@ function doQuantizeMx(in2D, outData2D, scale2D, bir::Dtype dt):   // sub_29E380
     return quantizeDataApplyingMxScales(in2D, outData2D, scale2D);  // tail-call sub_29E2A0
 ```
 
-> **QUIRK —** the `emaxBias` is built with one carry-arithmetic trick: `cmp byte[MxAlternativeEmaxEn], 1` followed by `adc dl, 0xFFh`. Comparing 0 against 1 *borrows* (sets CF), so the default `MxAlternativeEmaxEn == 0` path adds `0xFF + 1 ≡ 0 (mod 256)` and leaves `emaxBias == EMAX`. The alternative mode (`== 1`) clears CF, adds `0xFF == −1`, giving `EMAX − 1`. This matches the NEFF emission `emax_fp8_e4m3 = MxAlternativeEmaxEn ? 7 : 8`, `emax_fp8_e5m2 = ? 14 : 15`. (CONFIRMED — disasm `0x29e3b0`–`0x29e3b6`.)
+> **QUIRK —** the `emaxBias` is built with one carry-arithmetic trick: `cmp byte[MxAlternativeEmaxEn], 1` followed by `adc dl, 0xFFh`. Comparing 0 against 1 *borrows* (sets CF), so the default `MxAlternativeEmaxEn == 0` path adds `0xFF + 1 ≡ 0 (mod 256)` and leaves `emaxBias == EMAX`. The alternative mode (`== 1`) clears CF, adds `0xFF == −1`, giving `EMAX − 1`. This matches the NEFF emission `emax_fp8_e4m3 = MxAlternativeEmaxEn ? 7 : 8`, `emax_fp8_e5m2 = ? 14 : 15`. The two instructions are at `0x29e3b0`–`0x29e3b6`.
 
 ### The EMAX Table
 
@@ -123,16 +125,16 @@ function doQuantizeMx(in2D, outData2D, scale2D, bir::Dtype dt):   // sub_29E380
 
 | `dt` | Dtype | Index | EMAX | Largest normal | Confidence |
 |---|---|---|---|---|---|
-| 2 | `float4_e2m1fn_x4` | `[0]` = `0x02` | 2 | 6.0 (= 4·1.5) | CONFIRMED |
-| 3 | `float8e3` (legacy) | `[1]` = `0x00` | 0 | — (not an OCP MX target) | CONFIRMED |
-| 4 | `float8e4` (legacy) | `[2]` = `0x00` | 0 | — | CONFIRMED |
-| 5 | `float8_e4m3fn` | `[3]` = `0x08` | 8 | 448 | CONFIRMED |
-| 6 | `float8_e8m0fnu` | `[4]` = `0x00` | 0 | (the scale type itself) | CONFIRMED |
-| 7 | `float8e5` | `[5]` = `0x0f` | 15 | 57344 | CONFIRMED |
-| 8 | `float8_e4m3fn_x4` | `[6]` = `0x08` | 8 | 448 | CONFIRMED |
-| 9 | `float8_e5m2_x4` | `[7]` = `0x0f` | 15 | 57344 | CONFIRMED |
+| 2 | `float4_e2m1fn_x4` | `[0]` = `0x02` | 2 | 6.0 (= 4·1.5) | CERTAIN |
+| 3 | `float8e3` (legacy) | `[1]` = `0x00` | 0 | — (not an OCP MX target) | CERTAIN |
+| 4 | `float8e4` (legacy) | `[2]` = `0x00` | 0 | — | CERTAIN |
+| 5 | `float8_e4m3fn` | `[3]` = `0x08` | 8 | 448 | CERTAIN |
+| 6 | `float8_e8m0fnu` | `[4]` = `0x00` | 0 | (the scale type itself) | CERTAIN |
+| 7 | `float8e5` | `[5]` = `0x0f` | 15 | 57344 | CERTAIN |
+| 8 | `float8_e4m3fn_x4` | `[6]` = `0x08` | 8 | 448 | CERTAIN |
+| 9 | `float8_e5m2_x4` | `[7]` = `0x0f` | 15 | 57344 | CERTAIN |
 
-> **NOTE —** these are the OCP per-format max-normal exponents. e2m1's largest representable is `4.0 · 1.5 = 6.0` (emax 2); e4m3fn's is 448 (emax 8); e5m2's is 57344 (emax 15). They are the *reference* the block shared exponent is measured against. The table read instruction (`movzx edx, byte[unk_5F7898 + rcx]`) is CONFIRMED in the `doQuantizeMx` disasm; the table byte values are CONFIRMED by `xxd` of the `.rodata` at `0x5F7898` and are byte-identical to the matmul-MX dequant transcription (D-F02 §7).
+> **NOTE —** these are the OCP per-format max-normal exponents. e2m1's largest representable is `4.0 · 1.5 = 6.0` (emax 2); e4m3fn's is 448 (emax 8); e5m2's is 57344 (emax 15). They are the *reference* the block shared exponent is measured against. The table read instruction `movzx edx, byte[unk_5F7898 + rcx]` sits in the `doQuantizeMx` disasm, and the byte values come from `xxd` of the `.rodata` at `0x5F7898` — byte-identical to the transcription on the matmul-MX dequant side.
 
 ### Algorithm — findMaxExponentPerInputBlock
 
@@ -197,7 +199,7 @@ with `emaxBias = byte_5F7898[dt−2]` in the default mode. Interpretation:
 - **CLAMP-LOW (→ 0):** a block whose max already fits the format would produce a *negative* shared exponent byte. E8M0 is unsigned, so the signed result is floored to 0 (`cmovs`) — meaning "no down-scaling needed".
 - **ZERO-FLOOR (→ 1):** an E8M0 byte of 0 (= `2^−127`, the smallest E8M0) is bumped to 1 (= `2^−126`). This is the denormal / all-zero-block guard: a fully-zero or already-tiny block keeps a valid non-zero shared exponent, and the dequant side never multiplies by `2^−127` exactly.
 
-> **GOTCHA —** the two clamps **compose in order**: the signed `maxExp − emaxBias` is first floored to 0, *then* a resulting 0 byte is bumped to 1. The emitted E8M0 byte is therefore always in `[1, 255]`. Skipping either clamp breaks round-trip exactness with the matmul-MX dequant (page 9.9), which reads the same bytes back. (CONFIRMED — `cmovs eax, edi` at `0x29e260`, `mov byte[rcx], 1` at `0x29e276`.)
+> **GOTCHA —** the two clamps **compose in order**: the signed `maxExp − emaxBias` is first floored to 0, *then* a resulting 0 byte is bumped to 1. The emitted E8M0 byte is therefore always in `[1, 255]`. Skipping either clamp breaks round-trip exactness with the matmul-MX dequant (page 9.9), which reads the same bytes back. The two clamps are `cmovs eax, edi` at `0x29e260` and `mov byte[rcx], 1` at `0x29e276`.
 
 ### Algorithm — quantizeDataApplyingMxScales (the prescale)
 
@@ -222,7 +224,7 @@ out = in · 2^(127 − E8M0) = in / 2^(E8M0 − 127)
 
 which is the **exact inverse** of the matmul-MX dequant's `ldexpf(x, E8M0 − 127)` (page 9.9). The prescale divides each element down by the block's shared exponent so the narrow that follows operates on values already mapped into the format's normal range.
 
-> **NOTE —** the constant is **254, not 255**. The E8M0 bias is 127; building a multiplier as a normal fp32 with exponent field `(254 − E8M0)` gives `2^(127 − E8M0)`: `E8M0 = 127` (unbiased 0) → `2^0 = ×1` (no scale); `E8M0 > 127` → scale down; `E8M0 < 127` → scale up. The ZERO-FLOOR (`E8M0 ≥ 1`) keeps `(254 − E8M0) ≤ 253`, so the multiplier is always a finite normal fp32, never `Inf`. (CONFIRMED — `mov ebp, 0FEh` at `0x29e2ef`.)
+> **NOTE —** the constant is **254, not 255**. The E8M0 bias is 127; building a multiplier as a normal fp32 with exponent field `(254 − E8M0)` gives `2^(127 − E8M0)`: `E8M0 = 127` (unbiased 0) → `2^0 = ×1` (no scale); `E8M0 > 127` → scale down; `E8M0 < 127` → scale up. The ZERO-FLOOR (`E8M0 ≥ 1`) keeps `(254 − E8M0) ≤ 253`, so the multiplier is always a finite normal fp32, never `Inf`. The constant load is `mov ebp, 0FEh` at `0x29e2ef`.
 
 ---
 
@@ -255,7 +257,7 @@ The fp32 exponent is `e2m1_exp + 126`, so the e2m1 bias is `127 − 126 = 1`. Th
 | 2 | ±2.0 | ±3.0 |
 | 3 | ±4.0 | ±6.0 |
 
-**Grid = `{0, ±0.5, ±1, ±1.5, ±2, ±3, ±4, ±6}`.** Max magnitude 6.0. No `Inf`, no `NaN` — `e2m1fn` is finite-only. (CONFIRMED — every grid point derived from the decode arithmetic.)
+**Grid = `{0, ±0.5, ±1, ±1.5, ±2, ±3, ±4, ±6}`.** Max magnitude 6.0. No `Inf`, no `NaN` — `e2m1fn` is finite-only. Every grid point above follows from the decode arithmetic.
 
 The encoder `sub_2A3530` (fp32 → 4-bit nibble) is RNE with hard saturate:
 
@@ -290,9 +292,9 @@ Memory::write(data) → MemoryObject::cast_and_reshape (0x28f1f0)
 |---|---|---|---|---|---|
 | 5 / 8 | `float8_e4m3fn` (1s/4e/3m, bias 7) | 448 = code `0x7E` | `0x7E` (no `Inf`) | hard RNE | HIGH (libBIR import) |
 | 7 / 9 | `float8_e5m2` (1s/5e/2m, bias 15) | 57344 = code `0x7B` | `0x7B` (no `Inf`; `0x7C` is the `Inf` code, only with sat=0) | hard RNE | HIGH (libBIR import) |
-| 2 | `float4_e2m1fn` | 6.0 | the LOCAL packer (config ignored) | hard RNE | CONFIRMED |
+| 2 | `float4_e2m1fn` | 6.0 | the LOCAL packer (config ignored) | hard RNE | CERTAIN |
 
-> **QUIRK —** the standalone QuantizeMx **always** narrows fp8 with saturate on (`byte[0] = 1`, forced unconditionally at `0x1f6ff4`). This is different from the simulator's fp8 *reduce* path (`sub_2a36e0`/`38d0`/`3cf0`, dtypes 3/4/7), which passes `config = 0` (Inf-mode, the legacy `E3M4`/`E4M3-240`/`E5M2` accumulate narrows). Do not conflate the two: QuantizeMx targets dtypes `{2, 5, 7, 8, 9}` and saturates; the reduce path is Inf-mode. The e4m3fn 448 / e5m2 57344 maxima are exactly the OCP MX targets, and the §scale EMAX bias is precisely what keeps the pre-scaled block max below them so the narrow rarely saturates. The narrow constants live in the imported libBIR (same `float_converter.cpp` source baked into this binary @ `0x5cae80`), so they are HIGH for this binary, not re-disassembled here; the *delegation* is CONFIRMED.
+> **QUIRK —** the standalone QuantizeMx **always** narrows fp8 with saturate on (`byte[0] = 1`, forced unconditionally at `0x1f6ff4`). This is different from the simulator's fp8 *reduce* path (`sub_2a36e0`/`38d0`/`3cf0`, dtypes 3/4/7), which passes `config = 0` (Inf-mode, the legacy `E3M4`/`E4M3-240`/`E5M2` accumulate narrows). Do not conflate the two: QuantizeMx targets dtypes `{2, 5, 7, 8, 9}` and saturates; the reduce path is Inf-mode. The e4m3fn 448 / e5m2 57344 maxima are exactly the OCP MX targets, and the §scale EMAX bias is precisely what keeps the pre-scaled block max below them so the narrow rarely saturates. The delegation itself is plain in the call chain; the narrow constants, however, live in the imported libBIR (the same `float_converter.cpp` source is baked into this binary @ `0x5cae80`) and were not re-disassembled here.
 
 ---
 
@@ -328,7 +330,7 @@ function lane_remap(index, stride):                      // sub_2A3500
     return result;
 ```
 
-> **GOTCHA —** the four logical FP4 sub-elements of an x4 container are **not** in plain little-endian nibble order. Within each window of `2·stride` elements the linear index is *reversed* and even/odd indices are paired offset-by-2. A reimplementation that packs nibble `k` at byte `k>>1`, parity `k&1`, with no remap, will produce a byte-permuted result that the dequant lane-unpack (`sub_2A6080`, which applies the *same* `sub_2A3500`) cannot read back. The permutation **formula** is CONFIRMED; the concrete `stride`/`parity` for a given tensor come from the access-pattern geometry via `sub_2A58A0` (read at role level, not field-traced to a specific tile), so they are HIGH, not pinned to a NEFF fixture.
+> **GOTCHA —** the four logical FP4 sub-elements of an x4 container are **not** in plain little-endian nibble order. Within each window of `2·stride` elements the linear index is *reversed* and even/odd indices are paired offset-by-2. A reimplementation that packs nibble `k` at byte `k>>1`, parity `k&1`, with no remap, will produce a byte-permuted result that the dequant lane-unpack (`sub_2A6080`, which applies the *same* `sub_2A3500`) cannot read back. The permutation **formula** is exact. The concrete `stride`/`parity` for a given tensor come from the access-pattern geometry via `sub_2A58A0`, read at role level rather than field-traced to a specific tile, so they are not pinned to a NEFF fixture.
 
 > **NOTE —** FP8 x4 (dtypes 8/9) carries its x4-ness in the access pattern (`num × 4` with a u32 container stride of 4), **not** in a nibble pack. FP8 bytes are 1-per-element and contiguous — only FP4 needs the nibble permutation, because two FP4 elements share a byte.
 
@@ -347,7 +349,9 @@ function copy2DScaleVectorToArray(scale2D, base, nScaleRows, scaleBytesPerRow): 
 
 Scale-row `i` lands at output slot `(i & 3) + 32 * (i >> 2)`: groups of 4 consecutive scale rows stay contiguous, then the group jumps by 32. The dequant side reads it back via `copyScalesFromArray<uchar>` @ `0x29e5e0` with the **identical** index — a symmetric write/read, round-trip exact.
 
-> **NOTE —** the `32` stride is the 8-partition × 4-column MX block granularity in scale space; the 4-bit group `(i & 3)` maps to the `MXMEM_PATTERN1D` "scale-stream selector" (≤ `0x0F`, the 4-bit E8M0 sub-bank) at `byte+15` of the descriptor (page 2.6). `nScaleRows` is `(Pattern[0].num) >> 3` (= partitions / 8) and `scaleBytesPerRow` is the scale-AP free extent (= cols / 4). So the **E8M0 scale tensor shape is `[partitions/8, cols/4]` = `[P//8, F//4]`**, laid out with the `(i&3) + 32*(i>>2)` interleave. (CONFIRMED — `0x29e596`–`0x29e5c2`.)
+> **NOTE —** the `32` stride is the 8-partition × 4-column MX block granularity in scale space; the 4-bit group `(i & 3)` maps to the `MXMEM_PATTERN1D` "scale-stream selector" (≤ `0x0F`, the 4-bit E8M0 sub-bank) at `byte+15` of the descriptor (page 2.6). `nScaleRows` is `(Pattern[0].num) >> 3` (= partitions / 8) and `scaleBytesPerRow` is the scale-AP free extent (= cols / 4). So the **E8M0 scale tensor shape is `[partitions/8, cols/4]` = `[P//8, F//4]`**, laid out with the `(i&3) + 32*(i>>2)` interleave.
+
+*Anchors: the index computation and the `memcpy` loop at `0x29e596`–`0x29e5c2`.*
 
 ---
 
@@ -364,7 +368,7 @@ The simulator is the functional twin of the silicon QuantizeMx. The layers line 
 | wire | `S3DMX1_QUANT` op `0xE3` = 227; `byte[1].bit0` = saturate; `MEM_PATTERN3D` data + `MXMEM_PATTERN1D` scale | `FP8ConvConfig[0]` saturate; scale interleave |
 | sim numeric | `E8M0 = max(1, max(0, maxExp − EMAX))`; data `× 2^(127 − E8M0)`; narrow → FP4/FP8 grid | `generateMxScales`; prescale; round-to-grid |
 
-The runtime E8M0 max-abs reduce was previously known to "live in silicon, not in libwalrus"; the simulator's `findMaxExponentPerInputBlock` is exactly that reduce, recovered as the reference implementation.
+The E8M0 max-abs reduce has no counterpart in `libwalrus` — it belongs to silicon. `findMaxExponentPerInputBlock` is that reduce, recovered here as the reference implementation.
 
 ---
 
@@ -372,40 +376,45 @@ The runtime E8M0 max-abs reduce was previously known to "live in silicon, not in
 
 | Function | Addr | Role | Confidence |
 |---|---|---|---|
-| `visitInstQuantizeMx` | `0x1f6920` | opcode-96 standalone visitor | CONFIRMED |
-| `doQuantizeMx` | `0x29e380` | EMAX pick + generate + apply | CONFIRMED |
-| `generateMxScales` | `0x29e1d0` | E8M0 = clamp(maxExp − EMAX), zero-floor 1 | CONFIRMED |
-| `findMaxExponentPerInputBlock` | `0x29e150` | max biased fp32 exp over 8×4 = 32 block | CONFIRMED |
-| `quantizeDataApplyingMxScales` | `0x29e2a0` | data × 2^(127 − E8M0) prescale | CONFIRMED |
-| `copyArrayTo2DVector<float>` | `0x29e3e0` | input fp32 array → 2D (partition-major) | CONFIRMED |
-| `copy2DVectorToArray<float>` | `0x29e4a0` | scaled fp32 2D → data array | CONFIRMED |
-| `copy2DScaleVectorToArray<uchar>` | `0x29e570` | E8M0 2D → tensor, `(i&3)+32(i>>2)` | CONFIRMED |
-| `copyScalesFromArray<uchar>` | `0x29e5e0` | inverse scale interleave (dequant) | CONFIRMED |
-| `cast_fp32_to_float4e2m1fn_x4` | `0x2a72c0` | FP4 narrow+pack driver (`count % 4`) | CONFIRMED |
-| ` └ fp32→e2m1 nibble encode` | `0x2a3530` | RNE + saturate-to-6.0 (`or eax, 7`) | CONFIRMED |
-| ` └ x4 nibble pack` | `0x2a6a80` | 2 nibbles/byte + lane remap | CONFIRMED |
-| ` └ lane-order remap` | `0x2a3500` | deinterleave-by-2·stride | CONFIRMED |
+| `visitInstQuantizeMx` | `0x1f6920` | opcode-96 standalone visitor | CERTAIN |
+| `doQuantizeMx` | `0x29e380` | EMAX pick + generate + apply | CERTAIN |
+| `generateMxScales` | `0x29e1d0` | E8M0 = clamp(maxExp − EMAX), zero-floor 1 | CERTAIN |
+| `findMaxExponentPerInputBlock` | `0x29e150` | max biased fp32 exp over 8×4 = 32 block | CERTAIN |
+| `quantizeDataApplyingMxScales` | `0x29e2a0` | data × 2^(127 − E8M0) prescale | CERTAIN |
+| `copyArrayTo2DVector<float>` | `0x29e3e0` | input fp32 array → 2D (partition-major) | CERTAIN |
+| `copy2DVectorToArray<float>` | `0x29e4a0` | scaled fp32 2D → data array | CERTAIN |
+| `copy2DScaleVectorToArray<uchar>` | `0x29e570` | E8M0 2D → tensor, `(i&3)+32(i>>2)` | CERTAIN |
+| `copyScalesFromArray<uchar>` | `0x29e5e0` | inverse scale interleave (dequant) | CERTAIN |
+| `cast_fp32_to_float4e2m1fn_x4` | `0x2a72c0` | FP4 narrow+pack driver (`count % 4`) | CERTAIN |
+| ` └ fp32→e2m1 nibble encode` | `0x2a3530` | RNE + saturate-to-6.0 (`or eax, 7`) | CERTAIN |
+| ` └ x4 nibble pack` | `0x2a6a80` | 2 nibbles/byte + lane remap | CERTAIN |
+| ` └ lane-order remap` | `0x2a3500` | deinterleave-by-2·stride | CERTAIN |
 | ` └ pack-ctx init` | `0x2a58a0` | stride/parity from AP | HIGH |
-| `cast_float4e2m1fn_x2_to_fp32` | `0x2a6900` | FP4 decode driver (`count % 2`) | CONFIRMED |
-| ` └ e2m1 nibble → fp32` | `0x2a3f30` | grid `{0,.5,1,1.5,2,3,4,6}` | CONFIRMED |
-| `MemoryObject::cast_and_reshape` | `0x28f1f0` | fp32→dst narrow + reshape | CONFIRMED |
-| `MemoryObject::cast_to` | `0x28db30` | → `bir::CastToNewDType` | CONFIRMED |
-| `bir::CastToNewDType` | `0xed930` → `0x22b1230` | canonical fp8 narrow (libBIR import) | CONFIRMED (import) |
-| `getInOutPhysicalAP` | `0x1cfdc0` | `(I, idx, isOutput)` operand AP | CONFIRMED |
-| `byte_5F7898` | `0x5F7898` | EMAX table `02 00 00 08 00 0f 08 0f` | CONFIRMED |
-| `FP8ConvConfig` (GOT import) | → libBIR | saturate byte[0] / nan-suppress byte[1] | CONFIRMED |
+| `cast_float4e2m1fn_x2_to_fp32` | `0x2a6900` | FP4 decode driver (`count % 2`) | CERTAIN |
+| ` └ e2m1 nibble → fp32` | `0x2a3f30` | grid `{0,.5,1,1.5,2,3,4,6}` | CERTAIN |
+| `MemoryObject::cast_and_reshape` | `0x28f1f0` | fp32→dst narrow + reshape | CERTAIN |
+| `MemoryObject::cast_to` | `0x28db30` | → `bir::CastToNewDType` | CERTAIN |
+| `bir::CastToNewDType` | `0xed930` → `0x22b1230` | canonical fp8 narrow (libBIR import) | CERTAIN (import) |
+| `getInOutPhysicalAP` | `0x1cfdc0` | `(I, idx, isOutput)` operand AP | CERTAIN |
+| `byte_5F7898` | `0x5F7898` | EMAX table `02 00 00 08 00 0f 08 0f` | CERTAIN |
+| `FP8ConvConfig` (GOT import) | → libBIR | saturate byte[0] / nan-suppress byte[1] | CERTAIN |
 | `MxAlternativeEmaxEn` (GOT import) | → libBIR | EMAX − 1 select | HIGH |
 
 **Access-pattern field offsets** (`PhysicalAccessPattern`): `AP+48 (0x30)` Dtype · `AP+80 (0x50)` Pattern `SmallVector<APPair>` ptr · `AP+88 (0x58)` Pattern.size · `Pattern[0]+8` = #partitions.
 
 ---
 
-## Gaps and Caveats
+## Limits of this reading
 
-- **G1 — FP8 narrow constants.** `bir::CastToNewDType` is a libBIR PLT import (`0x22b1230` stub, decompile-failed). The canonical fp32 → `{e4m3fn, e5m2}` round/saturate bytes (448 = `0x7E`, 57344 = `0x7B`, RNE bias, NaN codes) are taken from the imported libBIR (same `float_converter.cpp` source) — HIGH for this binary; the simulator does not contain the canonical fp8 narrow at all (only the legacy reduce-path narrows).
-- **G2 — GOT-imported globals.** `FP8ConvConfig` (default `0x0001` saturate-on) and `MxAlternativeEmaxEn` (the alt-emax bool) live in libBIR, read through `_ptr` GOT slots. `MxAlternativeEmaxEn`'s default byte was not re-read from libBIR here; it is HIGH that it is 0 (the `EMAX`-not-`EMAX−1` mode, matching the default NEFF `emax_fp8_e4m3 = 8` / `e5m2 = 15`).
-- **G3 — lane-permutation parameterisation.** `sub_2A58A0` sets `packCtx` stride (`+24`) and parity (`+16`) from the access pattern, but the exact AP-field → stride mapping was not field-traced. The permutation **formula** is CONFIRMED; its concrete stride/parity for a given tile is HIGH (no NEFF byte-fixture).
-- **G4 — clamp rationale.** The ZERO-FLOOR (`E8M0 0 → 1`) and CLAMP-LOW (`signed < 0 → 0`) are recovered byte-exact. Whether silicon uses the same all-zero-block convention is inferred from the arithmetic, not cross-checked against a hardware MX reference. (INFERRED for the silicon claim; the simulator behavior is CONFIRMED.)
+Four things sit outside what this binary settles.
+
+**The FP8 narrow constants.** `bir::CastToNewDType` is a libBIR PLT import (`0x22b1230` stub, decompile-failed). The canonical fp32 → `{e4m3fn, e5m2}` round/saturate bytes — 448 = `0x7E`, 57344 = `0x7B`, the RNE bias, the NaN codes — come from the imported libBIR rather than from here; the simulator contains no canonical fp8 narrow at all, only the legacy reduce-path narrows.
+
+**Two GOT-imported globals.** `FP8ConvConfig` (default `0x0001`, saturate on) and `MxAlternativeEmaxEn` (the alt-emax bool) both live in libBIR and are read through `_ptr` GOT slots. `MxAlternativeEmaxEn`'s default byte was not re-read from libBIR here; that it is 0 — the `EMAX`, not `EMAX−1`, mode — follows from the default NEFF `emax_fp8_e4m3 = 8` / `e5m2 = 15`.
+
+**The lane-permutation parameterisation.** `sub_2A58A0` sets `packCtx` stride (`+24`) and parity (`+16`) from the access pattern, but the exact AP-field → stride mapping was not field-traced. The formula is exact; the concrete stride and parity for a given tile are not pinned to a NEFF byte-fixture.
+
+**Whether silicon shares the clamp convention.** The ZERO-FLOOR (`E8M0 0 → 1`) and CLAMP-LOW (signed `< 0 → 0`) are recovered byte-exact from the simulator. That silicon uses the same all-zero-block convention is INFERRED from the arithmetic, not cross-checked against a hardware MX reference.
 
 ---
 

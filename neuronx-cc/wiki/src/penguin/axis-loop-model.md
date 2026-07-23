@@ -8,7 +8,7 @@ Penguin — the Python middle-end that hlo2penguin emits into and that the Tonga
 
 The class is `Axis`, base of three concrete forms confirmed as nested subclasses in `Axis.so`: **`AffineAxis`** (the canonical static loop — `lb`/`ub`/`stride` are compile-time affine expressions; 63 pyx methods, by far the dominant class), **`DynamicAxis`** (the data-dependent loop — `ub` is a runtime value), and **`SequentialAxis`** (an ordered, non-parallel axis). A fourth subclass, **`Filter`**, brackets a predicated sub-domain. The `AxisType` enum — an integral `Enum` (the module interns both `Enum` and `Integral`) — carries the role; conversion between roles (`as_shard_axis`, `as_thread_axis`, `parallelize`, …) is gated by legality checks whose diagnostics are recoverable verbatim.
 
-This page reconstructs the class hierarchy, the `AxisType` enum and its `is_*`/`as_*` query/conversion surface, the verbatim serialize form (`for (it: range(lb, ub, stride))`), and how a loop-nest plus its parallelism/sharding semantics is represented and consumed by the tiler. Everything here is grounded in `Axis.so`'s pyx symbol table, string pool, and the D-U08 node-model report; tags follow the house convention (CONFIRMED = verbatim symbol/string; STRONG = multi-source; INFERRED = structure-derived).
+This page reconstructs the class hierarchy, the `AxisType` enum and its `is_*`/`as_*` query/conversion surface, the verbatim serialize form (`for (it: range(lb, ub, stride))`), and how a loop-nest plus its parallelism/sharding semantics is represented and consumed by the tiler. Everything here is grounded in `Axis.so`'s pyx symbol table and string pool, cross-read against the Penguin node model.
 
 For reimplementation, the contract is:
 
@@ -51,13 +51,13 @@ AffineIndicesSet           (ir.so) — a set of AffineIdx
 SymbolicIdx                (ir.so) — a compile-time-unknown index
 ```
 
-> **NOTE —** the subclass count comes straight from the pyx symbol table. `nm Axis.so | rg __pyx_pw_…` resolves to method wrappers tagged with their owning class (`…_4Axis_10AffineAxis_<idx><method>`), so the per-class roster sizes — `AffineAxis` 63, `Axis` 15, `Filter` 8, `AxisHandle` 6, `DynamicAxis` 2, `SequentialAxis` 1 — are CONFIRMED, not inferred. `AffineAxis` dominating the roster (63/95 methods) confirms the static affine loop is the canonical form; `DynamicAxis`/`SequentialAxis` are thin specializations that override only `serialize_block_begin` and the bound semantics.
+> **NOTE —** the subclass count comes straight from the pyx symbol table. `nm Axis.so | rg __pyx_pw_…` resolves to method wrappers tagged with their owning class (`…_4Axis_10AffineAxis_<idx><method>`), so the per-class roster sizes — `AffineAxis` 63, `Axis` 15, `Filter` 8, `AxisHandle` 6, `DynamicAxis` 2, `SequentialAxis` 1 — are counted, not estimated. `AffineAxis` dominating the roster at 63 of 95 methods is what marks the static affine loop as the canonical form; `DynamicAxis`/`SequentialAxis` are thin specializations that override only `serialize_block_begin` and the bound semantics.
 
 ### `Axis` base — the shared loop contract
 
-The base `Axis` (15 CONFIRMED methods) is the loop-level contract every subclass satisfies:
+The base `Axis`, with 15 methods, is the loop-level contract every subclass satisfies:
 
-| Group | Methods (CONFIRMED pyx wrappers) | Role |
+| Group | Methods (pyx wrappers) | Role |
 |---|---|---|
 | Construction / copy | `__init__`, `__recursively_copy_children` | build; deep-copy the child axis sub-tree |
 | Trip count / range | `tripcount`, `max_tripcount`, `min_value`, `max_value`, `aligned_tripcount` | the iteration domain bounds |
@@ -67,9 +67,9 @@ The base `Axis` (15 CONFIRMED methods) is the loop-level contract every subclass
 | Range narrowing | `tighten_range_from_predicates`, `has_same_shape` | shrink `[lb,ub)` using guarding `AffinePredicate`s |
 | Serialize | `serialize_block_begin` | emit the `for (…)` block header |
 
-Beyond these, the report (D-U08 §4.1) records the role-query and mapping helpers that the string pool confirms present in `Axis.so`: `has_shard_axis`, `has_thread_axis`, `has_thread_or_shard_axis`, `is_spmd_or_shard`, `is_thread_or_cc_axis`, `allow_output_dependencies`, `track_axis`, `map_axis`, `map_iv`, `map_and_filter_axis` (all CONFIRMED as interned identifiers). These let a pass ask of a whole sub-tree "does any axis below me shard/thread?" without walking the role of each individually.
+Beyond these, `Axis.so`'s string pool carries a set of role-query and mapping helpers as interned identifiers: `has_shard_axis`, `has_thread_axis`, `has_thread_or_shard_axis`, `is_spmd_or_shard`, `is_thread_or_cc_axis`, `allow_output_dependencies`, `track_axis`, `map_axis`, `map_iv`, and `map_and_filter_axis`. These let a pass ask of a whole sub-tree "does any axis below me shard/thread?" without walking the role of each individually.
 
-> **QUIRK —** `tile` / `__tile_impl` / `num_tiles` live on the *base* `Axis`, not on a separate tiling pass object. Tiling in Penguin is an axis-level operation: the tiler (D-U02) calls `axis.tile(size)`, which splits one `Axis` into an outer block-axis and an inner tile-axis, mutating the loop-nest tree in place. A reimplementer who models tiling as an external rewrite over a flat loop list will not match the IR's shape — the tile boundary is encoded *in the axis tree itself*.
+> **QUIRK —** `tile` / `__tile_impl` / `num_tiles` live on the *base* `Axis`, not on a separate tiling pass object. Tiling in Penguin is an axis-level operation: the tiler calls `axis.tile(size)`, which splits one `Axis` into an outer block-axis and an inner tile-axis, mutating the loop-nest tree in place. A reimplementer who models tiling as an external rewrite over a flat loop list will not match the IR's shape — the tile boundary is encoded *in the axis tree itself*.
 
 ---
 
@@ -91,7 +91,7 @@ class AffineAxis(Axis):       // ir/Axis.py
     tripcount   // (ub - lb + stride - 1) // stride  — the static iteration count
 ```
 
-All four of `iv`, `lb`, `ub`, `stride` are CONFIRMED pyx getters on `AffineAxis`; `tripcount`/`max_tripcount` are inherited from `Axis`. The string-pool interns `stride`, `tripcount`, `max_tripcount`, `min_value`, `max_value` directly (verified via `strings`).
+All four of `iv`, `lb`, `ub`, and `stride` are real pyx getters on `AffineAxis`; `tripcount` / `max_tripcount` are inherited from `Axis`. The string pool interns `stride`, `tripcount`, `max_tripcount`, `min_value`, and `max_value` directly.
 
 ### Serialize — a Python `for`-over-`range`
 
@@ -107,7 +107,7 @@ So a Penguin loop axis *is* a Python `for`-over-`range`, and a loop-nest prints 
 
 ### Affine arithmetic over the `iv`
 
-`AffineAxis` overloads the arithmetic operators to build `AffineExpr` terms over its induction variable (CONFIRMED pyx wrappers `__add__`/`__radd__`/`__sub__`/`__rsub__`/`__mul__`/`__rmul__`/`__neg__`/`__floordiv__`, plus `_add_impl`/`_mul_impl`):
+`AffineAxis` overloads the arithmetic operators to build `AffineExpr` terms over its induction variable. The pyx wrappers are `__add__` / `__radd__` / `__sub__` / `__rsub__` / `__mul__` / `__rmul__` / `__neg__` / `__floordiv__`, plus `_add_impl` / `_mul_impl`:
 
 | Operator group | Methods | Builds |
 |---|---|---|
@@ -130,7 +130,7 @@ An axis's *role* — what kind of parallelism or sharding it expresses — is an
 
 ### Members
 
-`AxisType` is an integral `Enum` (the module interns both `Enum` and `Integral`; references appear as `Optional['AxisType']`). The nine members are CONFIRMED as interned identifiers in `Axis.so`'s string pool, and each has a paired `is_<type>` predicate whose docstring is recovered verbatim (`True if loop type is <type>.`):
+`AxisType` is an integral `Enum` (the module interns both `Enum` and `Integral`; references appear as `Optional['AxisType']`). All nine members appear as interned identifiers in `Axis.so`'s string pool, and each has a paired `is_<type>` predicate whose docstring is recovered verbatim (`True if loop type is <type>.`):
 
 | Member | `is_*` predicate | `True if loop type is …` (verbatim) | Meaning |
 |---|---|---|---|
@@ -148,13 +148,13 @@ An axis's *role* — what kind of parallelism or sharding it expresses — is an
 
 ### Ordinals — assigned by declaration order, not interned
 
-The enum *member names* are interned, but the *ordinal values* are not stored as literals in the binary — `AxisType` is a Python `Enum`, so each member's integer value is assigned at class-definition time by enumeration order. The canonical declaration order recovered from the report (D-U08 §4.2) is `{Default, Parallel, Sequential, Shard, Thread, Block, CCRank, Interleave, SPMD}`, which gives ordinals `Default=0, Parallel=1, Sequential=2, Shard=3, Thread=4, Block=5, CCRank=6, Interleave=7, SPMD=8`.
+The enum *member names* are interned, but the *ordinal values* are not stored as literals in the binary — `AxisType` is a Python `Enum`, so each member's integer value is assigned at class-definition time by enumeration order. The canonical declaration order is `{Default, Parallel, Sequential, Shard, Thread, Block, CCRank, Interleave, SPMD}`, which gives ordinals `Default=0, Parallel=1, Sequential=2, Shard=3, Thread=4, Block=5, CCRank=6, Interleave=7, SPMD=8`.
 
-> **CORRECTION (AXIS-1) —** the *ordinal assignment* above is INFERRED from declaration order, not read as a literal table from the binary. The member *names* and their pairing with `is_<type>` predicates are CONFIRMED (verbatim strings); the integer values are STRONG-at-best because a `unique`/explicit-value decorator could renumber them. Treat the names as authoritative and the ordinals as the natural enumeration unless a downstream BIR `LoopAxis` table (Part 7) pins a different value.
+> **NOTE — the ordinals are INFERRED, the names are not.** The member names and their pairing with `is_<type>` predicates are verbatim strings in the binary. The integer values are not: they are read off declaration order, and a `unique`/explicit-value decorator could renumber them. Treat the names as authoritative and the ordinals as the natural enumeration unless a downstream BIR `LoopAxis` table (Part 7) pins a different value.
 
 ### Conversion — `as_<type>_axis` with legality guards
 
-Re-tagging an axis is done through `convert_axis_type` / `as_axis_type` and the per-role converters (all CONFIRMED pyx wrappers on `AffineAxis`):
+Re-tagging an axis is done through `convert_axis_type` / `as_axis_type` and the per-role converters, all real pyx wrappers on `AffineAxis`:
 
 ```c
 function as_shard_axis(self):           // AffineAxis
@@ -258,7 +258,7 @@ NKI range / hlo2penguin  →  AxisType on each AffineAxis
    shard annotation        →  as_shard_axis()  (must be outermost)
    collective op           →  as_ccrank_axis() / SPMD
 
-Tiler (D-U02) reads AxisType + Operator.used_as_{reduce,contract,lhs_free,rhs_free}_axis
+Tiler reads AxisType + Operator.used_as_{reduce,contract,lhs_free,rhs_free}_axis
    →  classifies each AffineAxis into P(artition) / F(ree) / B(lock)
    →  axis.tile(size) splits it, mutating the nest tree
    →  LoopSplitting + MacroGeneration emit the per-tile loop-nest
@@ -267,23 +267,25 @@ BirCodeGenLoop (P5.15 / Part 7)
    →  lowers each AffineAxis → BIR LoopAxis, DynamicAxis → BirDynamicForAxis
 ```
 
-The tiler does not *infer* parallelism — it *reads* the `AxisType` that the front-end and the role queries set, then chooses which axis maps to the 128-partition SBUF dim and which is sharded across LNC cores. `enumerate_loopnest` / `enumerate_accesses` (CONFIRMED on `AffineAxis`) walk the nest and the accesses for these passes.
+The tiler does not *infer* parallelism — it *reads* the `AxisType` that the front-end and the role queries set, then chooses which axis maps to the 128-partition SBUF dim and which is sharded across LNC cores. `enumerate_loopnest` and `enumerate_accesses`, both on `AffineAxis`, walk the nest and the accesses for these passes.
 
 > **NOTE —** the `Shard` / `Thread` roles are LNC (Logical-Neuron-Core) concepts: `Shard` splits the iteration space across the cores of an LNC group, `Thread` across the threads within a core. The base-axis sub-tree queries (`has_shard_axis`, `has_thread_axis`, `is_spmd_or_shard`, `is_thread_or_cc_axis`) let a pass test a whole nest for these roles in one call, which is how `InferShardAxis` / `LowerShardAxis` / `LowerCCOpBlockAxis` (penguin/targets/transforms — present as sibling `.so` modules) decide where to cut.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims on this page, re-challenged against the binary:
+The page's structural claims are all readable in `Axis.so` itself.
 
-1. **"`AffineAxis`/`DynamicAxis`/`SequentialAxis`/`Filter`/`AxisHandle` are subclasses of `Axis`, with method counts 63/2/1/8/6."** Re-checked: `nm Axis.so | rg -o '__pyx_pw_…_4Axis_<len><Class>_<idx>…'` resolves each class's wrapper set; counts confirmed (`AffineAxis` 63, `Axis` 15, `Filter` 8, `AxisHandle` 6, `DynamicAxis` 2, `SequentialAxis` 1). **CONFIRMED.**
-2. **"The serialize form is `for ({it}: range({lb}, {ub}, {stride}))`."** Re-checked verbatim via `strings`: `{space_indent}{_label}{attr}for ({it}: range({lb}, {ub}, {stride}))` is present as a `__pyx_k_` template. **CONFIRMED.**
-3. **"`AxisType` members are `{Default, Parallel, Sequential, Shard, Thread, Block, CCRank, Interleave, SPMD}`."** Re-checked: all nine names interned in the string pool; eight have paired `is_<type>` predicates with verbatim `True if loop type is <type>.` docstrings; `Block` has no `is_block`. Member names **CONFIRMED**; ordinal values **INFERRED** from declaration order (tagged CORRECTION AXIS-1).
-4. **"`DynamicAxis` upper bound is a runtime value, and its use-def chain differs from `Axis`."** Re-checked: diagnostics `Dynamic Axis must have a runtime-valued upper bound` and `…the use-def chain of \`DynamicAxis\` and \`Axis\` are not the same` recovered verbatim. **CONFIRMED.**
-5. **"Role conversion is guarded — sequential/shard axes cannot be parallelized; shard must be outermost."** Re-checked: `Cannot parallelize sequential/shard axis!`, `Cannot interleave sequential axis!`, `expect shard axis on top, but got `, `Expect AffineAxis, got:` all recovered verbatim from `Axis.so`. **CONFIRMED.**
+- **The class hierarchy and its method counts.** `nm Axis.so | rg -o '__pyx_pw_…_4Axis_<len><Class>_<idx>…'` resolves each class's wrapper set, giving `AffineAxis` 63, `Axis` 15, `Filter` 8, `AxisHandle` 6, `DynamicAxis` 2, `SequentialAxis` 1.
+- **The serialize form.** `{space_indent}{_label}{attr}for ({it}: range({lb}, {ub}, {stride}))` is present verbatim as a `__pyx_k_` template.
+- **The `AxisType` membership.** All nine names are interned in the string pool, and eight carry paired `is_<type>` predicates with verbatim `True if loop type is <type>.` docstrings. `Block` has no `is_block`.
+- **`DynamicAxis`'s runtime bound and its distinct use-def chain.** Both diagnostics are verbatim: `Dynamic Axis must have a runtime-valued upper bound` and `…the use-def chain of \`DynamicAxis\` and \`Axis\` are not the same`.
+- **The role-conversion guards.** `Cannot parallelize sequential/shard axis!`, `Cannot interleave sequential axis!`, `expect shard axis on top, but got `, and `Expect AffineAxis, got:` all appear verbatim.
 
-Remaining gaps, marked honestly: the exact integer **ordinals** of `AxisType` are declaration-order-inferred, not read as a literal table (AXIS-1); the precise field *types* of `iv` (`AffineIV` vs `AffineIdx`) are STRONG (the getter exists; the returned type is inferred from the ir.so registry, not from a method signature); the `Block`-role query path is INFERRED to route through `NeuronBlockTensor` rather than `Axis`.
+### Limits of this reading
+
+Three things are INFERRED rather than read. The integer ordinals of `AxisType` come from declaration order, not from a literal table in the binary. The precise field *type* of `iv` — `AffineIV` against `AffineIdx` — rests on the `ir.so` registry rather than on any method signature; only the getter's existence is certain. And the `Block`-role query path is reconstructed as routing through `NeuronBlockTensor` rather than through `Axis`.
 
 ---
 
