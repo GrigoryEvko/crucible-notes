@@ -54,7 +54,7 @@ _ALTERNATIVE_DTYPE_TO_MXFP = {
 }
 ```
 
-The `_x4` suffix is the **hardware x4-pack geometry**: 4 logical contraction elements packed into one container element along the `K`/`H`/`I` contraction axis. `fp4_e2m1fn_x4` is `4 × FP4` (e2m1: 1-sign / 2-exp / 1-mantissa nibble) → 16 bits → a **2-byte** container; `fp8_e4m3fn_x4` and `fp8_e5m2_x4` are `4 × FP8` → 32 bits → a **4-byte** container. CONFIRMED against `allocator.py:50-53`:
+The `_x4` suffix is the **hardware x4-pack geometry**: 4 logical contraction elements packed into one container element along the `K`/`H`/`I` contraction axis. `fp4_e2m1fn_x4` is `4 × FP4` (e2m1: 1-sign / 2-exp / 1-mantissa nibble) → 16 bits → a **2-byte** container; `fp8_e4m3fn_x4` and `fp8_e5m2_x4` are `4 × FP8` → 32 bits → a **4-byte** container, matching `allocator.py:50-53`:
 
 ```python
 # allocator.py:50-53 (sizeinbytes)
@@ -64,9 +64,9 @@ elif str(dtype) == str(nl.float8_e4m3fn_x4) or str(dtype) == str(nl.float8_e5m2_
 
 The container byte-width equals the alternate's: `uint16 ↔ fp4_e2m1fn_x4` are both 2 B, `uint32 ↔ fp8_e4m3fn_x4` both 4 B. That equality is what makes the view-cast free.
 
-> **GOTCHA — only the four *integer* alternates convert.** The `convert_to_mxfp_dtype` docstring (`:79`) mentions "`float16` for MXFP4, `float32` for MXFP8", but `float16`/`float32` are **not keys** in `_ALTERNATIVE_DTYPE_TO_MXFP`. A `float16`/`float32` input falls through to `mxfp_target = None` and keeps its own dtype — it is *not* auto-reinterpreted as x4. A reimplementer who passes BF16/FP32 weights expecting an implicit MX relabel gets a plain float tensor. CONFIRMED — the dict has exactly four keys, all `int`/`uint` (`:61-66`).
+> **GOTCHA — only the four *integer* alternates convert.** The `convert_to_mxfp_dtype` docstring (`:79`) mentions "`float16` for MXFP4, `float32` for MXFP8", but `float16`/`float32` are **not keys** in `_ALTERNATIVE_DTYPE_TO_MXFP`. A `float16`/`float32` input falls through to `mxfp_target = None` and keeps its own dtype — it is *not* auto-reinterpreted as x4. A reimplementer who passes BF16/FP32 weights expecting an implicit MX relabel gets a plain float tensor: the dict has exactly four keys, all `int`/`uint` (`:61-66`).
 
-> **QUIRK — the descriptor's K-extent counts *logical* elements, the HW re-expands ×4.** The matmul/load descriptor's K-extent at `+0x8` ([MXMEM_PATTERN1D §3](../isa/mxmem-pattern1d.md)) counts x4-**un**packed elements, and the silicon multiplies it back by four (`n <<= 2` for `Dtype ∈ {2,8,9}`) when it streams the container into the PE. The NKI source only ever sees the packed 2-byte/4-byte container; the "x4-unpack" the brief asks about happens *inside* `nc_matmul_mx`, not here. CONFIRMED — three-way agreement: this source view-casts and DMAs verbatim, the descriptor carries the logical extent, the encoder rejects/accepts the x4 tags ([PE matmul encoding §dtype legality](../isa/pe-matmul-encoding.md)).
+> **QUIRK — the descriptor's K-extent counts *logical* elements, the HW re-expands ×4.** The matmul/load descriptor's K-extent at `+0x8` ([MXMEM_PATTERN1D §3](../isa/mxmem-pattern1d.md)) counts x4-**un**packed elements, and the silicon multiplies it back by four (`n <<= 2` for `Dtype ∈ {2,8,9}`) when it streams the container into the PE. The NKI source only ever sees the packed 2-byte/4-byte container; the x4-unpack happens *inside* `nc_matmul_mx`, not here. Three layers agree: this source view-casts and DMAs verbatim, the descriptor carries the logical extent, and the encoder accepts exactly the x4 tags ([PE matmul encoding §dtype legality](../isa/pe-matmul-encoding.md)).
 
 ### Algorithm — the no-copy view-cast
 
@@ -100,7 +100,9 @@ else:                    ratio = old_size//new_size; ...    // :186 last dim gro
 return self._copy(shape=new_shape, strides=new_strides, offset=new_offset, dtype=new_dtype)
 ```
 
-> **CORRECTION (D-O29 §1.2) — the view-cast is even simpler than "no-copy bitcast".** Because the alternates are always *byte-identical in width* to their x4 target, the cast takes the `old_size == new_size` branch (`:146-147`) — `self._copy(dtype=new_dtype)`, a pure dtype **relabel** with **zero** shape/stride/offset change. The general `reinterpret_cast` *does* rescale strides and resize the last dim (the docstring example `(128,512) f32 → (128,2048) u8` at `:137`), but the MX path never hits that arm. The HBM bytes are already in x4-packed order; there is no deinterleave, no repack, no reshape. (D-O29 reached this; the source confirms the exact branch.)
+The view-cast is simpler than a general no-copy bitcast. Because the alternates are always *byte-identical in width* to their x4 target, the cast takes the `old_size == new_size` branch (`:146-147`) — `self._copy(dtype=new_dtype)`, a pure dtype **relabel** with zero shape/stride/offset change. The HBM bytes are already in x4-packed order, so there is no deinterleave, no repack, no reshape.
+
+> **GOTCHA —** `reinterpret_cast` *does* rescale strides and resize the last dim in the general case (the docstring example `(128,512) f32 → (128,2048) u8` at `:137`), but the MX path never reaches that arm. Do not model the MX weight cast as a reshape.
 
 > **QUIRK — the in-SBUF re-relabel uses a *different* method.** `convert_to_mxfp_dtype` is the **HBM-side** relabel and uses `TensorView.reinterpret_cast`. The **block-shard** kernel additionally re-relabels the *already-loaded SBUF* buffer with `gup_weights_qtz_sb = gup_weights_qtz_sb.view(inps.gate_up_proj_weight.dtype)` (`bwmm_shard_on_block_mx.py:708`) — `TensorView.view`, not `reinterpret_cast`. Both are same-width relabels with no data motion, but they are distinct methods; the I-shard variant does not need the second one because it allocates the SBUF buffer with `dtype=inps.gate_up_proj_weight.dtype` directly (`bwmm_shard_on_I_mx.py:1124`).
 
@@ -203,7 +205,7 @@ dma_copy(
 
 The `vector_offset` is the transposed index from `_generate_expert_index_vector`; `indirect_dim=0` makes the DMA index the folded `E·16` partition axis per-row; `oob_mode.skip` means every `-1` index row is **not written**, so the 28 holes per quadrant keep whatever the destination held. The destination is pre-`memset 0` (`gup_scales_sb` zeroed at alloc), so the holes read as neutral E8M0 zero. The down gather is the same shape with a 3-entry pattern (`bwmm_shard_on_I_mx.py:1374-1386`).
 
-> **GOTCHA — the scale gather carries no `dge_mode` kwarg; the weight DMA does.** The weight and bias DMAs are explicitly `dge_mode=dge_mode.hwdge`. The scale-gather `dma_copy` calls (`:1174`, `:1374`, and the block-shard `:743`, `:943`) pass **no `dge_mode`** — their indirect nature comes entirely from `vector_offset` + `indirect_dim=0`, and the DGE mode defaults. Do not assume `hwdge` on the scale gathers from the weight-DMA precedent; only `oob_mode=oob_mode.skip` is set. CONFIRMED across all four scale-gather sites.
+> **GOTCHA — the scale gather carries no `dge_mode` kwarg; the weight DMA does.** The weight and bias DMAs are explicitly `dge_mode=dge_mode.hwdge`. The scale-gather `dma_copy` calls (`:1174`, `:1374`, and the block-shard `:743`, `:943`) pass **no `dge_mode`** — their indirect nature comes entirely from `vector_offset` + `indirect_dim=0`, and the DGE mode defaults. Do not assume `hwdge` on the scale gathers from the weight-DMA precedent; only `oob_mode=oob_mode.skip` is set, at all four scale-gather sites.
 
 ### The static 4-quadrant loop variant — why 4-valid-per-32
 
@@ -221,7 +223,7 @@ for quad_idx in range(n_quadrants_needed):                        // :1668
 // → 4 scale partitions at each quadrant base: [0:4], [32:36], [64:68], [96:100]
 ```
 
-This is the **same** quadrant-hole layout as the vector-index path, expressed as a 4-quadrant copy loop. The reason is the `8(p)×4(f)` PE scale grouping: `_q_height = 8` (one E8M0 scale covers an 8-partition × 4-free PE sub-tile, `moe_cte_mx_utils.py:52-53`), so `32 partitions / 8 = 4` valid scale rows per quadrant. CONFIRMED three ways: this source (`128 // _q_height = 16` non-folded rows, 4 per quadrant), the host-side `mx_torch_common.py` round-trip (*"4 valid scale rows per 32-partition quadrant, rest zero"*, `_QUADRANT_SIZE = 32`, `_SCALE_PER_QUADRANT = 4`), and the QKV variant below.
+This is the **same** quadrant-hole layout as the vector-index path, expressed as a 4-quadrant copy loop. The reason is the `8(p)×4(f)` PE scale grouping: `_q_height = 8` (one E8M0 scale covers an 8-partition × 4-free PE sub-tile, `moe_cte_mx_utils.py:52-53`), so `32 partitions / 8 = 4` valid scale rows per quadrant. Three independent views agree: this source (`128 // _q_height = 16` non-folded rows, 4 per quadrant), the host-side `mx_torch_common.py` round-trip (*"4 valid scale rows per 32-partition quadrant, rest zero"*, `_QUADRANT_SIZE = 32`, `_SCALE_PER_QUADRANT = 4`), and the QKV variant below.
 
 > **NOTE — "1 scale per 8(p)×4(f) tile" is the `[P/8, F/4]` E8M0 operand `nc_matmul_mx` expects.** The PE matmul consumes weight/ifmap scales as `[P/8, F/4]` E8M0 `uint8` ([PE matmul encoding](../isa/pe-matmul-encoding.md)). The `qkv_tkg_mx_impl.py:148` docstring states it verbatim: *"weight scales are 8× times smaller, not 32×"* — i.e. one scale per 8 partitions (and per 4 free), exactly the grouping this loop materializes. The quadrant-hole `[128]` partition buffer with 4 valid per 32 *is* that `[P/8]`-effective operand spread across the full partition dimension.
 
@@ -268,7 +270,7 @@ else:
 
 The DMA-transpose activation path **demands** `MX_INTERLEAVED` weights; the plain path **demands** `MX_CONTIGUOUS`. The actual QKV x4-weight DMA + quadrant-scale DMA are at `qkv_cte.py:1867-1898`: a static 4-quadrant scale DMA into `mx_weight_scale_sb` (`SCALE_P_PER_QUAD = H_pack = 4`, `qkv_cte.py:1806`; `dst = …[ds(quad_idx*32, 4), …]`), then the `[128, num_128_tiles_per_H//4, I]` `float8_e4m3fn_x4` weight DMA — both `dge_mode=dge_mode.swdge`.
 
-> **CORRECTION (D-O29 §3) — QKV scale/weight DMAs are `swdge`, MoE weight DMAs are `hwdge`.** The QKV MX DMAs (`qkv_cte.py:1880`, `:1896`) use `dge_mode.swdge`; the MoE weight/bias DMAs use `dge_mode.hwdge` (`bwmm_shard_on_I_mx.py:1137`). The MoE *scale gathers* carry no `dge_mode` at all (default). The QKV scale load is a **static 4-quadrant loop** (`nl.affine_range(4)`, `qkv_cte.py:1871`), not the `-1` vector index — the vector-DGE quadrant-hole gather is the MoE-specific mechanism.
+> **GOTCHA —** the DGE mode is not uniform across the MX paths. QKV scale *and* weight DMAs use `dge_mode.swdge` (`qkv_cte.py:1880`, `:1896`); MoE weight/bias DMAs use `dge_mode.hwdge` (`bwmm_shard_on_I_mx.py:1137`); MoE scale gathers pass no `dge_mode` at all. Likewise the QKV scale load is a static 4-quadrant loop (`nl.affine_range(4)`, `qkv_cte.py:1871`) — the `-1` vector-index quadrant-hole gather is MoE-specific.
 
 ---
 
@@ -329,19 +331,19 @@ The HW x4-unpack (×4 expansion of the packed K-extent) and the per-32-block E8M
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
-The five strongest claims, re-challenged against the wheel source:
+The five structural claims on this page and the source lines that pin them:
 
-| Claim | Challenge | Resolution |
-|---|---|---|
-| The weight view-cast is a no-copy bitcast | Could `reinterpret_cast` silently reshape? | **CONFIRMED, refined.** Same-width alternates (2≡2, 4≡4) hit `tensor_view.py:146-147` `if old_size==new_size: return self._copy(dtype=new_dtype)` — pure relabel, no shape/stride/offset change. The resize arms (`:160`/`:186`) are unreachable for MX. |
-| The scale gather is a `-1` quadrant-hole indirect DGE | Is the `-1` skip real, or is the index dense? | **CONFIRMED.** `_generate_expert_index_vector:984-985` memsets the whole `[1,128]` to `-1`, `scalar_tensor_tensor:987` scatters only 4 per quadrant; the gather (`:1190`) is `oob_mode=oob_mode.skip` — `-1` rows are not written. Holes are pre-zeroed. |
-| `MX_CONTIGUOUS` and `MX_INTERLEAVED` differ only in row occupancy | Same footprint, or different sizes? | **CONFIRMED.** Both end `[H//4, I]` x4 per the enum docstring (`common_types.py:77`, `:86`); `MX_INTERLEAVED` is `MX_CONTIGUOUS` + the `(2,H//4,2)` row permutation, re-packed to the same shape. |
-| `_generate_expert_index_vector` is the shared helper | D-O29 said it is *in* `moe_cte_mx_utils.py` | **CONFIRMED.** Defined `moe_cte_mx_utils.py:948`, imported by both bwmm callers (`bwmm_shard_on_I_mx.py:60`, `bwmm_shard_on_block_mx.py:41`). The gather *DMA* bodies, however, live in the callers, not the util. |
-| All four int alternates and only those convert | Do `float16`/`float32` auto-convert? | **CORRECTED.** The docstring mentions float alternates, but `_ALTERNATIVE_DTYPE_TO_MXFP:61-66` has only `uint16/int16/uint32/int32` keys. Float inputs fall through to no-relabel. Flagged in §1 GOTCHA. |
+| Claim | Anchor |
+|---|---|
+| The weight view-cast is a same-width relabel | Same-width alternates (2≡2, 4≡4) hit `tensor_view.py:146-147` `if old_size==new_size: return self._copy(dtype=new_dtype)` — no shape/stride/offset change. The resize arms (`:160`/`:186`) are unreachable for MX. |
+| The scale gather is a `-1` quadrant-hole indirect DGE | `_generate_expert_index_vector:984-985` memsets the whole `[1,128]` to `-1`; `scalar_tensor_tensor:987` scatters only 4 per quadrant; the gather (`:1190`) is `oob_mode=oob_mode.skip`, so `-1` rows are never written and the holes stay pre-zeroed. |
+| `MX_CONTIGUOUS` and `MX_INTERLEAVED` differ only in row occupancy | Both end `[H//4, I]` x4 per the enum docstring (`common_types.py:77`, `:86`); `MX_INTERLEAVED` is `MX_CONTIGUOUS` plus the `(2,H//4,2)` row permutation, re-packed to the same shape. |
+| `_generate_expert_index_vector` is the shared helper | Defined at `moe_cte_mx_utils.py:948`, imported by both bwmm callers (`bwmm_shard_on_I_mx.py:60`, `bwmm_shard_on_block_mx.py:41`). The gather *DMA* bodies live in the callers, not the util. |
+| Only the four int alternates convert | `_ALTERNATIVE_DTYPE_TO_MXFP:61-66` has only `uint16/int16/uint32/int32` keys, despite the docstring mentioning float alternates; float inputs fall through to no-relabel. |
 
-**Re-verification ceiling.** Everything on this page is grounded in the readable NKI-DSL Python (`fd --no-ignore` against the cp310 tree; cp311/cp312 byte-identical). The `nisa.*` primitives (`nc_matmul_mx`, `dma_copy` with `vector_offset`/`indirect_dim`, `scalar_tensor_tensor`, `nc_transpose`) are Cython intrinsics whose *internal* lowering to the MXMEM_PATTERN1D descriptor and the HW x4-unpack is **not** traced here — that boundary is owned by [MXMEM_PATTERN1D](../isa/mxmem-pattern1d.md) and [PE matmul encoding](../isa/pe-matmul-encoding.md), and those pages confirm the descriptor side independently (block_size 32, dtype tags 2/8/9, `n <<= 2`). The handoff between this source layer and that descriptor layer is INFERRED from the matching operand shapes (`[P/8, F/4]` E8M0), not from a byte-traced call into the Cython intrinsic.
+**Limits.** Everything on this page is grounded in the readable NKI-DSL Python of the cp310 tree (cp311/cp312 byte-identical). The `nisa.*` primitives (`nc_matmul_mx`, `dma_copy` with `vector_offset`/`indirect_dim`, `scalar_tensor_tensor`, `nc_transpose`) are Cython intrinsics whose *internal* lowering to the MXMEM_PATTERN1D descriptor and the HW x4-unpack is not traced here — that boundary belongs to [MXMEM_PATTERN1D](../isa/mxmem-pattern1d.md) and [PE matmul encoding](../isa/pe-matmul-encoding.md), which pin the descriptor side independently (block_size 32, dtype tags 2/8/9, `n <<= 2`). The handoff between this source layer and that descriptor layer is **[INFERRED]** from the matching operand shapes (`[P/8, F/4]` E8M0), not from a byte-traced call into the Cython intrinsic.
 
 ---
 

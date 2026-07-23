@@ -8,7 +8,7 @@ Three sibling HLO passes in the `xla::hilo` pipeline take the *native* collectiv
 
 `DecomposeCCOps` (#26, `Run` @ `0x1e9f650`) is back-end-agnostic structural canonicalisation: a variadic (tuple-shaped) collective is split into one single-buffer collective clone per tuple element, and the per-element results are re-packed into a tuple named `cc-tuple`. `LegalizeCpuCCOps` (#12, `Run` @ `0x1ef2e90`) is the CPU normalizer: it *erases* channel ids and clears the global-device-id / layout flag bits so the CPU collective runtime sees plain replica-group collectives. `LegalizeCCOpsForTensorizer` (#50, `Run` @ `0x1ef12e0`) is the Tensorizer (Neuron device) normalizer: it detects collectives whose operand buffers carry mixed element types and *up-casts* every operand to the widest common dtype, rebuilds the collective at that width, then down-casts each result back to its original type with `convert` + `get-tuple-element` + `tuple`.
 
-The page reconstructs each pass as annotated pseudocode against its real `Run` symbol, gives the two private helpers behind the Tensorizer up-cast (`CreateNewCCOp` @ `0x1eef970`, `GenerateNewGTEs` @ `0x1eeefe0`), and closes with a CPU-vs-Tensorizer divergence table and corrections to an earlier draft that conflated the three.
+The page reconstructs each pass as annotated pseudocode against its real `Run` symbol, gives the two private helpers behind the Tensorizer up-cast (`CreateNewCCOp` @ `0x1eef970`, `GenerateNewGTEs` @ `0x1eeefe0`), and closes with a CPU-vs-Tensorizer divergence table.
 
 For reimplementation, the contract is:
 
@@ -52,7 +52,7 @@ Opcode numbering is the alphabetical XLA `HloOpcode` enum (`xla::HloOpcodeString
 | 0x57 | 87 | reduce-scatter | | 0x3A | 58 | get-tuple-element |
 | 0x78 | 120 | tuple | | 0x0D | 13 | tuple (element-type tag) |
 
-> **CORRECTION (D-B13) —** an earlier draft (S2-02 §4.6) printed a `CHECK` reading `Check failed: ccop->opcode()==kAllReduce || kAllGather || kReduceScatter`. That string does not exist in the binary. The opcode triple is the inline `setz/or` filter above, never a `CHECK`. The only hard assertion in all three cold paths is `"nullptr != entry_computation_"` (`./xla/hlo/ir/hlo_module.h`:0xA4) — the module must have an entry computation. (CERTAIN — string present in `.rodata`, no opcode-assert string present.)
+> **GOTCHA —** the opcode triple is the inline `setz/or` filter shown above, not a `CHECK`: no `Check failed: ccop->opcode()==…` string exists in the binary, so a non-collective simply falls through instead of aborting. The one hard assertion on all three cold paths is `"nullptr != entry_computation_"` (`./xla/hlo/ir/hlo_module.h`:0xA4) — the module must have an entry computation.
 
 `HloInstruction` layout facts used by all three (read directly from offset accesses):
 
@@ -135,7 +135,7 @@ Each `-clone` inherits the full collective semantics of `cc` (replica groups, ch
 
 > **GOTCHA —** a collective whose output is *not* a tuple is collected in Phase 1 but skipped at the `element_type() != TUPLE` guard (`0x1e9f81e`) and passes through unchanged. The Phase-1 filter is by opcode only; the Phase-2 guard is what actually decides "is this variadic". A reimplementation that decomposes every collective it collects will wrongly wrap scalar collectives in a one-element tuple.
 
-> **CORRECTION (D-B13) —** `DecomposeCCOps` does **not** perform `ReplaceOperandWith(lastArgIdx, zeroIn)` / `ReplaceAllUsesWith(operand)` / `RemoveInstruction` as an earlier draft claimed. There is no `ReplaceOperandWith` and no "zero-in" operand materialisation in this `Run` body. The `ReplaceAllUsesWith` + `RemoveInstruction` pattern belongs to `LegalizeCCOpsForTensorizer` (below); the draft conflated the two passes' op-lists. (CERTAIN — both bodies disassembled.)
+> **GOTCHA —** `DecomposeCCOps` rewrites only through `CloneWithNewOperands` + `ReplaceInstruction`. Its `Run` body contains no `ReplaceOperandWith`, no "zero-in" operand materialisation, and no `RemoveInstruction`; the `ReplaceAllUsesWith` + `RemoveInstruction` pattern belongs to `LegalizeCCOpsForTensorizer` below. The two passes are easy to conflate because both walk the same opcode triple.
 
 ---
 
@@ -349,17 +349,17 @@ Both target the **same native op-set** (4/7/0x57; the CPU pass additionally 0x0A
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
-The five strongest claims, re-challenged against the binary:
+The structural claims on this page and what pins each:
 
-1. **`DecomposeCCOps::Run` @ `0x1e9f650` (3182 B).** *Re-check:* `functions.json` row `_ZN3xla14DecomposeCCOps3RunE…` → `addr 0x1e9f650`, `size 3182`. The cold-half `…3RunE….cold` exists separately. **CONFIRMED.**
-2. **The three pass-name strings exist verbatim, and the opcode triple is a filter not a `CHECK`.** *Re-check:* `_rodata.bin` contains `decompose-cc-ops`, `legalize-cpu-cc-ops`, `legalize-ccops-for-tensorizer`, `cc-tuple`, `-clone`, and `nullptr != entry_computation_`; no opcode-assert string is present. **CONFIRMED** (filter-not-CHECK is STRONG — absence-of-string plus the inline `setz/or` disassembly).
-3. **`set_channel_id` is an *erase* (empty optional), not a reassign.** *Re-check:* callee symbol `xla::HloChannelInstruction::set_channel_id(std::optional<long> const&)` exists; an empty optional is built (`[var_1E8]=0`) immediately before the calls at `0x1ef2f9b`/`0x1ef3036`. **CONFIRMED** (the empty-optional construction is STRONG from the disassembly).
-4. **The up-cast helpers exist with the cited DenseMap signatures.** *Re-check:* `xla::hilo::(anon)::CreateNewCCOp(HloInstruction*, DenseMap<uint,Shape,…>&)` and `…GenerateNewGTEs(HloInstruction*, HloInstruction*, DenseMap<uint,Shape>&, DenseMap<uint,HloInstruction*>&)` both present in `functions.json`; `WidthForType<kBitWidths>(PrimitiveType)` returns `int`. Both symbols and addresses independently re-confirmed against `_names.json` (`CreateNewCCOp` @ `0x1eef970`, `GenerateNewGTEs` @ `0x1eeefe0`). **CONFIRMED.**
-5. **The exact float-vs-int promotion rule.** *Re-challenge:* only that the **max bit-width** operand type is chosen (`WidthForType<kBitWidths>` + `CSWTCH_750` class gate) is observed. Whether `{s8,f16}` resolves to `f16` or to a wider int was **not** exhaustively decoded. Tagged **INFERRED / MEDIUM** in §CreateNewCCOp; do not treat the worked `{f32,bf16}→f32` example as a proof of the general rule beyond "widest wins".
+1. **`DecomposeCCOps::Run` @ `0x1e9f650` (3182 B).** The `functions.json` row `_ZN3xla14DecomposeCCOps3RunE…` gives `addr 0x1e9f650`, `size 3182`; the cold half `…3RunE….cold` is a separate symbol.
+2. **The three pass names are verbatim strings, and the opcode triple is a filter, not a `CHECK`.** `_rodata.bin` carries `decompose-cc-ops`, `legalize-cpu-cc-ops`, `legalize-ccops-for-tensorizer`, `cc-tuple`, `-clone`, and `nullptr != entry_computation_`; no opcode-assert string is present. Filter-not-`CHECK` rests on that absence plus the inline `setz/or` disassembly — HIGH.
+3. **`set_channel_id` is an *erase* (empty optional), not a reassign.** The callee symbol `xla::HloChannelInstruction::set_channel_id(std::optional<long> const&)` exists, and an empty optional is built (`[var_1E8]=0`) immediately before the calls at `0x1ef2f9b`/`0x1ef3036` — HIGH, read off the disassembly.
+4. **The up-cast helpers exist with the cited DenseMap signatures.** `xla::hilo::(anon)::CreateNewCCOp(HloInstruction*, DenseMap<uint,Shape,…>&)` and `…GenerateNewGTEs(HloInstruction*, HloInstruction*, DenseMap<uint,Shape>&, DenseMap<uint,HloInstruction*>&)` are both in `functions.json`, `WidthForType<kBitWidths>(PrimitiveType)` returns `int`, and `_names.json` gives `CreateNewCCOp` @ `0x1eef970`, `GenerateNewGTEs` @ `0x1eeefe0`.
+5. **The exact float-vs-int promotion rule is [INFERRED].** What is observed is only that the **max bit-width** operand type wins (`WidthForType<kBitWidths>` plus the `CSWTCH_750` class gate). Whether `{s8,f16}` resolves to `f16` or to a wider int is not decoded — do not read the worked `{f32,bf16}→f32` example as proof of anything beyond "widest wins".
 
-Remaining gaps (honest): the `+0x251`/`+0x260`/`+0x210` flag *identities* are inferred from the `HloAllReduceInstructionBase` / `HloAllGatherInstruction` / `HloChannelInstruction` class hierarchy, not from verbatim field-name strings (MEDIUM); `HasTokenEqualsTo`'s attribute *key* string was not extracted, only that it probes for token value `"1"` (MEDIUM); the operand-count threshold packing (`3` vs `1 real`) is unverified against a concrete instruction (MEDIUM).
+**Limits.** The `+0x251`/`+0x260`/`+0x210` flag *identities* are [INFERRED] from the `HloAllReduceInstructionBase` / `HloAllGatherInstruction` / `HloChannelInstruction` class hierarchy rather than verbatim field-name strings (MEDIUM); `HasTokenEqualsTo`'s attribute *key* string was not extracted, only that it probes for token value `"1"` (MEDIUM); and the operand-count threshold packing (`3` vs `1 real`) has not been checked against a concrete instruction (MEDIUM).
 
 ---
 

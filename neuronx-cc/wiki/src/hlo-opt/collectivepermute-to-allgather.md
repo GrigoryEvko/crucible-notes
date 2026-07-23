@@ -262,7 +262,7 @@ The pass object is constructed once at registration with `(platform_version : st
 NeuronCollectivePermuteToAllGather(platform_version, nc_divisor, override_core_count):  // 0x1f927e0
     base ctor (registration)
     VLOG("Platform Version: " + platform_version)                      // @0x1f928c3
-    if platform_version == "3.0":          // version-gated (INFERRED literal; see Gaps)
+    if platform_version == "3.0":          // version-gated; literal [INFERRED], see Gaps
         this->core_count = (override_core_count > 0) ? override_core_count
                                                      : (128 / nc_divisor)
     else:
@@ -272,9 +272,9 @@ NeuronCollectivePermuteToAllGather(platform_version, nc_divisor, override_core_c
     VLOG("override_core_count " + override_core_count)
 ```
 
-The registrar lambda (`0x1e70420`, 117 B) `operator new`s the pass object and calls this C1 ctor, feeding the three arguments from the global flags struct (per the pass-registry row: version, an `nc_divisor`, and an `override_core_count`). The C1 ctor's constant pool contains `128`, `32`, and `400`, consistent with the `128 / nc_divisor` and "32 cores" arithmetic; the strings `"Platform Version: "`, `"core count "`, `"override_core_count "`, and `". Defaulting to 32 cores"` are all referenced from this function (verified).
+The registrar lambda (`0x1e70420`, 117 B) `operator new`s the pass object and calls this C1 ctor, feeding the three arguments from the global flags struct (per the pass-registry row: version, an `nc_divisor`, and an `override_core_count`). The C1 ctor's constant pool contains `128`, `32`, and `400`, consistent with the `128 / nc_divisor` and "32 cores" arithmetic; the strings `"Platform Version: "`, `"core count "`, `"override_core_count "`, and `". Defaulting to 32 cores"` are all referenced from this function.
 
-> **CORRECTION (CP-AG-1) —** an earlier collectives sketch implied the pass's `core_count` drives the all-gather width. It does **not**. `Run` reads `replica_count` and `num_partitions` from the `HloModuleConfig` (`config[+0x170]`/`[+0x178]`, with the `config[+0x0C]` small-mesh fallback) and computes `total = replica_count * num_partitions`. The constructor's `core_count`/`override_core_count`/"3.0"/`128`-core machinery is computed but its consumer is **not** inside this rewrite — it likely feeds a sibling pass or an assertion. Treat `core_count` and `total` as independent quantities.
+> **GOTCHA —** `core_count` does **not** set the all-gather width. The width comes from `total = replica_count * num_partitions`, which `Run` reads out of the `HloModuleConfig` (`config[+0x170]`/`[+0x178]`, with the `config[+0x0C]` small-mesh fallback). The ctor's `core_count` / `override_core_count` / `"3.0"` / `128`-core machinery is computed here but consumed elsewhere; treat the two quantities as independent.
 
 ### Considerations
 
@@ -297,14 +297,14 @@ Because the rewrite is config-driven, the small-mesh fallback matters: when both
 
 ## Gaps
 
-Honest limits of this reconstruction (the binary is decompile-skipped; claims rest on the IDA function/string/xref/callee tables, not a Hex-Rays listing):
+Limits of this reconstruction — the binary is decompile-skipped, so the claims rest on the IDA function/string/xref/callee tables rather than a Hex-Rays listing:
 
 - **(MEDIUM) AG-dimension vs slice-offset axis.** `CreateAllGather` receives `dim = 1`, the AG output scales one dim by `total`, and the final dynamic-slice places the offset at vector index 0 with `shard = dims[0]`. These coincide for a leading-dim-sharded operand; the exact axis pairing for rank > 1 operands is not proven from disasm. Treat both as "the operand's sharded leading dimension."
-- **(MEDIUM) Predicate polarity.** `Run` rewrites on `value != 0` despite the name `IsSourceTargetPairsInvalid`. Control flow is CERTAIN; the boolean's human meaning is MEDIUM. See the gate's GOTCHA.
+- **(MEDIUM) Predicate polarity.** `Run` rewrites on `value != 0` despite the name `IsSourceTargetPairsInvalid`. The control flow is certain; the boolean's human meaning is only MEDIUM. See the gate's GOTCHA.
 - **(MEDIUM) `HloModuleConfig` field offsets.** `+0x170` (`replica_count`), `+0x178` (`num_partitions`), `+0x0C` (fallback) are inferred from the two string-anchored VLOGs and the `cmov` fallback; the config struct was not independently reconstructed here. Cross-check against the replica-group infrastructure in [collectives→custom-call](collectives-to-customcall.md) (and Part 13, Distribution & Collectives).
-- **(LOW) `"3.0"` literal.** The version comparison is reconstructed as `== "3.0"`; no `"3.0"` string is present in the binary's string table, so the comparison likely uses an inline/immediate form. The branch existence is CERTAIN (the "Defaulting to 32 cores" path is real); the exact compared literal is INFERRED.
+- **(LOW) `"3.0"` literal.** The version comparison is reconstructed as `== "3.0"`; no `"3.0"` string is present in the binary's string table, so the comparison likely uses an inline/immediate form. The branch itself is certain — the "Defaulting to 32 cores" path is real — but the compared literal is **[INFERRED]**.
 - **(LOW) U32→S32 index convert.** `replica-id()` is `u32[]`; the dynamic-slice start index is consumed as `s32`. An implicit convert/bitcast is assumed (no visible `kConvert` in the callee chain); it may be folded into `CreateDynamicSlice`'s start-operand handling.
-- **(LOW) `core_count` consumer.** Computed in the ctor but not consumed by the rewrite (see CORRECTION CP-AG-1); the consuming pass/assertion was not located here.
+- **(LOW) `core_count` consumer.** Computed in the ctor but never consumed by the rewrite; the consuming pass or assertion was not located.
 
 ---
 
