@@ -35,7 +35,7 @@ The page is organised as: the StableHLO printer's *delta* against the MHLO print
 
 ### Two dispatch surfaces
 
-The StableHLO printer has two *separate* dispatch points that the MHLO printer does not exercise in the same way (CONFIRMED — both addresses and keys verified against the binary):
+The StableHLO printer has two *separate* dispatch points that the MHLO printer does not exercise in the same way:
 
 | Surface | Address | Keyed on | Routes to |
 |---|---|---|---|
@@ -105,7 +105,7 @@ void print_CompositeOp(CompositeOp op) {
 
 ### The four composite emitters
 
-All four share one shape (CONFIRMED — each emitter walks the decomposition body and re-emits it via `printOperation` after the summary node):
+All four share one shape: each emitter walks the decomposition body and re-emits it via `printOperation` after the summary node.
 
 | Emitter | Addr | Python op | Extra attr | Notes |
 |---|---|---|---|---|
@@ -142,7 +142,7 @@ The `xla_op='mhlo.fusion'` tag is stamped even by the StableHLO emitter — it c
 
 ### `compOpStk` — why the composite split needs a stack
 
-`compOpStk` @0x9c707c0 is a process-global `std::stack<mlir::Operation*, std::deque<mlir::Operation*>>` (symbol `_ZN4mlir24StableHLOToPythonPrinter9compOpStkE`, CONFIRMED present in `names.json`; deque node size 0x200 = 64 `Operation*` per node). The dispatch **pushes** the composite before delegating and **pops** after the emitter returns. Two readers consume `compOpStk.top()` while the decomposition body emits:
+`compOpStk` @0x9c707c0 is a process-global `std::stack<mlir::Operation*, std::deque<mlir::Operation*>>` (symbol `_ZN4mlir24StableHLOToPythonPrinter9compOpStkE`, present in `names.json`; deque node size 0x200 = 64 `Operation*` per node). The dispatch **pushes** the composite before delegating and **pops** after the emitter returns. Two readers consume `compOpStk.top()` while the decomposition body emits:
 
 - **`printMeta`** (@0x2154390) — if the stack is non-empty and the current op's parent is a `stablehlo::CompositeOp`, it uses that composite as the `parent=` context for the inner op's `DebugLocation`. Each decomposed inner op's `dl=…DebugLocation(parent=…)` therefore points at the enclosing composite, not at the private `func.func`.
 - **`printGlobalOp`** (@0x215c190) — same non-empty read, so globals/constants produced inside a composite are registered under the composite's ownership.
@@ -230,9 +230,9 @@ A device-print becomes a normal side-effecting Penguin op statement with two fro
 
 ### One pass, two names
 
-The task framing of "`PenguinizeFunctions`" and "`PenguinizeIO`" as two stages does **not** match the binary.
+"`PenguinizeFunctions`" and "`PenguinizeIO`" name **one** pass, not two stages. `createPenguinizeIOPass` @0x2087080 does `operator new(0x180)` and constructs a **`PenguinizeFunctions`** object (guard string `"PenguinizeFunctions]"`, vtable `off_41D770`); `createStableHLOPenguinizeIOPass` @0x2126c70 is byte-identical but constructs a **`StableHLOPenguinizeFunctions`**. `names.json` carries **no** `PenguinizeIO` class symbol — no `runOnOperation`, no vtable, no typeinfo. "PenguinizeIO" is purely the public factory / pass-argument name; both the function packaging and the I/O-boundary contract live inside the single `PenguinizeFunctions::runOnOperation`.
 
-> **CORRECTION —** There is **one** pass. `createPenguinizeIOPass` @0x2087080 does `operator new(0x180)` and constructs a **`PenguinizeFunctions`** object (guard string `"PenguinizeFunctions]"`, vtable `off_41D770`); `createStableHLOPenguinizeIOPass` @0x2126c70 is byte-identical but constructs a **`StableHLOPenguinizeFunctions`**. `names.json` carries **no** `PenguinizeIO` class symbol — no `runOnOperation`, no vtable, no typeinfo. "PenguinizeIO" is purely the public factory / pass-argument name. The function packaging and the I/O-boundary contract live inside the single `PenguinizeFunctions::runOnOperation`.
+> **GOTCHA —** the factory name and the class name disagree. Searching the binary for a `PenguinizeIO` pass class finds nothing — the implementation is `PenguinizeFunctions`, reachable only through that factory.
 
 Both pass classes are GLOBAL-namespace (`_ZN19PenguinizeFunctions…` / `_ZN28StableHLOPenguinizeFunctions…`), `mlir::PassWrapper<…, OperationPass<ModuleOp>>`, op-filter `"builtin.module"`.
 
@@ -305,7 +305,7 @@ The `AwsNeuronTransferWithStaticRing` (AWSNTWSR) marker is the compiler's "this 
 
 ## 5. The I/O-Boundary Contract
 
-After `PenguinizeFunctions`, the `main` `func.func` carries exactly these attributes (CONFIRMED producer→consumer seam — each printer consumer was located by `referenced_by_functions` on the literal string):
+After `PenguinizeFunctions`, the `main` `func.func` carries exactly these attributes. Each printer consumer below was located by `referenced_by_functions` on the attribute's literal string, so the producer→consumer seam is direct:
 
 | Attr | Type | Meaning | Printer consumer |
 |---|---|---|---|

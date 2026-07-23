@@ -47,7 +47,9 @@ uint64_t read_uint64(std::ifstream &in) {
 }
 ```
 
-The returned integer is `lp.u64s(0)` — the first (and only) element of the packed `u64s` repeated field (field #7), which sits at in-memory offset `+0x70` in the `LiteralProto` object. **(CONFIRMED** — `movsbq -0x201(%rbp)`; `_Znam`; `ParseFromString` @`0x1e244c7`; return load `-0x190(%rbp)` then `(%rax)` @`0x1e244ea`. The `+0x70 ⇒ u64s` field-number map is **INFERRED** from the access pattern, not a generated descriptor; the *wire* bytes are standard protobuf regardless.)*
+The returned integer is `lp.u64s(0)` — the first (and only) element of the packed `u64s` repeated field (field #7), which sits at in-memory offset `+0x70` in the `LiteralProto` object.
+
+*Anchors: `movsbq -0x201(%rbp)` (the signed length byte); `_Znam`; `ParseFromString` @ `0x1e244c7`; the return load `-0x190(%rbp)` then `(%rax)` @ `0x1e244ea`.* The `+0x70 ⇒ u64s` field-number mapping is [INFERRED] from the access pattern rather than from a generated descriptor; the *wire* bytes are standard protobuf either way.
 
 > **QUIRK — the length byte is read as a *signed* char.** `movsbq` sign-extends `lenbuf[0]`. A producer must keep every length-prefix box **< 128 bytes**; a byte ≥ 0x80 sign-extends to a negative `L`, which then flows into `operator new[]((size_t)L)` as a near-`SIZE_MAX` request — a guaranteed `bad_alloc`/abort, not a 128–255-byte read. This cap applies only to the *integer-box message* that encodes a length, never to the literal *body* it precedes (whose length is the full 64-bit boxed value).
 
@@ -96,7 +98,7 @@ Whole DECOMPOSED file   (main 0x1e2527f .. 0x1e2554a)
 
 There is **no terminator** and no outer count for the two repeated sections — each is self-delimited by its own leading boxed `N` (Primitive A). The leading region `[0]` is framed by a *single* Primitive-A box giving its byte length `Lm`, then `Lm` raw bytes parsed as `HloSnapshot` — note it is **not** wrapped via Primitive B (no nested `LiteralProto` body), it is a bare new+read+ParseFromString.
 
-> **NOTE — the leading HloSnapshot may be literal-empty.** In the decomposed flow the real tensors arrive in regions `[1]`/`[2]`. `main` only ever reads `snap.hlo().hlo_module()` out of region `[0]`; its baked-in `arguments`/`result` are ignored. A producer can therefore ship a snapshot whose literal sets are empty/dummy and stream the data separately. **(INFERRED** from main never touching `snap.arguments()` on the decomposed branch.)*
+> **NOTE — the leading HloSnapshot may be literal-empty.** In the decomposed flow the real tensors arrive in regions `[1]`/`[2]`. `main` only ever reads `snap.hlo().hlo_module()` out of region `[0]`; its baked-in `arguments`/`result` are ignored. A producer can therefore ship a snapshot whose literal sets are empty/dummy and stream the data separately. This is [INFERRED] from `main` never touching `snap.arguments()` on the decomposed branch, not from an explicit check.
 
 ## Dispatch — `main` (`0x1e25170`)
 
@@ -146,9 +148,9 @@ else { cerr << "ERROR: Unsupported snapshot format\n"; r14 = 1; }    // 0x1e2564
 in.close(); return r14;                                               // 0 ok, 1 error
 ```
 
-The element-type gate `cmpl $0xd,0x58(%rax)` (`0x1e257e2`) tests `shape.element_type() == 13`, the XLA `PrimitiveType::TUPLE`: a tuple result iterates `tuple_literals`, a scalar/array result dumps a single literal. **(CONFIRMED** for the cmp; the `==13⇒TUPLE` reading is **STRONG**, from XLA's `PrimitiveType` numbering PRED=1..F64=12, TUPLE=13, cross-checked against the binary's own type-assertion string ordering.)*
+The element-type gate `cmpl $0xd,0x58(%rax)` (`0x1e257e2`) tests `shape.element_type() == 13`, the XLA `PrimitiveType::TUPLE`: a tuple result iterates `tuple_literals`, a scalar/array result dumps a single literal. The compare itself is read directly; the `13 ⇒ TUPLE` reading comes from XLA's `PrimitiveType` numbering (PRED=1 … F64=12, TUPLE=13), cross-checked against the ordering of the binary's own type-assertion strings.
 
-> **CORRECTION — these are not flags.** `decomposed` and `snapshot` are the two accepted *values* of `snapshot-type`, not separate `--decomposed`/`--snapshot` flags. `value_input` and `snapshot_output` are not flags either — they are the hard-coded `name` arguments handed to `dumpHelper` for the input- and output-literal dumps, which become the `.npy` filename stems. The five real cl::opts are below.
+> **GOTCHA — none of these four names is a command-line flag.** `snapshot` and `decomposed` are the two accepted *values* of the single `snapshot-type` option; `value_input` and `snapshot_output` are the hard-coded `name` arguments handed to `dumpHelper`, which become the `.npy` filename stems. The five real `cl::opt`s are listed below.
 
 ### CLI surface (cl::opt, recovered from the ctor @`0x1e22550`)
 
@@ -188,7 +190,7 @@ outputs  ./ + snapshot_output + j + .npy   →  ./snapshot_output0.npy, …
 module   ./ + model.hlo                    →  ./model.hlo
 ```
 
-`CreateFromProto` is called with `prohibit_empty_literal=true` (`mov $0x1,%edx` @`0x1e24b3a`), so an empty/degenerate literal is a hard error routed through `ThrowBadStatusOrAccess`, not silently skipped. The terminal conversion `hilo::literal2npy` (@`0x73cc580`, real symbol `_ZN4hilo11literal2npyERKN3xla7LiteralERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEbSB_`) is the static C++ `Literal`→`.npy` serializer. **(CONFIRMED** call site @`0x1e24e45`; its 3rd `bool=false` / 4th `string=""` argument meanings — fortran-order? dtype override? — are **not decoded** here, belonging to a hilo/util deep-dive.)*
+`CreateFromProto` is called with `prohibit_empty_literal=true` (`mov $0x1,%edx` @`0x1e24b3a`), so an empty/degenerate literal is a hard error routed through `ThrowBadStatusOrAccess`, not silently skipped. The terminal conversion `hilo::literal2npy` (@`0x73cc580`, real symbol `_ZN4hilo11literal2npyERKN3xla7LiteralERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEbSB_`) is the static C++ `Literal`→`.npy` serializer, called from `0x1e24e45`. The meanings of its 3rd (`bool=false`) and 4th (`string=""`) arguments — Fortran order? dtype override? — are [UNRESOLVED] here; they belong to the hilo utility layer.
 
 ## Verbatim string evidence (VA; verified at fileoff = VA − 0x200000)
 
