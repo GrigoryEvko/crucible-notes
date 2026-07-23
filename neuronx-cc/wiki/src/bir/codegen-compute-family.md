@@ -123,13 +123,13 @@ function codegenNcActivate(this, klr):          // 0xf18ba0
     return inst
 ```
 
-The remapped `func` ordinal lands at `InstActivation+0x120`. The codegen **does not** load or resolve the PWP look-up-table set — it only stamps the `ActivationFunctionType` ordinal. Which LUT-set must be resident on the Activation engine is decided by a downstream LUT-residency pass that inserts a separate `InstLoadActFuncSet` (IT6) carrying an `act_func_set_id`. [STRONG]
+The remapped `func` ordinal lands at `InstActivation+0x120`. The codegen **does not** load or resolve the PWP look-up-table set — it only stamps the `ActivationFunctionType` ordinal. Which LUT-set must be resident on the Activation engine is decided by a downstream LUT-residency pass that inserts a separate `InstLoadActFuncSet` (IT6) carrying an `act_func_set_id`.
 
-The accumulate path here produces an *accumulating* activation (sets `acc` and binds the accumulator output AP) but does **not** itself emit the drain instruction. The `InstReadActivationAccumulator` (IT5) that drains the hardware accumulator is inserted later by the ActAcc peephole, which fuses a `TensorReduce(add)` over an `InstActivation` output into the accumulating activation. [CONFIRMED cross-ref] `InstActivation` default-constructs on the Activation engine (`EngineType=2`, external name `Scalar`); `codegenNcActivate` never overrides `inst+0x90`. [STRONG]
+The accumulate path here produces an *accumulating* activation (sets `acc` and binds the accumulator output AP) but does **not** itself emit the drain instruction. The `InstReadActivationAccumulator` (IT5) that drains the hardware accumulator is inserted later by the ActAcc peephole, which fuses a `TensorReduce(add)` over an `InstActivation` output into the accumulating activation. `InstActivation` default-constructs on the Activation engine (`EngineType=2`, external name `Scalar`); `codegenNcActivate` never overrides `inst+0x90`.
 
 #### getActBiasTensor — the default-bias provider
 
-`getActBiasTensor` `0xf16bc0` lazily builds and caches one zero-bias SBUF tensor per codegen instance, so `InstActivation` always has a bias operand even when the KLR node specifies none. On first call it allocates an SB tensor (`InstBuilder::addSBTensor`, name prefix `"COMPILER-GENERATED-zero_bias_act_"`), records it in the cached optional (present flag at `this+288`, pointer at `this+296`), reads its dtype, sizes a unit AP from the partition count, and zeroes it with an `InstBuilder::addMemset` (`"COMPILER-GENERATED-memset_zero_bias_"`). All bias-less activations share this one tensor; the cached optional is guarded by `boost::bad_optional_access` checks. [CONFIRMED]
+`getActBiasTensor` `0xf16bc0` lazily builds and caches one zero-bias SBUF tensor per codegen instance, so `InstActivation` always has a bias operand even when the KLR node specifies none. On first call it allocates an SB tensor (`InstBuilder::addSBTensor`, name prefix `"COMPILER-GENERATED-zero_bias_act_"`), records it in the cached optional (present flag at `this+288`, pointer at `this+296`), reads its dtype, sizes a unit AP from the partition count, and zeroes it with an `InstBuilder::addMemset` (`"COMPILER-GENERATED-memset_zero_bias_"`). All bias-less activations share this one tensor; the cached optional is guarded by `boost::bad_optional_access` checks.
 
 ### codegenActivate2 — the fused multi-stage variant
 
@@ -152,9 +152,9 @@ function codegenActivate2(this, klr):           // 0xf2f3a0
     return inst
 ```
 
-The wide remap (a 29-member act-func enum that includes `Identity`, `Lrelu`, `Prelu`, `Is_finite`, `Abs_reciprocal_sqrt` that the 25-entry table omits) feeds the `op0`/`op1`/`reduce_op` slots. `Activate2` is **not** dual-output — it is a richer *single*-output fused activation that programs a primary `ActivationFunctionType` plus pre/post element-wise ALU ops and a reduce op in one instruction, with the two `reverse` flags controlling operand order on `op0`/`op1`. [STRONG — offset/enum match is exact]
+The wide remap (a 29-member act-func enum that includes `Identity`, `Lrelu`, `Prelu`, `Is_finite`, `Abs_reciprocal_sqrt` that the 25-entry table omits) feeds the `op0`/`op1`/`reduce_op` slots. `Activate2` is **not** dual-output — it is a richer *single*-output fused activation that programs a primary `ActivationFunctionType` plus pre/post element-wise ALU ops and a reduce op in one instruction, with the two `reverse` flags controlling operand order on `op0`/`op1`. The offsets and the enum sources match exactly.
 
-> **NOTE (INFERRED) —** whether `op0`/`op1`/`reduce_op` are semantically `AluOpType` or a second `ActivationFunctionType` is ambiguous on this build: the BIR JSON schema types these offsets as `AluOpType`, but the codegen sources them through the *act-func* wide remap, which returns `ActivationFunctionType` ordinals. On this build the two enum spaces overlap at these integer values and the wire records them at the `AluOp` offsets. Flagged for a schema-strand recheck.
+> **NOTE — [INFERRED] the semantic type of `op0`/`op1`/`reduce_op`.** Whether these are `AluOpType` or a second `ActivationFunctionType` is ambiguous on this build: the BIR JSON schema types the offsets as `AluOpType`, but the codegen sources them through the *act-func* wide remap, which returns `ActivationFunctionType` ordinals. The two enum spaces overlap at these integer values, and the wire records them at the `AluOp` offsets.
 
 ### codegenExponential — the dedicated exp + accumulate primitive
 
@@ -168,7 +168,7 @@ function codegenExponential(this, klr):         // 0xf23fb0
     addOperandToInst(inst, klr.operand2/3)      // exp-offset / extra operands
     inst.addInputAP(codegenTensorRef(klr.in))
     inst.reduce_cmd(+0xF0) = codegenAccumCmd(klr.reduceCmd)   // EngineAccumulationType
-    inst.engine(+0x90) = 5                       // EngineType::DVE — CONFIRMED constant
+    inst.engine(+0x90) = 5                       // EngineType::DVE — a constant, not remapped
     if klr.has_accumulator:                      // fused softmax exp+sum
         dveAcc = insertElement<InstDveReadAccumulator>(bb, "DveReadAccumulator-"+id)
         insertInstIntoBlock(this->cursor, dveAcc)
@@ -177,7 +177,7 @@ function codegenExponential(this, klr):         // 0xf23fb0
     return inst
 ```
 
-`InstExponential` is the hardware "exp + accumulate" fused softmax primitive: its only op-specific JSON key is `reduce_cmd` (`EngineAccumulationType` at `+0xF0`). On the simulator the modelled engine computes a numerically-stable `expf(x − rowmax)` inline; on real silicon `exp` is a PWP table-driven function. The accumulator drain is `InstDveReadAccumulator` (IT102) rather than the Activation engine's IT5 because Exponential lives on the DVE. [CONFIRMED]
+`InstExponential` is the hardware "exp + accumulate" fused softmax primitive: its only op-specific JSON key is `reduce_cmd` (`EngineAccumulationType` at `+0xF0`). On the simulator the modelled engine computes a numerically-stable `expf(x − rowmax)` inline; on real silicon `exp` is a PWP table-driven function. The accumulator drain is `InstDveReadAccumulator` (IT102) rather than the Activation engine's IT5 because Exponential lives on the DVE.
 
 ### codegenReciprocal — the pure unary opcode
 
@@ -191,7 +191,7 @@ function codegenReciprocal(this, klr):          // 0xf1a5a0
     return inst
 ```
 
-`Reciprocal(25)` *also* exists as a value of the `InstActivation` `func` enum; the compiler may lower a reciprocal either as `InstActivation(func=Reciprocal)` on the Activation engine **or** as the dedicated `InstReciprocal` fast opcode. This leaf always emits the dedicated opcode. [CONFIRMED cross-ref]
+`Reciprocal(25)` *also* exists as a value of the `InstActivation` `func` enum; the compiler may lower a reciprocal either as `InstActivation(func=Reciprocal)` on the Activation engine **or** as the dedicated `InstReciprocal` fast opcode. This leaf always emits the dedicated opcode.
 
 ---
 
@@ -205,26 +205,26 @@ The shared two-stage compute model these ops realize is `out = op1(op0(in, s0), 
 
 | KLR node | BIR opcode | Discriminator set by the leaf | Confidence |
 |---|---|---|---|
-| `TensorScalar` | `InstTensorScalarPtr` (IT29) | `is_tensor_scalar_addr @+0x178` (from `bir::isTensorScalarAddr`) | CONFIRMED |
-| `TensorScalarReduce` | `InstTensorScalarPtr` (IT29) | `acc @+0x1F0 = 3` (ZeroAccumulate) **+ a second `addOutput`** | CONFIRMED |
-| `TensorScalarCumulative` | `InstTensorScalarCache` (IT30) | `TSCMode @+0x150 = 1` (Cumulative); `acc @+0x154`; engine pinned `=5` | CONFIRMED |
-| `NcScalarTensorTensor` | `InstTensorScalarPtr` (IT29) | `is_scalar_tensor_tensor @+0x1A0 = 1`; 3 operands | CONFIRMED |
+| `TensorScalar` | `InstTensorScalarPtr` (IT29) | `is_tensor_scalar_addr @+0x178` (from `bir::isTensorScalarAddr`) | CERTAIN |
+| `TensorScalarReduce` | `InstTensorScalarPtr` (IT29) | `acc @+0x1F0 = 3` (ZeroAccumulate) **+ a second `addOutput`** | CERTAIN |
+| `TensorScalarCumulative` | `InstTensorScalarCache` (IT30) | `TSCMode @+0x150 = 1` (Cumulative); `acc @+0x154`; engine pinned `=5` | CERTAIN |
+| `NcScalarTensorTensor` | `InstTensorScalarPtr` (IT29) | `is_scalar_tensor_tensor @+0x1A0 = 1`; 3 operands | CERTAIN |
 
 ### codegenTensorScalar — plain two-stage scalar op
 
-`codegenTensorScalar` `0xf2bf80` binds one input AP, one output AP, one scalar operand, sets `op0`, and conditionally a second scalar + `op1` (single-scalar when the second is absent: `op1 = bypass(0)`). It then queries `bir::isTensorScalarAddr(inst)` and stamps `is_tensor_scalar_addr @+0x178` — TRUE when the scalar operand is itself a per-partition addressable tensor (the "addr" datapath). This leaf does **not** emit the predicated `InstTensorScalarAffineSelect` (IT62); that is a separate select leaf. The engine is `codegenEngine(klr.engine)` → `inst+0x90`. [CONFIRMED]
+`codegenTensorScalar` `0xf2bf80` binds one input AP, one output AP, one scalar operand, sets `op0`, and conditionally a second scalar + `op1` (single-scalar when the second is absent: `op1 = bypass(0)`). It then queries `bir::isTensorScalarAddr(inst)` and stamps `is_tensor_scalar_addr @+0x178` — TRUE when the scalar operand is itself a per-partition addressable tensor (the "addr" datapath). This leaf does **not** emit the predicated `InstTensorScalarAffineSelect` (IT62); that is a separate select leaf. The engine is `codegenEngine(klr.engine)` → `inst+0x90`.
 
 ### codegenTensorScalarReduce — fused reduce via acc + dual output
 
-`codegenTensorScalarReduce` `0xf2b9f0` is the reduce variant. It realizes a fused reduction on `InstTensorScalarPtr` by two means: `acc @+0x1F0 = 3` (`EngineAccumulationType::ZeroAccumulate` — zero-then-write, the start-of-accumulation fold) **and** a second `addOutput` whose target is the reduce-result tensor. `op0` is the per-element tensor-scalar op; `op1` is the reduce/fold op. The reverse flag is read directly from a plain KLR bool. There is *no* `ReduceCmdType` field — the reduce command is the `EngineAccumulationType` in `+0x1F0`, and the reduce axis comes from the access-pattern extents of the two output APs. Byte-confirmed in disasm: `mov dword [r12+1F0h], 3` @0xf2bca1, with `addOutput` called at @0xf2bc30 and again at @0xf2bd3d. [CONFIRMED]
+`codegenTensorScalarReduce` `0xf2b9f0` is the reduce variant. It realizes a fused reduction on `InstTensorScalarPtr` by two means: `acc @+0x1F0 = 3` (`EngineAccumulationType::ZeroAccumulate` — zero-then-write, the start-of-accumulation fold) **and** a second `addOutput` whose target is the reduce-result tensor. `op0` is the per-element tensor-scalar op; `op1` is the reduce/fold op. The reverse flag is read directly from a plain KLR bool. There is *no* `ReduceCmdType` field — the reduce command is the `EngineAccumulationType` in `+0x1F0`, and the reduce axis comes from the access-pattern extents of the two output APs. *Anchors: `mov dword [r12+1F0h], 3` @ `0xf2bca1`; `addOutput` at `0xf2bc30` and again at `0xf2bd3d`.*
 
 ### codegenTensorScalarCumulative — the scan on the cache op
 
-`codegenTensorScalarCumulative` `0xf2aff0` is the only one of the four that emits `InstTensorScalarCache` (IT30) — the CACHE op carries the per-partition running accumulator. It hard-codes `TSCMode @+0x150 = 1` (Cumulative; the enum is `Reduce=0, Cumulative=1, TensorScan=2`), sets `acc @+0x154 = codegenAccumCmd(klr.accum)` to select the scan accumulator init, and **pins the engine to 5** (the cache-bearing vector engine — not `codegenEngine`'d, because the running recurrence is engine-specific). Byte-confirmed: `mov dword [r12+150h], 1` @0xf2b2ab. The running recurrence writes `out[i] = acc` at *every* element along the scan dim (vs Reduce, which writes only the final fold); `reverse0`/`reverse1` select forward vs reverse scan direction. [CONFIRMED]
+`codegenTensorScalarCumulative` `0xf2aff0` is the only one of the four that emits `InstTensorScalarCache` (IT30) — the CACHE op carries the per-partition running accumulator. It hard-codes `TSCMode @+0x150 = 1` (Cumulative; the enum is `Reduce=0, Cumulative=1, TensorScan=2`), sets `acc @+0x154 = codegenAccumCmd(klr.accum)` to select the scan accumulator init, and **pins the engine to 5** (the cache-bearing vector engine — not `codegenEngine`'d, because the running recurrence is engine-specific). The running recurrence writes `out[i] = acc` at *every* element along the scan dim (vs Reduce, which writes only the final fold); `reverse0`/`reverse1` select forward vs reverse scan direction. *Anchor: `mov dword [r12+150h], 1` @ `0xf2b2ab`.*
 
 ### codegenNcScalarTensorTensor — the 3-operand variant
 
-`codegenNcScalarTensorTensor` `0xf2c450` binds **three** operands in order — `[tensor0 (AP arg), scalar (operand), tensor1 (operand)]` — sets two ALU ops, and forces `is_scalar_tensor_tensor @+0x1A0 = 1`. This flag is the bit that turns a generic `InstTensorScalarPtr` into the 3-operand datapath; the canonical compute is `out = (scalar op0 tensor0) op1 tensor1`. The op gate is `birverifier::checkScalarTensorTensor(InstTensorScalarPtr const&)`. No `acc` and no `TSCMode` (IT29 has no mode field). [CONFIRMED]
+`codegenNcScalarTensorTensor` `0xf2c450` binds **three** operands in order — `[tensor0 (AP arg), scalar (operand), tensor1 (operand)]` — sets two ALU ops, and forces `is_scalar_tensor_tensor @+0x1A0 = 1`. This flag is the bit that turns a generic `InstTensorScalarPtr` into the 3-operand datapath; the canonical compute is `out = (scalar op0 tensor0) op1 tensor1`. The op gate is `birverifier::checkScalarTensorTensor(InstTensorScalarPtr const&)`. No `acc` and no `TSCMode` (IT29 has no mode field).
 
 ---
 
@@ -253,7 +253,7 @@ function codegenTensorTensorScan(this, klr):    // 0xf2b450
     return inst
 ```
 
-So a scan is an `InstTensorScalarPtr` carrying two AluOps, an `EngineAccumulationType` accumulate command, a scan-init operand (immediate float/int or tensor, via `addOperandToInst`), and `is_tensor_tensor_scan @+0x1C8 = 1` — the same silicon path as the two-stage tensor-scalar op, but with both stage operands being full tensors and the second stage folding a running accumulator along the scan axis (which rides the AP kept-axis order; no explicit axis enum is written). The reverse flags are `MaybeAffine<bool>` (a bool *or* a `QuasiAffineExpr`), hence the variant-reset machinery and the `getIsTensorTensorScanEvalIfNeeded` accessor that resolves the affine predicate at query time. [CONFIRMED for op0/op1/acc/init wiring; STRONG that the scan axis is the AP kept-axis]
+So a scan is an `InstTensorScalarPtr` carrying two AluOps, an `EngineAccumulationType` accumulate command, a scan-init operand (immediate float/int or tensor, via `addOperandToInst`), and `is_tensor_tensor_scan @+0x1C8 = 1` — the same silicon path as the two-stage tensor-scalar op, but with both stage operands being full tensors and the second stage folding a running accumulator along the scan axis (which rides the AP kept-axis order; no explicit axis enum is written). The reverse flags are `MaybeAffine<bool>` (a bool *or* a `QuasiAffineExpr`), hence the variant-reset machinery and the `getIsTensorTensorScanEvalIfNeeded` accessor that resolves the affine predicate at query time. The `op0`/`op1`/`acc`/scan-init wiring is read from the body; that the scan axis is the AP kept-axis follows from the absence of any axis enum on the instruction.
 
 ---
 
@@ -280,11 +280,13 @@ function codegenTensorPartitionReduce(this, klr):   // 0xf1b3d0
                                         axis, aluop, negate, dst, ifmap, …)
 ```
 
-Byte-exact confirmation in disasm: `mov [rbp+var_214], 5` @0xf1b581 (the axis slot) and `mov [rbp+var_219], 0` @0xf1b570 (negate), marshalled into `addTensorReduce` via `lea rdx,[var_214]` @0xf1b618 (axis arg) and `lea r8,[var_219]` @0xf1b600 (negate arg). At the BIR-node layer a partition reduce is indistinguishable from a free-axis reduce except that `axis == C(5)` and `negate == false`. [CONFIRMED]
+At the BIR-node layer a partition reduce is indistinguishable from a free-axis reduce except that `axis == C(5)` and `negate == false`.
 
-> **QUIRK — partition reduce is NOT a matmul-with-ones.** A reader expecting the systolic-array trick (multiply by a vector of ones to sum across the 128 partition rows) will be wrong. The codegen emits a *single* `InstTensorReduce` with `axis=C`; the cross-partition mechanism is supplied **downstream** by `CoreV2GenImpl::visitInstTensorReduce`, which reads `axis @+0xF4` and, for `axis ∈ {XYZWC(4), C(5)}`, emits a single `NEURON_ISA_TPB_TENSOR4D` descriptor with the cross-lane flag (descriptor byte `+36`) set — the ISA `CROSS_LANE_REDUCE` mode (string verbatim in the encoder). The verifier `birverifier::checkTensorReduce` names the same `{4,5}` family "Cross-lane-reduce", **forbids negate on it** (exactly why codegen pins `negate=0`), and demands 32-element / 32-partition multiples (the array's 32-partition band geometry). Three independent layers — codegen, verifier, encoder — agree: `axis=C` is a dedicated hardware cross-lane datapath, not a synthesized macro-op. The "average" op folds a `1.0/N` divisor at descriptor `+40`. [CONFIRMED]
+*Anchors: `mov [rbp+var_214], 5` @ `0xf1b581` (axis slot) and `mov [rbp+var_219], 0` @ `0xf1b570` (negate), marshalled into `addTensorReduce` via `lea rdx,[var_214]` @ `0xf1b618` and `lea r8,[var_219]` @ `0xf1b600`.*
 
-A mixed free-and-partition reduction that a single op cannot express is split **upstream** in KLR legalization into a `TensorReduce` (free axes) + a `TensorPartitionReduce` (partition axis) pair; the two leaves are strictly 1:1, single-op, zero loops. [INFERRED — the leaves themselves contain no decomposition]
+> **QUIRK — partition reduce is NOT a matmul-with-ones.** A reader expecting the systolic-array trick (multiply by a vector of ones to sum across the 128 partition rows) will be wrong. The codegen emits a *single* `InstTensorReduce` with `axis=C`; the cross-partition mechanism is supplied **downstream** by `CoreV2GenImpl::visitInstTensorReduce`, which reads `axis @+0xF4` and, for `axis ∈ {XYZWC(4), C(5)}`, emits a single `NEURON_ISA_TPB_TENSOR4D` descriptor with the cross-lane flag (descriptor byte `+36`) set — the ISA `CROSS_LANE_REDUCE` mode (string verbatim in the encoder). The verifier `birverifier::checkTensorReduce` names the same `{4,5}` family "Cross-lane-reduce", **forbids negate on it** (exactly why codegen pins `negate=0`), and demands 32-element / 32-partition multiples (the array's 32-partition band geometry). Three independent layers — codegen, verifier, encoder — agree: `axis=C` is a dedicated hardware cross-lane datapath, not a synthesized macro-op. The "average" op folds a `1.0/N` divisor at descriptor `+40`.
+
+A mixed free-and-partition reduction that a single op cannot express is split **upstream** in KLR legalization into a `TensorReduce` (free axes) + a `TensorPartitionReduce` (partition axis) pair; the two leaves are strictly 1:1, single-op, zero loops. [INFERRED] — the split point is placed upstream because the leaves themselves contain no decomposition.
 
 ---
 
@@ -292,26 +294,26 @@ A mixed free-and-partition reduction that a single op cannot express is split **
 
 | Function | Address | KLR node | BIR opcode | Confidence |
 |---|---|---|---|---|
-| `codegenNcActivate` | `0xf18ba0` | `NcActivate` | `InstActivation` (IT4) | CONFIRMED |
-| `codegenActivate2` | `0xf2f3a0` | `Activate2` | `InstActivation` (IT4, `is_activate2`) | CONFIRMED |
-| `codegenExponential` | `0xf23fb0` | `Exponential` | `InstExponential` (IT103) | CONFIRMED |
-| `codegenReciprocal` | `0xf1a5a0` | `Reciprocal` | `InstReciprocal` (IT21) | CONFIRMED |
-| `getActBiasTensor` | `0xf16bc0` | — | (lazy zero-bias SB tensor) | CONFIRMED |
-| `codegenTensorScalar` | `0xf2bf80` | `TensorScalar` | `InstTensorScalarPtr` (IT29) | CONFIRMED |
-| `codegenTensorScalarReduce` | `0xf2b9f0` | `TensorScalarReduce` | `InstTensorScalarPtr` (IT29) | CONFIRMED |
-| `codegenTensorScalarCumulative` | `0xf2aff0` | `TensorScalarCumulative` | `InstTensorScalarCache` (IT30) | CONFIRMED |
-| `codegenNcScalarTensorTensor` | `0xf2c450` | `NcScalarTensorTensor` | `InstTensorScalarPtr` (IT29) | CONFIRMED |
-| `codegenTensorTensor` | `0xf1b820` | `TensorTensor` | `InstTensorTensor` (IT31) | CONFIRMED |
-| `codegenTensorTensorScan` | `0xf2b450` | `TensorTensorScan` | `InstTensorScalarPtr` (IT29, scan) | CONFIRMED |
-| `codegenTensorReduce` | `0xf1a140` | `TensorReduce` | `InstTensorReduce` (IT27) | CONFIRMED |
-| `codegenTensorPartitionReduce` | `0xf1b3d0` | `TensorPartitionReduce` | `InstTensorReduce` (IT27, `axis=C`) | CONFIRMED |
-| `codegenActivationFunc` | `0xf14040` | — | act-func enum remap (default 30) | CONFIRMED |
-| `codegenAluOp` | `0xf140c0` | — | `AluOp` → `AluOpType` remap | CONFIRMED |
-| `codegenAccumCmd` | `0xf14110` | — | `AccumCmd` → `EngineAccumulationType` | CONFIRMED |
-| `codegenEngine` | `0xf140f0` | — | `Engine` → `EngineType` remap | CONFIRMED |
-| `codegenTensorSubDim` | `0xf140e0` | — | `TensorSubDim` → `AxisListType` (≤3) | CONFIRMED |
+| `codegenNcActivate` | `0xf18ba0` | `NcActivate` | `InstActivation` (IT4) | CERTAIN |
+| `codegenActivate2` | `0xf2f3a0` | `Activate2` | `InstActivation` (IT4, `is_activate2`) | CERTAIN |
+| `codegenExponential` | `0xf23fb0` | `Exponential` | `InstExponential` (IT103) | CERTAIN |
+| `codegenReciprocal` | `0xf1a5a0` | `Reciprocal` | `InstReciprocal` (IT21) | CERTAIN |
+| `getActBiasTensor` | `0xf16bc0` | — | (lazy zero-bias SB tensor) | CERTAIN |
+| `codegenTensorScalar` | `0xf2bf80` | `TensorScalar` | `InstTensorScalarPtr` (IT29) | CERTAIN |
+| `codegenTensorScalarReduce` | `0xf2b9f0` | `TensorScalarReduce` | `InstTensorScalarPtr` (IT29) | CERTAIN |
+| `codegenTensorScalarCumulative` | `0xf2aff0` | `TensorScalarCumulative` | `InstTensorScalarCache` (IT30) | CERTAIN |
+| `codegenNcScalarTensorTensor` | `0xf2c450` | `NcScalarTensorTensor` | `InstTensorScalarPtr` (IT29) | CERTAIN |
+| `codegenTensorTensor` | `0xf1b820` | `TensorTensor` | `InstTensorTensor` (IT31) | CERTAIN |
+| `codegenTensorTensorScan` | `0xf2b450` | `TensorTensorScan` | `InstTensorScalarPtr` (IT29, scan) | CERTAIN |
+| `codegenTensorReduce` | `0xf1a140` | `TensorReduce` | `InstTensorReduce` (IT27) | CERTAIN |
+| `codegenTensorPartitionReduce` | `0xf1b3d0` | `TensorPartitionReduce` | `InstTensorReduce` (IT27, `axis=C`) | CERTAIN |
+| `codegenActivationFunc` | `0xf14040` | — | act-func enum remap (default 30) | CERTAIN |
+| `codegenAluOp` | `0xf140c0` | — | `AluOp` → `AluOpType` remap | CERTAIN |
+| `codegenAccumCmd` | `0xf14110` | — | `AccumCmd` → `EngineAccumulationType` | CERTAIN |
+| `codegenEngine` | `0xf140f0` | — | `Engine` → `EngineType` remap | CERTAIN |
+| `codegenTensorSubDim` | `0xf140e0` | — | `TensorSubDim` → `AxisListType` (≤3) | CERTAIN |
 
-> **NOTE — verification ceiling.** The five strongest claims were re-verified against the cp310 real-body disassembly: the TS→IT29/IT30 collapse (`insertElement<InstTensorScalarPtr>` / `…Cache`, `mov [r12+1F0h],3` + dual `addOutput`, `mov [r12+150h],1`), partition-reduce = axis-C (`mov [var_214],5` @0xf1b581 + `mov [var_219],0` @0xf1b570 → `addTensorReduce` args), the act-func binding (`codegenActivationFunc` body + the `codegenNcActivate` call site `*((DWORD*)*a2+9)`), the scan codegen (`insertElement<InstTensorScalarPtr>` + scan flags), and `ActivationFunctionType=31` (cross-checked against [op-family enums](op-family-enums.md), CERTAIN). KLR node *field names* are inferred from offsets + behaviour (no KLR debug symbols); the offset→role mapping is STRONG (it matches the BIR target offsets via the setters). The `Activate2` `op0/op1/reduce_op` enum *type* (AluOpType vs second ActivationFunctionType) is INFERRED. The exact silicon micro-sequence of the cross-lane datapath is below the ISA-descriptor abstraction and remains SPECULATIVE.
+> **NOTE — where the recovery stops.** KLR node *field names* are reconstructed from offsets and behaviour, since the KLR side ships no debug symbols; the offset→role mapping is pinned by the BIR target offsets the setters write. [INFERRED] The `Activate2` `op0`/`op1`/`reduce_op` enum *type* (`AluOpType` vs a second `ActivationFunctionType`). [SPECULATIVE] The exact silicon micro-sequence of the cross-lane datapath, which sits below the ISA-descriptor abstraction these binaries expose.
 
 ## Cross-References
 
