@@ -32,7 +32,7 @@ For reimplementation, the contract is:
 
 > **NOTE —** the readable `nkilib/core/router_topk/router_topk.py` exposes a `router_topk(...)` function; the production MoE token-gen path does **not** import it. It imports `router_topk_isa_kernel` / `router_topk_kernel_nki` from the *compiled* `_private_kernels/router_topk` extension (`moe_token_gen.py:18,21`). The Cython `.so` is built from a same-named `_private_kernels/router_topk.py` (its `__pyx` symbol table names the same five functions and the same nisa primitive set — `max8`, `nc_find_index8`, `nc_matmul`, `iota`, `core_barrier`, `reciprocal`, `tensor_reduce`, `dma_copy`). The two trees share structure, primitives, and docstrings; the `.so` carries at least one assertion the readable copy lacks (see [The Pipeline](#the-pipeline-and-the-keystone)). This page describes the algorithm as it reads in the Apache-licensed library source, and flags every place the compiled copy is known to diverge.
 
-> **CORRECTION (O10-1) —** the D-O10 report (header, `:18-19`) treats the `.so` as "the megakernel-registered copy" of the readable kernel and analyzes only the `nkilib/core` source. That is half-right: the `.so` is the artifact the production MoE path actually calls, it exposes *different* public entry names (`router_topk_isa_kernel` / `router_topk_kernel_nki`, not `router_topk`), and its string table contains an assertion — `"ACT1/router_pre_norm requires use_indirect_dma_scatter=True"` — that has no counterpart in the readable `router_topk.py`. The readable source remains the correct *algorithm* of record; treat its public-API surface as the library convenience entry, not the production ABI.
+> **GOTCHA — the `.so` is not just a compiled copy of the readable kernel.** It is the artifact the production MoE path actually calls, it exposes *different* public entry names (`router_topk_isa_kernel` / `router_topk_kernel_nki`, not `router_topk`), and its string table carries an assertion — `"ACT1/router_pre_norm requires use_indirect_dma_scatter=True"` — with no counterpart in the readable `router_topk.py`. Read the library source for the algorithm; read the `.so` for the production ABI.
 
 ---
 
@@ -73,7 +73,7 @@ Only three `(act1, act2, norm)` tuples are legal; any other combination is a har
 
 When `norm_topk_prob=True` *or* `router_pre_norm=False`, scatter is on and the router pre-masks (zeroes non-selected experts) and, for the norm case, renormalizes so each token's row sums to 1. The PyTorch reference encodes exactly this fork: `router_topk_torch.py:96-107` scatters and L1-normalizes only when `router_pre_norm and norm_topk_prob`, else returns the full `expert_affinities_full` (`:107`); the post-norm branch (`:108-129`) gathers, activates, and scatters the top-K.
 
-> **NOTE —** the compiled `.so` adds a guard the readable source does not have. Its string table contains `"ACT1/router_pre_norm requires use_indirect_dma_scatter=True, got "`, implying the production kernel forbids at least one `router_pre_norm` combination unless indirect-DMA scatter is selected. The readable `router_topk.py` has no such assertion; its only activation/scatter cross-guard is the sigmoid one (`:237-240`). Treat the indirect-DMA requirement as broader in the production ABI than the library source suggests. (STRONG — string present; exact triggering combination not traced in the `.so`.)
+> **NOTE —** the compiled `.so` adds a guard the readable source does not have. Its string table contains `"ACT1/router_pre_norm requires use_indirect_dma_scatter=True, got "`, implying the production kernel forbids at least one `router_pre_norm` combination unless indirect-DMA scatter is selected. The readable `router_topk.py` has no such assertion; its only activation/scatter cross-guard is the sigmoid one (`:237-240`). Treat the indirect-DMA requirement as broader in the production ABI than the library source suggests. The string is present in the `.so`; the exact triggering combination is [UNRESOLVED].
 
 ---
 
@@ -123,7 +123,7 @@ function router_gemm(x_sb, w_sb, bias_sb):           // router_topk.py:386-478
 
 Only `(hbm=0, sb=3)` and `(hbm=1, sb∈{0,1,2})` are supported (`:1299-1306`). `w` mirrors `x`'s H-stride so the matmul contraction lines up, returning `w_sb=[128, H/128, E]` (`router_topk_input_w_load`, `:1523`; the `sb_layout=1` path loads `[128,2,H/256,E]` then reshapes back to 3D, `:1688-1696`).
 
-> **CORRECTION (O10-2) —** the entry assert at `router_topk.py:181` admits only `x_sb_layout in (0,1,2)`, but layout **3** is used internally for `hbm_layout=0` loads (`:339`). Layout 3 is kernel-internal (chosen by the loader, `router_topk_input_x_load` accepts `sb_layout∈{0,1,2,3}` at `:1292`), never user-facing. This is not a bug — the user-facing assert and the loader's accepted set are deliberately different sets.
+> **GOTCHA — the entry assert and the loader accept different layout sets, deliberately.** `router_topk.py:181` admits only `x_sb_layout in (0,1,2)`, while layout **3** is used internally for `hbm_layout=0` loads (`:339`) and `router_topk_input_x_load` accepts `sb_layout ∈ {0,1,2,3}` (`:1292`). Layout 3 is kernel-internal, chosen by the loader, and never user-facing.
 
 ### PE column tiling
 

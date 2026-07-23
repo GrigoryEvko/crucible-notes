@@ -1,6 +1,6 @@
 # Distribution-strategy seeding (`--distribution-strategy`)
 
-> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel). The flag branching lives in the Cython driver module `neuronxcc/driver/commands/CompileCommand.cpython-310-*.so`; the front-end sharding it seeds lives in `neuronxcc/starfish/bin/hlo2penguin` and `hlo-opt`. For `hlo2penguin`/`hlo-opt` `.text`, VA = file-off + `0x201000` and `.rodata` VA = file-off + `0x200000` (NOT VA == file-off). The cp311/cp312 wheels share this code. Other wheels differ — treat every address as version-pinned. Provenance D-AB08, D-AF01.*
+> *All addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22 (cp310 wheel). The flag branching lives in the Cython driver module `neuronxcc/driver/commands/CompileCommand.cpython-310-*.so`; the front-end sharding it seeds lives in `neuronxcc/starfish/bin/hlo2penguin` and `hlo-opt`. For `hlo2penguin`/`hlo-opt` `.text`, VA = file-off + `0x201000` and `.rodata` VA = file-off + `0x200000` (NOT VA == file-off). The cp311/cp312 wheels share this code. Other wheels differ — treat every address as version-pinned.*
 
 ## Abstract
 
@@ -54,14 +54,13 @@ For reimplementation, the contract is:
 | **LNC mesh cardinality** | `self.logical_nc_config` (`--lnc` / `--logical-nc-config`); Trn2 default 2, else 1 |
 | **SPMD toggle** | `self.enable_experimental_spmd` (`--spmd`) → appends `"spmd"`, gates `enable_internal_spmd_opt` |
 | **Downstream mesh** | stock `mlir::sdy` — `MeshAxisAttr`, `getReplicaGroups`, `convertToHloSharding` (in `hlo2penguin`) |
-| **Provenance** | branching = **Neuron** (D-AB08 §3); mesh = **stock OpenXLA** (D-AB08 §3.3) |
+| **Provenance** | branching = **Neuron**; mesh = **stock OpenXLA** |
 
-> **NOTE —** the branch logic in §2 is from the *decompiled* Cython extension
-> (real pseudocode, not skip-decompile). Tags: **CONFIRMED** = the flag literal +
-> dest + the `_Pyx_PyUnicode_Equals` / `_Pyx_PyObject_Append` call site were read in
-> the decompiled body; **STRONG** = disasm-context inference; **INFERRED** =
-> cross-component reasoning. The mesh-machinery symbols (§3) are CONFIRMED present in
-> `hlo2penguin`; the per-axis *degree* binding is INFERRED (not in one decodable struct).
+> **NOTE —** the branch logic in §2 comes from the *decompiled* Cython extension, not
+> from a skipped decompile: for each branch, the flag literal, the dest, and the
+> `_Pyx_PyUnicode_Equals` / `_Pyx_PyObject_Append` call site were all read in the body.
+> The mesh-machinery symbols (§3) are present in `hlo2penguin`; the per-axis *degree*
+> binding is [INFERRED], since it lives in no single decodable struct.
 
 ---
 
@@ -77,8 +76,8 @@ the rest of this page does is downstream of these four.
 
 ### The flags
 
-The flag surface is owned by the [3.8 catalog](../frontend/flag-catalog.md)
-(provenance D-AF01); reproduced here only as the input to the seeding logic. Every
+The flag surface is owned by the [3.8 catalog](../frontend/flag-catalog.md) and is
+reproduced here only as the input to the seeding logic. Every
 literal and dest below is a byte-verbatim `.rodata` string in `CompileCommand.so`.
 
 | Flag | Dest | Type / values | Default | Vis | Role in seeding |
@@ -88,7 +87,7 @@ literal and dest below is a byte-verbatim `.rodata` string in `CompileCommand.so
 | `--spmd` (`--enable-experimental-spmd`) | `enable_experimental_spmd` | bool | False | HID (EARG) | help `"enable spmd mode"`; turns SPMD on |
 | `--lnc` / `--logical-nc-config` | `logical_nc_config` | int | 2 on Trn2, else 1 | PUBLIC | LNC mesh cardinality (mesh size N) |
 
-CONFIRMED facts (cross-checked against D-AF01):
+Read directly from the driver module:
 
 - `--distribution-strategy` help string is verbatim *"Enable compiler optimizations
   for best performance with specific distribution strategy"*; dest token at `0x88bb0`;
@@ -108,12 +107,10 @@ CONFIRMED facts (cross-checked against D-AF01):
   `args.arch != "sunda" or args.logical_nc_config == 1` @ `0x871a0` — `sunda`/Trn2 is
   the only arch that may carry LNC > 1.
 
-> **CORRECTION — `--distribution-strategy` is NOT public.** A naive reading of the
-> *"Enable compiler optimizations for best performance…"* help text (which reads like a
-> user-facing knob) suggests a PUBLIC flag. It is registered INTERNAL: it is shown only
-> by `--help-hidden-list`, not the default `compile --help`. The 3.8 catalog tags it
-> INTERNAL on the dest evidence; this page does not contradict that. (CONFIRMED via
-> D-AF01 row `--distribution-strategy`.)
+> **GOTCHA — `--distribution-strategy` is not public.** Its help text (*"Enable compiler
+> optimizations for best performance…"*) reads like a user-facing knob, but the flag is
+> registered INTERNAL: it appears only under `--help-hidden-list`, never in the default
+> `compile --help`.
 
 ---
 
@@ -135,7 +132,7 @@ body — each is its own `_Pyx_PyUnicode_Equals` site), but because `distributio
 holds exactly one value at most one fires. The pseudocode names the real call sites.
 
 ```c
-// CompileCommand.buildPipeline @ 0x619d0  (decompiled Cython; CONFIRMED call sites)
+// CompileCommand.buildPipeline @ 0x619d0  (decompiled Cython; call sites read in body)
 // self.tensorizer_options is the forwarded front-end flag list (the accumulator).
 // self.distribution_strategy is the --distribution-strategy value (or "" if unset).
 
@@ -144,7 +141,7 @@ void seed_distribution_strategy(CompileCommand *self) {
   PyObject *ds = self->distribution_strategy;        // GetAttr distribution_strategy
 
   // ---- branch (A): FSDP ------------------------------------------------------
-  // @ ~py-line 3826 / 14013.  CONFIRMED.
+  // @ ~py-line 3826 / 14013.
   if (_Pyx_PyUnicode_Equals(ds, __pyx_n_u_fsdp)) {
       if (!self->layer_unroll_factor_Used)           // sentinel: user did not set --layer-unroll-factor
           self->layer_unroll_factor = 4;             // SetAttr int 4
@@ -153,16 +150,16 @@ void seed_distribution_strategy(CompileCommand *self) {
   }
 
   // ---- branch (B): NeMo-Megatron --------------------------------------------
-  // @ ~py-line 14092.  CONFIRMED (Append site present).
+  // @ ~py-line 14092  (Append site present).
   else_if (_Pyx_PyUnicode_Equals(ds, __pyx_n_u_nemo)) {
       // mutates self->tensorizer_options (GetAttr tensorizer_options + Append):
       // a distinct preset list of front-end flags for NeMo-style parallelism.
       // The exact appended token(s) are an Append into tensorizer_options; the
-      // specific string was not isolated to one decodable constant -> STRONG.
+      // specific string was not isolated to one decodable constant.
   }
 
   // ---- branch (C): LLM-training ---------------------------------------------
-  // @ ~py-line 13255 / 4148.  CONFIRMED.
+  // @ ~py-line 13255 / 4148.
   else_if (_Pyx_PyUnicode_Equals(ds, __pyx_kp_u_llm_training)) {
       _Pyx_PyObject_Append(self->tensorizer_options,
                            "distribution-type-llm-training");   // forward the flag
@@ -177,7 +174,7 @@ void seed_distribution_strategy(CompileCommand *self) {
 > `distribution-type-llm-training` (no leading `--` — `tensorizer_options` carries
 > bare option names). The boolean `--distribution-type-llm-training` flag is the *same*
 > seed reached the other way: it sets `distribution_strategy == "llm-training"` so branch
-> (C) fires. Two CLI spellings, one front-end behavior. (CONFIRMED — D-AB08 §3.1/§3.2C.)
+> (C) fires. Two CLI spellings, one front-end behavior.
 
 > **NOTE — FSDP seeds an unroll factor, not a mesh.** Branch (A) does *not* append a mesh
 > or sharding flag. It sets `layer_unroll_factor = 4` (matching the HloPassOptions
@@ -193,7 +190,7 @@ void seed_distribution_strategy(CompileCommand *self) {
 the LNC mesh size and SPMD activation.
 
 ```c
-// CompileCommand.buildPipeline @ 0x619d0, ~py-line 14605.  CONFIRMED.
+// CompileCommand.buildPipeline @ 0x619d0, ~py-line 14605.
 if (self->enable_experimental_spmd) {                    // --spmd / --enable-experimental-spmd
     _Pyx_PyObject_Append(self->tensorizer_options, "spmd");   // turn SPMD mode on (front-end)
 
@@ -204,20 +201,20 @@ if (self->enable_experimental_spmd) {                    // --spmd / --enable-ex
 ```
 
 - `"spmd"` is appended to `tensorizer_options` unconditionally when `--spmd` is set —
-  this is what activates the stock SPMD partitioner inside `hlo2penguin`. CONFIRMED.
+  this is what activates the stock SPMD partitioner inside `hlo2penguin`.
 - `enable_internal_spmd_opt` flips only when the LNC-count predicate holds.
   `logical_nc_config` (the `--lnc` width, §1) is the mesh cardinality N; the internal
   SPMD optimization is gated on it because SPMD partitioning is only meaningful when
   N > 1 (a single LNC core has nothing to shard across). The exact comparison operand
-  is the `logical_nc_config` attr read at this site; the precise threshold is **STRONG**
-  (the predicate exists and reads `logical_nc_config`; the literal it compares to was
-  not isolated to a single constant).
+  is the `logical_nc_config` attr read at this site; the precise threshold is [INFERRED]
+  — the predicate exists and reads `logical_nc_config`, but the literal it compares to
+  was not isolated to a single constant.
 
 > **QUIRK — two SPMD switches, different layers.** `--spmd` forwards `"spmd"` (the
 > *front-end* SPMD mode) and *also* sets `enable_internal_spmd_opt` (a Neuron *internal*
 > optimization toggle). A reimplementer must not collapse them: one is a forwarded
 > front-end flag, the other a sibling driver attr read by later `buildPipeline` blocks.
-> Both originate from the one `if self.enable_experimental_spmd:` test. (CONFIRMED.)
+> Both originate from the one `if self.enable_experimental_spmd:` test.
 
 ### The full seeding context
 
@@ -227,7 +224,7 @@ pushes other front-end flags into `tensorizer_options` under their own attr pred
 **is** the accumulator of forwarded front-end flags; the distribution-strategy branches
 simply push their seeding tokens into it. This is why the seed is invisible after the
 driver: by the time `hlo2penguin` runs, the strategy has already been reduced to a flat
-list of front-end flags. (CONFIRMED — `_Pyx_PyObject_Append` on `tensorizer_options` at
+list of front-end flags. (`_Pyx_PyObject_Append` on `tensorizer_options` at
 each site.)
 
 ---
@@ -245,7 +242,7 @@ everything here is stock OpenXLA `mlir::sdy` *driven by* a Neuron flag set.
 ### The Neuron pass options the seed sets
 
 The forwarded flags become `cl::opt` values on the Neuron HLO pass-options object
-(`HloPassOptions` ctor @ `0x1f93480`, CONFIRMED `cl::opt` strings in `hlo2penguin`):
+(`HloPassOptions` ctor @ `0x1f93480`, with the `cl::opt` strings in `hlo2penguin`):
 
 | Pass-option string | Help (verbatim) | Seeded by |
 |---|---|---|
@@ -258,7 +255,7 @@ The forwarded flags become `cl::opt` values on the Neuron HLO pass-options objec
 The FSDP collectives are emitted and coalesced in `hlo-opt`, **not** `hlo2penguin`:
 the strings `fsdp_all_gather` / `fsdp_reduce_scatter` (and *"Adding fsdp ag/rs to
 schedule"*, *"coalesce_fsdp_all_gathers/reduce_scatters: new AG/RS"*) are present in
-`hlo-opt` only (CONFIRMED — the same scheduling strings are absent from `hlo2penguin`).
+`hlo-opt` only — the same scheduling strings are absent from `hlo2penguin`.
 So the FSDP path straddles two binaries: `hlo2penguin` carries the `neuron-fsdp` /
 `coalesce-fsdp` *pass-option* declarations, while the actual ag/rs emission and
 schedule-insertion happen in the `hlo-opt`-backed `Frontend` job. The unroll-factor
@@ -267,7 +264,7 @@ branch (A) seeded earlier shapes the while-loop these passes coalesce against.
 ### The stock Shardy mesh pipeline
 
 The sharding itself is expressed via the stock XLA Shardy (`mlir::sdy`) mesh pipeline.
-The whole symbol set is CONFIRMED present in `hlo2penguin`:
+The whole symbol set is present in `hlo2penguin`:
 
 ```text
   --distribution-strategy / --spmd  (driver, §2)
@@ -302,16 +299,16 @@ chosen axis (or axis subset) into the replica groups of each emitted collective.
 (via the strategy preset + `--lnc`) and the FSDP/collective-matmul passes that emit the
 collectives.
 
-CONFIRMED supporting `mlir::sdy` symbols in `hlo2penguin` (twins present in `hlo-opt`):
+Supporting `mlir::sdy` symbols in `hlo2penguin` (twins present in `hlo-opt`):
 `xla::sdy::convertToHloSharding(TensorShardingAttr, MeshAttr)` @ `0x2bc58f0`,
 `xla::sdy::ShardyXLA::Run` @ `0x2d2a220` (hlo-opt twin `0x2b346b0`),
 `sdy::getReplicaGroups(AxisRefListAttr, MeshAttr)`, `MeshAxisAttr`, `getOrderedAxisRefs`,
 `createFullyManualComputation`, `mlir::sdy::createInsertExplicitReshardsPass`,
 `mlir::sdy::createReshardToCollectivesPass`. The mesh *shape* itself is the stock
-`auto_spmd_partitioning_mesh_shape` knob (CONFIRMED string in both binaries).
+`auto_spmd_partitioning_mesh_shape` knob (string present in both binaries).
 
-> **INFERRED — the axis-name → degree binding table.** The mesh *machinery* is CONFIRMED
-> (the full `sdy` symbol set above). The exact per-strategy mapping from
+> **INFERRED — the axis-name → degree binding table.** The mesh *machinery* is pinned by
+> the full `sdy` symbol set above. The exact per-strategy mapping from
 > `data`/`tensor`/`pipeline` axis names to their degrees was **not** found in a single
 > decodable struct — it is assembled from the forwarded flags and the parallelism
 > configuration at runtime. A reimplementer should treat the *axis-to-replica-group
@@ -338,18 +335,18 @@ constraint to a specific LNC core.
 
 | Surface | Neuron or stock | Evidence |
 |---|---|---|
-| `--distribution-strategy` flag + values | **Neuron** | `CompileCommand.so` `.rodata` literals; D-AF01 |
-| `buildPipeline` strategy-branch ladder | **Neuron** | decompiled `_Pyx_PyUnicode_Equals` sites; D-AB08 §3.2 |
-| `--spmd` → `enable_internal_spmd_opt` gate | **Neuron** | decompiled `if self.enable_experimental_spmd`; D-AB08 §3.2D |
-| `--lnc` LNC mesh cardinality | **Neuron** | `logical_nc_config` dest + `sunda` assert; D-AF01 |
+| `--distribution-strategy` flag + values | **Neuron** | `CompileCommand.so` `.rodata` literals |
+| `buildPipeline` strategy-branch ladder | **Neuron** | decompiled `_Pyx_PyUnicode_Equals` sites |
+| `--spmd` → `enable_internal_spmd_opt` gate | **Neuron** | decompiled `if self.enable_experimental_spmd` |
+| `--lnc` LNC mesh cardinality | **Neuron** | `logical_nc_config` dest + `sunda` assert |
 | `neuron-fsdp` / `coalesce-fsdp` / `run-collective-matmul` passes | **Neuron** | `HloPassOptions` `cl::opt` strings @ `0x1f93480` |
 | `fsdp_all_gather` / `fsdp_reduce_scatter` scheduling | **Neuron** | `hlo-opt` strings |
-| `mlir::sdy` mesh pipeline (`MeshAxisAttr`, `getReplicaGroups`, `convertToHloSharding`) | **stock OpenXLA** | full `sdy` symbol set in `hlo2penguin`; D-AB06/13.4 |
-| stock SPMD partitioner + reshard machinery | **stock OpenXLA** | D-AB01/02/04; 13.1–13.5 |
+| `mlir::sdy` mesh pipeline (`MeshAxisAttr`, `getReplicaGroups`, `convertToHloSharding`) | **stock OpenXLA** | full `sdy` symbol set in `hlo2penguin` (13.4) |
+| stock SPMD partitioner + reshard machinery | **stock OpenXLA** | 13.1–13.5 |
 
-### Confidence summary
+### Evidence summary
 
-**CONFIRMED**
+Read directly from the binaries:
 - `--distribution-strategy ∈ {fsdp,nemo,llm-training}`, all three compared via
   `_Pyx_PyUnicode_Equals` in `buildPipeline`.
 - Branch (A) FSDP → `layer_unroll_factor = 4` if `!layer_unroll_factor_Used`.
@@ -363,18 +360,18 @@ constraint to a specific LNC core.
   `run-collective-matmul`, `override_core_count`) and the full `mlir::sdy` symbol set
   in `hlo2penguin`.
 
-**STRONG**
-- Branch (B) NeMo mutates `tensorizer_options` (Append present); the specific token(s)
-  appended were not isolated to one decodable constant.
+One inference step away:
+- Branch (B) NeMo mutates `tensorizer_options` (the Append is present); the specific
+  token(s) appended were not isolated to one decodable constant.
 - The `--spmd` LNC-count predicate reads `logical_nc_config`; the literal threshold it
   compares to was not isolated.
 
-**INFERRED**
+Still [INFERRED]:
 - The per-strategy mapping from `data`/`tensor`/`pipeline` axis *names* to their
   *degrees* — the mesh machinery is confirmed; the exact degree table is assembled at
   runtime, not held in one static struct.
 
-**NOT TRACED / OPEN**
+Not traced / open:
 - The exact NeMo preset flag list (branch B body Append target).
 - cp311/cp312 share the cp310 code; only cp310 was decoded.
 
@@ -384,7 +381,7 @@ constraint to a specific LNC core.
 
 - **[3.8 — CompileCommand flag catalog](../frontend/flag-catalog.md)** — the
   full 147-flag CLI surface; the authoritative source for `--distribution-strategy` /
-  `--lnc` / `--spmd` flag rows (provenance D-AF01). This page does not contradict it.
+  `--lnc` / `--spmd` flag rows.
 - **[13.3 — Sharding algebra](sharding-algebra.md)** — the `mlir::sdy` factor algebra
   (`OpShardingRule`, `ShardingProjection`) that produces the `TensorShardingAttr` the
   seeded mesh is filled with.

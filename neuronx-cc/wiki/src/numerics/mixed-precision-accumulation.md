@@ -54,7 +54,7 @@ function setup_tensorizer_args(self, options):          // Penguin pw @0x251b0
     return args
 ```
 
-The literal `accumulate-on-alu-dtype` is interned in `Penguin.*.so` (string-table CONFIRMED). It is emitted dash-less here and dashed by the `append_args` formatter's `--%s` path — only three `--`-prefixed literals survive verbatim in `Penguin.*.so` (`--no-run-pg-layout-and-tiling`, `--fp32-cast`, `--%s`), and this token is not one of them. The effect is one extra presence flag on the tensorizer command line. This pairs with the documented escape hatch in the overflow diagnostic (see [SBUF-budget guard](#the-sbuf-budget-guard)): *"Remove the --accumulate-on-alu-dtype flag to disable this optimization."*
+The literal `accumulate-on-alu-dtype` is interned in `Penguin.*.so`. It is emitted dash-less here and dashed by the `append_args` formatter's `--%s` path — only three `--`-prefixed literals survive verbatim in `Penguin.*.so` (`--no-run-pg-layout-and-tiling`, `--fp32-cast`, `--%s`), and this token is not one of them. The effect is one extra presence flag on the tensorizer command line. This pairs with the documented escape hatch in the overflow diagnostic (see [SBUF-budget guard](#the-sbuf-budget-guard)): *"Remove the --accumulate-on-alu-dtype flag to disable this optimization."*
 
 ### Function Map
 
@@ -273,7 +273,7 @@ xla::ConvertDotAlgorithm(mlir::mhlo::DotAlgorithmAttr)        @0x2be2350   (hlo-
     14-way switch (values 2..13 + default ALG_UNSET) → PrecisionConfig_Algorithm
 ```
 
-> **CORRECTION (#812) —** the two `ConvertDotAlgorithm` addresses are `0x2be2680` (stablehlo) and `0x2be2350` (mhlo) in the cp310 `hlo-opt` (`nm`-attested `T` symbols). The previously-cited `0x2f0c7d0`/`0x2f0c4a0` are wrong — those VAs land inside LLVM's `(anonymous namespace)::X86FastISel::fastEmit_*` blocks, not `ConvertDotAlgorithm`. The symbol names, the binary (hlo-opt), and the 14-case switch are unchanged.
+> **GOTCHA —** the two `ConvertDotAlgorithm` bodies are at `0x2be2680` (stablehlo) and `0x2be2350` (mhlo) in the cp310 `hlo-opt`, both `nm`-attested `T` symbols. Nearby VAs in the `0x2f0c…` range belong to LLVM's `(anonymous namespace)::X86FastISel::fastEmit_*` blocks — landing there means you have the wrong function.
 
 The known presets (`mlir::hlo::getKnownDotAlgorithm`) are `ALG_DOT_BF16_BF16_F32`, `_BF16_BF16_F32_X3/X6/X9`, `ALG_DOT_TF32_TF32_F32(_X3)`, `ALG_DOT_F32_F32_F32`, `ALG_DOT_F16_F16_F32`, `ALG_DOT_ANY_F8_ANY_F8_F32(_FAST_ACCUM)`, `ALG_DOT_F64_F64_F64`, and `ALG_UNSET`. The raw string tokens `accumulation_type` (`@0x26c6ba`, len 17) and `allow_imprecise_accumulation` (`@0x260dfc`, len 28) appear only in the not-stripped MLIR tools (`hlo-opt`/`hlo2penguin`); `allow_imprecise_accumulation` appears in **no** neuron `.so`.
 
@@ -283,8 +283,8 @@ The known presets (`mlir::hlo::getKnownDotAlgorithm`) are `ALG_DOT_BF16_BF16_F32
 
 | Symbol | Address | Module | Confidence |
 |---|---|---|---|
-| `xla::ConvertDotAlgorithm(stablehlo::DotAlgorithmAttr)` | `@0x2be2680` | `hlo-opt` | CONFIRMED (nm) |
-| `xla::ConvertDotAlgorithm(mhlo::DotAlgorithmAttr)` | `@0x2be2350` | `hlo-opt` | CONFIRMED (nm) |
+| `xla::ConvertDotAlgorithm(stablehlo::DotAlgorithmAttr)` | `@0x2be2680` | `hlo-opt` | CERTAIN (nm) |
+| `xla::ConvertDotAlgorithm(mhlo::DotAlgorithmAttr)` | `@0x2be2350` | `hlo-opt` | CERTAIN (nm) |
 | `getAccumulationType` / `getAllowImpreciseAccumulation` | (vtable accessors) | `hlo-opt`/`hlo2penguin` | HIGH |
 
 ---
@@ -305,11 +305,11 @@ LAYER 3  PE / PSUM matmul     PSUM cells hardware-fixed fp32 (widen_psum @0x1559
 
 The two opposing forces inside the neuron compiler are autocast and `EnforceAluDTAcc`. `AutoCastFP32`/`AutoCastInputs` is the fp32→bf16 downcast inserter; its `castTCOperand` downcasts *matmul operands* via `target.getMatmultOperandType` (the PE-array dtype), and `transformAffineLoad`/`transformOffloadedMemCpy` downcast loads/memcpys at the I/O boundary. `EnforceAluDTAcc` is the counter-pass for the ALU side: where an accumulate op's producer would have been narrowed, it re-promotes (or chases the chain through copy/transpose) back to fp32. The domain split is clean — autocast's `castTCOperand` owns the matmul operand dtype, `EnforceAluDTAcc` owns the ALU producer dtype, and the matmul *accumulator* never needs `EnforceAluDTAcc` because PSUM is fp32 by construction. See [AutoCast to fp32](autocast-fp32.md) for the downcast inserter.
 
-> **CORRECTION (X07) —** the backing analysis initially framed the question as "what accumulator dtype does the flag select for matmul." The binary shows the flag selects *nothing* for matmul: the matmul PSUM accumulator is fp32 by legalization (`widen_psum`), independent of the flag, and the only matmul-side reduced-precision choice is the orthogonal `--fp32-cast` fp32r operand knob. The flag's sole domain is the ALU (reduce/BatchNorm) producer dtype.
+> **GOTCHA —** `--accumulate-on-alu-dtype` selects nothing on the matmul path. The matmul PSUM accumulator is fp32 by legalization (`widen_psum`) regardless of the flag, and the only matmul-side reduced-precision choice is the orthogonal `--fp32-cast` fp32r operand knob. The flag's sole domain is the ALU (reduce/BatchNorm) producer dtype.
 
 ---
 
-## Confidence Ceiling
+## Evidence Summary
 
 | Claim | Confidence | Evidence |
 |---|---|---|
@@ -320,13 +320,13 @@ The two opposing forces inside the neuron compiler are autocast and `EnforceAluD
 | `mutateProducerType`/`castInstructionDst`/`_would_overflow_sb` internals | CERTAIN | attr sequences confirmed in each sidecar |
 | min/max reductions skip promotion | CERTAIN | `transformTensorReduceOp` references `maximum`/`minimum` |
 | tonga/CodeGenFlow has zero `EnforceAluDTAcc` | CERTAIN | tonga sidecar string table |
-| PSUM accumulator hardware-fixed fp32 via `widen_psum @0x15592e0` | CERTAIN | D-H10: run @0x155b110, widen @0x15592e0, checkPSUMLegality @0xfefa30 |
+| PSUM accumulator hardware-fixed fp32 via `widen_psum @0x15592e0` | CERTAIN | run @0x155b110, widen @0x15592e0, checkPSUMLegality @0xfefa30 |
 | matmul dst-dtype byte from `perfModeToDstDtype @0x1203630`, not the flag | CERTAIN | CoreV2 bundle +0x23; LUT @0x1df5760 |
-| XLA `ConvertDotAlgorithm @0x2be2680` is a separate layer | CONFIRMED | nm-attested symbol (#812 corrected addr) + 14-case switch |
-| `alu_dtype` == fp32 exactly | STRONG | Tonga `get_native_alu_dtype @0x54f80` references `float32`; exact BSS slot not byte-resolved |
-| MX-FP8 ScaledMatmul accumulates in PSUM fp32 like any matmul | INFERRED | no `EnforceAluDTAcc`/MX cross-reference; PSUM legality applies generally |
+| XLA `ConvertDotAlgorithm @0x2be2680` is a separate layer | CERTAIN | nm-attested symbol + 14-case switch |
+| `alu_dtype` == fp32 exactly | HIGH | Tonga `get_native_alu_dtype @0x54f80` references `float32`; exact BSS slot not byte-resolved |
+| MX-FP8 ScaledMatmul accumulates in PSUM fp32 like any matmul | MEDIUM | no `EnforceAluDTAcc`/MX cross-reference; PSUM legality applies generally |
 
-**Re-verify ceiling:** every Cython hop (Penguin → property → sunda gate → pass internals) was cross-checked against its own decompiled sidecar attribute sequence, so the chain is CONFIRMED end-to-end. The native PSUM widen and perf-mode addresses are grounded in sibling walrus/PE reports (D-H10 / D-V01) rather than re-disassembled here; they are CONFIRMED there with matching addresses. The single STRONG (not CERTAIN) link is the exact `float32` *value* of `alu_dtype` — the method and its `float32` reference are confirmed, but the precise dtype-global BSS slot was not byte-resolved.
+Every Cython hop (Penguin → property → sunda gate → pass internals) is grounded in its own decompiled sidecar attribute sequence, so the chain holds end to end. The native PSUM widen and perf-mode addresses come from the walrus and PE strands rather than being re-disassembled here, with matching addresses on both sides. The one link short of certain is the exact `float32` *value* of `alu_dtype`: the method and its `float32` reference are read directly, but the dtype-global BSS slot was not byte-resolved.
 
 ---
 
