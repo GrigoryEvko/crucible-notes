@@ -35,7 +35,9 @@ For reimplementation, the contract is:
 
 The entire ambient-context mechanism is one class attribute: `TraceContext.global_ctx`. It is `None` between kernel traces and holds the active codegen context during a trace. `TraceContext.new_ctx(opts)` (`TraceContext.so`, classmethod) constructs the context and installs it; trace teardown clears it back to `None`. The accessors in `nki_ctx.py` never own a context — they only read this cell.
 
-> **CORRECTION (W11) —** report D-W11 describes the object in `global_ctx` as a `TraceContext` instance with a `.sema` attribute, and writes the guard as `if ctx is None or ctx.sema is None`. The binary disagrees on both points. (1) `TraceContext.so` interns `cur_scope`, `global_ctx`, `new_ctx`, `nki_func` — but **not** `sema` and **not** `builder` as instance attributes. The object actually fetched by `nki_ctx()` and called with `.affine_range(...)`/`.if_scope(...)`/`.cur_scope` is the `NeuronCodegen` codegen context (`KernelBuilder.so`), which *does* intern `builder`, `cur_scope`, and `affine_range`. (2) `nki_ctx()` performs a single `is None` test on `global_ctx`, **not** a `.sema` check — see [§Algorithm](#algorithm) below. The `.sema` referenced in the disassembly is the imported `sema` *module*, off which the error helper is fetched — not a context attribute.
+The object stored in that cell is **not** a `TraceContext` instance, despite the attribute living on `TraceContext`. `TraceContext.so` interns `cur_scope`, `global_ctx`, `new_ctx`, and `nki_func`, but neither `sema` nor `builder` as instance attributes. What `nki_ctx()` fetches — and what callers drive with `.affine_range(...)` / `.if_scope(...)` / `.cur_scope` — is the `NeuronCodegen` codegen context from `KernelBuilder.so`, which does intern `builder`, `cur_scope`, and `affine_range`.
+
+> **GOTCHA — `sema` is a module, not a context attribute.** `nki_ctx()` guards with a single `is None` test on `global_ctx`; there is no `ctx.sema` check anywhere ([§Algorithm](#algorithm)). The `sema` that appears in the disassembly is the imported *module* off which the error helper is fetched, so reading it as a field of the context leads to a guard condition that does not exist.
 
 ### Considerations
 
@@ -49,7 +51,7 @@ The entire ambient-context mechanism is one class attribute: `TraceContext.globa
 
 The function nearly every NKI intrinsic calls first. Returns the active codegen context, or raises if no kernel trace is in progress. It is a `METH_NOARGS` wrapper — **it takes no arguments**.
 
-> **CORRECTION (W11) —** D-W11 gives the signature as `nki_ctx(allow_none=False)` with an `allow_none` keyword selecting raise-vs-return-`None`. There is **no `allow_none` parameter**: the wrapper at `0x7700` is `METH_NOARGS` (`PyObject *__pyx_self, PyObject *unused`), and the string/name tables contain no `allow_none` identifier. The "return `None` instead of raising" behavior is provided by the *separate* function `nki_ctx_or_none()`, not by a keyword on `nki_ctx()`.
+> **GOTCHA — there is no `allow_none` keyword.** The raise-vs-return-`None` choice looks like it should be a parameter, but the wrapper at `0x7700` is `METH_NOARGS` (`PyObject *__pyx_self, PyObject *unused`) and no `allow_none` identifier exists in the string or name tables. The non-raising behaviour is a *separate* function, `nki_ctx_or_none()`.
 
 ### Entry Point
 
@@ -103,7 +105,7 @@ PyObject *nki_ctx_or_none(void):
     return getattr(TraceContext, "global_ctx")       // py:26  — may be None, no check
 ```
 
-The decompiled body is a strict prefix of `nki_ctx()` minus the None-branch: import `TraceContext`, `getattr(..., "global_ctx")`, return it. There is no `Py_None` comparison and no `sema` resolution — the function has a single return site for the attribute. This is the true `allow_none=True` equivalent that D-W11 ascribed to a keyword on `nki_ctx()`.
+The decompiled body is a strict prefix of `nki_ctx()` minus the None-branch: import `TraceContext`, `getattr(..., "global_ctx")`, return it. There is no `Py_None` comparison and no `sema` resolution — the function has a single return site for the attribute. This is the "allow none" behaviour in full: a separate function, not a keyword.
 
 ---
 
@@ -189,17 +191,17 @@ The single mutable cell is `TraceContext.global_ctx`, installed by `TraceContext
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+- **Exactly three public functions.** The `nki_ctx.so` `__pyx_pw_*` set is `{nki_ctx@0x7700, nki_ctx_or_none@0x7440, get_cur_scope@0x6f60}`; there are zero `__pyx_gb_*` symbols, so no generator, and the name table contains no `allow_none`.
+- **The guard tests `global_ctx is None`.** Decompiled `nki_ctx` does `getattr(ctx,"global_ctx")` then `if (Attr != &Py_NoneStruct) goto return`; only the `None` branch resolves `sema`.
+- **The error helper lives in `sema`.** `sema` is `_Pyx_GetBuiltinName`-resolved, and `err_nki_api_outside_of_nki_kernel` is present in `sema.cpython-310-*.so` carrying `"calling NKI API outside of NKI kernels is not supported."`.
+- **`nki_ctx()` returns the `NeuronCodegen` codegen context.** The iterators trampoline does `nki_ctx().affine_range(...)`, and `NeuronCodegen` (`KernelBuilder.so`) interns `affine_range`, `cur_scope`, and `builder`.
+- **The ScopeRegion kind set** is Kernel / Function / Loop / If / While / Allocation plus the generic `ScopeRegion`: `KernelBuilder.so` `.rodata` carries all seven names, while `StmtScope` appears only in `TraceContext.so` and is therefore not a region.
 
-1. **Exactly three public functions, no `allow_none`, no nested generator.** `nki_ctx.so` `__pyx_pw_*` set = `{nki_ctx@0x7700, nki_ctx_or_none@0x7440, get_cur_scope@0x6f60}`; zero `__pyx_gb_*` (no generator); name table has no `allow_none`. **HOLDS.**
-2. **The guard tests `global_ctx is None`, not `ctx.sema`.** Decompiled `nki_ctx` does `getattr(ctx,"global_ctx")` then `if (Attr != &Py_NoneStruct) goto return`; only the None-branch resolves `sema`. `TraceContext.so` interns no `sema`/`builder` instance attr. **HOLDS** — issued as CORRECTION (W11).
-3. **The error helper lives in `sema`, not in the context.** `sema` is `_Pyx_GetBuiltinName`-resolved; `err_nki_api_outside_of_nki_kernel` is confirmed in `sema.cpython-310-*.so` with message `"calling NKI API outside of NKI kernels is not supported."`. **HOLDS.**
-4. **`nki_ctx()` returns the `NeuronCodegen` codegen context.** The iterators trampoline does `nki_ctx().affine_range(...)`; `NeuronCodegen` (`KernelBuilder.so`) interns `affine_range`, `cur_scope`, `builder`. So the object held in `global_ctx` is the codegen context. **HOLDS** (STRONG — the object is the codegen context; whether `global_ctx` is literally typed `NeuronCodegen` vs a thin trace-context wrapper that *is* the codegen is not byte-pinned, but the `.affine_range`/`.cur_scope`/`.builder` surface is confirmed on `NeuronCodegen`).
-5. **ScopeRegion-kind set = Kernel/Function/Loop/If/While/Allocation (+ generic ScopeRegion); StmtScope is not a region.** `KernelBuilder.so` `.rodata` confirms `KernelScope/FunctionScope/LoopScope/IfScope/WhileScope/AllocationScope/ScopeRegion`; `StmtScope` appears only in `TraceContext.so`. **HOLDS.**
+## Limits of this reading
 
-Nothing in the five required claims failed; the two W11 misreadings (the `allow_none` keyword and the `ctx.sema` guard) are corrected in place above.
+Whether `global_ctx` is literally typed `NeuronCodegen`, or a thin trace-context wrapper that forwards to it, is **[UNRESOLVED]** — the type is not byte-pinned. What is pinned is the surface: `.affine_range`, `.cur_scope`, and `.builder` all resolve on `NeuronCodegen`.
 
 ---
 

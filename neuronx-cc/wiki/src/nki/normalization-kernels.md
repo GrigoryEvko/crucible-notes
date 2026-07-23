@@ -33,7 +33,7 @@ For reimplementation, the contract is:
 
 ## The NormType family (4 members, exact semantics)
 
-The enum is exactly four members, transcribed verbatim (**CONFIRMED**, `common_types.py:25-29`):
+The enum is exactly four members, transcribed verbatim from `common_types.py:25-29`:
 
 ```python
 class NormType(Enum):
@@ -43,7 +43,7 @@ class NormType(Enum):
     RMS_NORM_SKIP_GAMMA = 3
 ```
 
-Two canonical classifier helpers key every dispatch decision (**CONFIRMED**, `kernel_helpers.py:229-268`):
+Two canonical classifier helpers key every dispatch decision (`kernel_helpers.py:229-268`):
 
 ```python
 def is_rms_normalization(t):       # kernel_helpers.py:251
@@ -65,7 +65,7 @@ The MLP layer wraps these into predicate accessors (`mlp_parameters.py`): `mlpp_
 
 ### Dispatch — inlined per megakernel, never a single module
 
-There is **no** central norm-dispatch function; each megakernel inlines a `NormType` switch on the `mlpp_has_*` predicates. **Decode** sites — `mlp_tkg_utils.py:387-405` and the QKV megakernel `qkv_tkg.py:805-847` — branch only `{NO_NORM, RMS_NORM, LAYER_NORM}`; **SKIP_GAMMA never reaches decode** (no decode caller constructs it, so the SKIP_GAMMA arm is unreachable there — **INFERRED-STRONG** from grep: zero SKIP_GAMMA branches in the TKG files). **Prefill** sites — `qkv_cte.py` / `mlp_cte_norm.py` — handle all four. The public surface `qkv.py:154-161` / `qkv_cte.py:182-183` documents `fused_norm_type ∈` all four members; `transformer_tkg.py:296` imports `NormType` and sets `RMS_NORM` for the whole block's pre-norm.
+There is **no** central norm-dispatch function; each megakernel inlines a `NormType` switch on the `mlpp_has_*` predicates. **Decode** sites — `mlp_tkg_utils.py:387-405` and the QKV megakernel `qkv_tkg.py:805-847` — branch only `{NO_NORM, RMS_NORM, LAYER_NORM}`; **SKIP_GAMMA never reaches decode**: no decode caller constructs it, so that arm is unreachable there — **[INFERRED]** from the absence of SKIP_GAMMA branches in the TKG files, not from a positive assertion. **Prefill** sites — `qkv_cte.py` / `mlp_cte_norm.py` — handle all four. The public surface `qkv.py:154-161` / `qkv_cte.py:182-183` documents `fused_norm_type ∈` all four members; `transformer_tkg.py:296` imports `NormType` and sets `RMS_NORM` for the whole block's pre-norm.
 
 ---
 
@@ -73,7 +73,7 @@ There is **no** central norm-dispatch function; each megakernel inlines a `NormT
 
 This is the precision-critical claim. It is proven three ways: against the torch golden ref, against the on-device `rsqrt` activation in each TKG kernel, and against the CTE rsqrt.
 
-**(1) Golden reference (`rmsnorm_torch.py:44-52`, CONFIRMED verbatim):**
+**(1) Golden reference (`rmsnorm_torch.py:44-52`, verbatim):**
 
 ```python
 if hidden_actual is not None:
@@ -87,7 +87,7 @@ if gamma is not None: norm *= gamma                    # ⭐ γ AFTER normalizat
 
 The parenthesization is unambiguous: `(mean + eps).sqrt()`, then `.reciprocal()`. There is no `(sqrt(...) + eps)` anywhere. `hidden_actual` decouples the divisor from a padded `H` — when `H` is padded to a 128/512 multiple, the mean still divides by the *real* hidden size; default `hidden_actual = H`.
 
-**(2) On-device rsqrt (decode RMSNorm, `rmsnorm_tkg.py:420-426`, CONFIRMED):**
+**(2) On-device rsqrt (decode RMSNorm, `rmsnorm_tkg.py:420-426`):**
 
 ```python
 hidden_scale = 1.0 / hidden_actual           # rmsnorm_tkg.py:420
@@ -101,19 +101,21 @@ nisa.activation(
 
 The `activation` primitive computes `op(scale·data + bias)`. Substituting: `rsqrt((1/H)·Σx² + eps)` = `rsqrt(mean(x²) + eps)` = `1/sqrt(mean(x²)+eps)`. **Byte-exact match to the torch ref.** The `eps` lands inside the sqrt because it is the *bias* added *before* the `rsqrt` op evaluates — proven by `eps_view` being memset to `eps` (`rmsnorm_tkg.py:528`, `nisa.memset(eps_sb, value=eps)`) and passed straight into the activation bias.
 
-> **QUIRK — where the `÷H` lives differs between RMS-TKG and LN-TKG.** In `rmsnorm_tkg` the cross-partition reduction matrix is `memset(value=1.0)` (`rmsnorm_tkg.py:535`) — a *plain* ones matrix that only sums; the `÷H` is deferred into the rsqrt `scale=1/hidden_actual`. In `layernorm_tkg` the same matrix is `memset(value=(1.0/hidden_actual))` (`layernorm_tkg.py:604`) — the `÷H` is folded into the **matmul constant** instead, so the matmul outputs the *mean* directly and the rsqrt's `scale` is implicit `1.0`. Same net math, different fusion point. Do not conflate the two constants. (**CONFIRMED** both sites.)
+> **QUIRK — where the `÷H` lives differs between RMS-TKG and LN-TKG.** In `rmsnorm_tkg` the cross-partition reduction matrix is `memset(value=1.0)` (`rmsnorm_tkg.py:535`) — a *plain* ones matrix that only sums; the `÷H` is deferred into the rsqrt `scale=1/hidden_actual`. In `layernorm_tkg` the same matrix is `memset(value=(1.0/hidden_actual))` (`layernorm_tkg.py:604`) — the `÷H` is folded into the **matmul constant** instead, so the matmul outputs the *mean* directly and the rsqrt's `scale` is implicit `1.0`. Same net math, different fusion point. Do not conflate the two constants.
 
-**(3) CTE / prefill rsqrt (`qkv_cte.py:3133-3138`, CONFIRMED):** `nisa.activation(data=variance, bias=norm_eps, op=nl.rsqrt)` → `1/sqrt(var + eps)`. Same `bias=eps`, same inside-the-sqrt placement, on the BNStats-produced variance.
+**(3) CTE / prefill rsqrt (`qkv_cte.py:3133-3138`):** `nisa.activation(data=variance, bias=norm_eps, op=nl.rsqrt)` → `1/sqrt(var + eps)`. Same `bias=eps`, same inside-the-sqrt placement, on the BNStats-produced variance.
 
-> **CORRECTION (supersedes any "eps-outside" or "rsqrt-at-HLO" claim).** The HLO-side fusion `fuseMulRedSqrt` (Part 4, [`rmsnorm-fusion-cluster-codegen.md`](../hlo-opt/rmsnorm-fusion-cluster-codegen.md)) captures only the `mul(x,x) → reduce(+) → sqrt` *denominator core* (3 ops; it matches `mhlo::SqrtOp`, **not** rsqrt). The `+eps`, the reciprocal (the `rsqrt` fuses sqrt+recip), the γ broadcast-multiply, and the output normalize all live in **these NKI kernels**, outside the HLO cluster. So `MulRedSqrt`(HLO) ⊂ `rmsnorm_*`(NKI). Treating the HLO fusion as the whole RMSNorm — or putting eps at HLO — is wrong.
+The HLO-side fusion `fuseMulRedSqrt` (Part 4, [`rmsnorm-fusion-cluster-codegen.md`](../hlo-opt/rmsnorm-fusion-cluster-codegen.md)) captures only the `mul(x,x) → reduce(+) → sqrt` *denominator core* — three ops, matching `mhlo::SqrtOp` rather than rsqrt. The `+eps`, the reciprocal (the `rsqrt` fuses sqrt and reciprocal), the γ broadcast-multiply, and the output normalize all live in **these NKI kernels**, outside the HLO cluster. So `MulRedSqrt`(HLO) ⊂ `rmsnorm_*`(NKI).
 
-**Eps default is `1e-6` across every variant** (CONFIRMED): `RmsNormQuantKernelArgs.eps:56`, `rmsnorm_tkg(eps=1e-6)`, `rmsnorm_mx_quantize_tkg(eps=1e-6)`, `layernorm_tkg(eps=1e-6)` (`layernorm_tkg.py:47`), `qkv.norm_eps`, `MLPNormParameters.eps`. The quant kernel asserts `eps >= 0` (`rmsnorm_quant.py:71`).
+> **GOTCHA — the HLO fusion is not the whole RMSNorm.** Because `fuseMulRedSqrt` is named for the norm, it is tempting to read it as owning the epsilon and the reciprocal. It owns neither: eps enters at the NKI `rsqrt`'s `bias=`, never at HLO.
+
+**Eps default is `1e-6` across every variant:** `RmsNormQuantKernelArgs.eps:56`, `rmsnorm_tkg(eps=1e-6)`, `rmsnorm_mx_quantize_tkg(eps=1e-6)`, `layernorm_tkg(eps=1e-6)` (`layernorm_tkg.py:47`), `qkv.norm_eps`, `MLPNormParameters.eps`. The quant kernel asserts `eps >= 0` (`rmsnorm_quant.py:71`).
 
 ---
 
 ## RMSNorm variant 1 — `rmsnorm_tkg` (plain decode, bf16/fp16 out)
 
-`rmsnorm_tkg(input, gamma, output, eps=1e-6, hidden_actual=None, hidden_dim_tp=False, single_core_forced=False, shard_on_h=False, …)`. Output is the normalized tensor laid out `[128, BxS, H/128]` (transposed so the downstream sharded router/MLP matmul reads contiguous H-halves). The per-tile core (`_process_rmsnorm_tile`, `rmsnorm_tkg.py:306-442`, CONFIRMED) is:
+`rmsnorm_tkg(input, gamma, output, eps=1e-6, hidden_actual=None, hidden_dim_tp=False, single_core_forced=False, shard_on_h=False, …)`. Output is the normalized tensor laid out `[128, BxS, H/128]` (transposed so the downstream sharded router/MLP matmul reads contiguous H-halves). The per-tile core (`_process_rmsnorm_tile`, `rmsnorm_tkg.py:306-442`) is:
 
 ```python
 # all intermediates inter_dtype = nl.float32
@@ -138,7 +140,7 @@ BxS is tiled by `BxS_FULL_TILE_SIZE=512`. The `nc_matmul(ones)` does the cross-p
 
 `rmsnorm_quant_kernel(hidden[B,S,H], ln_w[H], kargs, input_dequant_scale=None)` is the **context-encode-style** fused quantize kernel: it collapses `[B,S,H]→[OD,PD]`, tiles the outer dim into `pmax(=128)`-row tiles, and per tile does **load → (optional) RMSNorm → quantize → store** entirely in SBUF with no HBM round-trip (`_rmsnorm_quant_single_core_kernel:703`). It accepts only `NormType ∈ {NO_NORM, RMS_NORM}` × `QuantizationType ∈ {ROW, STATIC}` and asserts away everything else (`:60-66`).
 
-**Fused RMSNorm tile math** (`_rms_normalize_tile`, `rmsnorm_quant.py:446-516`, CONFIRMED), here each *row* is a partition, so a single reduce suffices:
+**Fused RMSNorm tile math** (`_rms_normalize_tile`, `rmsnorm_quant.py:446-516`) — here each *row* is a partition, so a single reduce suffices:
 
 ```python
 nisa.activation_reduce(op=nl.square, reduce_op=nl.add, data=in_tile,
@@ -152,11 +154,11 @@ nisa.scalar_tensor_tensor(data=in_tile, op0=multiply, operand0=1/rms,
 
 The proc dim is tiled into `gemm_moving_fmax`-wide free tiles iterated in **batches of 8** (`:468`, manual unroll for the 8 PSUM banks) with a remainder loop. RMS reduce/rsqrt run in FP32; only the matmul/γ path uses bf16 `compute_data_type`.
 
-> **NOTE — divisor here is `proc_dim_size`, not `hidden_actual`.** The rsqrt scale at `rmsnorm_quant.py:461` is `1/constants.proc_dim_size` — the *padded/tiled* proc dimension — whereas the TKG kernels divide by `hidden_actual`. For an un-padded `H` these coincide; for a padded `H` the quant kernel divides by the proc-dim. (**CONFIRMED** `:461`; contrast `rmsnorm_tkg.py:420`.)
+> **NOTE — divisor here is `proc_dim_size`, not `hidden_actual`.** The rsqrt scale at `rmsnorm_quant.py:461` is `1/constants.proc_dim_size` — the *padded/tiled* proc dimension — whereas the TKG kernels divide by `hidden_actual`. For an un-padded `H` these coincide; for a padded `H` the quant kernel divides by the proc-dim. *Contrast `rmsnorm_tkg.py:420`.*
 
 **ROW quantize** (`_row_quantize_tile:526`, per-row dynamic fp8): `tensor_scalar_reduce(abs, maximum)` → `max|x|`; optional clip to `lower_bound` (active iff `> 1e-6`); `dequant_scale = max|x| / range` with `range = 240`; clamp `scale ≥ min_dequant_scale_value(=1e-6)` against reciprocal blow-up; `quant_scale = 1/dequant_scale` (`nisa.reciprocal`, `:308`); `tensor_scalar(multiply)` → cast to `float8_e4m3` on store. **STATIC quantize** (`_static_quantize_tile:623`) uses a caller-supplied `input_dequant_scale`, inverted once on entry (`:308`), then per tile `multiply` and **clamp to `[-240, 240]`**.
 
-> **CORRECTION — two distinct fp8 targets, two ranges.** This kernel quantizes to **240-max `float8_e4m3`** (the **non-fn** e4m3 whose max finite is `2^7·(1+2^7/2^8)=240`, derived verbatim in `rmsnorm_quant_constants.py:86-87`). The MX path (variant 3) targets **448-max `float8_e4m3fn`** (the OCP "fn" variant, `mx_torch_common.py:194,198`). They are *not* the same dtype; anyone citing 448 for the ROW/STATIC path is wrong, and vice-versa.
+> **GOTCHA — two fp8 targets, two ranges, easily swapped.** The ROW/STATIC path here quantizes to **240-max `float8_e4m3`** — the **non-fn** e4m3 whose max finite is `2^7·(1+2^7/2^8) = 240`, derived verbatim in `rmsnorm_quant_constants.py:86-87`. The MX path (variant 3) targets **448-max `float8_e4m3fn`**, the OCP "fn" variant (`mx_torch_common.py:194,198`). Citing 448 for the ROW/STATIC path, or 240 for MX, silently changes the saturation point.
 
 **ROW output shape = `[B,S,H+4]`** (`rmsnorm_quant.py:152`): the extra 4 fp8 elements per row hold the fp32 dequant scale reinterpreted as 4×fp8 bytes (`dequant_scale_size = 4/1 = 4`, `constants.py:92-95`), stored via an access-pattern reinterpret cast. STATIC output is `[B,S,H]` (scale is global, no tail).
 
@@ -166,9 +168,9 @@ The proc dim is tiled into `gemm_moving_fmax`-wide free tiles iterated in **batc
 
 `rmsnorm_mx_quantize_tkg(input, gamma, output, output_quant, output_scale, residual=None, output_residual=None, eps=1e-6, hidden_actual=None, hidden_dim_tp=True)`. A **decode** kernel that fuses **(optional residual-add) → RMSNorm → MXFP8 quantize** in one pass, emitting **both** an un-quantized bf16/fp16 `output` (the router GEMM input) **and** a quantized `output_quant` + `output_scale` (the expert-MLP input). The file docstring states the fusion verbatim: *"Fused optional residual add + RMSNorm + MX quantization … for token generation (decoding) phase"* (`rmsnorm_mx_quantize_tkg.py:15,42`).
 
-The per-tile pipeline (`:140-258`, CONFIRMED): `dma_transpose` load `(BxS·H1,H0)→(H0,BxS_tile,H1)`; **residual add `hidden = input + residual`** (iff `is_residual_add`, `:74,85`) — note the summed tensor is what gets normalized **and** spilled, i.e. the **pre-norm residual pattern `RMSNorm(x + residual)`**; `activation(square)`; `tensor_tensor(·γ_bcast)`; `tensor_reduce(add, axis=2)` then `nc_matmul(ones[H0,H0])` to finish the cross-partition `Σx²`; `activation(rsqrt, scale=1/hidden_actual, bias=eps)` (identical to §1); `tensor_tensor(·(1/rms)_bcast)` → `output`; swizzle to `[H0, n_H512, BxS_tile, _q_width]` then `nisa.quantize_mx` (`:254`).
+The per-tile pipeline (`:140-258`): `dma_transpose` load `(BxS·H1,H0)→(H0,BxS_tile,H1)`; **residual add `hidden = input + residual`** (iff `is_residual_add`, `:74,85`) — note the summed tensor is what gets normalized **and** spilled, i.e. the **pre-norm residual pattern `RMSNorm(x + residual)`**; `activation(square)`; `tensor_tensor(·γ_bcast)`; `tensor_reduce(add, axis=2)` then `nc_matmul(ones[H0,H0])` to finish the cross-partition `Σx²`; `activation(rsqrt, scale=1/hidden_actual, bias=eps)` (identical to §1); `tensor_tensor(·(1/rms)_bcast)` → `output`; swizzle to `[H0, n_H512, BxS_tile, _q_width]` then `nisa.quantize_mx` (`:254`).
 
-**The MX / E8M0 block scheme** (`mx_torch_common.py:211-215` = hardware golden, CONFIRMED). The block geometry is `_q_height=8 × _q_width=4 = 32-element OCP block` (`projection_mx_constants.py:28-29`):
+**The MX / E8M0 block scheme** (`mx_torch_common.py:211-215` = hardware golden). The block geometry is `_q_height=8 × _q_width=4 = 32-element OCP block` (`projection_mx_constants.py:28-29`):
 
 ```python
 exp_field     = (data_f32.view(uint32) >> 23) & 0xFF                  # IEEE-754 biased exp per elem :211
@@ -188,7 +190,7 @@ For `float8_e4m3fn_x4`: `(max_exp, max_val) = (8, 448.0)` (`mx_torch_common.py:1
 
 ## Decode LayerNorm — `layernorm_tkg` (software reduce, NO BNStats)
 
-`layernorm_tkg(input, gamma, output, beta=None, eps=1e-6, shard_on_h=False, …)`. Output `[H0, BxS, H1]`; `H` divisible by 128; β optional (γ-only LayerNorm is legal). The per-tile core (`_process_layernorm_tile`, `layernorm_tkg.py:303-498`, docstring `:320-321`: *"output = gamma * (input - mean)/sqrt(var+eps)+beta where var = E[X^2] - E[X]^2"*, CONFIRMED) computes **two moments** via a *software* reduce — no hardware BNStats:
+`layernorm_tkg(input, gamma, output, beta=None, eps=1e-6, shard_on_h=False, …)`. Output `[H0, BxS, H1]`; `H` divisible by 128; β optional (γ-only LayerNorm is legal). The per-tile core (`_process_layernorm_tile`, `layernorm_tkg.py:303-498`, docstring `:320-321`: *"output = gamma * (input - mean)/sqrt(var+eps)+beta where var = E[X^2] - E[X]^2"*) computes **two moments** via a *software* reduce — no hardware BNStats:
 
 ```python
 # inter_dtype = nl.float32 for ALL intermediates
@@ -208,15 +210,15 @@ out       = nisa.tensor_tensor(out, rsqrt_bcast, nl.multiply)                 # 
 if beta:  out = nisa.tensor_tensor(out, beta, nl.add)                         # +β       :486
 ```
 
-⇒ `output = ((x − μ)·γ)·rsqrt(var+eps) + β`, algebraically `γ(x−μ)/σ + β`. The variance is **population** variance (`÷H`, not `÷(H−1)`) — the `1/H` lives in the matmul constant (`memset(1.0/hidden_actual)`, `:604`). The two `nc_matmul`s (vs RMSNorm's one) do both the cross-partition sum and the mean divisor. Sharding mirrors RMSNorm but with `SHARDING_THRESHOLD=10` (`:36`) — **lower** than RMSNorm's 18, because LayerNorm's higher per-token cost amortizes the collective overhead at smaller `BxS` (INFERRED-STRONG).
+⇒ `output = ((x − μ)·γ)·rsqrt(var+eps) + β`, algebraically `γ(x−μ)/σ + β`. The variance is **population** variance (`÷H`, not `÷(H−1)`) — the `1/H` lives in the matmul constant (`memset(1.0/hidden_actual)`, `:604`). The two `nc_matmul`s (vs RMSNorm's one) do both the cross-partition sum and the mean divisor. Sharding mirrors RMSNorm but with `SHARDING_THRESHOLD=10` (`:36`) — **lower** than RMSNorm's 18, because LayerNorm's higher per-token cost amortizes the collective overhead at smaller `BxS` — that rationale is **[INFERRED]**, stated in no comment.
 
-> **CORRECTION (supersedes the brief's "decode LayerNorm uses the BNStats HW path" hypothesis).** It does **not**. The decode/TKG LayerNorm is the software reduce above; `grep` finds **zero** `bn_stats`/`bn_aggr` in the entire `subkernels/` directory (verified: `rg -c` empty). BNStats is the **prefill/CTE** path only (next section). Decode and prefill LayerNorm are **two different implementations**, selected by data layout.
+> **GOTCHA — decode LayerNorm does not use the BNStats hardware path.** The silicon has a Pool/BN engine built for exactly this statistic, so the natural assumption is that both phases use it. Decode does not: the TKG LayerNorm is the software reduce above, and there is no `bn_stats` / `bn_aggr` anywhere in `subkernels/`. BNStats is the prefill/CTE path only (next section). The two phases are two different implementations, selected by data layout.
 
 ---
 
 ## Prefill LayerNorm — the BNStats (Welford) hardware path
 
-The CTE LayerNorm uses the silicon Pool/BN engine via `nisa.bn_stats` → `nisa.bn_aggr`. Transcribed from `_compute_layer_norm_stats` (`qkv_cte.py:3100-3138`, CONFIRMED verbatim):
+The CTE LayerNorm uses the silicon Pool/BN engine via `nisa.bn_stats` → `nisa.bn_aggr`. Transcribed verbatim from `_compute_layer_norm_stats` (`qkv_cte.py:3100-3138`):
 
 ```python
 BN_STATS_TILE_SIZE = 512 ; BN_STATS_DST_SIZE = 6        # qkv_cte.py:3101-3102
@@ -239,7 +241,7 @@ The `DST_SIZE=6` / `AGGR=2` are the Python-side witnesses of the binary BNStats 
 
 Both norms therefore produce **population variance** — the decode path's `E[X²]−E[X]²` and the prefill path's Welford-`÷N` agree (consistent). See the ISA-level encoding of these instructions in [`batchnorm-encoding.md`](../isa/batchnorm-encoding.md).
 
-> **NOTE — why decode ≠ prefill.** Decode lays `H` on the **partition** axis (layout `[H0,BxS,H1]`), making a cross-*partition* reduction the bottleneck → the PE matmul-by-`1/H` trick reduces partitions for free and reuses PSUM. Prefill lays `H` on the **free** axis (rows = tokens) → the Pool/BN engine's free-dim Welford in one HW pass is ideal. Different layouts ⇒ different optimal stats engine. (INFERRED-STRONG; layouts explicit in both files.)
+> **NOTE — why decode ≠ prefill.** Decode lays `H` on the **partition** axis (layout `[H0,BxS,H1]`), making a cross-*partition* reduction the bottleneck → the PE matmul-by-`1/H` trick reduces partitions for free and reuses PSUM. Prefill lays `H` on the **free** axis (rows = tokens) → the Pool/BN engine's free-dim Welford in one HW pass is ideal. Different layouts ⇒ different optimal stats engine. The layouts are explicit in both files; the causal reading is **[INFERRED]**.
 
 ---
 
@@ -247,18 +249,21 @@ Both norms therefore produce **population variance** — the decode path's `E[X�
 
 `RMS_NORM_SKIP_GAMMA=3` computes the RMS denominator `x · rsqrt(mean(x²)+eps)` **without** the γ-multiply. It is used when γ has been algebraically folded into the next matmul's weight (`W' = diag(γ)·W`), so re-applying γ would double-count. It is **CTE-exclusive** (zero occurrences in any TKG decode file). In the CTE path the γ-load is guarded by `(RMS_NORM or LAYER_NORM)`, and the SKIP_GAMMA / NO_NORM arms just copy the transposed PSUM tile — comment verbatim: *"In NO_NORM, RMS_NORM_n, we just copy the transposed PSUM tile to SBUF"* (`qkv_cte.py`). The rsqrt/stats still run (it is still an RMS denominator); only the γ-mul is dropped.
 
-> **GOTCHA — the validator REJECTS γ alongside SKIP_GAMMA.** `qkv_cte_utils.py:439-442` errors with *"gamma_norm_weights are provided, but fused_norm_type is RMS_NORM_n"* — supplying a γ tensor with SKIP_GAMMA is a hard error, because γ is supposed to already be inside the weight. (**CONFIRMED**.) Note the comment strings render the enum suffix as the mangled `RMS_NORM_n`; the authoritative member name is `RMS_NORM_SKIP_GAMMA` per `common_types.py:29`.
+> **GOTCHA — the validator REJECTS γ alongside SKIP_GAMMA.** `qkv_cte_utils.py:439-442` errors with *"gamma_norm_weights are provided, but fused_norm_type is RMS_NORM_n"* — supplying a γ tensor with SKIP_GAMMA is a hard error, because γ is supposed to already be inside the weight. Note the comment strings render the enum suffix as the mangled `RMS_NORM_n`; the authoritative member name is `RMS_NORM_SKIP_GAMMA` per `common_types.py:29`.
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims, re-challenged against source:
+- **Eps sits inside the sqrt, on the mean-of-squares.** Three independent sites agree: torch ref `(sum_squares/hidden_actual + eps).sqrt()` (`rmsnorm_torch.py:46`); device `rsqrt(scale=1/H, bias=eps)` = `rsqrt(mean(x²)+eps)` (`rmsnorm_tkg.py:421`, `rmsnorm_quant.py:458`, `rmsnorm_mx_quantize_tkg.py`); CTE `rsqrt(data=var, bias=eps)` (`qkv_cte.py:3133`). The `(sqrt(...)+eps)` form appears nowhere.
+- **Welford vs software reduce is a phase split, not a flag.** `bn_stats` does not occur anywhere under `subkernels/`; BNStats appears only in `qkv_cte.py:3120` and `mlp_cte_norm.py:260`. Decode LayerNorm computes `E[X²]−E[X]²` in software (`layernorm_tkg.py:450-456`). Both paths yield **population** variance.
+- **`NormType` has exactly four members** — `NO_NORM=0, RMS_NORM=1, LAYER_NORM=2, RMS_NORM_SKIP_GAMMA=3` (`common_types.py:25-29`).
+- **Two distinct fp8 quant targets.** ROW/STATIC uses `float8_e4m3`, range **240** (`rmsnorm_quant_constants.py:87`, derivation at `:86`); MX uses `float8_e4m3fn_x4` with `max_val` **448** (`mx_torch_common.py:198`).
+- **The `÷H` fusion point differs by kernel.** `rmsnorm_tkg.py:535` uses `memset(value=1.0)`; `layernorm_tkg.py:604` uses `memset(value=(1.0/hidden_actual))`. RMS defers `÷H` into the rsqrt scale (`:420`); LN folds it into the matmul.
 
-1. **Eps inside the sqrt, on the mean-of-squares.** Challenged hardest. Triple-proven: torch ref `(sum_squares/hidden_actual + eps).sqrt()` (`rmsnorm_torch.py:46`), device `rsqrt(scale=1/H, bias=eps)` = `rsqrt(mean(x²)+eps)` (`rmsnorm_tkg.py:421`, `rmsnorm_quant.py:458`, `rmsnorm_mx_quantize_tkg.py`), CTE `rsqrt(data=var, bias=eps)` (`qkv_cte.py:3133`). The `(sqrt(...)+eps)` form appears **nowhere**. **CONFIRMED.**
-2. **Welford-vs-software-reduce is a phase split, not a flag.** Challenged hardest. `grep -c bn_stats` over `subkernels/` = **empty** (decode has none); BNStats appears only in `qkv_cte.py:3120` / `mlp_cte_norm.py:260`. Decode LayerNorm computes `E[X²]−E[X]²` in software (`layernorm_tkg.py:450-456`). Both yield **population** variance. **CONFIRMED** — corrects the brief's "decode uses BNStats" premise.
-3. **`NormType` = exactly 4 members.** `common_types.py:25-29` shows `NO_NORM=0, RMS_NORM=1, LAYER_NORM=2, RMS_NORM_SKIP_GAMMA=3`. Not 3, not 5. **CONFIRMED.**
-4. **Two distinct fp8 quant targets.** ROW/STATIC = `float8_e4m3` range **240** (`rmsnorm_quant_constants.py:87`, derivation in `:86`); MX = `float8_e4m3fn_x4` `max_val` **448** (`mx_torch_common.py:198`). Two ranges, two dtypes. **CONFIRMED.**
-5. **The `÷H` fusion-point divergence (RMS const=1.0 vs LN const=1/H).** `rmsnorm_tkg.py:535` `memset(value=1.0)` vs `layernorm_tkg.py:604` `memset(value=(1.0/hidden_actual))`. RMS defers `÷H` into the rsqrt scale (`:420`); LN folds it into the matmul. **CONFIRMED.**
+## Limits of this reading
 
-**Re-verification ceiling.** All Python-level math, enum, eps, dtype, and stats-path claims are **CONFIRMED** byte-exact against shipped wheel source (cp310; cp311 byte-identical). The `InstBNStats` IT34/IT35 opcode mapping and Welford lane-interleave semantics are **STRONG** (cross-referenced from the BNStats ISA encoding, not re-derived here). The SHARDING_THRESHOLD rationale (18 vs 10) and the decode-≠-prefill layout argument are **INFERRED-STRONG** — supported by the explicit constants/layouts but not stated as cause in any single comment. SKIP_GAMMA's unreachability in decode is **INFERRED** from the absence of a decode caller, not a positive assertion.
+- All Python-level math, enum, eps, dtype, and stats-path claims are read byte-exact from the shipped wheel source (cp310; cp311 byte-identical).
+- The `InstBNStats` IT34/IT35 opcode mapping and the Welford lane-interleave semantics are cross-referenced from the BNStats ISA encoding rather than re-derived here.
+- The `SHARDING_THRESHOLD` rationale (18 vs 10) and the decode-≠-prefill layout argument are **[INFERRED]**: the constants and layouts are explicit, but no comment states the cause.
+- SKIP_GAMMA's unreachability in decode is **[INFERRED]** from the absence of a decode caller, not from a positive assertion.

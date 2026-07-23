@@ -48,9 +48,9 @@ Every `nc_matmul` site is at L1767 or later — past the close of `conv2d_depthw
 276, 381, 594, 641, 1046 : nisa.tensor_reduce(..., op=nl.add, axis=2)
 ```
 
-`nisa.transpose` (the PE-array transpose) is likewise absent; the only transpose used is the DVE-engine `tiled_dve_transpose_210_newfe` (L799), an SBUF-to-SBUF layout op, not a contraction. (CONFIRMED — both greps run against the shipped wheel source.)
+`nisa.transpose` (the PE-array transpose) is likewise absent; the only transpose used is the DVE-engine `tiled_dve_transpose_210_newfe` (L799), an SBUF-to-SBUF layout op, not a contraction.
 
-> **QUIRK — depthwise abandons the wave-1 K-replication trick on purpose.** An earlier experimental depthwise (the wave-1 `replication_factor` strategy, L55–76) stacked `r` channel-copies down the 128 partitions so `r` taps could be pushed through the PE array in one pass. The production family here keeps **one** channel per partition and never calls `replication_factor` inside L121–1094 (CONFIRMED by absence). `replication_factor` and `tile_with_stride` survive in the file only because the dense/`rep_nhwc` siblings (L1104+) still consume them. For depthwise, the partitions are already saturated by channels — there is nothing to replicate, and the direct elementwise path avoids the transpose/replication overhead entirely.
+> **QUIRK — depthwise abandons the K-replication trick on purpose.** The earlier experimental depthwise in the same file (the `replication_factor` strategy, L55–76) stacked `r` channel-copies down the 128 partitions so `r` taps could be pushed through the PE array in one pass. The production family here keeps **one** channel per partition and never calls `replication_factor` anywhere in L121–1094. `replication_factor` and `tile_with_stride` survive in the file only because the dense/`rep_nhwc` siblings (L1104+) still consume them. For depthwise, the partitions are already saturated by channels — there is nothing to replicate, and the direct elementwise path avoids the transpose/replication overhead entirely.
 
 The math the path computes is, for every channel `c`, output position `w`, and tap `k`:
 
@@ -64,7 +64,7 @@ realized as a `tensor_tensor` product into a `prod_buffer` then a `tensor_reduce
 
 ## Name Encoding & Layout Decode
 
-The function-name suffixes encode the dim order of the (input ; filter ; output) tensors. The letters are decoded from the shape-unpack lines and the `.ap()` stride patterns. (STRONG — reconstructed from asserts + access patterns, not a docstring table.)
+The function-name suffixes encode the dim order of the (input ; filter ; output) tensors. The letters are decoded from the shape-unpack lines and the `.ap()` stride patterns — there is no docstring table, so this is reconstructed from the asserts and the access patterns.
 
 | Letter | Meaning |
 |---|---|
@@ -93,7 +93,7 @@ assert in_N == _N and 1 == k_FI           // exactly one in-channel per group
 
 so each output channel depends on exactly one input channel — the textbook `feature_group_count == C_in` case.
 
-> **NOTE — why the 2D image is `f01b` (channel-first, batch-last).** The DMA load at L959–966 strides the image columns by `in_N` (batch is the *unit* HBM stride). With N innermost, one C-tile DMA gathers a single batch element across H and W by stepping `in_N` per pixel. At compute time the dilated buffer's unit-stride col walk then samples consecutive pixels of that one batch element. The layout is chosen to make the gather a single strided DMA. (STRONG — read from the L959–966 stride pattern.)
+> **NOTE — why the 2D image is `f01b` (channel-first, batch-last).** The DMA load at L959–966 strides the image columns by `in_N` (batch is the *unit* HBM stride). With N innermost, one C-tile DMA gathers a single batch element across H and W by stepping `in_N` per pixel. At compute time the dilated buffer's unit-stride col walk then samples consecutive pixels of that one batch element. The layout is chosen to make the gather a single strided DMA. *Read from the L959–966 stride pattern.*
 
 ---
 
@@ -163,7 +163,7 @@ function conv1d_depthwise_default(img, filter, out, padding, ...):   // L121
 
 The `data1` access pattern `[(flat,128),(1,W_out),(1,W_f)]` is the entire trick: the outer index strides by 1 per output position and the inner index covers `0..W_f-1`, so two overlapping reads of the **same** SBUF row produce a `(W_out × W_f)` im2col view with no copy. The `data2` filter pattern is identical except the `W_out` axis has stride 0, broadcasting each tap.
 
-> **NOTE — stride and dilation are accepted but unused in 1D `_default`.** `stride`, `rhs_dilation`, and `lhs_dilation` are in the signature but the body's W slide is unit-stride and the dispatcher applies no dilation either. (CONFIRMED in body; INFERRED that dilated 1D is routed to a different upstream kernel, since neither the body nor the dispatcher handles it.)
+> **NOTE — stride and dilation are accepted but unused in 1D `_default`.** `stride`, `rhs_dilation`, and `lhs_dilation` are in the signature but the body's W slide is unit-stride and the dispatcher applies no dilation either. That dilated 1D is routed to a different upstream kernel is **[INFERRED]** — neither the body nor the dispatcher handles it.
 
 ---
 
@@ -210,7 +210,7 @@ function conv1d_depthwise_f_packing(img, filter, out, ...):   // L413
 
 The math identity is identical to `_default`: `prod[c, base+w', k] = img[c, base+w'+k] * filt[c, k]`, then `out[c, base+w'] = sum_k prod`. The **only** difference is the outer Python `base_i_out` chunk loop that caps each vector op at `flattend_input_img_f` output positions.
 
-> **GOTCHA — `prod_buffer_last` is re-allocated per batch element.** In the partial-tile path the per-step product buffer is allocated **inside** the `i_n` loop (L611), whereas the full-tile `prod_buffer` is hoisted out (L489). Harmless under NKI SBUF allocation but inconsistent — a minor smell, not a correctness bug. (CONFIRMED.)
+> **GOTCHA — `prod_buffer_last` is re-allocated per batch element.** In the partial-tile path the per-step product buffer is allocated **inside** the `i_n` loop (L611), whereas the full-tile `prod_buffer` is hoisted out (L489). Harmless under NKI SBUF allocation but inconsistent — a minor smell, not a correctness bug.
 
 ---
 
@@ -239,7 +239,7 @@ function conv1d_depthwise_bf01_oi01_bf01(img, filter, padding, ..., lnc=1, out_s
         return conv1d_depthwise_f_packing(img, filter, out, ...)
 ```
 
-> **NOTE — `lnc` is accepted for API compatibility only.** The docstring (L705–706) states LNC sharding is handled at the outer kernel level, not in these helpers. The `lnc` parameter is threaded into neither dispatch branch. (CONFIRMED.) No in-tree Python caller exists; the lowering selects this entry by name (STRONG — searched `neuronxcc/`, none found; the C++/MLIR frontend emits the call).
+> **NOTE — `lnc` is accepted for API compatibility only.** The docstring (L705–706) states LNC sharding is handled at the outer kernel level, not in these helpers. The `lnc` parameter is threaded into neither dispatch branch. No in-tree Python caller exists anywhere under `neuronxcc/`; the lowering selects this entry by name, with the C++/MLIR frontend emitting the call.
 
 ---
 
@@ -284,7 +284,7 @@ max_h_tile_size = max(min(in_H,
                       k_H)                                  // L842: never below kernel height
 ```
 
-> **GOTCHA — `dtype_size` is hardcoded to 4 (fp32) regardless of `img.dtype`.** L839 pins `dtype_size = 4` even though `dtype = img.dtype` is captured at L810 and `sizeinbytes` is imported (L15, used only by the rep_nhwc siblings). For bf16/fp16 inputs this **over**-estimates bytes — the H-tiles are smaller than they need to be, so it is *conservative and safe but suboptimal*. A hypothetical >4-byte dtype would **under**-budget and could overflow the 16 KB SBUF window. Flagged as a latent perf/correctness smell. (CONFIRMED hardcode; INFERRED impact.)
+> **GOTCHA — `dtype_size` is hardcoded to 4 (fp32) regardless of `img.dtype`.** L839 pins `dtype_size = 4` even though `dtype = img.dtype` is captured at L810 and `sizeinbytes` is imported (L15, used only by the rep_nhwc siblings). For bf16/fp16 inputs this **over**-estimates bytes — the H-tiles are smaller than they need to be, so it is *conservative and safe but suboptimal*. A hypothetical >4-byte dtype would **under**-budget and could overflow the 16 KB SBUF window. Flagged as a latent perf/correctness smell. The hardcode is in the source; the impact analysis is **[INFERRED]**.
 
 ### Algorithm — H Sliding Window
 
@@ -358,11 +358,11 @@ for c_tile in range(C_NUM_TILES):                          // L847, Python-unrol
 
 ### Considerations
 
-The dilation handling is the heart of this kernel. The H window walks output rows and distinguishes **real-sample** rows from **inserted-zero** rows (`is_dilation_row`), computes how many original image rows to DMA (`load_h_size`), where to place them inside the zeroed dilated buffer (`i_padding` = top-pad + `dilation_offset`), and how many valid output rows (`window_size`) the current dilated tile yields. (STRONG/CONFIRMED — read directly L876–916.)
+The dilation handling is the heart of this kernel. The H window walks output rows and distinguishes **real-sample** rows from **inserted-zero** rows (`is_dilation_row`), computes how many original image rows to DMA (`load_h_size`), where to place them inside the zeroed dilated buffer (`i_padding` = top-pad + `dilation_offset`), and how many valid output rows (`window_size`) the current dilated tile yields. *Read directly from L876–916.*
 
 > **QUIRK — dilation is baked into the buffer, so the compute needs no per-tap stride math.** Because `dilated_image` already carries the à-trous spacing (the scatter left `dil-1` zeros between samples), the `data2` access pattern at L1015 uses a **unit** col stride `[1, out_W]` and still naturally samples every `dil_W`-th original pixel for the dilated kernel footprint. The dilation cost is paid once, in the scatter DMA; the inner multiply loop is dilation-oblivious. This is why LHS dilation is a strided *copy*, not arithmetic at compute time.
 
-The product layout places `kernel_size` taps contiguously per output position W (element `(c,w,k)` at `w*kernel_size + k`), so the final `tensor_reduce(axis=2)` collapses **all** `k_H*k_W` taps in one op — unlike the per-tap multiply loop, the reduce is a single intrinsic per output row. (CONFIRMED L1046–1065.)
+The product layout places `kernel_size` taps contiguously per output position W (element `(c,w,k)` at `w*kernel_size + k`), so the final `tensor_reduce(axis=2)` collapses **all** `k_H*k_W` taps in one op — unlike the per-tap multiply loop, the reduce is a single intrinsic per output row (L1046–1065).
 
 ---
 
@@ -398,21 +398,17 @@ conv2d_f01b... : [optional DVE transpose]; per c_tile:{ filter DMA; per N:
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the wheel source.
+- **No PE array and no `nc_matmul` in the depthwise path.** `nc_matmul` appears only at L1767, L2400, and L3354 — all past the depthwise close at L1094 — and `nisa.transpose` does not appear at all. The depthwise functions end at L1094 (the next `def` is `conv2d_dw_..._rep_nhwc` at L1104) and contain zero matmul sites.
+- **The compute is `tensor_tensor(multiply)` then `tensor_reduce(add, axis=2)`.** All five `tensor_tensor` sites (L251/357/587/634/1015) carry `op=nl.multiply`, and all five `tensor_reduce` sites (L276/381/594/641/1046) carry `op=nl.add, axis=2`.
+- **Virtual im2col via overlapping access patterns, no copy.** The `data1` patterns (`[(flat,128),(1,W_out),(1,W_f)]` for 1D; `[(...),(1,out_W)]` for 2D) and the stride-0 `data2` filter broadcast are verbatim at L256–271, L569–585, and L1023–1036. No im2col matrix is materialized.
+- **`dtype_size = 4` is hardcoded.** L839 reads `dtype_size = 4` literally, with `dtype = img.dtype` captured but unused for the budget and `sizeinbytes` imported but unused here.
+- **2D handles LHS dilation only, via zero-fill plus strided scatter.** L796 rejects RHS dilation; L821–822 build the dilated extents with `calc_dilated_dimension`; L973 zeros the buffer; L977–995 scatters with strides `dil_H_lhs*dil_W` (rows) and `dil_W_lhs` (cols).
 
-1. **No PE array / no `nc_matmul` in the depthwise path.** Re-greped: `nc_matmul` appears only at L1767, L2400, L3354 — all past the depthwise close at L1094. `nisa.transpose` absent. **Holds — CONFIRMED.** This is the highest-risk claim and it is the most directly checkable; the depthwise functions end at L1094 (next `def` is `conv2d_dw_..._rep_nhwc` at L1104) and contain zero matmul sites.
+## Limits of this reading
 
-2. **The compute is `tensor_tensor(multiply)` then `tensor_reduce(add, axis=2)`.** Verified all five `tensor_tensor` sites (L251/357/587/634/1015) carry `op=nl.multiply` and all five `tensor_reduce` sites (L276/381/594/641/1046) carry `op=nl.add, axis=2`. **Holds — CONFIRMED.**
-
-3. **Virtual im2col via overlapping access patterns, no copy.** The `data1` patterns (`[(flat,128),(1,W_out),(1,W_f)]` 1D; `[(...),(1,out_W)]` 2D) and stride-0 `data2` filter broadcast are read verbatim from L256–271, L569–585, L1023–1036. No im2col matrix is materialized. **Holds — CONFIRMED.**
-
-4. **`dtype_size = 4` is hardcoded.** L839 reads `dtype_size = 4` literally, with `dtype = img.dtype` captured but unused for the budget and `sizeinbytes` imported but unused here. **Holds — CONFIRMED.** The over/under-budget *consequence* is marked INFERRED.
-
-5. **2D handles LHS dilation only, via zero-fill + strided scatter.** L796 rejects RHS dilation; L821–822 build the dilated extents with `calc_dilated_dimension`; L973 zeros the buffer; L977–995 scatters with strides `dil_H_lhs*dil_W` (rows) / `dil_W_lhs` (cols). **Holds — CONFIRMED.**
-
-Re-verification ceiling: the page is grounded entirely in the shipped `.py`. What is **not** independently verified is the upstream selector's exact dispatch into these named entry points (owned by 6.8.1, the C++/MLIR frontend) — that the frontend emits `conv1d_depthwise_bf01_oi01_bf01` vs. a sibling is STRONG (no Python caller found) but the selection rule lives outside this file. The INFERRED claims (dilated-1D routing elsewhere; `dtype_size` over/under-budget consequences) are marked in place.
+The page is grounded entirely in the shipped `.py`. The upstream selector's exact dispatch into these named entry points is **[UNRESOLVED]** here — it belongs to the C++/MLIR frontend (6.8.1). That the frontend emits `conv1d_depthwise_bf01_oi01_bf01` rather than a sibling follows from the absence of any Python caller, but the selection rule itself lives outside this file. The remaining inferences — dilated-1D routing elsewhere, and the `dtype_size` over/under-budget consequences — are marked in place.
 
 ---
 
