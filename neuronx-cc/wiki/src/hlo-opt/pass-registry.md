@@ -100,7 +100,7 @@ c3              ret
 
 This is the canonical table every Part-4 page slots into. Columns:
 
-- **#** — index in registration order (1-based). The `StringMap` is unordered; this order is the registrar's emission order and serves as the default-pipeline proxy (the actual run-list is a driver-supplied name subset — see [§3](#3-passes--skip-pass-selection)).
+- **#** — index in registration order (1-based). The `StringMap` is unordered; this order is the registrar's emission order and serves as the default-pipeline proxy (the actual run-list is a driver-supplied name subset — see [§3](#3---passes----skip-pass-selection)).
 - **PassName** — the verbatim `name()` C-string = the `--passes`/`--skip-pass` key. Byte-exact.
 - **Class** — the constructed class (from the `_ZTV…` vtable demangle).
 - **Vtable** — `_ZTV<Class>` address (vptr = this + 0x10).

@@ -63,7 +63,7 @@ RefPtr<Expr> fromJsonv2(PelicanContext* ctx,   // 0x3bc8c0  the interning arena
                         json const& j);
 ```
 
-The writer needs no context because every datum it emits is read directly off the live node. The reader needs the `Instruction*` because the wire stores some leaves *by name*, not by value: an `AffineIV` writes only its axis name string, and an `IntRuntimeValue` writes only its register name. To rebuild those, `fromJsonv2` calls `bir::Instruction::findAxis(instr, name)` (loop-axis resolution), `bir::Function::getRegisterByName(...)` (register resolution, via `instr.getFunction()`), and `Function::getOrCreateShardId(...)` (shard interning) — all three call targets are confirmed in the `fromJsonv2` body. The arena (`PelicanContext*`) supplies the `BumpPtrAllocator` and `FoldingSet` that re-unique structurally-equal nodes on import (see [§ Tree-Not-DAG](#tree-not-dag-the-headline-quirk)).
+The writer needs no context because every datum it emits is read directly off the live node. The reader needs the `Instruction*` because the wire stores some leaves *by name*, not by value: an `AffineIV` writes only its axis name string, and an `IntRuntimeValue` writes only its register name. To rebuild those, `fromJsonv2` calls `bir::Instruction::findAxis(instr, name)` (loop-axis resolution), `bir::Function::getRegisterByName(...)` (register resolution, via `instr.getFunction()`), and `Function::getOrCreateShardId(...)` (shard interning) — all three call targets are confirmed in the `fromJsonv2` body. The arena (`PelicanContext*`) supplies the `BumpPtrAllocator` and `FoldingSet` that re-unique structurally-equal nodes on import (see [§ Tree-Not-DAG](#tree-not-dag--the-headline-quirk)).
 
 ### Function Map
 
@@ -135,7 +135,7 @@ void toJsonv2(RefPtr<Expr> e, json& out):              // 0x3bab90
     }
 ```
 
-> **GOTCHA —** the IDA jump-table analysis of `toJsonv2` @ `0x3bab90` states verbatim: `cmp dword ptr [r14+10h], 1Bh; switch 28 cases` then `ja def_3BABC4; jumptable … default case, cases 0,1,4,5,8-12,14-16,19-22,24`. The default set **explicitly includes 8, 9, 10, 11, 12** — so kinds 9 (`APIndex`), 10 (`TiledAPIndex`), 12 (`SymbolicIdx`) are not silently dropped; they hit `default:` → fatal. The eleven survivors are `{2,3,6,7,13,17,18,23,25,26,27}`. There is no case 28 (`CCMod`) either — see [§ The CCMod Asymmetry](#the-ccmod-asymmetry-read-accepted-never-written).
+> **GOTCHA —** the IDA jump-table analysis of `toJsonv2` @ `0x3bab90` states verbatim: `cmp dword ptr [r14+10h], 1Bh; switch 28 cases` then `ja def_3BABC4; jumptable … default case, cases 0,1,4,5,8-12,14-16,19-22,24`. The default set **explicitly includes 8, 9, 10, 11, 12** — so kinds 9 (`APIndex`), 10 (`TiledAPIndex`), 12 (`SymbolicIdx`) are not silently dropped; they hit `default:` → fatal. The eleven survivors are `{2,3,6,7,13,17,18,23,25,26,27}`. There is no case 28 (`CCMod`) either — see [§ The CCMod Asymmetry](#the-ccmod-asymmetry--read-accepted-never-written).
 
 ### Encoding — per-kind v2 field table
 

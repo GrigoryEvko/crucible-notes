@@ -24,7 +24,7 @@ Both matchers return `bool` (changed?); `Run` increments a per-pattern counter o
 | **Opcode encoding** | opcode byte @ `HloInstruction+0x14`; operand count encoded `2*N` @ `+0x18` |
 | **Tally strings** | `"Optimized "` @ `0x23847f` · `" of sliceAddPattern"` @ `0x243df3` · `" of sliceConcatPattern"` @ `0x25b007` |
 
-> **NOTE —** The MLIR-dialect *twin* of this pass (`NeuronInstCombine`, operating on `mhlo` ops rather than HLO) is documented in **[4.36 — NeuronInstCombine (MLIR)](neuron-instcombine-mlir.md)**. The two are independently registered, run on different IRs, and share no code; do not conflate them. The concat-side rewrites here are adjacent to but distinct from the **[4.18 — Concatenation Optimizations](concat-optimizations.md)** family, which handles same-source slice→concat collapse via `GetOriginalSource` (see [§5](#5-the-run-driver-and-the-third-inline-rewrite)).
+> **NOTE —** The MLIR-dialect *twin* of this pass (`NeuronInstCombine`, operating on `mhlo` ops rather than HLO) is documented in **[4.36 — NeuronInstCombine (MLIR)](neuron-instcombine-mlir.md)**. The two are independently registered, run on different IRs, and share no code; do not conflate them. The concat-side rewrites here are adjacent to but distinct from the **[4.18 — Concatenation Optimizations](concat-optimizations.md)** family, which handles same-source slice→concat collapse via `GetOriginalSource` (see [§5](#6-the-run-driver-and-the-third-inline-rewrite)).
 
 ---
 
@@ -32,8 +32,8 @@ Both matchers return `bool` (changed?); `Run` increments a per-pattern counter o
 
 A faithful reimplementation must, in one HLO pass, for each instruction `I` in document order within each computation:
 
-1. **Try the slice-add fusion first** (`I` is the root). If it fires, count it and advance to the next instruction (the instruction vector may have been mutated, so re-anchor before continuing — see [§5](#5-the-run-driver-and-the-third-inline-rewrite)).
-2. **Otherwise**, if `I` is *not* a `concatenate`, try the 3-D slice-concat rewrite. (The gate is inverted: P2's own root guard *requires* `concatenate`, yet `Run` only calls it on non-`concatenate` roots — see the [GOTCHA](#gotcha-the-inverted-concat-gate) below. The reimplementer must reproduce this exactly to match firing behaviour.)
+1. **Try the slice-add fusion first** (`I` is the root). If it fires, count it and advance to the next instruction (the instruction vector may have been mutated, so re-anchor before continuing — see [§5](#6-the-run-driver-and-the-third-inline-rewrite)).
+2. **Otherwise**, if `I` is *not* a `concatenate`, try the 3-D slice-concat rewrite. (The gate is inverted: P2's own root guard *requires* `concatenate`, yet `Run` only calls it on non-`concatenate` roots — see [§6](#6-the-run-driver-and-the-third-inline-rewrite). The reimplementer must reproduce this exactly to match firing behaviour.)
 
 The two rewrites are otherwise independent. The pass owns no cost model beyond the structural legality guards: once a slice-add chain fully tiles axis 0 with no gaps, or once a slice-concat matches and conserves element count, the rewrite fires unconditionally. The opcode dictionary, operand-list layout, and the XLA `match::` DSL evaluators below are the only shared infrastructure.
 

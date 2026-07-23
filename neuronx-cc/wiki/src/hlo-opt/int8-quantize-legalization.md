@@ -43,7 +43,7 @@ For reimplementation, the contract is:
 | **D** | `xla::hilo` `QuantizeMX` + `ScaledMatmul` — **FP8 microscaling** | `backend_config` JSON | **[NEURON / DEVICE]** |
 | **E** | `xla::hilo::NeuronIntMatmulDowncast` — integer dot → **F32-emulated** | shape leaf prim-type | **[NEURON / DEVICE]** |
 
-> **GOTCHA —** the presence of `mlir::quant::UniformQuantizedType`, the `uniform_quantize` op, and `xla::getQuantizedType` in the symbol table does **not** imply an int8 device path. Those symbols belong to Paths A/B/C, all of which terminate on the host golden-reference side. A reimplementer who wires `uniform_quantize` straight to a PE-array int8 GEMM is building a path the binary does not have. The device int8 "GEMM" is Path E (F32 emulation); the device low-precision GEMM is Path D (FP8). See [§7](#7-device-vs-golden-the-ledger).
+> **GOTCHA —** the presence of `mlir::quant::UniformQuantizedType`, the `uniform_quantize` op, and `xla::getQuantizedType` in the symbol table does **not** imply an int8 device path. Those symbols belong to Paths A/B/C, all of which terminate on the host golden-reference side. A reimplementer who wires `uniform_quantize` straight to a PE-array int8 GEMM is building a path the binary does not have. The device int8 "GEMM" is Path E (F32 emulation); the device low-precision GEMM is Path D (FP8). See [§7](#7-device-vs-golden--the-ledger).
 
 ---
 
@@ -51,7 +51,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-`mhlo.uniform_quantize`/`uniform_dequantize` and their `stablehlo` twins are the canonical XLA quantization ops. They are 100% upstream — full op definitions, verifier traits, and bidirectional `mhlo`↔`stablehlo` converters are present, and Neuron adds no custom op here. The quantize *arithmetic* is not in the op def; it lives in the quant-dialect legalization ([§4](#4-the-int8-arithmetic-golden)).
+`mhlo.uniform_quantize`/`uniform_dequantize` and their `stablehlo` twins are the canonical XLA quantization ops. They are 100% upstream — full op definitions, verifier traits, and bidirectional `mhlo`↔`stablehlo` converters are present, and Neuron adds no custom op here. The quantize *arithmetic* is not in the op def; it lives in the quant-dialect legalization ([§4](#4-the-int8-arithmetic--stock--golden)).
 
 ### The ops
 
@@ -103,7 +103,7 @@ The stock `stablehlo` quantized-op verifier strings are present in the pool, con
 "expects all operands and results to be either quantized or non-quantized"
 ```
 
-> **NOTE —** sub-channel exists in the binary (`UniformQuantizedSubChannelType`, `CalibratedQuantizedTypeStorage` @ `0x8096690`) but is **not** reached through the Neuron dict deserializer in [§3](#3-xlagetquantizedtype-the-neuron-deserializer) — it has no `block_size` read there. Sub-channel arrives only via the stock `stablehlo` quant axis machinery.
+> **NOTE —** sub-channel exists in the binary (`UniformQuantizedSubChannelType`, `CalibratedQuantizedTypeStorage` @ `0x8096690`) but is **not** reached through the Neuron dict deserializer in [§3](#3-xlagetquantizedtype--the-neuron-deserializer--neuron) — it has no `block_size` read there. Sub-channel arrives only via the stock `stablehlo` quant axis machinery.
 
 ---
 
@@ -281,7 +281,7 @@ Recovered from the verifier error strings:
 - batch dims must match; contracting dims must match in size and not overlap batch dims (`"contracting dimension … that overlaps with batch dimension"`); batch index bounds-checked vs rank (`"out of bounds for tensor of rank"`)
 - `side_input_scale` — additional scale operand/attr (fused residual / side input)
 
-`ScaledMatmul` consumes the U32-packed MX tensor + per-block scale produced by `QuantizeMX` and performs the microscaled matmul on the Neuron PE array. The `(QuantizeMX -> ScaledMatmul)` graph fuses naturally, so no separate quantize hoist is needed on the device side — the `lift_up_quantize` hoist is the oneDNN/CPU one ([§6](#6-path-c--onednn-cpu-golden-stock-golden)).
+`ScaledMatmul` consumes the U32-packed MX tensor + per-block scale produced by `QuantizeMX` and performs the microscaled matmul on the Neuron PE array. The `(QuantizeMX -> ScaledMatmul)` graph fuses naturally, so no separate quantize hoist is needed on the device side — the `lift_up_quantize` hoist is the oneDNN/CPU one ([§6](#6-path-c--onednn-cpu-golden--stock--golden)).
 
 > **GOTCHA —** a string-pool fragment near these passes reads `…replace_quant_dag…` and looks like a Neuron pass name. It is not: it is the oneDNN function `replace_quant_data_with_binary_post_op` (`dnnl::impl::graph::dnnl_impl::`) spliced against an adjacent string. There is no `replace_quant_dag` pass.
 
@@ -354,7 +354,7 @@ The negative result, stated as a ledger. Of the five paths, only D and E emit Ne
 
 The chain of evidence backing **"no int8 scale/zero-point reaches device code"**:
 
-1. The int8 quantize *arithmetic* (Path A, [§4](#4-the-int8-arithmetic-golden)) is the stock MLIR `quant`-dialect lowering; its on-host reference implementation is the xnnpack `unary_ukernel_quantized<signed char,…>` family — host, not device.
+1. The int8 quantize *arithmetic* (Path A, [§4](#4-the-int8-arithmetic--stock--golden)) is the stock MLIR `quant`-dialect lowering; its on-host reference implementation is the xnnpack `unary_ukernel_quantized<signed char,…>` family — host, not device.
 2. The two int8 *graph* backends (Path B legacy, Path C oneDNN) live in `mlir::mhlo::` and `dnnl::impl::graph::dnnl_impl::` — host reference code by namespace.
 3. The one Neuron *quantize* pass (Path D) matches a `kCustomCall` named `"QuantizeMX"` — **never** `uniform_quantize` — and its verifier rejects every non-FP8 dtype (`"only 'float8_e5m2' and 'float8_e4m3fn' are supported"`). It is FP8 microscaling.
 4. The one Neuron pass that touches an integer dot (Path E) **converts it to F32** and casts back. No int8 GEMM is emitted.
