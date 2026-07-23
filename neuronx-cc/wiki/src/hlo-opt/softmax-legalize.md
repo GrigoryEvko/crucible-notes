@@ -29,7 +29,7 @@ For reimplementation, the contract is:
 | **itoa digit table** | `byte_40CDA1` (`"0001…9899"`, 200 B) @ `0x40cda0` |
 | **Pass order (default pipeline)** | `legalize-softmax` = 7 (early); `native-to-custom-softmax-dx` = 41, `native-to-custom-softmax` = 42 (late) |
 | **IR level** | XLA HLO (pre-tensorizer); plain `HloPass`, `Run` at vptr+0x18 |
-| **Evidence** | symbols/strings/digit-table CERTAIN; opcode/dtype/api checks disasm-anchored (HIGH); branch nesting MED (no Hex-Rays for the raise `Run` bodies) |
+| **Evidence** | symbol table, string pool, digit table; opcode/dtype/api checks anchored in disasm. The two raise `Run` bodies were not decompiled — their control flow is reconstructed from disasm plus diagnostic-string order |
 
 > **NOTE —** the registration order is the counter-intuitive part. The lowering (`legalize-softmax`, order 7) runs *early* — it legalizes softmax custom-calls that already exist, e.g. ones the frontend fused — while the two *raise* passes run *late* (orders 41, 42), after `DecomposeAttention`/`InlineWeights`/`ReplaceRng`. And within the pair, **the backward pass (Dx, 41) is registered before the forward pass (42)**, so in the default pipeline backward softmax is raised first. A reimplementer who assumes "raise then legalize" in pipeline order has it exactly backwards.
 
@@ -282,7 +282,7 @@ function LegalizeSoftmax_Run(module):
 
 The `softmaxNames` population is visible inline in the disassembly: the dtype map is built with keys `0Bh` (BF16, at `0x1f00aa2`), `0Ah` (F16, at `0x1f00b26`), and `10h` (F8, at `0x1f00ba0`), and a suffix value constant `0x36316662` (= `"bf16"` little-endian) is stored at `0x1f00bea` — confirming both the three-dtype gate and the suffix-string construction at the same site.
 
-> **NOTE —** the dtype gate `(et − 0x0A) ≤ 1 || et == 0x10` is the **only** acceptance filter. PrimitiveType IDs `0x0A`/`0x0B` are the F16/BF16 region of this XLA vintage's enum and `0x10` is the FP8 family; F32 (and anything else) falls through and is left as the abstract softmax call. The precise enum-to-name binding for `0x10` is not cross-checked against this binary's `PrimitiveType` table (MED); the *numeric* gate is disasm-certain.
+> **NOTE —** the dtype gate `(et − 0x0A) ≤ 1 || et == 0x10` is the **only** acceptance filter. PrimitiveType IDs `0x0A`/`0x0B` are the F16/BF16 region of this XLA vintage's enum and `0x10` is the FP8 family; F32 (and anything else) falls through and is left as the abstract softmax call. The *numeric* gate is read straight from the disasm; the enum-to-name binding for `0x10` is not cross-checked against this binary's `PrimitiveType` table.
 
 > **QUIRK —** `LegalizeSoftmax` *reuses the same target string* it matched (`r8`/`rsi` is reloaded from the saved target), so the lowered call still reads `AwsNeuronSoftmax{,Backward}`. The legalization is **not** in the target name — it is in the added S64 iota operand, the re-validated shape, and the dtype-keyed instruction name. A reader expecting a renamed target (`Softmax_bf16` as the *custom_call_target*) is wrong: that string is the *instruction name*, set via `AddInstruction`, not the call target.
 
@@ -318,7 +318,7 @@ The `softmaxNames` population is visible inline in the disassembly: the dtype ma
 
 > **GOTCHA —** because the axis travels as decimal text, a reimplementer must keep the write and read sides numerically consistent: `replaceNativeSoftmax` emits e.g. `"2"` for axis 2; `LegalizeSoftmax`'s `strtol` reads it back. There is no length prefix, no key=value, no JSON — feeding anything other than a bare base-10 integer triggers the `"stoi"` throw. No `frontend_attributes` are attached by any of these three passes (negative finding, HIGH for this pass).
 
-**Per-dtype kernel naming.** Only `LegalizeSoftmax` consults the static `softmaxNames` map (lazily initialized via `__cxa_guard`) plus a `DenseMap<PrimitiveType, std::string>` (ctor @ `0x1eec220`) whose values are dtype suffixes (e.g. `"bf16"`, the `0x36316662` constant). It forms the instruction name `Softmax_<dtype>` / `SoftmaxBackward_<dtype>` (prefix `"Softmax_"` @ `0x40610c`, `"SoftmaxBackward_"` @ `0x406120`) to select the typed simulator/tensorizer kernel that ultimately implements the call. The full PrimitiveType→suffix key list is not enumerated beyond the three gated dtypes; the `"bf16"` suffix is confirmed (MED on the complete map).
+**Per-dtype kernel naming.** Only `LegalizeSoftmax` consults the static `softmaxNames` map (lazily initialized via `__cxa_guard`) plus a `DenseMap<PrimitiveType, std::string>` (ctor @ `0x1eec220`) whose values are dtype suffixes (e.g. `"bf16"`, the `0x36316662` constant). It forms the instruction name `Softmax_<dtype>` / `SoftmaxBackward_<dtype>` (prefix `"Softmax_"` @ `0x40610c`, `"SoftmaxBackward_"` @ `0x406120`) to select the typed simulator/tensorizer kernel that ultimately implements the call. Only the `"bf16"` suffix was read out of the map; the full PrimitiveType→suffix key list beyond the three gated dtypes is unenumerated.
 
 ---
 
@@ -329,26 +329,31 @@ The `softmaxNames` population is visible inline in the disassembly: the dtype ma
 | 7 | `legalize-softmax` | This page — the lowering; runs early to legalize pre-existing softmax custom-calls |
 | 41 | `native-to-custom-softmax-dx` | This page — backward raise; registered **before** the forward raise |
 | 42 | `native-to-custom-softmax` | This page — forward raise |
-| 43 | `add-logit-output` | Reuses the identical forward recognizer but for a different purpose (see CORRECTION below) |
+| 43 | `add-logit-output` | Reuses the identical forward recognizer for a different purpose (see the GOTCHA below) |
 | 38 | `decompose-attention` | Runs before the raise passes; the raise passes see post-decomposition HLO |
 
-> **CORRECTION (D-B02-N1) —** a *fourth* softmax recognizer, `(anonymous)::DetectSoftmaxAndGetLogits` @ `0x1e82980` (in `AddLogitOutput`), reuses the exact same `getNoComputeOpChain`/`getBinaryNoComputeOpChains` `div ← exp ← reduce` matcher and even the same success string (`"Verified softmax pattern: div<-exp matches div<-reduce<-exp"` @ `0x3b7168`). It is **not** a legalize pass — it only extracts the logits tensor (`"Found logits tensor: "` @ `0x243cf8`) to add a logit output, and is called solely by `AddLogitOutput::Run` (order 43). Do not fold it into the softmax-legalize family; it shares the recognizer, not the purpose.
-
-> **CORRECTION (D-B02-C1) —** an earlier survey attributed "recognizing the native max-subtract-exp-sum-div subgraph" to `LegalizeSoftmax`. Binary truth: native-subgraph recognition lives entirely in `NativeToCustomSoftmax(Dx)` (orders 41/42). `LegalizeSoftmax` (order 7) is a pure custom-call→custom-call rewrite — it matches `kCustomCall` (`cmp byte[r15+0x14], 0x2B` @ `0x1f001d6`) + `dynamic_cast<HloCustomCallInstruction>` (@ `0x1f001ec`) and never inspects a native exp/reduce/div subgraph.
+> **GOTCHA — a *fourth* softmax recognizer exists and is not part of this family.**
+> `(anonymous)::DetectSoftmaxAndGetLogits` @ `0x1e82980`, inside `AddLogitOutput`, reuses
+> the exact same `getNoComputeOpChain`/`getBinaryNoComputeOpChains` `div ← exp ← reduce`
+> matcher and even a near-identical success string (`"Verified softmax pattern:
+> div<-exp matches div<-reduce<-exp"` @ `0x3b7168`). It rewrites nothing: it only extracts
+> the logits tensor (`"Found logits tensor: "` @ `0x243cf8`) so a logit output can be
+> added, and its sole caller is `AddLogitOutput::Run` (order 43). It shares the
+> recognizer, not the purpose.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence anchors and limits
 
-The five strongest claims on this page, re-challenged against the binary:
+Read directly from the binary:
 
-1. **The three passes are at the cited addresses with the cited symbols.** VERIFIED — `_names.json` maps `0x1f00120 → xla::LegalizeSoftmax::Run`, `0x1f491b0 → xla::NativeToCustomSoftmax::Run`, `0x1f4c530 → xla::NativeToCustomSoftmaxDx::Run`, and the two builders `0x1f48a00 → replaceNativeSoftmax(comp, HloInstruction*, HloInstruction*, long)` and `0x1f4bc70 → replaceNativeSoftmaxDx(comp, …, …, …, long)`. The demangled builder signatures independently confirm the operand roles `(comp, logits, div, dim)` and `(comp, y, dLdy, dLdx, dim)`. **CONFIRMED.**
-2. **The two custom-call targets and their lengths.** VERIFIED — `"AwsNeuronSoftmax"` @ `0x20c9c2` (length 16) and `"AwsNeuronSoftmaxBackward"` @ `0x2109e3` (length 24) in `_strings.json`; the lengths match the `mov r8d, 10h` / `r8d, 18h` immediates fed to `CreateCustomCall`. **CONFIRMED.**
-3. **`LegalizeSoftmax` matches a custom-call, not a native subgraph.** VERIFIED in disasm: `cmp byte ptr [r15+14h], 2Bh` (`0x1f001d6`), `call ___dynamic_cast` (`0x1f001ec`), then the two target compares against the offsets of `"AwsNeuronSoftmax"`/`"…Backward"`. It calls neither `getNoComputeOpChain` nor `getBinaryNoComputeOpChains`. **CONFIRMED.**
-4. **The dtype gate accepts F16/BF16/F8 and the map is populated with 0x0A/0x0B/0x10.** VERIFIED in disasm: `sub eax, 0Ah` (`0x1f00244`) + `cmp …, 10h` (`0x1f0024c`) for the gate; `softmaxNames` build stores keys `0Bh`/`0Ah`/`10h` (`0x1f00aa2`/`0x1f00b26`/`0x1f00ba0`) and the `"bf16"` suffix constant `0x36316662` (`0x1f00bea`). The *numeric* gate is certain; the enum→name binding for `0x10` (F8 family) is INFERRED (not cross-checked against this binary's `PrimitiveType` enum) and tagged MED in §3.
-5. **The backend-config is a bare decimal axis string round-tripped via the digit table + `strtol`.** VERIFIED — `replaceNativeSoftmax` reads `byte_40CDA1` (`movzx … ds:byte_40CDA1[rax]` @ `0x1f48b5d`) and pushes `api_version=1` (`push 1` @ `0x1f48ba7`); `LegalizeSoftmax` re-parses with base-10 `strtol` (`mov edx, 0Ah` @ `0x1f003da`) and carries the `"stoi"` throw string `0x22c74e`. No structured protobuf observed. **CONFIRMED** (absence of richer schema is HIGH for these three passes; other passes upstream are out of scope).
+- **Pass addresses and symbols.** `_names.json` maps `0x1f00120 → xla::LegalizeSoftmax::Run`, `0x1f491b0 → xla::NativeToCustomSoftmax::Run`, `0x1f4c530 → xla::NativeToCustomSoftmaxDx::Run`, plus the two builders `0x1f48a00 → replaceNativeSoftmax(comp, HloInstruction*, HloInstruction*, long)` and `0x1f4bc70 → replaceNativeSoftmaxDx(comp, …, …, …, long)`. The demangled builder signatures independently pin the operand roles `(comp, logits, div, dim)` and `(comp, y, dLdy, dLdx, dim)`.
+- **The two custom-call targets and their lengths.** `"AwsNeuronSoftmax"` @ `0x20c9c2` (length 16) and `"AwsNeuronSoftmaxBackward"` @ `0x2109e3` (length 24) in `_strings.json`; the lengths match the `mov r8d, 10h` / `r8d, 18h` immediates fed to `CreateCustomCall`.
+- **`LegalizeSoftmax` matches a custom-call, not a native subgraph**: `cmp byte ptr [r15+14h], 2Bh` (`0x1f001d6`), `call ___dynamic_cast` (`0x1f001ec`), then the two target compares. It calls neither `getNoComputeOpChain` nor `getBinaryNoComputeOpChains`.
+- **The dtype gate and the map keys.** `sub eax, 0Ah` (`0x1f00244`) + `cmp …, 10h` (`0x1f0024c`) form the gate; the `softmaxNames` build stores keys `0Bh`/`0Ah`/`10h` (`0x1f00aa2`/`0x1f00b26`/`0x1f00ba0`) and the `"bf16"` suffix constant `0x36316662` (`0x1f00bea`).
+- **The backend-config round-trip.** `replaceNativeSoftmax` reads `byte_40CDA1` (`movzx … ds:byte_40CDA1[rax]` @ `0x1f48b5d`) and pushes `api_version=1` (`push 1` @ `0x1f48ba7`); `LegalizeSoftmax` re-parses with base-10 `strtol` (`mov edx, 0Ah` @ `0x1f003da`) and carries the `"stoi"` throw string `0x22c74e`. No structured protobuf appears in any of the three passes.
 
-Residual MED items, explicitly: the exact branch nesting of the two raise `Run` bodies (no Hex-Rays; `NVOPEN_IDA_SKIP_DECOMPILE` was set for those — reconstruction is from disasm + diagnostic-string order, ~49 try-blocks in Dx); the complete `softmaxNames` PrimitiveType key list beyond the three gated dtypes; and the `0x10`→FP8-name binding.
+Open where the binary does not settle it: the exact branch nesting of the two raise `Run` bodies (those were not decompiled, so the control flow here comes from disasm plus diagnostic-string order — Dx alone carries roughly 49 try-blocks); the complete `softmaxNames` PrimitiveType key list beyond the three gated dtypes; and the `0x10` → FP8-name binding, which is an interpretation of the numeric gate rather than a read of the `PrimitiveType` table.
 
 ---
 
