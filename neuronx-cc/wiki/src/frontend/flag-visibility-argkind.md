@@ -43,7 +43,7 @@ For reimplementation, the contract is:
 
 All five member tokens are present in the `Arguments.so` `.rodata` string pool. They are not equally wired, and the symbol *form* of each token is the evidence for how live it is:
 
-| Member | Symbol form in `.rodata` | Status | Role |
+| Member | Symbol form in `.rodata` | Confidence | Role |
 |---|---|---|---|
 | `PUBLIC` | `__pyx_n_s_PUBLIC` (interned name) | CERTAIN | Default tier; shown by ordinary `--help` |
 | `HIDDEN` | `__pyx_n_s_HIDDEN` (interned name) | CERTAIN | Hand-tagged debug flags; shown by `--help-hidden` |
@@ -51,7 +51,7 @@ All five member tokens are present in the `Arguments.so` `.rodata` string pool. 
 | `EARG` | `__pyx_n_u_EARG` (interned **unicode** value) | HIGH | Experimental ArgKind; help-suppressed, listed by `--help-hidden` |
 | `Harg` | bare string only — **no** `__pyx_n_s/n_u/k_Harg` | LOW | Help-suppressed sub-kind; never user-facing |
 
-> **CORRECTION (FVT-1) —** the sibling [3.2 Two-Parser Architecture](two-parser-architecture.md) and the `_ArgumentRegistry` record description give `ArgKind ∈ {PUBLIC, HIDDEN, INTERNAL}` — the three tokens that survive as interned *name* symbols (`__pyx_n_s_*`, i.e. the form Cython emits for an enum member identifier). That is correct as far as the *fully-wired* members go, but the binary's enum string pool carries two more: `EARG` and `Harg`. The five-member set is the truth of this build's `.rodata`; the three-member set is the subset that is referenced as live enum identifiers. Both readings are anchored — they differ only in how strictly "member" is defined.
+> **NOTE —** two different member counts for `ArgKind` are both defensible, depending on what counts as a member. Three tokens — `PUBLIC`, `HIDDEN`, `INTERNAL` — survive as interned *name* symbols (`__pyx_n_s_*`, the form Cython emits when an enum member is referenced by identifier), and that is the set [The Two-Parser Architecture](two-parser-architecture.md) and the `_ArgumentRegistry` record description use. The enum string pool in this build carries two more, `EARG` and `Harg`. This page uses the five-token pool set and marks how live each one is.
 
 > **NOTE —** the symbol-form distinction is the whole basis of the `EARG`/`Harg` confidence split. `PUBLIC`/`HIDDEN`/`INTERNAL` appear as `__pyx_n_s_*` (interned *name* strings — what Cython emits when an enum member is referenced by identifier, e.g. `ArgKind.INTERNAL`). `EARG` appears as `__pyx_n_u_EARG`, an interned *unicode value* — consistent with being an enum member whose value is the string `"EARG"`, or with being compared as a string literal. `Harg` appears as a *bare* string at one `.rodata` offset with **no** interned-symbol wrapper and **no** occurrence anywhere else in the driver tree (`rg -l --binary 'Harg'` over `Arguments.so` + the `commands/` dir returns only that one `Arguments.so` hit). `Harg` is therefore tagged LOW: present in the pool, but not provably a live, code-referenced member in this build. Treat it as a help-suppressed sub-kind whose practical effect (never appear in any help surface) is what the taxonomy ascribes to it; do not assert it is reached at runtime.
 
@@ -122,7 +122,7 @@ function AddArgumentCallInterceptor_add_argument(self, *args, **kwargs):   // @0
     return action
 ```
 
-> **QUIRK —** the `internal-` test is a *prefix* test on the normalized name, but it catches both `--internal-X` and `--enable-internal-X` because the normalized dest-form of the latter still leads with `internal-` (the `enable-` is consumed elsewhere by the `EnableDisableArgumentAction`/dest mangling). This is why the two visibly different families collapse to the same `INTERNAL` kind without two separate rules — a single `startswith("internal-")` covers both. (HIGH confidence on the rule; the precise normalization step that strips `enable-` is inferred from the family-to-kind mapping, tagged INFERRED.)
+> **QUIRK —** the `internal-` test is a *prefix* test on the normalized name, but it catches both `--internal-X` and `--enable-internal-X` because the normalized dest-form of the latter still leads with `internal-` (the `enable-` is consumed elsewhere by the `EnableDisableArgumentAction`/dest mangling). This is why the two visibly different families collapse to the same `INTERNAL` kind without two separate rules — a single `startswith("internal-")` covers both. The rule itself is read from the literal and the `startswith` call; the precise normalization step that strips `enable-` is deduced from the family-to-kind mapping rather than traced [INFERRED].
 
 > **NOTE —** the default tier is `PUBLIC`, and there is **no** automatic rule for `HIDDEN`, `EARG`, or `Harg`. Those three are stamped by an explicit `kind=` keyword at the developer's `add_argument` call. So the per-flag `HIDDEN`/`EARG` byte is *not* statically recoverable from the flag name alone; it is set inline at each registration inside `CompileCommand.__init__`. This is the residual uncertainty behind any per-flag `PUB/HID/INT/EARG` tag in the [flag catalog](flag-catalog.md): the prefix rule and the help-string presence are firm, but the exact explicit-kind byte is buried in the deeply-nested `__init__` decompilation.
 
@@ -257,21 +257,25 @@ Both `DeprecatedArgumentAction` and `DeprecatedStoreTrueArgumentAction` emit the
 
 ### `ExtendAction` / `RecordUsedAction` / `SetArgumentsAction`
 
-`ExtendAction.__call__` accumulates repeated-flag values into a single list via `extend`/`PyList_Append` — this is how repeatable flags like `--skip-pass=PassName` collect multiple names. `RecordUsedAction.__call__` sets the `_Used` sentinel (e.g. `num_parallel_jobs_Used`) so `buildPipeline` can tell a user-supplied value from a computed default — necessary because defaults are pre-seeded into the Namespace. `SetArgumentsAction` expands one flag into several downstream args (an alias/preset action); its purpose is INFERRED from the name, structure CERTAIN from the qualname.
+`ExtendAction.__call__` accumulates repeated-flag values into a single list via `extend`/`PyList_Append` — this is how repeatable flags like `--skip-pass=PassName` collect multiple names. `RecordUsedAction.__call__` sets the `_Used` sentinel (e.g. `num_parallel_jobs_Used`) so `buildPipeline` can tell a user-supplied value from a computed default — necessary because defaults are pre-seeded into the Namespace. `SetArgumentsAction` expands one flag into several downstream args (an alias/preset action); the class and its two methods are present in the symbol table, but the expansion behaviour is read from the name rather than the body [INFERRED].
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims on this page, re-checked against the binary:
+| Claim | Anchor |
+|---|---|
+| `ArgKind` string pool holds `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}` | a word-boundary search of `Arguments.so` returns all five plus `ArgKind`, `argkind`, and `internal-`; the three with `__pyx_n_s_*` name symbols are the live-identifier subset, `EARG` appears as the interned value `__pyx_n_u_EARG`, `Harg` as a bare single-occurrence string |
+| The `internal-` prefix rule | the interned literal `internal-` occurs once in `.rodata`, `startswith` is interned as `__pyx_n_s_startswith`, and both sit in `Arguments.so` next to the `_AddArgumentCallInterceptor.add_argument` qualname, with the `SetAttr` on the match branch |
+| Three help surfaces, INTERNAL filter on `-list` | `print_help_hidden` @`0x1cc90` and `print_help_hidden_list` @`0x17150` are live qualnames; `ArgKind`, `SUPPRESS`, and the table literal `%-15s %-8s --%s: %s` are interned in the same module; `-list` carries a `kind == INTERNAL` comparison |
+| The ten Action classes exist as named subclasses | all ten qualnames (`NoableArgumentAction`, `EnableDisableArgumentAction`, `DeprecatedArgumentAction`, `DeprecatedStoreTrueArgumentAction`, `ExtendAction`, `SetArgumentsAction`, `RecordUsedAction`, `HelpAction`, `HelpHiddenAction`, `HelpHiddenListAction`) plus `str2bool` are in the `Actions.so` symbol table |
+| `str2bool` token set and error literal | interned tokens `true/false/no/t/f/y/n/on/1/0`, `__pyx_n_u_true` / `__pyx_n_u_false`, `__pyx_n_s_lower`, and the literal `Boolean value expected.` all present in `Actions.so` |
 
-1. **`ArgKind` members = `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}`.** `strings -a Arguments.so | rg -iw 'PUBLIC|HIDDEN|INTERNAL|EARG|Harg|ArgKind'` returns all five plus `ArgKind`, `argkind`, and `internal-`. **CONFIRMED** for the five-token set; the live-member subset `{PUBLIC, HIDDEN, INTERNAL}` is the three with `__pyx_n_s_*` name symbols. `EARG` = HIGH (interned `__pyx_n_u_EARG` value), `Harg` = LOW (bare string, single occurrence, no interned wrapper).
-2. **The `internal-` prefix rule.** The interned literal `internal-` is present (single `.rodata` occurrence), `startswith` is interned (`__pyx_n_s_startswith`), and both sit in `Arguments.so` alongside the `_AddArgumentCallInterceptor.add_argument` qualname. **CONFIRMED** that the literal + `startswith` exist in this module; that the comparison stamps `INTERNAL` is HIGH (the AF02 decompilation places the SetAttr on the match branch).
-3. **Three help surfaces with the INTERNAL filter on `-list`.** `print_help_hidden` (@`0x1cc90`) and `print_help_hidden_list` (@`0x17150`) are both live qualnames; `ArgKind` + `SUPPRESS` + the table literal `%-15s %-8s --%s: %s` are all interned in the same module. **CONFIRMED** symbols; the `kind == INTERNAL` RichCompare in `-list` is HIGH (decompiled comparison).
-4. **The Action classes exist as named subclasses.** All 10 qualnames (`NoableArgumentAction`, `EnableDisableArgumentAction`, `DeprecatedArgumentAction`, `DeprecatedStoreTrueArgumentAction`, `ExtendAction`, `SetArgumentsAction`, `RecordUsedAction`, `HelpAction`, `HelpHiddenAction`, `HelpHiddenListAction`) plus `str2bool` are present in `Actions.so`'s symbol table. **CONFIRMED.**
-5. **`str2bool` token set + error literal.** Interned tokens `true/false/no/t/f/y/n/on/1/0`, `__pyx_n_u_true`/`__pyx_n_u_false`, `__pyx_n_s_lower`, and the literal `Boolean value expected.` are all present in `Actions.so`. **CONFIRMED** for the literals; the exact accept-set membership (which of `on`/`off`/`yes`/`y` map to which bool) is HIGH — the tokens are present but the per-token branch was not individually disassembled.
+## Limits of this reading
 
-> **NOTE —** nothing on this page asserts a per-flag `HIDDEN`/`EARG` byte. Those are set by explicit `kind=` kwargs inside `CompileCommand.__init__` and are not name-derivable; the [flag catalog](flag-catalog.md) carries the per-flag visibility tags with their own confidence labels.
+- `Harg` is present in the pool but has no interned-symbol wrapper and no occurrence anywhere else in the driver tree. Treat it as a help-suppressed sub-kind, not as a member proven to be reached at runtime.
+- The exact accept-set membership of `str2bool` — which of `on`/`off`/`yes`/`y` maps to which bool — follows from the token list; the per-token branch was not individually disassembled.
+- No per-flag `HIDDEN`/`EARG` byte is asserted anywhere on this page. Those are set by explicit `kind=` kwargs inside `CompileCommand.__init__`, are not derivable from the flag name, and sit in a deeply nested body; the [flag catalog](flag-catalog.md) carries the per-flag visibility tags with their own confidence column.
 
 ---
 
@@ -287,5 +291,5 @@ The five strongest claims on this page, re-checked against the binary:
 ## Cross-References
 
 - [Flag Catalog](flag-catalog.md) — 3.8, the per-flag N–Z catalog whose `Vis {PUB/HID/INT/EARG}` column this taxonomy defines
-- [The Two-Parser Architecture](two-parser-architecture.md) — 3.2, the driver vs Penguin parser split; the `_ArgumentRegistry` record and the three-member `ArgKind` subset this page corrects upward to five
+- [The Two-Parser Architecture](two-parser-architecture.md) — 3.2, the driver vs Penguin parser split; the `_ArgumentRegistry` record and the three-member `ArgKind` subset this page widens to the full five-token pool
 - [Sub-Tool argv Construction & Replay](subtool-argv.md) — 3.5, where the `job` column of each registry record is consumed

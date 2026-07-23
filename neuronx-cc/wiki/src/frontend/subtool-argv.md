@@ -24,7 +24,7 @@ For reimplementation, the contract is:
 | **Replay format** | `__pyx_kp_u_Replay_this_job_by_calling_s_s` — `"Replay this job by calling: %s %s"` |
 | **Echo format** | `Executing ` (interned), `Child process job "%s" exited abnormally!` |
 | **Arg flow** | argparse `Namespace` → collectors → `Job` → `shellCommand` → `Popen` (no `to_argv`) |
-| **No config/response file** | zero `fromfile_prefix_chars`, zero `'@'`, zero config reader (D-AF05) |
+| **No config/response file** | zero `fromfile_prefix_chars`, zero `'@'`, zero config reader |
 
 ---
 
@@ -38,7 +38,7 @@ A `Job` does not receive a serialized options blob. It receives its flags becaus
 
 2. **The collectors read the `Namespace` field-by-field.** `getInStateFromCmdline` carries the assertion literal `args.arch != "sunda" or args.logical_nc_config == 1` — i.e. it dereferences `args.arch` and `args.logical_nc_config` off the argparse `Namespace` (`args`) directly. The opt level is read as `internal_tensorizer_opt_level` (the `Namespace` attribute) and re-emitted as `--internal-tensorizer-opt-level`. There is no intermediate typed `Options` object between `Namespace` and the flag list.
 
-3. **There is no `Options.to_argv` / `serialize` / `as_args` symbol anywhere in the driver `.so` files.** The Penguin backend's `Options.so` (`CommandLineParser`) is a *parser* of a flat option string, not a serializer; it exposes `parseOptions` / `parseKnownOptions` but no inverse. (See D-AF05 Part A: Penguin's `Options` holds no field→default map and emits no argv.)
+3. **There is no `Options.to_argv` / `serialize` / `as_args` symbol anywhere in the driver `.so` files.** The Penguin backend's `Options.so` (`CommandLineParser`) is a *parser* of a flat option string, not a serializer; it exposes `parseOptions` / `parseKnownOptions` but no inverse. Penguin's `Options` holds no field→default map and emits no argv.
 
 > **QUIRK —** the absence of a serializer is *why* the three collectors must each know their tool's flag spelling. A reimplementation that introduces a single `Options.to_argv()` and routes every sub-tool through it will diverge: neuronx-cc deliberately keeps Frontend/Backend/Walrus flag-emission in three separate methods because each sub-tool consumes a *different, overlapping* subset of the Namespace (the tensorizer wants `--internal-tensorizer-opt-level`; Walrus wants `--enable-internal-walrus-replay-script`; the BIR/simulator round-trip wants `--run-simulator-after=…`). The Namespace is the single source of truth; the collectors are three lossy projections of it.
 
@@ -68,7 +68,7 @@ CompileCommand.run
 
 ### Algorithm
 
-The collectors are not individually decompiled here, but their shape is fully determined by (a) the flag literals they own in `.rodata` and (b) the `Namespace` attributes they read. The pseudocode below models that shape; every emitted flag is a verbatim `.rodata` literal, and every `args.X` read is a confirmed interned attribute name.
+The collectors are not individually decompiled here, but their shape is fully determined by (a) the flag literals they own in `.rodata` and (b) the `Namespace` attributes they read. The pseudocode below models that shape; every emitted flag is a verbatim `.rodata` literal, and every `args.X` read names an interned attribute in the module's string pool.
 
 ```c
 function buildPipeline(self, args):                 // CompileCommand.buildPipeline
@@ -129,7 +129,7 @@ function collectWalrusPipeline(self, args, state):      // WalrusDriver C backen
 
 ### Purpose
 
-`shellCommand` turns one `Job`'s `[executableLocation] + flags` into a running child process and waits on it. It is the single point where the driver shells out; `CommandDriver` itself never calls `Popen` (D-AF05 C.5).
+`shellCommand` turns one `Job`'s `[executableLocation] + flags` into a running child process and waits on it. It is the single point where the driver shells out; `CommandDriver` itself never calls `Popen`.
 
 ### Entry Point
 
@@ -187,7 +187,7 @@ These two `Job` attributes (both interned with `=` forms `expose_stderr=` / `pro
 
 > **NOTE —** `cwd` is `os.getcwd()` — the neuronx-cc *launch* directory. The `getReplayCommandLine` docstring is explicit about this: "A relative path specified on the command line must be interpreted relative to the neuronx-cc launch directory, not the CWD which changes during execution." The driver may `chdir` into an artifact directory mid-pipeline, but sub-tool argv paths stay anchored to the original launch CWD.
 
-> **QUIRK —** `SingleInputJob` (`run` / `runSingleInput` / `runOnState`, plus a `_requires_fork` interned attribute) is the in-process variant — a `Job` whose work is a Python callable rather than an external exe, so it never reaches `Popen`. The `shellCommand` path is for the *external* sub-tools only. Whether a given `SingleInputJob` runs in a forked child is gated by `--fork-subcommand` at the `CommandDriver` level (D-AF05 C.3), not by `shellCommand`.
+> **QUIRK —** `SingleInputJob` (`run` / `runSingleInput` / `runOnState`, plus a `_requires_fork` interned attribute) is the in-process variant — a `Job` whose work is a Python callable rather than an external exe, so it never reaches `Popen`. The `shellCommand` path is for the *external* sub-tools only. Whether a given `SingleInputJob` runs in a forked child is gated by `--fork-subcommand` at the `CommandDriver` level, not by `shellCommand`.
 
 ---
 
@@ -218,7 +218,7 @@ function addquotes(s):                               // nested @ 0x135f0 (.const
 
 `addquotes` is a *nested local* of `getReplayCommandLine` (`Job.getReplayCommandLine.<locals>.addquotes`), confirmed by the qualname and a dedicated wrapper at `0x15c70`. Its body (the `.constprop.0` at `0x135f0`) is a branch-dense char scan — `memcmp` plus per-character `PyObject_RichCompare` — which is the signature of a manual "does this token contain a space / special char that needs quoting?" routine. `shlex` and `quote` both appear in the module's import/string pool, so `addquotes` is the project's shell-quoting helper around (or in place of) `shlex.quote`.
 
-> **CORRECTION (ARGV-1) —** D-AF05 D.3 described the replay path as "`shlex.quote`-style". That is right in *intent* but precise in mechanism: the per-token quoting is the nested `addquotes` helper inside `getReplayCommandLine` (a char-scan quoter), not a bare call to `shlex.quote`. The `shlex.quote` symbol that D-AF05 C.6 attributes to the driver lives in a *different* module — `CommandDriver.so` imports `shlex`/`quote` for its own top-level diagnostic command echo, separate from `Job.getReplayCommandLine`'s `addquotes`.
+> **GOTCHA —** finding `shlex` and `quote` in the driver's import pool does not mean the replay path calls `shlex.quote`. Two separate quoters exist in two separate modules: `Job.getReplayCommandLine` quotes each token with its own nested `addquotes` char-scan helper, while `CommandDriver.so` imports `shlex`/`quote` for its own top-level diagnostic command echo. They are equivalent in intent, distinct in mechanism and in caller.
 
 > **GOTCHA —** the replay string is derived from the *same* `getArgs()` flag list as `shellCommand`, so it faithfully reproduces what the sub-tool actually received — including the per-tool re-spelled opt level and all the `--internal-*` flags the collectors injected. It is **not** a reconstruction of the user's original `neuronx-cc` command line. A reimplementer must build replay off the assembled Job argv, not off `sys.argv`, or the replay will silently differ from what ran.
 
@@ -237,7 +237,7 @@ The argv tokens (`[executableLocation] + getArgs()`) are computed once per Job; 
 
 ## What is NOT in this path
 
-To prevent a reimplementer from inventing machinery that does not exist (all CONFIRMED-absent in D-AF05 Parts B/C/F):
+Each of the following was searched for across the driver `.so` files and is absent. A reimplementer should not build machinery for any of them:
 
 - **No response-file / `@file` mechanism.** No `fromfile_prefix_chars`, no `'@'` handling, in any driver `.so`. Sub-tool argv is built entirely from the `Namespace`.
 - **No config-file reader.** No `.cfg` / `.ini` / `.json` / `configparser` path feeds argv.
