@@ -35,15 +35,15 @@ For reimplementation, the contract is:
 
 ### Method Map
 
-Confirmed `__pyx_pw_…Operator_<idx><method>` wrappers in `Operator.so`:
+The `__pyx_pw_…Operator_<idx><method>` wrappers present in `Operator.so`:
 
 | Symbol group | Members | Role | Confidence |
 |---|---|---|---|
-| Base methods | `__init__`, `rhs_str`, `serialize`, `verify`, `verifyOperandType` | per-op text + structural verify hooks every subclass overrides | CONFIRMED |
-| Module helpers | `custom_op`, `act_identity`, `make_cast` (`.cast`), `_isint` | op-factory + activation-identity + cast-builder free functions | CONFIRMED |
-| Axis-role queries | `used_as_reduce_axis`, `used_as_contract_axis`, `used_as_lhs_free_axis`, `used_as_rhs_free_axis`, `used_as_reduce_like_axis` | classify one `AffineAxis` of an op into its hardware role | CONFIRMED |
+| Base methods | `__init__`, `rhs_str`, `serialize`, `verify`, `verifyOperandType` | per-op text + structural verify hooks every subclass overrides | CERTAIN |
+| Module helpers | `custom_op`, `act_identity`, `make_cast` (`.cast`), `_isint` | op-factory + activation-identity + cast-builder free functions | CERTAIN |
+| Axis-role queries | `used_as_reduce_axis`, `used_as_contract_axis`, `used_as_lhs_free_axis`, `used_as_rhs_free_axis`, `used_as_reduce_like_axis` | classify one `AffineAxis` of an op into its hardware role | CERTAIN |
 
-> **NOTE —** the `used_as_*_axis` free functions are how the layout solver and tiler ([§5 axis model](axis-loop-model.md), D-U02 P/F/B vocabulary) read an op's intent **without** depending on its concrete class. They answer "is this axis a contraction dim of *this* op?" for any op, so the tiler can cut contract axes to the 128-lane PE depth and free axes to the tile width uniformly. A reimplementation that hard-codes per-op dim names instead of exposing these role predicates will not interoperate with the shared tiler.
+> **NOTE —** the `used_as_*_axis` free functions are how the layout solver and tiler ([§5 axis model](axis-loop-model.md), the Partition/Free/Block vocabulary) read an op's intent **without** depending on its concrete class. They answer "is this axis a contraction dim of *this* op?" for any op, so the tiler can cut contract axes to the 128-lane PE depth and free axes to the tile width uniformly. A reimplementation that hard-codes per-op dim names instead of exposing these role predicates will not interoperate with the shared tiler.
 
 ### Considerations
 
@@ -57,7 +57,7 @@ Confirmed `__pyx_pw_…Operator_<idx><method>` wrappers in `Operator.so`:
 
 `TensorContractOp` is the PE-array contraction node — the Penguin matmul. It is the node `mhlo.dot`/`dot_general` lowers to (`printDotOp`, [Part 4](../hlo-opt/mhlo-to-python-printer-heavy.md)) and that `BirCodeGenLoop` lowers to `codegenMatMulOp` / `codegenMatMulMXOp` / `codegenMatMulSparseOp` ([Part 6](../nki/bircodegenloop.md); the sparse variant is detailed at [6.8.8 — MatMulSparseOp](../nki/sparse-matmul-lowering.md)).
 
-All 29 method wrappers below are CONFIRMED from `__pyx_pw_…TensorContractOp_<idx><name>` symbols in `Operator.so`.
+All 29 method wrappers below come from `__pyx_pw_…TensorContractOp_<idx><name>` symbols in `Operator.so`.
 
 ```c
 // class TensorContractOp(ReduceLikeOp):   // Operator.so, 29 pyx-wrapped methods
@@ -106,7 +106,7 @@ struct TensorContractOp {
 
 ### ScaledTensorContractOp — Scaled Matmul
 
-`ScaledTensorContractOp` is a matmul with per-operand scale tensors (the FP8/blockwise-scaled GEMM the SHLO scale-matmul path emits via `printScaleMatmult`). Confirmed methods: `__init__`, `operands`, `serialize`, `rhs_str`, `replaceUseOfWith`, `swap_operands`. It shares the `TensorContractOp` axis model and adds the `lhs_scale`/`rhs_scale` operand bindings (the scale reads), and carries the same `swap_operands` stationary-streaming control.
+`ScaledTensorContractOp` is a matmul with per-operand scale tensors (the FP8/blockwise-scaled GEMM the SHLO scale-matmul path emits via `printScaleMatmult`). Its methods are `__init__`, `operands`, `serialize`, `rhs_str`, `replaceUseOfWith`, `swap_operands`. It shares the `TensorContractOp` axis model and adds the `lhs_scale`/`rhs_scale` operand bindings (the scale reads), and carries the same `swap_operands` stationary-streaming control.
 
 ### ReduceOp / ReduceLikeOp
 
@@ -136,13 +136,13 @@ struct ReduceOp {
 };
 ```
 
-CONFIRMED: `ReduceLikeOp` wrappers `reduce_axes_empty`, `has_reduce`, `is_reduce_add`, `is_conv`, `reduce_windows_size`, `canonical_loopnest`, `enumerate_reduce_axes`, `enumerate_parallel_axes`, `indices_dfs`, `src_indices_dfs`, `reversed_result_indices`, `verify`; `ReduceOp` wrappers `identity`, `set_input`, `eval`, `eval_depth_without_reduce_axes`, `update_axes`, plus the base shape. Upward: `mhlo.reduce`/`reduce_window` → `ReduceOp`/`ReduceWindowTensorOp` ([Part 4](../hlo-opt/mhlo-to-python-printer-heavy.md)).
+`ReduceLikeOp` exposes wrappers `reduce_axes_empty`, `has_reduce`, `is_reduce_add`, `is_conv`, `reduce_windows_size`, `canonical_loopnest`, `enumerate_reduce_axes`, `enumerate_parallel_axes`, `indices_dfs`, `src_indices_dfs`, `reversed_result_indices`, `verify`; `ReduceOp` adds `identity`, `set_input`, `eval`, `eval_depth_without_reduce_axes`, `update_axes` on top of the base shape. Upward: `mhlo.reduce`/`reduce_window` → `ReduceOp`/`ReduceWindowTensorOp` ([Part 4](../hlo-opt/mhlo-to-python-printer-heavy.md)).
 
 ---
 
 ## Elementwise
 
-`NullaryOp` / `UnaryOp` / `UnaryCmpOp` / `BinaryOp` / `BinaryLikeOp` / `CmpOp` / `ElementwiseOp` / `SelectOp` — all CONFIRMED as classes in `Operator.so`. These carry no axis roles (elementwise ops apply per-element across the full loop-nest); their semantics is the **opcode**, held in the shared `attrs` dict as an `ALUOpcode`/`TSOpcode` ([Part 5 attr model](ir-node-model.md), `targets.Opcodes`).
+`NullaryOp` / `UnaryOp` / `UnaryCmpOp` / `BinaryOp` / `BinaryLikeOp` / `CmpOp` / `ElementwiseOp` / `SelectOp` — all present as classes in `Operator.so`. These carry no axis roles (elementwise ops apply per-element across the full loop-nest); their semantics is the **opcode**, held in the shared `attrs` dict as an `ALUOpcode`/`TSOpcode` ([Part 5 attr model](ir-node-model.md), `targets.Opcodes`).
 
 ```c
 // class UnaryOp(Operator):                 // Operator.so
@@ -156,17 +156,17 @@ struct UnaryOp {
 // class SelectOp(Operator):                // the ternary select (predicate ? a : b)
 struct SelectOp {
     Predicate pred;                         // the boolean selector operand
-    void replacePred(Predicate p);          // CONFIRMED — rewrite the selector
+    void replacePred(Predicate p);          // rewrite the selector
     // + indices_dfs operands rhs_str serialize verifyOperandType
 };
 
 // class ElementwiseOp(Operator):
 struct ElementwiseOp {
-    Value eval();                           // CONFIRMED — the constant-folder for the family
+    Value eval();                           // the constant-folder for the family
 };
 ```
 
-CONFIRMED methods: `UnaryOp.{is_cast, stripCast, indices_dfs, operands, rhs_str, serialize, verify, verifyOperandType}`; `SelectOp.replacePred`; `ElementwiseOp.eval`. The cast model lives on `UnaryOp` (`is_cast`/`stripCast`), matching `Instruction.is_cast`/`stripCast` and the module helper `make_cast`. Upward: `mhlo` elementwise add/mul/… → `BinaryOp`/`UnaryOp`/`ElementwiseOp` (`printUnary`/`printBinaryTensorOp`/`printTernaryTensorOp`).
+The wrapped methods are `UnaryOp.{is_cast, stripCast, indices_dfs, operands, rhs_str, serialize, verify, verifyOperandType}`, `SelectOp.replacePred` and `ElementwiseOp.eval`. The cast model lives on `UnaryOp` (`is_cast`/`stripCast`), matching `Instruction.is_cast`/`stripCast` and the module helper `make_cast`. Upward: `mhlo` elementwise add/mul/… → `BinaryOp`/`UnaryOp`/`ElementwiseOp` (`printUnary`/`printBinaryTensorOp`/`printTernaryTensorOp`).
 
 ---
 
@@ -176,12 +176,12 @@ The softmax/batchnorm/dropout nodes are single ops that stand for a multi-instru
 
 ### Softmax Family
 
-`SoftmaxOp` / `SoftmaxDxOp` / `SoftmaxExpOp` / `SoftmaxRSumOp` — all CONFIRMED classes in `Operator.so`. `SoftmaxOp` carries `compute_dtype` (CONFIRMED wrapper) and a `reduce_axes` set (the axis the softmax normalizes over); `SoftmaxExpOp`/`SoftmaxRSumOp` are the split exp / row-sum sub-steps. Upward: `AwsNeuronSoftmax`/`Backward` → `SoftmaxOp`/`SoftmaxDxOp`.
+`SoftmaxOp` / `SoftmaxDxOp` / `SoftmaxExpOp` / `SoftmaxRSumOp` — all classes in `Operator.so`. `SoftmaxOp` carries `compute_dtype` and a `reduce_axes` set (the axis the softmax normalizes over); `SoftmaxExpOp`/`SoftmaxRSumOp` are the split exp / row-sum sub-steps. Upward: `AwsNeuronSoftmax`/`Backward` → `SoftmaxOp`/`SoftmaxDxOp`.
 
 ```c
 // class SoftmaxOp(Operator):               // Operator.so
 struct SoftmaxOp {
-    DType  compute_dtype;                    // CONFIRMED — accumulation precision (exp/sum in fp32)
+    DType  compute_dtype;                    // accumulation precision (exp/sum in fp32)
     AffineAxis[] reduce_axes;                // the normalization axis
     // + indices_dfs operands rhs_str serialize verify
 };
@@ -189,7 +189,7 @@ struct SoftmaxOp {
 
 ### Dropout / BatchNorm / Rng
 
-- `DropoutMaskOp` (CONFIRMED class): the dropout-mask generator — fields `p` / `is_keep_rate` / `set_keep_rate` / `data` (INFERRED owner from D-U08 §8.3; class CONFIRMED in pool).
+- `DropoutMaskOp`: the dropout-mask generator. The class is present in the symbol pool; its ownership of the fields `p` / `is_keep_rate` / `set_keep_rate` / `data` is [INFERRED].
 - `BatchNorm*` family lives in the sibling `ir/BatchNorm.cpython-310-…so`: `BNStatsOp` / `BNAggrOp` / `BNReduceLikeOp` + `BatchNorm{Tensor,Training,Gradient,Backprop,MeanVar}Op`. Lowered to `codegenSundaBNStats`/`BNAggr`/`BNGradient`/`BNBackprop` ([Part 6](../nki/bircodegenloop.md)).
 - `RandOp` / `RngUniformTensorOp` live in `ir/RngOp.cpython-310-…so`.
 
@@ -199,7 +199,7 @@ struct SoftmaxOp {
 
 ## QuantizeMXOperator — the FP8 Microscaling Node
 
-`QuantizeMXOperator` produces an MX (microscaling) FP8 tensor: a packed FP8 value stream **plus** a per-block scale tensor. It is a two-output op. CONFIRMED methods and docstrings below are from `Operator.so` (`__pyx_pw_…QuantizeMXOperator_…` and embedded format/docstring strings).
+`QuantizeMXOperator` produces an MX (microscaling) FP8 tensor: a packed FP8 value stream **plus** a per-block scale tensor. It is a two-output op. The methods and docstrings below come from `Operator.so` (`__pyx_pw_…QuantizeMXOperator_…` and embedded format/docstring strings).
 
 ```c
 // class QuantizeMXOperator(Operator):      // Operator.so, 14 methods
@@ -223,7 +223,7 @@ struct QuantizeMXOperator {
 // Output[0]: "Quantized FP8_x4 packed value (reduced over elem dimension)"
 ```
 
-CONFIRMED wrappers: `quant_dtype`, `scale_dtype`, `get_output_dtype`, `get_output_indices`, `indices_dfs`, `operands`, `rhs_str`, `replaceUseOfWith`, `__init__`. The verbatim strings `"Output dtype for quantized data (FP8_x4)."`, `float8_e4m3fn`, `"Quantized FP8_x4 packed value (reduced over elem dimension)"`, and the `qmx = QuantizeMXOperator(...)` serialize template are all present in `Operator.so`. Upward: SHLO QuantizeMX → `QuantizeMXOperator` (`printQuantizeMX`); lowered to `codegenQuantizeMXOp`.
+The wrappers are `quant_dtype`, `scale_dtype`, `get_output_dtype`, `get_output_indices`, `indices_dfs`, `operands`, `rhs_str`, `replaceUseOfWith`, `__init__`. The verbatim strings `"Output dtype for quantized data (FP8_x4)."`, `float8_e4m3fn`, `"Quantized FP8_x4 packed value (reduced over elem dimension)"`, and the `qmx = QuantizeMXOperator(...)` serialize template are all present in `Operator.so`. Upward: SHLO QuantizeMX → `QuantizeMXOperator` (`printQuantizeMX`); lowered to `codegenQuantizeMXOp`.
 
 ---
 
@@ -233,14 +233,14 @@ These op groups carry op semantics for distribution, region-fusion, and external
 
 | Group | Module | Key nodes | Op-specific fields | Confidence |
 |---|---|---|---|---|
-| Collective | `ir/CollectiveOp.so` | `AllGatherOp`, `AllReduceOp`, `AlltoAllOp`, `ReduceScatterOp`, `CollectivePermute(Reduce)Op`, `CollectiveComputeOp`, `SendOp`/`RecvOp`, `ShardOp` | `all_gather_dim`/`dim` (concat/scatter dim), `replica_groups`, `channel_id`, `reduce_op` | CONFIRMED (D-U08 §8.5) |
-| Fused elementwise+CC | `Operator.so` | `ElementwiseAllGatherOp`, `ElementwiseAllReduceOp`, `ElementwiseCustomCall` | inherit collective + elementwise fields | CONFIRMED (classes in `Operator.so`) |
-| Fusion region | `ir/FusionOp.so` | `FusionOp` ⊃ `ElementwiseFusionOp`/`ReduceFusionOp`/`TensorContractFusionOp` | `formal_inputs`/`formal_outputs`, `local_insts`/`local_tensors`, `default_loopnest_shape` — a **nested Function** treated as one schedulable unit | CONFIRMED (D-U08 §8.6) |
-| Custom / opaque | `ir/CustomOp.so`, `ir/OpaqueOp.so` | `CustomOp`, `OpaqueOp` | opaque external call (`OpaqueAccess` non-affine access) | CONFIRMED |
-| Native / NKI kernel | `ir/NativeKernel.so` | `NativeNkiKernel`, `Internal/ExternalNativeNkiKernel(+Klir)`, `BIRKernel`, `MLPKernel`, `RMSNormQuantKernel`, `NormQKV`, `AttentionMMSoftmaxMM`, `BackwardsAttention` | the NKI→Penguin embedding nodes ([Part 6](../nki/bircodegenloop.md) builds these) | CONFIRMED (D-U08 §8.7) |
-| Index / predicate value | `ir/IndexValue.so` | `IndexValueOp`/`IndexValueBaseOp`, `PredicateValueOp`, `AggregateValueOp` | materialize a loop-index or an `AffinePredicate` as a tensor value (argmax/topk/mask) | CONFIRMED (D-U08 §8.8) |
+| Collective | `ir/CollectiveOp.so` | `AllGatherOp`, `AllReduceOp`, `AlltoAllOp`, `ReduceScatterOp`, `CollectivePermute(Reduce)Op`, `CollectiveComputeOp`, `SendOp`/`RecvOp`, `ShardOp` | `all_gather_dim`/`dim` (concat/scatter dim), `replica_groups`, `channel_id`, `reduce_op` | CERTAIN |
+| Fused elementwise+CC | `Operator.so` | `ElementwiseAllGatherOp`, `ElementwiseAllReduceOp`, `ElementwiseCustomCall` | inherit collective + elementwise fields | CERTAIN |
+| Fusion region | `ir/FusionOp.so` | `FusionOp` ⊃ `ElementwiseFusionOp`/`ReduceFusionOp`/`TensorContractFusionOp` | `formal_inputs`/`formal_outputs`, `local_insts`/`local_tensors`, `default_loopnest_shape` — a **nested Function** treated as one schedulable unit | CERTAIN |
+| Custom / opaque | `ir/CustomOp.so`, `ir/OpaqueOp.so` | `CustomOp`, `OpaqueOp` | opaque external call (`OpaqueAccess` non-affine access) | CERTAIN |
+| Native / NKI kernel | `ir/NativeKernel.so` | `NativeNkiKernel`, `Internal/ExternalNativeNkiKernel(+Klir)`, `BIRKernel`, `MLPKernel`, `RMSNormQuantKernel`, `NormQKV`, `AttentionMMSoftmaxMM`, `BackwardsAttention` | the NKI→Penguin embedding nodes ([Part 6](../nki/bircodegenloop.md) builds these) | CERTAIN |
+| Index / predicate value | `ir/IndexValue.so` | `IndexValueOp`/`IndexValueBaseOp`, `PredicateValueOp`, `AggregateValueOp` | materialize a loop-index or an `AffinePredicate` as a tensor value (argmax/topk/mask) | CERTAIN |
 
-> **NOTE —** `ElementwiseAllGatherOp`, `ElementwiseAllReduceOp`, and `ElementwiseCustomCall` are CONFIRMED **in `Operator.so`** (their pyx wrappers appear there), not in `CollectiveOp.so` — they are the *fused* elementwise+collective ops, so they live with the elementwise family. The pure collectives (`AllGatherOp`/`AllReduceOp`/…) are in `CollectiveOp.so`.
+> **GOTCHA —** `ElementwiseAllGatherOp`, `ElementwiseAllReduceOp`, and `ElementwiseCustomCall` live in **`Operator.so`**, not in `CollectiveOp.so` — they are the *fused* elementwise+collective ops, so they ship with the elementwise family. Only the pure collectives (`AllGatherOp`/`AllReduceOp`/…) are in `CollectiveOp.so`.
 
 ---
 
@@ -283,4 +283,3 @@ AwsNeuronCustomOp / NKI     → CustomOp / NativeNkiKernel → codegen{BIRKernel
 - [mhlo-to-py-penguin](../hlo-opt/mhlo-to-python-printer-heavy.md) — the C-strand printer that emits these op constructors
 - [BirCodeGenLoop](../nki/bircodegenloop.md) — Penguin → BIR lowering, one `codegen<Op>` per Inst
 
-> **CORRECTION (Wave-2 audit) — cross-ref slugs.** The Part-6 lowering links on this page previously pointed at `../nki/bir-codegen-loop.md` (×7) and `../nki/matmul-sparse.md` (×2); neither slug exists. The shipped pages are `nki/bircodegenloop.md` (the `BirCodeGenLoop` lowering loop) and `nki/sparse-matmul-lowering.md` (the `codegenMatMulSparseOp` lowering, 6.8.8). All links retargeted; no factual claim changed.
