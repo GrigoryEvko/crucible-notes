@@ -54,37 +54,16 @@ bypass = 0**.
 | **Kind tag** | symbolic (kind-2) ↔ register (kind-3); discriminated by the backing memloc tag + the C++ AP class |
 | **Drivers** | `LowerAP::run` `0x11ba970` → `convertSymAPtoRegAP` `0x11ba8b0` → `convertSymAPForInst` `0x11b9fd0` → `convertSymAP` |
 
-> **GROUNDING —** `libwalrus.so` and `libBIR.so` are both present in the corpus —
-> as per-symbol decompiled/disassembled sidecars and as full IDA databases under `ida/`
-> (`convertSymAP`, for example, appears as a libwalrus sidecar at the internal VA
-> `0x5f8800`). The `0x11b7f80`-frame addresses on this page are the `nm -DC` /
-> `libwalrus.so`-proper VA frame (`.text`/`.rodata` `VA == file-offset`) recovered from the
-> `ida/…libwalrus.so/` database; the per-symbol sidecars use a distinct internal VA frame.
-> The two frames name the same bodies (see the "two image bases" note in
-> [Backend Dependence-Distance §1](backend-dependence-distance.md)). Every address, offset,
-> opcode immediate, and rodata string below is therefore binary-derived. Where a claim
-> could only be reasoned structurally it is tagged INFERRED.
-
-> **CORRECTION (provenance upgrade) — the standalone `.so` bodies ARE in the corpus.** An
-> earlier framing of this page declared `libwalrus.so` / `libBIR.so` "not present in this
-> repo's extracted tree" and downgraded the anchors to a re-used IDA database. That is wrong:
-> both libraries ship full decompiled/disassembled sidecars and complete `ida/` databases.
-> The confusion was purely a two-VA-frame artifact — the `nm -DC` body frame
-> (`0x11b7f80` etc.) versus the per-symbol-sidecar internal frame (`convertSymAP` at
-> `0x5f8800`) — both naming the same code. The addresses here are therefore **CONFIRMED**, the
-> same stance the sibling backend pages take; this matches the identical provenance sentence
-> on [Backend Dependence-Distance](backend-dependence-distance.md), [DGE Level Selection](dge-level-dynamic-dma.md),
-> [the Dynamic For-Loop](dynamic-for-loop.md), and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).
-
-> **NOTE (Wave-2 audit — provenance reaffirmed).** A standalone `ida/…libwalrus.so/` IDA
-> database **does** exist in this corpus (cp310 wheel): it disassembles all 59,466 libwalrus
-> functions, and *both* the `0x11b7f80`-frame body addresses (`LowerAP::run @0x11ba970`,
-> `convertSymAP @0x11b7f80`, `convertSymAPtoRegAP @0x11ba8b0`) and the internal-frame anchors
-> (`convertSymAP @0x5f8800`) ship as per-symbol `disasm/*.asm` files inside it. There is **no**
-> `0x5e9000–0x7cfb30` ceiling on the standalone disasm — that figure was an audit artifact; the
-> DB spans the full `.text` (past `0x1badf10`). The GROUNDING note above is therefore correct as
-> written: these addresses are standalone-`.so`-disasm-CONFIRMED, and the two-frame split is
-> exactly the artifact it describes, not a driver-vs-`.so` provenance gap.
+> **GOTCHA — every body on this page has two valid addresses.** `libwalrus.so` symbols
+> resolve in two different VA frames. This page always quotes the `nm -DC` /
+> `.so`-proper frame, where `.text` and `.rodata` have `VA == file-offset` and `.text` runs
+> past `0x1badf10` — `convertSymAP` @ `0x11b7f80`, `LowerAP::run` @ `0x11ba970`,
+> `convertSymAPtoRegAP` @ `0x11ba8b0`. Per-symbol disassembly sidecars use a distinct
+> internal frame inside the `0x5e9000–0x7cfb30` band, where that same `convertSymAP` sits at
+> `0x5f8800`. The two frames name identical code; a lookup that lands on the low address has
+> not found a different function. The same split is described in
+> [Backend Dependence-Distance §1](backend-dependence-distance.md). Claims that could only
+> be reasoned structurally are tagged INFERRED below.
 
 ---
 
@@ -118,13 +97,13 @@ pairs (strides / counts) are copied verbatim** but whose **offset and location b
 register-valued**. The static geometry stays compile-time; only the dynamic offset is
 lowered to registers.
 
-> **CORRECTION — the regref offset is `+0xE8`, not `+0x40`.** One of the two backing
-> analyses conflated two different `regref` fields. The kind-3 `RegisterAccessPattern`
-> (sizeof `0x118`) stores its registers at object offsets **`regref` `+0xE8`,
-> `reg_ap_offset` `+0xF0`, `reg_sub_tensor_id` `+0xF8`** (witnessed by the `setRegLocation`
-> / `setRegAPOffset` stores and the `*(regAP+248)` write). The `+0x40` `regref` belongs to
-> the *`bir::BirIntRuntimeValue` Expr-node* inside a dynamic expression tree — the field
-> `rewireDynamicAPRegisters` patches (§5). They are unrelated objects; do not merge them.
+> **GOTCHA — two unrelated fields are both called `regref`.** The kind-3
+> `RegisterAccessPattern` (sizeof `0x118`) keeps its registers at **`regref` `+0xE8`,
+> `reg_ap_offset` `+0xF0`, `reg_sub_tensor_id` `+0xF8`** — the offsets the `setRegLocation` /
+> `setRegAPOffset` stores and the `*(regAP+248)` write land on. The other `regref`, at
+> `+0x40`, is a field of the `bir::BirIntRuntimeValue` *Expr node* inside a dynamic
+> expression tree, and it is what `rewireDynamicAPRegisters` patches (§8). Different objects,
+> same name; merging them corrupts both.
 
 ---
 
@@ -329,21 +308,22 @@ free_byte_offset  = free_elem_index · dtype_bytes     (MULT op 6, dtype_bytes =
 RegAPAddr        += partition_base + free_byte_offset  (two ADD op 4)
 ```
 
-> **CORRECTION — the opcode table is `{add=4, mult=6, divide=7, mod=0x1B, bypass=0}`, not
-> just `{4, 6}`.** An earlier reading pinned only `add=4` / `mult=6` (from the affine walk)
-> and left `divide` / `mod` as a GAP. The `4.6` delinearization settles it directly: the
-> `DIVIDE` immediate appears at `0x11b93c5` and the `MOD` immediate `0x1B` at `0x11b952b`,
-> consistent with the `AluOpType` enum `add=4, mult=6, divide=7, mod=0x1B(27), bypass=0`.
-> The 64-bit base path at `4.4` reuses `add=4`. (The broader 0..29 `klr::AluOp` name table
-> — `… 11 divide … 24 mod … 25 mult …` — is a *separate, larger* software enum; do **not**
-> assume `bir::AluOpType` shares its ordinals. The hardware `AluOpType` values above are
-> the ones stamped at `InstRegisterAlu+0xf0`.)
+This delinearization is where the last two ALU ordinals get pinned: the `DIVIDE` immediate
+appears at `0x11b93c5` and the `MOD` immediate `0x1B` at `0x11b952b`, completing the
+`AluOpType` set `add=4, mult=6, divide=7, mod=0x1B (27), bypass=0`. The 64-bit base path in
+§4.4 reuses `add=4`.
+
+> **GOTCHA — `bir::AluOpType` is not `klr::AluOp`.** There is a broader 0..29 `klr::AluOp`
+> name table in the same binary (`… 11 divide … 24 mod … 25 mult …`) with completely
+> different ordinals. The values stamped at `InstRegisterAlu+0xf0` are the hardware
+> `AluOpType` ones above; indexing one enum with the other's integer silently emits the
+> wrong arithmetic.
 
 > **QUIRK — the matmul RHS points at the *last* element.** For `InstMatmult` argument 1
 > (the moving / RHS operand) the address is biased by `(numElemsPerPartition − 1)·dtype_bytes`
 > so the descriptor starts at the end of the partition. The `opcode==8` + `getArgument(1)`
-> + `getNumElementsPerPartition` guards are confirmed; the "consumed in reverse" rationale
-> is INFERRED.
+> + `getNumElementsPerPartition` guards are all in the body; the "consumed in reverse"
+> rationale for *why* is reconstruction, not something the code states.
 
 ---
 
@@ -540,8 +520,7 @@ AP-level taxonomy this consumes: `isScalarDynamicOffsetAP`, `isScalarIndirectDyn
 When a later rewrite splits or clones a dynamic AP and re-mints its registers, the
 `DynamicAPINFO`'s runtime-offset expressions still hold their backing register **by
 pointer** — the `bir::BirIntRuntimeValue.regref` field at Expr-node offset **`+0x40`**
-(this is the field the §1 CORRECTION distinguishes from the kind-3 AP's `regref` at
-`+0xE8`). `rewireDynamicAPRegisters` walks every dynamic expression and re-points each
+(the field §1 warns not to confuse with the kind-3 AP's `regref` at `+0xE8`). `rewireDynamicAPRegisters` walks every dynamic expression and re-points each
 `regref` to the new register via a `oldName → newName` map.
 
 ```c
@@ -617,30 +596,31 @@ the static stride pattern compile-time while moving only the dynamic offset into
 
 ---
 
-## 10. Confidence and gaps
+## 10. Evidence summary and limits of this reading
 
-- **CONFIRMED (disasm-anchored in libwalrus.so):** all five target addresses; the
-  seven-register nursery and its name suffixes; the `lowerAffineExpr` simple-affine
-  sum-of-products walk and the `mult=6` / `add=4` opcodes; the §4.6 delinearization with
-  `divide=7` / `mod=0x1B` immediates and the `0x40000` / `0x8000` partition strides; the
-  IT73 `{engine@+0x90, aluOp@+0xf0}` fields; the kind-3 `RegisterAccessPattern` field
-  layout (`regref@+0xE8` / `reg_ap_offset@+0xF0` / `reg_sub_tensor_id@+0xF8`); the
-  `ExpandDynamicAPInfo` predicate set and indirect-arg densification; the `ExprRefHasher`
-  CSE cache; the `rewireDynamicAPRegisters` `regref@+0x40` rebind via name→name→Register.
-- **STRONG:** the DRAM-pair vs scratch role split of `RegDramAddr0/1` / `RegTemp1`; the
-  outer-driver → Impl worklist threading; the `BasicBlock` rewire sibling map; the
-  `DynamicAPINFO` field layout (from accessor names + entry-block array reads); the
-  branch-by-branch inner dispatch of `ExpandDynamicAPInfoImpl` (sampled at the emit-call
-  level, not byte-complete).
-- **INFERRED:** the matmul-RHS "point at last element" rationale (the opcode/arg/element
-  guards are CONFIRMED); the `DynamicAPINFO` field *offsets* (the method surface is
-  authoritative, the offsets reasoned from entry reads).
-- **GROUNDING (provenance):** `libwalrus.so` and `libBIR.so` are present in the corpus —
-  both as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/` — so
-  the cited bodies are disassembled, not merely declared. The `0x11b7f80`-frame anchors are
-  the `libwalrus.so`-proper (`nm -DC`) VA frame from the `ida/…libwalrus.so/` database; the
-  per-symbol sidecars carry the same bodies in a distinct internal VA frame. The addresses
-  on this page are CONFIRMED.
-- **GAP:** the `DynamicAPINFO` setter bodies (defined in libBIR, imported here); the exact
-  integer the front-end stamps for the symbolic/register "kind" labels (mapped to the
-  C++ AP class + backing memloc tag, not re-derived to a raw libBIR enum constant).
+Read directly out of the `libwalrus.so` disassembly: all five target addresses; the
+seven-register nursery and its name suffixes; the `lowerAffineExpr` simple-affine
+sum-of-products walk with its `mult=6` / `add=4` opcodes; the §4.6 delinearization,
+including the `divide=7` and `mod=0x1B` immediates and the `0x40000` / `0x8000` partition
+strides; the IT73 `{engine@+0x90, aluOp@+0xf0}` fields; the kind-3
+`RegisterAccessPattern` layout (`regref@+0xE8` / `reg_ap_offset@+0xF0` /
+`reg_sub_tensor_id@+0xF8`); the `ExpandDynamicAPInfo` predicate set and its indirect-arg
+densification; the `ExprRefHasher` CSE cache; and the `rewireDynamicAPRegisters`
+`regref@+0x40` rebind through the name→name→Register chain.
+
+A second tier is well-supported but assembled rather than witnessed: the DRAM-pair vs
+scratch role split of `RegDramAddr0/1` and `RegTemp1`; the outer-driver → Impl worklist
+threading; the `BasicBlock` rewire sibling map; the `DynamicAPINFO` field layout, which
+comes from accessor names plus entry-block array reads; and the inner dispatch of
+`ExpandDynamicAPInfoImpl`, sampled at the emit-call level rather than transcribed
+byte-complete.
+
+Two things are outright reconstruction. The matmul-RHS "point at the last element"
+rationale is inferred — only the `opcode==8` / `getArgument(1)` /
+`getNumElementsPerPartition` guards themselves are observed. And the `DynamicAPINFO` field
+*offsets* are reasoned from entry-block reads; only the method surface is authoritative.
+
+Two gaps remain open. The `DynamicAPINFO` setter bodies are defined in `libBIR` and merely
+imported here, so they are not read. And the raw integer the front-end stamps for the
+symbolic-versus-register "kind" label is not recovered — this page maps kinds through the
+C++ AP class and the backing memloc tag instead of a libBIR enum constant.
