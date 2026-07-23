@@ -2,7 +2,7 @@
 
 > *All symbols and addresses on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. Driver bodies (`neuronxcc::backend::LoopOptimization`) live in `neuronxcc/starfish/lib/libwalrus.so`; the distance primitive (`bir::getDefUseDistance`) lives in `neuronxcc/starfish/lib/libBIR.so`. Both retain a full C++ symbol table (`nm -DC`), so every body named here is a demangled symbol, not a `sub_*`. cp310 addresses are primary; cp311/cp312 differ by a small fixed delta (table in [§1](#1-symbol-map)).*
 >
-> *Provenance: `libwalrus.so` and `libBIR.so` are present in the corpus — as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/` — so the cited bodies (e.g. `getDefUseDistance @ libBIR 0x20d4e0`) are disassembled, not merely declared. The addresses are CONFIRMED. The same provenance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [DGE Level Selection](dge-level-dynamic-dma.md), [the Dynamic For-Loop](dynamic-for-loop.md), and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).*
+> *Provenance: `libwalrus.so` and `libBIR.so` are present in the corpus — as per-symbol decompiled/disasm sidecars and as full IDA databases under `ida/` — so the cited bodies (e.g. `getDefUseDistance @ libBIR 0x20d4e0`) are disassembled, not merely declared. The same provenance holds on [Symbolic-AP Register-ALU](symbolic-ap-register-alu.md), [DGE Level Selection](dge-level-dynamic-dma.md), [the Dynamic For-Loop](dynamic-for-loop.md), and [Dynamic-Shape Synthesis](dynamic-shape-synthesis.md).*
 
 ## Abstract
 
@@ -10,7 +10,7 @@ The backend loop optimizer in `libwalrus.so` ships a function named `constructPo
 
 The gate answers one question for the loop fusion / interchange legality checker: *if I merge these two loops, does any read end up consuming a value that its producer writes at a later relative iteration?* It answers it not by subtracting symbolic base offsets — the cheap thing — but by **tiling each access footprint into iteration groups, materializing the exact byte-address intervals each group touches as a `boost::icl::interval_set`, and testing pairwise interval intersection over the iteration cross-product.** The returned "distance" is the largest def-iteration index whose footprint is still live at some use iteration. A strictly positive value flags an illegal backward loop-carried dependence. That mechanism — verified instruction-by-instruction against the real `getDefUseDistance` body at `libBIR 0x20d4e0` — is the heart of the page.
 
-Three functions form the gate. `constructPolyhedralDependenceGraphWithDistance(Module&)` is a two-pass module driver that populates a per-loop SAP×SAP distance cache. `constructLoopDependenceGraph(InstLoop*)` builds, per loop, that distance cache plus a debug dependence-direction-vector graph. `bir::getDefUseDistance(SAP, SAP, int)` is the interval-overlap kernel both rely on, also consumed directly by the fusion-legality predicate `has_negative_distance(InstLoop*, InstLoop*)`. This page carries **four in-place corrections to D-K14**, which named these bodies but never disassembled them.
+Three functions form the gate. `constructPolyhedralDependenceGraphWithDistance(Module&)` is a two-pass module driver that populates a per-loop SAP×SAP distance cache. `constructLoopDependenceGraph(InstLoop*)` builds, per loop, that distance cache plus a debug dependence-direction-vector graph. `bir::getDefUseDistance(SAP, SAP, int)` is the interval-overlap kernel both rely on, also consumed directly by the fusion-legality predicate `has_negative_distance(InstLoop*, InstLoop*)`.
 
 ## Reimplementation contract
 
@@ -34,7 +34,7 @@ To rebuild this gate you must reproduce:
 | **Footprint substrate** | `boost::icl::interval_set<unsigned long, right_open_interval>` — **zero isl** |
 | **`__FILE__` anchors** | `neuronxcc/walrus/ir/lib/IR/AccessPattern.cpp:0x554`; `…/loop_optimization/src/loop_profitable_fusion.cpp` |
 
-> **GOTCHA — the name lies.** `constructPolyhedralDependenceGraphWithDistance` contains zero `isl_*` calls. So does `getDefUseDistance` (verified: `rg -c isl_` over the `0x20d4e0` body returns 0). If you are looking for the schedule-tree legality machinery, it is not here — it is in [5.16](isl-dependence-graph.md). This gate is "polyhedral" in name only; it is exact byte-interval overlap over an unrolled iteration space.
+> **GOTCHA — the name lies.** `constructPolyhedralDependenceGraphWithDistance` contains zero `isl_*` calls, and neither does `getDefUseDistance`. If you are looking for the schedule-tree legality machinery, it is not here — it is in [5.16](isl-dependence-graph.md). This gate is "polyhedral" in name only; it is exact byte-interval overlap over an unrolled iteration space.
 
 ---
 
@@ -44,18 +44,18 @@ All in `class neuronxcc::backend::LoopOptimization` (libwalrus) unless noted. Ad
 
 | Symbol | cp310 | cp311 | cp312 | Conf |
 |---|---|---|---|---|
-| `constructPolyhedralDependenceGraphWithDistance(Module&)` | `0xbae000` | `0xbadfd0` | `0xbadf80` | CONFIRMED |
-| `constructLoopDependenceGraph(InstLoop*)→DDGTy` | `0xbabe50` | `0xbabe20` | `0xbabdd0` | CONFIRMED |
-| `has_negative_distance(InstLoop*, InstLoop*)` | `0xb8f100` | `0xb8f0d0` | `0xb8f080` | CONFIRMED |
-| `viewDependenceGraph(multimap&, string&)` | `0xbab900` | — | — | CONFIRMED |
-| `collectInstructionsByNestingLevel(BasicBlock&)` | `0x5f3c20`† | — | — | CONFIRMED |
-| `collect_def_in_loop(InstLoop*, vector<SAP*>&)` [free fn] | `0xb8e740` | — | — | CONFIRMED |
-| `collect_use_in_loop(InstLoop*, vector<SAP*>&)` [free fn] | `0xb8e8a0` | — | — | CONFIRMED |
-| `collect_illegal_common_ap(InstLoop*, InstLoop*)` | `0xb8ea70` | — | — | CONFIRMED |
-| `bir::getDefUseDistance(SAP const&, SAP const&, int)` | libBIR `0x20d4e0` | — | — | CONFIRMED |
-| `bir::doAccessesOverlap(SAP const&, SAP const&, int)` | libBIR `0x20f0b0` | — | — | CONFIRMED (sibling; not called by the three targets) |
-| `bir::intersecting(APINFO const&, APINFO const&)` | libBIR `0x20c840` | — | — | CONFIRMED (per-AP footprint test) |
-| `bir::getAddressIntervals(…)` | libBIR `0x17b570` / `0x20a380` | — | — | CONFIRMED (returns into `boost::icl`) |
+| `constructPolyhedralDependenceGraphWithDistance(Module&)` | `0xbae000` | `0xbadfd0` | `0xbadf80` | CERTAIN |
+| `constructLoopDependenceGraph(InstLoop*)→DDGTy` | `0xbabe50` | `0xbabe20` | `0xbabdd0` | CERTAIN |
+| `has_negative_distance(InstLoop*, InstLoop*)` | `0xb8f100` | `0xb8f0d0` | `0xb8f080` | CERTAIN |
+| `viewDependenceGraph(multimap&, string&)` | `0xbab900` | — | — | CERTAIN |
+| `collectInstructionsByNestingLevel(BasicBlock&)` | `0x5f3c20`† | — | — | CERTAIN |
+| `collect_def_in_loop(InstLoop*, vector<SAP*>&)` [free fn] | `0xb8e740` | — | — | CERTAIN |
+| `collect_use_in_loop(InstLoop*, vector<SAP*>&)` [free fn] | `0xb8e8a0` | — | — | CERTAIN |
+| `collect_illegal_common_ap(InstLoop*, InstLoop*)` | `0xb8ea70` | — | — | CERTAIN |
+| `bir::getDefUseDistance(SAP const&, SAP const&, int)` | libBIR `0x20d4e0` | — | — | CERTAIN |
+| `bir::doAccessesOverlap(SAP const&, SAP const&, int)` | libBIR `0x20f0b0` | — | — | CERTAIN (sibling; not called by the three targets) |
+| `bir::intersecting(APINFO const&, APINFO const&)` | libBIR `0x20c840` | — | — | CERTAIN (per-AP footprint test) |
+| `bir::getAddressIntervals(…)` | libBIR `0x17b570` / `0x20a380` | — | — | CERTAIN (returns into `boost::icl`) |
 
 > † `collectInstructionsByNestingLevel` is exported in the per-symbol decompiled set at the libwalrus-internal VA `0x5f3c20` (as `LoopOptimization::collectInstructionsByNestingLevel(bir::BasicBlock&)`; a sibling `LoopOptDoctor::` overload sits at `0x5ef870`). The `nm -D` driver-VA for the same body is reported as `0xba2ab0`; both refer to the same function.
 
@@ -64,12 +64,12 @@ All in `class neuronxcc::backend::LoopOptimization` (libwalrus) unless noted. Ad
 ### Recovered types
 
 ```c
-// The graph the per-loop builder emits (CONFIRMED from viewDependenceGraph's
+// The graph the per-loop builder emits (from viewDependenceGraph's
 // demangled signature + the _M_emplace_equal call):
 using DDGTy = std::multimap< std::pair<bir::Instruction const*, bir::Instruction const*>,  // key = (defInst, useInst)
                              std::vector<int> >;                                           // val = DIRECTION VECTOR {-1,0,+1}
 
-// The persistent per-loop distance cache (CONFIRMED: lea r12,[rax+210h] @0xbac093):
+// The persistent per-loop distance cache (lea r12,[rax+210h] @0xbac093):
 using PerLoopDistMap =                                                       // dist[def][use] = int (stored symmetrically)
     llvm::MapVector< bir::SymbolicAccessPattern*,
                      llvm::MapVector< bir::SymbolicAccessPattern*, int > >;  // cached @ InstLoop + 0x210 (528)
@@ -81,13 +81,13 @@ using Graph = boost::adjacency_list< boost::vecS, boost::listS, boost::directedS
                  boost::no_property, boost::listS >;
 ```
 
-### Struct offsets (CONFIRMED via disasm/decompile)
+### Struct offsets
 
 | Offset | Field | Use |
 |---|---|---|
 | `SAP + 0x38` (56) | owning `StorageBase*` | dependence-existence gate root |
 | `SAP + 0x20` (32) | owning `bir::Instruction*` | `getLoopnest` / graph vertex |
-| `StorageBase + 0x110` (272) | type tag (`== 1` ⇒ `MemoryLocationSet`) | the K14 `+0x110` gate |
+| `StorageBase + 0x110` (272) | type tag (`== 1` ⇒ `MemoryLocationSet`) | the `isa<MemoryLocationSet>` gate |
 | `StorageBase + 0x188` (392) | `MemoryLocationSet*` (normalise `−280`) | identity key in the kernel |
 | `StorageBase + 0x128/0x130` (296/304) | tensor-name `char*` / length | `memcmp` identity in the per-loop builder |
 | `InstLoop + 0x210` (528) | `PerLoopDistMap` | the persistent distance cache |
@@ -185,7 +185,7 @@ DDGTy constructLoopDependenceGraph(LoopOptimization* this, InstLoop* L) {
       }
 ```
 
-> **NOTE — the per-loop `niters` is the same divisor.** Inside this body the third arg to `getDefUseDistance` is the loop-local iteration count derived from `d`'s evaluated predicate count. The Hex-Rays prototype mistypes it as a `SAP*` (`v9 = (int)uses[1]` is the predicate count, not a pointer). The authoritative `niters` derivation appears unambiguously in `has_negative_distance` ([§5](#5-the-fusion-legality-gate--has_negative_distance)): `gcd(tripcounts) × Π parent tripcounts`. [STRONG]
+> **NOTE — the per-loop `niters` is the same divisor.** Inside this body the third arg to `getDefUseDistance` is the loop-local iteration count derived from `d`'s evaluated predicate count; the decompiler mistypes it as a `SAP*` (`v9 = (int)uses[1]` is the predicate count, not a pointer). The unambiguous `niters` derivation is in `has_negative_distance` ([§5](#5-the-fusion-legality-gate--has_negative_distance)): `gcd(tripcounts) × Π parent tripcounts`. That the two agree follows from the shared contract, not from a second read.
 
 ### Step C — the dependence direction vector
 
@@ -207,7 +207,7 @@ For each matched pair the builder computes a classic **dependence direction vect
         }
 ```
 
-The canonical `{<, =, >}` is encoded as `{-1, 0, +1}`. The debug banner literally prints `", distance vector = [" … "]"` (string CONFIRMED in `.rodata`).
+The canonical `{<, =, >}` is encoded as `{-1, 0, +1}`. The debug banner literally prints `", distance vector = [" … "]"`, a `.rodata` string.
 
 ### Step D — emplace into the DDG multimap
 
@@ -255,7 +255,7 @@ int getDefUseDistance(const SymbolicAccessPattern& def, const SymbolicAccessPatt
     if (mlsUse != mlsDef) return maxDist;                     // different MemoryLocationSet ⇒ NO dependence ⇒ 0  (:273)
 ```
 
-> **CORRECTION (C-existence) — the existence gate is pointer equality, not name `memcmp`, here.** The per-loop builder ([§3](#3-the-per-loop-builder--constructloopdependencegraph)) gates by tensor-name `memcmp`; the kernel gates by `MemoryLocationSet` pointer equality after the `−280` normalization (`if (mlsUse != mlsDef) return 0`, decompile line 273). The two are equivalent for the common case but are *different code paths* — the builder picks pairs by name, the kernel re-verifies by location and short-circuits to distance 0 on mismatch.
+> **GOTCHA — two different existence gates.** The per-loop builder ([§3](#3-the-per-loop-builder--constructloopdependencegraph)) selects candidate pairs by tensor-**name** `memcmp`; the kernel re-verifies by `MemoryLocationSet` **pointer** equality after the `−280` normalization and short-circuits to distance 0 on mismatch. They agree in the common case but are separate code paths, and a reimplementation needs both.
 
 ### Evaluate and tile
 
@@ -283,7 +283,7 @@ The `__assert_fail` message and path are recovered verbatim: `"niters1 / niters 
     //   iterKey = elemIdx % niters                                    // bin into one of `niters` groups
     //   defGroups[iterKey] |= interval;   // boost::icl::interval_set<u64, right_open_interval>, segmental join
     // (same loop again for use → useGroups)
-    std::unordered_map<int, icl::interval_set<u64,right_open_interval>> defGroups, useGroups;   // CONFIRMED type @:1249
+    std::unordered_map<int, icl::interval_set<u64,right_open_interval>> defGroups, useGroups;   // type @:1249
 ```
 
 `getAddressIntervals` demangles with `boost::icl` in its very return type (`…RN5boost3icl12…`), and returns the `interval_set`. The interval merge is `boost::icl` segmental `join_left/join_right`.
@@ -294,7 +294,7 @@ The `__assert_fail` message and path are recovered verbatim: `"niters1 / niters 
     int v183 = 0;
     for (int gj = 0; gj < niters; ++gj)                                  // outer: use iter-group  (v193)
       for (int gi = 0; gi < niters; ++gi) {                              // inner: def iter-group  (v190)
-        bool hit = boost::icl::intersects(defGroups[gi], useGroups[gj]); // CONFIRMED @:1255
+        bool hit = boost::icl::intersects(defGroups[gi], useGroups[gj]); // @:1255
         if (hit) { int cand = gi; if (cand > v183) v183 = cand; }        // running max  (:1270-1272)
       }
     return v183;                                                         // :1364
@@ -303,9 +303,9 @@ The `__assert_fail` message and path are recovered verbatim: `"niters1 / niters 
 
 The reduction is exactly the decompiled `if ((int)v183 >= (int)v194) v76 = v183; v183 = v76;` running maximum, with both loop bounds `v201 == niters`. `getDefUseDistance` returns the **largest def-iteration index whose byte footprint is still touched by some use iteration** = the longest live def→use span measured in iterations.
 
-> **CORRECTION (C1 of D-K14) — not a base-offset subtraction.** K14 read the distance as `sub (%r15),%rax ; sub (%rsi),%rax` of evaluated base offsets. The disassembly disagrees: the base-offset subtraction is only the cheap pre-step *inside* `getAddressIntervals` that positions each footprint; the **returned** distance is the `boost::icl::intersects` max-iteration result over the binned interval sets. Verified: the `0x20d4e0` body contains `boost::icl::intersects`, an `unordered_map<int, interval_set<…right_open_interval…>>`, and the `v183` max reduction — and **zero** `isl_*` references.
+There *is* a base-offset subtraction in this machinery, but it is not the answer. The `sub` pair over evaluated base offsets is the cheap pre-step *inside* `getAddressIntervals` that positions each footprint in the address space before it is turned into intervals. The value the kernel returns is the `boost::icl::intersects` max-iteration reduction over the binned interval sets — the `0x20d4e0` body holds `boost::icl::intersects`, an `unordered_map<int, interval_set<…right_open_interval…>>`, and the `v183` max reduction, and no `isl_*` reference at all.
 
-> **GOTCHA — `niters` is a divisor, not a count.** `niters` is the iteration-group *size*; the kernel divides the total evaluated-iteration counts (`niters1`, `niters2`) by it to get the number of groups, and the two `niters1/niters != 0` asserts fire if a caller passes a `niters` larger than either footprint. This is why the `has_negative_distance` `niters` formula ([§5](#5-the-fusion-legality-gate--has_negative_distance)) must be the *shared* iteration granularity of the fused loops, never a raw trip count.
+> **GOTCHA — `niters` is a divisor, not a count, and not an axis index.** `niters` is the iteration-group *size*: the kernel divides the total evaluated-iteration counts (`niters1`, `niters2`) by it to get the number of groups, and the two `niters1/niters != 0` asserts fire if a caller passes a `niters` larger than either footprint. This is why the `has_negative_distance` formula ([§5](#5-the-fusion-legality-gate--has_negative_distance)) must be the *shared* iteration granularity of the fused loops, never a raw trip count and never a partition-axis index.
 
 ---
 
@@ -353,7 +353,7 @@ int has_negative_distance(InstLoop* L1, InstLoop* L2) {
 
 This is the divisor whose `niters1/niters`, `niters2/niters` non-zero asserts fire inside the kernel — the granularity of the common iteration space the two loops would share after fusion.
 
-> **CORRECTION (C2 of D-K14) — the `int` third arg is the iteration-group divisor, not a partition-axis index.** K14 inferred the third parameter of `getDefUseDistance` was a "partition axis index." The dataflow refutes it: three `getTripCount` calls (`[vtbl+0x140]`), a GCD `idiv`, and four `getParentLoop` calls produce a single integer that is then passed as that arg. It is `gcd × Π parent-trips`, full stop.
+The dataflow leaves no room for another reading of that third argument: three `getTripCount` calls (`[vtbl+0x140]`), a GCD `idiv`, and four `getParentLoop` calls produce one integer, and that integer is what gets passed.
 
 ### Step D — the sign test
 
@@ -361,7 +361,7 @@ This is the divisor whose `niters1/niters`, `niters2/niters` non-zero asserts fi
     for (auto& [d, u] : pairs) {
         int dist = bir::getDefUseDistance(d, u, niters);          // @0xb8f35a
         assert(*(int*)((char*)*(void**)((char*)u+0x38) + 0x110) == 1);   // use MLSet gate
-        if (dist > 0) {                                           // CONFIRMED: test r14d,r14d; jle skip @0xb8f388
+        if (dist > 0) {                                           // test r14d,r14d; jle skip @0xb8f388
             LOG("ZZZZZZZZZZZZmax iteration distance <tensor>@<...> : use -> def : %d "
                 "(iteration groups:%d)\n", dist, niters);
             return 1;                                             // NEGATIVE distance ⇒ illegal
@@ -371,9 +371,15 @@ This is the divisor whose `niters1/niters`, `niters2/niters` non-zero asserts fi
 }
 ```
 
-> **CORRECTION (C3 of D-K14) — the sign is `dist > 0 ⇒ negative`, inverted from K14's prose.** K14 wrote "if distance ≤ 0 it flags negative." The disassembly is the opposite: `test r14d,r14d ; jle <continue>` — a **non-positive** distance is *skipped* (legal); a **strictly positive** distance triggers the reject. Read against the kernel (max def-iteration index still live at a use iteration), a positive value on a `(def∈L1, use∈L2)` pair means `L2`'s read consumes a value `L1` writes at a *later* relative iteration. After fusing `L1`+`L2` into one body, that read would precede its producing write within the same iteration carry → a **backward** (negative) loop-carried dependence. Hence the banner says `"max iteration distance … use -> def"` and the function is `has_NEGATIVE_distance`: forward in pre-fusion order ⇒ negative after fusion.
+### Why "positive distance" means "negative dependence"
 
-> **CORRECTION (C4 of D-K14) — a per-level direction *vector* is materialized after all.** K14 §5.2 said interchange uses "a per-pair direction *test*, not a materialized direction *matrix*." Refined: `constructLoopDependenceGraph` ([§3C](#3-the-per-loop-builder--constructloopdependencegraph)) *does* materialize a per-pair direction vector (`std::vector<int>` of `{-1,0,+1}`) into the `DDGTy` multimap. The legality *decision*, however, still reduces to the scalar `has_negative_distance > 0` test; the vector is built and dumped but its only observed consumer is the debug projection.
+The sign convention reads backwards until you line it up with what the kernel returns. `getDefUseDistance` gives the *max def-iteration index still live at some use iteration*, so on a `(def ∈ L1, use ∈ L2)` pair a **positive** value means `L2`'s read consumes a value `L1` writes at a *later* relative iteration. That is fine as long as the loops stay separate — `L1` runs to completion first. Fuse `L1` and `L2` into one body and the same read now precedes its producing write within the same iteration carry: a **backward**, i.e. negative, loop-carried dependence.
+
+So `has_negative_distance` rejects on `dist > 0` and skips on `dist ≤ 0`, which is exactly the `test r14d,r14d ; jle <continue>` at `0xb8f388`. The diagnostic banner's `"max iteration distance … use -> def"` phrasing describes the pre-fusion direction; the function name describes the post-fusion consequence.
+
+> **GOTCHA —** a *non-positive* distance is the legal case. Reading `has_negative_distance` as "rejects when the distance is negative" inverts the test: no negative number is ever produced, since the kernel's running max starts at 0.
+
+The direction vector is a separate product. `constructLoopDependenceGraph` ([§3C](#3-the-per-loop-builder--constructloopdependencegraph)) does materialize a per-pair `std::vector<int>` of `{-1,0,+1}` into the `DDGTy` multimap, one element per shared loop level — but the legality *decision* still reduces to the scalar `dist > 0` test, and the vector's only observed consumer is the debug projection.
 
 ---
 
@@ -397,7 +403,7 @@ void collect_def_in_loop(InstLoop* L, std::vector<SAP*>& out) {
 // and selects ArgumentKind == 1 (reads).
 ```
 
-> **DEF = output/written SAP, USE = input/read SAP** — the standard def-use polarity. [STRONG: ilist heads CONFIRMED; the `ArgumentKind` enum *values* 1/2 are read from the decompiler + ilist offsets and are consistent, but the enum *name* is inferred.] The `collect_use_in_loop` symbol is independently CONFIRMED in the corpus with signature `(bir::InstLoop*, std::vector<bir::SymbolicAccessPattern*>&)`.
+> **DEF = output/written SAP, USE = input/read SAP** — the standard def-use polarity. The ilist heads and the discriminant values 1/2 are read directly; the enum *name* `ArgumentKind` is **INFERRED**. `collect_use_in_loop` carries the full signature `(bir::InstLoop*, std::vector<bir::SymbolicAccessPattern*>&)` in the symbol table.
 
 ---
 
@@ -409,7 +415,7 @@ void collect_def_in_loop(InstLoop* L, std::vector<SAP*>& out) {
 |---|---|---|
 | `check_loop_fusion(BasicBlock&, int)` | `0xb95a70` | non-greedy fusion legality |
 | `check_loop_fusion_fast(BasicBlock&)` | `0xb92d60` | fast-path fusion legality |
-| `checkLoopFusionGreedy(BasicBlock&, int)` | `0xba9210` | greedy fusion legality (K14 §4 driver) |
+| `checkLoopFusionGreedy(BasicBlock&, int)` | `0xba9210` | greedy fusion legality |
 | `check_loop_interchange(…)` | `0xb93430` | interchange legality |
 
 The dependence-distance machinery is the **legality gate for loop fusion and loop interchange** inside `LoopOptimization`. Flow: `run()` → per-BB `checkLoopFusionGreedy` / `check_loop_fusion` → for each candidate loop pair (within the positional `distanceThreshold = 8` window) → `has_negative_distance(L1, L2)` → if true, emit `"[STOP FUSION] negative distance dep in def-use"` and reject; else fusion/interchange may proceed.
@@ -418,24 +424,22 @@ The per-loop `PerLoopDistMap` (`InstLoop+0x210`) built by `constructLoopDependen
 
 ### Relation to the real isl path
 
-There is **no structural relation** to the genuine isl machinery. The Penguin loop transforms validate against this access-pattern dependence graph (byte-interval overlap over iteration groups), not the isl schedule checker. The stock islpy / TongaIsl analysis ([5.16](isl-dependence-graph.md), [`isl-schedule-tree-legality`](isl-schedule-tree-legality.md)) is a separate machine in the Penguin/affine bridge and is invoked by **none** of the three functions on this page. Confirmed by the absence of any `isl_*` reference in `getDefUseDistance @ 0x20d4e0`.
+There is **no structural relation** to the genuine isl machinery. The Penguin loop transforms validate against this access-pattern dependence graph (byte-interval overlap over iteration groups), not the isl schedule checker. The stock islpy / TongaIsl analysis ([5.16](isl-dependence-graph.md), [`isl-schedule-tree-legality`](isl-schedule-tree-legality.md)) is a separate machine in the Penguin/affine bridge and is invoked by **none** of the three functions on this page — there is no `isl_*` reference anywhere in `getDefUseDistance @ 0x20d4e0`.
 
-> **Downstream live ranges.** The dependence distance also bounds def→use live ranges: a use that reads `k` iterations after its def needs `k` live buffer copies. The symbolic-AP buffer materialization / software-pipeline-depth sizing consumes the same integer `k` this gate produces. [cross-ref, STRONG]
+> **NOTE — downstream live ranges.** The dependence distance also bounds def→use live ranges: a use that reads `k` iterations after its def needs `k` live buffer copies. Symbolic-AP buffer materialization and software-pipeline-depth sizing consume the same integer `k` this gate produces, though that consumption is established on the buffer-sizing side rather than here.
 
 ---
 
-## 8. Confidence, gaps, and adversarial self-verify
+## 8. Evidence summary and known gaps
 
-The five strongest claims, re-challenged against the binary:
+The five strongest claims and their anchors:
 
-1. **"Zero isl — boost::icl, name-only polyhedral."** `rg -c isl_` over the decompiled `getDefUseDistance @ 0x20d4e0` body → **0**. The same body contains 72 `icl` tokens, 24 `interval_set`, and one `boost::icl::intersects`. CONFIRMED.
-2. **`getDefUseDistance` is interval-overlap, not offset subtraction.** Decompile line 1255 is `boost::icl::intersects(defGroups[gi], useGroups[gj])`; lines 1270–1272 are the `v183` running max; both loops bounded by `v201 == niters`. CONFIRMED — supersedes K14's offset-subtraction reading.
-3. **Existence gate `+0x110 == 1` and `+0x188 − 280` location identity.** Decompile lines 260/266 (`+272 == 1` ⇒ `isa<MemoryLocationSet>`), 262–272 (`+392`, `−280`), 273 (`if (mlsUse != mlsDef) return 0`). CONFIRMED.
-4. **`niters` = GCD × parent trips.** `has_negative_distance` shows three `getTripCount` (`[vtbl+0x140]`), GCD `idiv`, four `getParentLoop`. CONFIRMED — supersedes K14's "partition-axis index."
-5. **Sign: `dist > 0 ⇒ reject`.** `test r14d,r14d ; jle <continue>` @ `0xb8f388`. CONFIRMED — supersedes K14's inverted prose.
+1. **"Zero isl — boost::icl, name-only polyhedral."** The `getDefUseDistance @ 0x20d4e0` body has no `isl_` token at all, against 72 `icl` tokens, 24 `interval_set`, and one `boost::icl::intersects`.
+2. **`getDefUseDistance` is interval-overlap, not offset subtraction.** Decompile line 1255 is `boost::icl::intersects(defGroups[gi], useGroups[gj])`; lines 1270–1272 are the `v183` running max; both loops are bounded by `v201 == niters`.
+3. **Existence gate `+0x110 == 1` and `+0x188 − 280` location identity.** Decompile lines 260/266 (`+272 == 1` ⇒ `isa<MemoryLocationSet>`), 262–272 (`+392`, `−280`), 273 (`if (mlsUse != mlsDef) return 0`).
+4. **`niters` = GCD × parent trips.** `has_negative_distance` shows three `getTripCount` (`[vtbl+0x140]`), a GCD `idiv`, and four `getParentLoop`.
+5. **Sign: `dist > 0 ⇒ reject`.** `test r14d,r14d ; jle <continue>` @ `0xb8f388`.
 
-**STRONG (not byte-pinned):** the `ArgumentKind ∈ {1,2}` enum *name*; the per-loop `niters` equals the kernel divisor (Hex-Rays mistypes it, but the predicate-count dataflow + shared contract make it strong); `DependenceEdgeT` node size = 40 bytes (`tc_new(40)`).
+**Not byte-pinned:** the `ArgumentKind ∈ {1,2}` enum *name*; that the per-loop `niters` equals the kernel divisor (the predicate-count dataflow and shared contract make it near-certain, but the decompiler mistypes the argument); `DependenceEdgeT` node size = 40 bytes, from `tc_new(40)`.
 
-**INFERRED / GAPS:** exact `DependenceEdgeT` member layout (only the 40-byte size and that it stores the target `Instruction*` are recovered); whether a multi-level mixed-sign direction vector (e.g. `[<,>]`) is ever consumed for a reorder decision beyond the scalar `has_negative_distance > 0` reject — only the scalar consumption is observed; the `getAddressIntervals` dtype byte-size table (`Dtype.h`, `≤ 0x13` dtypes) is used but not enumerated here.
-
-**Corroborates D-K14 unchanged:** the `+0x110 == 1` MemoryLocationSet gate on both SAP ends; the `"[STOP FUSION]"` reject + fusion-driver call graph; the per-loop SAP×SAP integer distance map.
+**Open gaps:** the exact `DependenceEdgeT` member layout — only the 40-byte size and the stored target `Instruction*` are recovered; whether a multi-level mixed-sign direction vector (e.g. `[<,>]`) is ever consumed for a reorder decision beyond the scalar `dist > 0` reject, since only the scalar consumption is observed; and the `getAddressIntervals` dtype byte-size table (`Dtype.h`, `≤ 0x13` dtypes), which is used here but not enumerated.

@@ -57,7 +57,7 @@ OrderColumnTiledMMs::run @0x17011b0          ── per-Function / per-BasicBloc
 A "column-tiled matmul" is a plain `bir::InstMatmult` (opcode 8 *only* — `MatmultMx`/95 and Sparse/9 take a different path) that saturates the partition axis but writes a partial output-column slice. The tile fields are read off the `bir::Instruction*` view at the offsets recovered from `getLegalTileSize`/`getLegalTilePosition` (`@0x1094e70` / `@0x1094330`); each has a boost-optional "present" tag byte that throws `std::out_of_range` when invalid, so both accessors assert `tag == 0` first.
 
 ```c
-bool isColumnTiledMatmul(Instruction *I):     // @0x1700620 [CONFIRMED]
+bool isColumnTiledMatmul(Instruction *I):     // @0x1700620
     if (I == NULL)            return false;
     if (I->opcode /*+0x58*/ != 8)  return false;   // ONLY plain InstMatmult (IT8)
     if (I[+0x278] != 0) throw;     // legalTileSize[1] present-tag must be valid
@@ -68,14 +68,16 @@ bool isColumnTiledMatmul(Instruction *I):     // @0x1700620 [CONFIRMED]
         && partExtent == 0x80;          // partExtent == 128      → FULL partition column
 ```
 
-The binary computes the column test as `cmp $0x7e,%eax` on the raw `+0x258` extent, i.e. the C-level `(colExtent - 1) <= 0x7e` is fused to the unsigned `colExtent <= 0x7f` boundary with the partition test `cmpl $0x80,0x230` (`@0x170066d`); both feed a `sete` into the boolean result. [CONFIRMED — opcode `cmpl $0x8,0x58(%rsi)` `@0x170062b`; `cmp $0x7e` `@0x1700667`; `cmpl $0x80,0x230` `@0x170066d`.]
+The column test is compiled as an unsigned bound on the raw `+0x258` extent — the C-level `(colExtent - 1) <= 0x7e` becomes `colExtent <= 0x7f` — and both that test and the partition test feed a `sete` into the boolean result, so the predicate is branch-free after the opcode check.
+
+*Anchors: `isColumnTiledMatmul` @ `0x1700620` — opcode test `0x170062b`, column bound `0x1700667`, partition bound `0x170066d`.*
 
 > **NOTE —** the group is keyed purely by tile *shape* `(legalTileSize[0], legalTileSize[1])`, never by PSUM bank id. Two tiles of the same large matmul necessarily share the shape, and a shape change — a ragged final column tile, or a different matmul entirely — breaks the run. A value of `0xffffffff` (-1) in a tile field means "not cached" and forces a fallback to `getTilePositionEvalIfNeeded` (affine evaluation over the schedule).
 
 A group is *opened* only by the tile at the origin, position `(0,0)` — the leftmost column slice that owns column-0 of the output region. That tile becomes the chain head:
 
 ```c
-bool isStartOfColumnTiledGroup(Instruction *I):   // @0x17006a0 [CONFIRMED]
+bool isStartOfColumnTiledGroup(Instruction *I):   // @0x17006a0
     if (!isColumnTiledMatmul(I))  return false;
     cast<InstMatmultBase>(I);                 // assert opcode in {7,8,9,95}
     if (I[+0x2c8] != 0) throw;                 // legalTilePosition[1] present-tag
@@ -89,7 +91,7 @@ bool isStartOfColumnTiledGroup(Instruction *I):   // @0x17006a0 [CONFIRMED]
 `run` installs the `module_name` log attribute, emits `"Running OrderColumnTiledMMs pass"`, then walks every function's basic blocks maintaining one running group. Groups never cross a basic-block boundary.
 
 ```c
-function OrderColumnTiledMMs_run(Module M):        // @0x17011b0 [CONFIRMED]
+function OrderColumnTiledMMs_run(Module M):        // @0x17011b0
     for each Function F in M:
       have_group = false; group_vec.clear(); group_key = {0,0};
       for each BasicBlock B in F:                  // groups are per-BB
@@ -112,7 +114,9 @@ function OrderColumnTiledMMs_run(Module M):        // @0x17011b0 [CONFIRMED]
       processAndResetGroup(group_vec, have_group, group_key);
 ```
 
-The shape key is compared field-by-field: `cmp [rsp+0xa8],ts0` `@0x1701653` and `cmp [rsp+0xac],ts1` `@0x1703031`; the `isColumnTiledMatmul` extend-test is `@0x1701642`, `isStartOfColumnTiledGroup` `@0x1701d68`, `processAndResetGroup` `@0x1701d54`. The pass is logging-heavy — DEBUG strings (`"Found start of column tiled group: "` `@0x1d8b558`, `"Adding to column tiled group: "` `@0x1d8b580`, `"End of column tiled group …"`, `"Processing final column tiled group with "`) interleave the data path but the field reads and branch targets are exact. [CONFIRMED.]
+The shape key is compared field-by-field rather than as a packed pair, so a group survives only while both tile dimensions match exactly. The pass is logging-heavy: DEBUG strings (`"Found start of column tiled group: "` `@0x1d8b558`, `"Adding to column tiled group: "` `@0x1d8b580`, `"End of column tiled group …"`, `"Processing final column tiled group with "`) interleave the data path, but they carry no state.
+
+*Anchors: shape-key compares `0x1701653` / `0x1703031`; extend-test call `0x1701642`; group-start call `0x1701d68`; `processAndResetGroup` call `0x1701d54`.*
 
 ### The ordered chain
 
@@ -126,7 +130,7 @@ function createOrderedDependencies(vector<Instruction*> &group):  // @0x1700710
         if (added):  log "Added ordered dependency from <group[i-1]> to <group[i]>";
 ```
 
-The loop init `movq $0x1,0x20(%rsp)` (`@0x170072d`), the `mov $0x1,%edx` setting `EdgeKind::Ordered` (`@0x1700798`), and the `call 5eff00 <addDependency>` (`@0x170079d`) are all confirmed in the body. `EdgeKind` is `{0 Invalid, 1 Ordered, 2 Anti, 3 Output, 4 Flow}`; `Ordered(1)` is a pure scheduling-order constraint — it pins relative order *without* implying a memory hazard. The resulting chain is linear:
+The loop index starts at 1 and the edge kind passed to `addDependency` (`@0x5eff00`) is the literal `1`. `EdgeKind` is `{0 Invalid, 1 Ordered, 2 Anti, 3 Output, 4 Flow}`; `Ordered(1)` is a pure scheduling-order constraint — it pins relative order *without* implying a memory hazard. The resulting chain is linear:
 
 ```text
 tile(pos 0) → tile(pos 1) → tile(pos 2) → … → tile(last)
@@ -139,7 +143,7 @@ tile(pos 0) → tile(pos 1) → tile(pos 2) → … → tile(last)
 
 The point of the `Ordered` edges is that the post-RA list scheduler (order 92, `post_sched`) *respects* them, so it cannot reorder a column tile out of its accumulate sequence. Without this, a non-head tile scheduled before the head would add into an uninitialized (un-zeroed) bank, or the head's later START would wipe a partial it should have kept. The linear chain also keeps DoubleColumn perf-mode (2 output columns/cycle) aligned, since even-width packing requires the tiles execute in order. No pass-specific `PassOptions` are parsed; the pass is unconditional once registered at order 91.
 
-> **CORRECTION (H28) —** an earlier hypothesis held that `OrderColumnTiledMMs` calls `set_first_matmults`. A call-site sweep shows it does not: `set_first_matmults` has exactly one caller in the whole library, `reduce_dependencies::dep_opt` `@0xc464e0`. Order 91 and `set_first_matmults` are independent contributors to the same accumulate machinery, not a caller/callee pair.
+The pass never touches `set_first_matmults`, which has exactly one caller in the whole library — `reduce_dependencies::dep_opt` `@0xc464e0`. Order 91 and `set_first_matmults` are independent contributors to the same accumulate machinery, not a caller/callee pair.
 
 ---
 
@@ -152,7 +156,7 @@ A flag-marking routine that makes a *first* pass at the Start flag, keyed by PSU
 ### Algorithm
 
 ```c
-function set_first_matmults(Function &F):           // @0x157d340 [CONFIRMED]
+function set_first_matmults(Function &F):           // @0x157d340
     collect_all_blocks(F, &blocks);                 // @0x5ee960
     DenseSet<key> seen;                             // open-addressed; sentinels
                                                     //   empty 0xffff…f000 / tombstone …e000
@@ -165,7 +169,7 @@ function set_first_matmults(Function &F):           // @0x157d340 [CONFIRMED]
             else:           I->setCalcContinue();      // subsequent → clear start+stop
 ```
 
-The `setCalcStart` (`call 600990` `@0x157d431`) and `setCalcContinue` (`call 5f91b0` `@0x157d4b0`) edges are confirmed. The DenseSet helper `@0x157d190` hashes `(k>>9 ^ k>>4) & (cap-1)`, linear-probes, and returns `inserted=false` when the key already exists, growing the table past 3/4 load.
+`setCalcStart` is `@0x600990` (called from `0x157d431`) and `setCalcContinue` is `@0x5f91b0` (called from `0x157d4b0`). The DenseSet helper `@0x157d190` hashes `(k>>9 ^ k>>4) & (cap-1)`, linear-probes, and returns `inserted=false` when the key already exists, growing the table past 3/4 load.
 
 > **NOTE —** group identity here is the **PSUM destination access-pattern** (`output(0)` AP), not the bank id or output tile directly. This is a provisional, pre-physical-allocation partition. The single caller `dep_opt` runs it as the third step of a re-legalization block — `sync_tiled_matmult_matmultmx` (`@0x1579430`) → `sanitize_matmult_stc_bits` (`@0xc32e50`, clears stale `start_tensor_calc` bits) → `set_first_matmults` — to re-stamp the Start flag from scratch after dependency reduction perturbs the order. The order-94 legalizer below is what produces the *final, physically consistent* flags.
 
@@ -195,7 +199,7 @@ LegalizeMatmulAccumulationGroups::run @0x16e4120
 
 ### The MatmulAccGrp geometry struct
 
-The ctor takes `(MemoryLocation *psumLoc, vector<InstMatmultBase*> &matmuls)` and folds min/max over every matmul's write-AP to build the group's geometry ranges. The matmul vector is insertion-sorted ascending by `inst[+0x4c]` (the program ordinal stamped by `index_instructions`). All offsets CONFIRMED from the ctor disasm `0x16e0ae0–0x16e1248`.
+The ctor takes `(MemoryLocation *psumLoc, vector<InstMatmultBase*> &matmuls)` and folds min/max over every matmul's write-AP to build the group's geometry ranges. The matmul vector is insertion-sorted ascending by `inst[+0x4c]` (the program ordinal stamped by `index_instructions`). The offsets below come from the ctor body, `0x16e0ae0`–`0x16e1248`.
 
 | Field | Offset | Type | Meaning |
 |---|---|---|---|
@@ -215,7 +219,7 @@ The ctor takes `(MemoryLocation *psumLoc, vector<InstMatmultBase*> &matmuls)` an
 
 ### The five overlap predicates
 
-All five are tiny leaf functions in the `0x16da920`–`0x16da9d0` band. Four are the *same* closed-interval intersection compiled over a different field pair; the fifth is a dispatcher. The shared skeleton is the standard "`[a.lo,a.hi]` and `[b.lo,b.hi]` overlap": `if a.lo < b.lo → b.lo <= a.hi; else if a.lo > b.lo → a.lo <= b.hi; else true` — equivalently `a.lo <= b.hi && b.lo <= a.hi`. [CONFIRMED — identical `cmp / jae / setbe` skeleton in all four interval tests.]
+All five are tiny leaf functions in the `0x16da920`–`0x16da9d0` band. Four are the *same* closed-interval intersection compiled over a different field pair; the fifth is a dispatcher. The shared skeleton is the standard "`[a.lo,a.hi]` and `[b.lo,b.hi]` overlap": `if a.lo < b.lo → b.lo <= a.hi; else if a.lo > b.lo → a.lo <= b.hi; else true` — equivalently `a.lo <= b.hi && b.lo <= a.hi`. All four compile to the identical `cmp / jae / setbe` shape, differing only in the field pair they load.
 
 | # | Predicate | Address | Fields | Range meaning |
 |---|---|---|---|---|
@@ -225,17 +229,21 @@ All five are tiny leaf functions in the `0x16da920`–`0x16da9d0` band. Four are
 | 4 | `is_partition_dim_overlap` | `@0x16da9b0` | dispatcher | selects #3 or #2 by mode byte +0xf8 |
 | 5 | `is_index_overlap` | `@0x16da9d0` | +0x58 / +0x60 | 64-bit SIGNED program-ordinal range |
 
-Predicate **1** (zero-region bank) is the decisive one: if two groups' zero-region windows intersect, a single START-zeroes cannot serve both, so they must be merged. Predicate **5** (index) is the schedule-interleave test: signed 64-bit (`jge`/`setle` `@0x16da9db`/`@0x16da9e1`) over the `inst+0x4c` ordinals — two groups index-overlap iff one's matmuls are scheduled *between* another's, so the flag assignment of one must account for the other's intervening writes.
+Predicate **1** (zero-region bank) is the decisive one: if two groups' zero-region windows intersect, a single START-zeroes cannot serve both, so they must be merged. Predicate **5** (index) is the schedule-interleave test: a *signed* 64-bit comparison over the `inst+0x4c` ordinals — two groups index-overlap iff one's matmuls are scheduled *between* another's, so the flag assignment of one must account for the other's intervening writes.
 
 Predicate **4** is not an interval test; it tail-calls one of the two preceding tests by the per-group mode byte:
 
 ```c
-bool is_partition_dim_overlap(MatmulAccGrp *other):    // @0x16da9b0 [CONFIRMED]
+bool is_partition_dim_overlap(MatmulAccGrp *other):    // @0x16da9b0
     if (this[+0xf8] == 0)  return is_quadrant_overlap(other);   // je → quadrant
     else                   return is_col_grp_overlap(other);    // jmp → col-grp
 ```
 
-The binary is `cmpb $0x0,0xf8(%rdi); je → is_quadrant_overlap@plt; jmp → is_col_grp_overlap@plt` (`@0x16da9b7`/`@0x16da9b9`/`@0x16da9c0`). The ctor inits the byte to 1, so the default partition-axis reasoning is in column-group units; a group whose writes are quadrant-tiled rather than col-tiled has the byte cleared and reasons in 32-partition quadrant units instead. [Branch targets CONFIRMED; the col-tiled-vs-quadrant-tiled semantics of the byte is STRONG (inferred from the two targets + ctor init).]
+Both arms are tail calls, so the dispatcher costs a single compare. The ctor inits the byte to 1, so the default partition-axis reasoning is in column-group units; a group whose writes are quadrant-tiled rather than col-tiled has the byte cleared and reasons in 32-partition quadrant units instead.
+
+> **INFERRED —** the two branch targets and the ctor's initialization to 1 are direct; reading the byte as "col-tiled vs quadrant-tiled" is the interpretation that fits them, not an independently pinned fact.
+
+*Anchors: mode-byte test @ `0x16da9b7`, quadrant arm @ `0x16da9b9`, col-group arm @ `0x16da9c0`.*
 
 Two reduction predicates gate whether the pass re-derives flags at all:
 
@@ -247,7 +255,7 @@ bool all_auto_psum_accummutate_flag():       // @0x16daa10 — TRUE iff every
 bool all_non_auto_psum_accummutate_flag():   // @0x16dab20 — TRUE iff every == false
 ```
 
-`all_auto` ⇒ honour existing flags; `all_non_auto` ⇒ this pass owns assignment; mixed ⇒ the inconsistent case the legalizer exists to fix. [Both bodies CONFIRMED; the gate semantics STRONG.]
+`all_auto` ⇒ honour existing flags; `all_non_auto` ⇒ this pass owns assignment; mixed ⇒ the inconsistent case the legalizer exists to fix. The two bodies are plain all-quantifiers over `getCalcAuto()`; the three-way policy reading of their results is inferred from how the callers branch on them.
 
 ### Grouping — collect_acc_grps and the group-identity rule
 
@@ -255,7 +263,7 @@ bool all_non_auto_psum_accummutate_flag():   // @0x16dab20 — TRUE iff every ==
 
 ```c
 function find_accumulation_groups_writing_to_same_memloc(vector<PhysicalAP*> &writers):
-    // @0x1592800 — THE group-identity rule [CONFIRMED]
+    // @0x1592800 — THE group-identity rule
     map<Instruction*,int> ord;                  // distinct writer → program ordinal
     for each AP in writers:
         inst   = AP[+0x20];                     // writer instruction
@@ -269,7 +277,7 @@ function find_accumulation_groups_writing_to_same_memloc(vector<PhysicalAP*> &wr
     // not split by an intervening non-matmul superset write → one MatmulAccGrp.
 ```
 
-The opcode classify is `lea edx,[rax-7]; cmp edx,2; jbe` plus `cmp eax,0x5f; je` (`@0x1592993`). **Group identity** = (same PSUM `MemoryLocation`) ∧ (a maximal program-ordered run of matmul writers, not split by an intervening non-matmul superset write). A non-matmul writer (typically a `memset` that explicitly zeroes the bank) sitting in front of or between matmuls terminates / re-seeds the chain — that explicit zero replaces the implicit first-matmul START. [CONFIRMED.]
+The opcode classify folds the `{7,8,9}` run into one unsigned range check and tests `95` separately (`@0x1592993`). **Group identity** = (same PSUM `MemoryLocation`) ∧ (a maximal program-ordered run of matmul writers, not split by an intervening non-matmul superset write). A non-matmul writer (typically a `memset` that explicitly zeroes the bank) sitting in front of or between matmuls terminates / re-seeds the chain — that explicit zero replaces the implicit first-matmul START.
 
 ### Overlap clustering — find_overlapped_psum_zero_region_groups
 
@@ -287,16 +295,16 @@ function find_overlapped_psum_zero_region_groups(grps, &out):   // @0x16dee50
         //   between constituent matmuls → chain stays contiguous through scheduling
 ```
 
-Two groups merge iff they share a zero-region bank window **and** a partition-axis tile. Because their banks overlap, their start/stop/zero-region flags cannot be assigned independently — a START on one would clobber the other's partial sums. A non-overlapping group still becomes a singleton `OverlappedMatmulAccGrp` so `run` treats every group uniformly. The `OverlappedMatmulAccGrp` re-folds head (global min `inst+0x4c`), tail (global max), the merged quadrant range (+0x38/+0x3c), and the union byte-interval set (+0xc8). [CONFIRMED.]
+Two groups merge iff they share a zero-region bank window **and** a partition-axis tile. Because their banks overlap, their start/stop/zero-region flags cannot be assigned independently — a START on one would clobber the other's partial sums. A non-overlapping group still becomes a singleton `OverlappedMatmulAccGrp` so `run` treats every group uniformly. The `OverlappedMatmulAccGrp` re-folds head (global min `inst+0x4c`), tail (global max), the merged quadrant range (+0x38/+0x3c), and the union byte-interval set (+0xc8).
 
 ### Algorithm — the START/STOP/ACCUMULATE legalization
 
-`run` first checks an arch gate: `mov 0xa0(Module),%rax; cmpl $0x4,0x4(%rax)` (`@0x16e413f`/`@0x16e414b`) — the `Hwm+4 == 4` generation does its own implicit accumulate, so the pass only clears stale flags via `reset_psum_accumulate_flag_and_zero_region` and returns. Otherwise it runs the mainline per function (`index_instructions` is called twice — once before grouping, once after `legalize_psum_accumulate_flag` may have inserted memsets), and stamps `FunctionAttribute(key=19)` as the completion marker.
+`run` first checks an arch gate — the hardware model hangs off `Module+0xa0` and its generation sub-field at `Hwm+4` is compared against 4 (`@0x16e414b`). That generation does its own implicit accumulate, so the pass only clears stale flags via `reset_psum_accumulate_flag_and_zero_region` and returns. Otherwise it runs the mainline per function (`index_instructions` is called twice — once before grouping, once after `legalize_psum_accumulate_flag` may have inserted memsets), and stamps `FunctionAttribute(key=19)` as the completion marker.
 
 The flag lowering itself:
 
 ```c
-function set_psum_accumulate_flag():                  // @0x16e1410 [CONFIRMED]
+function set_psum_accumulate_flag():                  // @0x16e1410
     M = this->head /*+0x18*/ -> getModule();
     if (M[+0xac] == 0x28 /*ArchLevel core_v4 == 40*/ && use_memset()):
         // bank pre-cleared by an explicit memset → NO first-matmul-zero
@@ -307,9 +315,11 @@ function set_psum_accumulate_flag():                  // @0x16e1410 [CONFIRMED]
     this->tail /*+0x28*/ -> setCalcStop();             // LAST matmul drains / reads out
 ```
 
-The arch gate is `cmpl $0x28,0xac(%rax)` (`@0x16e1424`), `use_memset` is `call 61cc30` (`@0x16e1453`), the head's `setCalcStart` is `call 600990` (`@0x16e1432`), the `setCalcAccu` loop is `call 5f24c0` (`@0x16e148f`), and the tail's `setCalcStop` is `call 5f41e0`. This is the canonical PE convention: HEAD = `start_tensor_calc` (zero-on-first-write), interior matmuls accumulate, TAIL = `stop_tensor_calc` (drain). The codegen lowers these to the ISA accumulate byte at `isa+43` with `bit0=START / bit1=STOP / bit2=ACCUMULATE` (`CoreV3GenImpl::generateMatMulAccumulateFlag` `@0x1428630`, skipped on `ArchLevel > 40` / core_v5). [Flag bodies CONFIRMED; the ISA-byte encoding is the cross-referenced codegen contract.]
+This is the canonical PE convention: HEAD = `start_tensor_calc` (zero-on-first-write), interior matmuls accumulate, TAIL = `stop_tensor_calc` (drain). The codegen lowers these to the ISA accumulate byte at `isa+43` with `bit0=START / bit1=STOP / bit2=ACCUMULATE` (`CoreV3GenImpl::generateMatMulAccumulateFlag` `@0x1428630`, skipped on `ArchLevel > 40` / core_v5) — that byte encoding is the cross-referenced codegen contract rather than something this pass writes directly.
 
-> **CORRECTION (H10→H31) —** the "core_v4" gate was earlier taken from a `> 40` codegen test on the `isa+43` byte. The actual constant read *here* is exactly `0x28 == 40` off `Module+0xac` (the `ArchLevel` enum: `inf=10, sunda=20, gen3=30, core_v4=40, core_v5=50`). The `Hwm+4 == 4` skip gate at the top of `run` is a *different* field (a Hwm generation sub-field), not the `ArchLevel`.
+The gate tested here is an **exact equality** against the `ArchLevel` enum at `Module+0xac`, whose values are `inf=10, sunda=20, gen3=30, core_v4=40, core_v5=50`; `0x28` is therefore precisely `core_v4`, not a `> 40` threshold. This is a different field from the `Hwm+4 == 4` skip gate at the top of `run`, which reads a hardware-model generation sub-field. Confusing the two makes the all-accumulate variant fire on the wrong parts.
+
+*Anchors: `set_psum_accumulate_flag` @ `0x16e1410` — ArchLevel test `0x16e1424`, `setCalcStart` `0x16e1432`, `use_memset` call `0x16e1453` (`@0x61cc30`), `setCalcAccu` loop `0x16e148f` (`@0x5f24c0`), `setCalcStop` `@0x5f41e0`.*
 
 `use_memset` (`@0x16e1300`) returns true iff *every* subgroup has a preceding non-matmul writer whose dst AP is a superset of the group's footprint:
 
@@ -324,14 +334,16 @@ bool use_memset():                                    // @0x16e1300
 //   → the bank is guaranteed cleared ahead of the chain, so the implicit zero is dropped.
 ```
 
-When the implicit "first matmul zeroes" convention is unsafe — a prior write already touched the bank, or two chains interleave on one bank — `legalize_psum_accumulate_flag` (`@0x16e3130`) materializes an explicit `InstMemset` via `insert_mm_memset` (`@0x615100`) and converts the matmuls to pure accumulators. It uses `boost::icl::intersects` on the +0xc8 byte-interval sets (`@0x5e95d0`, 3×) for exact-footprint intersection between subgroups. [STRONG — full body read; the exact branch-by-branch merge condition is partially inferred.]
+When the implicit "first matmul zeroes" convention is unsafe — a prior write already touched the bank, or two chains interleave on one bank — `legalize_psum_accumulate_flag` (`@0x16e3130`) materializes an explicit `InstMemset` via `insert_mm_memset` (`@0x615100`) and converts the matmuls to pure accumulators. It uses `boost::icl::intersects` on the +0xc8 byte-interval sets (`@0x5e95d0`, 3×) for exact-footprint intersection between subgroups.
+
+> **INFERRED —** the body, the `icl::intersects` calls, the `insert_mm_memset` materialization, and the arch checks are all direct; the exact branch-by-branch condition under which a memset is *forced* rather than merely permitted is reconstructed from control flow.
 
 ### The zero-region width
 
 The zero-region tells silicon how many banks the START matmul must clear, as a bit-width. The overlapped group's value comes from its merged quadrant span; each non-head member gets its own from its subgroup's bank span.
 
 ```c
-function set_psum_zero_region():                      // @0x16daff0 [CONFIRMED]
+function set_psum_zero_region():                      // @0x16daff0
     span = (this->quadrant_hi /*+0x3c*/ + 1) - this->quadrant_lo /*+0x38*/;
     zr   = (span <= 1) ? 0 : bit_width(span - 1);     // bsr(span-1) via xor 0x3f
     if (HEAD[+0x138] /*zero-region tag*/ == 0):
@@ -342,7 +354,9 @@ function set_psum_zero_region():                      // @0x16daff0 [CONFIRMED]
         if (mm[+0x138] == 0):  mm[+0x118] = (byte)zr2;
 ```
 
-The bit-width is `bsr %rax,%rax; xor $0x3f,%rax` (`@0x16db01f`/`@0x16db028`) over `(+0x3c)+1-(+0x38)` (`@0x16db006`/`@0x16db010`), written as a byte to `inst+0x118` with tag check at `inst+0x138` (`mov %bl,0x118(%r12)` `@0x16db05c`). The per-subgroup loop folds `(+0x4c)+1-(+0x48)` identically (`@0x16db0be`/`@0x16db0ca`/`@0x16db0da`). So `zero_region = ceil(log2(bankspan))`. [CONFIRMED.]
+The bit-width is a `bsr`-plus-`xor 0x3f` idiom — the compiler's inlined `bit_width` — over the inclusive span, written as a single byte to `inst+0x118` behind the tag check at `inst+0x138`. The per-subgroup loop folds the bank span `(+0x4c)+1-(+0x48)` through the identical sequence. So `zero_region = ceil(log2(bankspan))`.
+
+*Anchors: `set_psum_zero_region` @ `0x16daff0` — quadrant span `0x16db006`, `bsr`/`xor` `0x16db01f`, head byte store `0x16db05c`, per-subgroup span+store `0x16db0be`–`0x16db0da`.*
 
 The actual bank window is computed once in the ctor and stored at +0x50/+0x54:
 
@@ -356,7 +370,7 @@ function get_psum_zero_region_bank_range(uint startBank, uint endBank):  // @0x1
     return (0, 0);                            // k==4 (window 16) → NOT coverable (assert)
 ```
 
-The PSUM zero-region is always a power-of-2-aligned window of 1/2/4/8 banks; a span requiring 16 banks is the failure boundary. [CONFIRMED — `pow@0x614740`, `cmp ebx,4`.]
+The PSUM zero-region is always a power-of-2-aligned window of 1/2/4/8 banks; a span requiring 16 banks is the failure boundary. The window search literally calls `pow` (`@0x614740`) and caps the exponent at 4.
 
 > **GOTCHA —** the zero-region width and the zero-region *bank range* are two different things written at two different times. The byte `inst+0x118` (`ceil(log2(span))`) is set in `set_psum_zero_region` from the *quadrant* span for the head and the *bank* span for non-heads; the `zr_bank[lo,hi]` window at struct +0x50/+0x54 is computed in the ctor from `get_psum_zero_region_bank_range` and is what predicate 1 intersects. A reimplementation that conflates them will clear the wrong number of banks.
 
@@ -366,19 +380,19 @@ The PSUM zero-region is always a power-of-2-aligned window of 1/2/4/8 banks; a s
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-Five strongest claims re-checked directly against `libwalrus.so` (not the report):
+The five central claims and the instruction sites that pin them:
 
-| Claim | Binary evidence | Verdict |
+| Claim | Binary evidence | Confidence |
 |---|---|---|
-| `isColumnTiledMatmul` = opcode 8 ∧ colExtent≤127 ∧ partExtent==128 | `cmpl $0x8,0x58` `@0x170062b`; `cmp $0x7e,%eax` on +0x258 `@0x1700667`; `cmpl $0x80,0x230` `@0x170066d` | CONFIRMED |
-| Five overlap predicates over +0x50/54, +0x38/3c, +0x40/44, dispatcher, +0x58/60 | `cmp 0x54`/`0x3c`/`0x44`; `cmpb 0xf8` + `je quadrant`/`jmp col_grp`; signed `cmp 0x60` + `setle` | CONFIRMED |
-| `set_psum_accumulate_flag`: gate `0xac==0x28`, HEAD+0x18→Start, TAIL+0x28→Stop, memset→Accu | `cmpl $0x28,0xac` `@0x16e1424`; `setCalcStart` `@0x16e1432`; `setCalcAccu` loop `@0x16e148f` | CONFIRMED |
-| zero-region = `ceil(log2(span))` via `bsr;xor 0x3f`, byte→+0x118 tag +0x138 | `bsr;xor $0x3f` `@0x16db01f`; `mov %bl,0x118(%r12)` `@0x16db05c`; span `(+0x3c)+1-(+0x38)` | CONFIRMED |
-| `createOrderedDependencies` chains with `EdgeKind::Ordered(1)`, i from 1 | `movq $0x1,0x20(%rsp)` `@0x170072d`; `mov $0x1,%edx` `@0x1700798`; `call addDependency` `@0x170079d` | CONFIRMED |
+| `isColumnTiledMatmul` = opcode 8 ∧ colExtent≤127 ∧ partExtent==128 | `cmpl $0x8,0x58` `@0x170062b`; `cmp $0x7e,%eax` on +0x258 `@0x1700667`; `cmpl $0x80,0x230` `@0x170066d` | CERTAIN |
+| Five overlap predicates over +0x50/54, +0x38/3c, +0x40/44, dispatcher, +0x58/60 | `cmp 0x54`/`0x3c`/`0x44`; `cmpb 0xf8` + `je quadrant`/`jmp col_grp`; signed `cmp 0x60` + `setle` | CERTAIN |
+| `set_psum_accumulate_flag`: gate `0xac==0x28`, HEAD+0x18→Start, TAIL+0x28→Stop, memset→Accu | `cmpl $0x28,0xac` `@0x16e1424`; `setCalcStart` `@0x16e1432`; `setCalcAccu` loop `@0x16e148f` | CERTAIN |
+| zero-region = `ceil(log2(span))` via `bsr;xor 0x3f`, byte→+0x118 tag +0x138 | `bsr;xor $0x3f` `@0x16db01f`; `mov %bl,0x118(%r12)` `@0x16db05c`; span `(+0x3c)+1-(+0x38)` | CERTAIN |
+| `createOrderedDependencies` chains with `EdgeKind::Ordered(1)`, i from 1 | `movq $0x1,0x20(%rsp)` `@0x170072d`; `mov $0x1,%edx` `@0x1700798`; `call addDependency` `@0x170079d` | CERTAIN |
 
-**Re-verify ceiling.** Five predicates, the column-tiled predicate, the START/STOP/ACCUMULATE lowering, the zero-region computation, and the ordering chain are CONFIRMED at the disassembly level. The `is_partition_dim_overlap` mode-byte *semantics* (col-tiled vs quadrant-tiled) is STRONG — the two branch targets and ctor init are confirmed, but the high-level meaning of the byte is inferred. `legalize_psum_accumulate_flag`'s internal merge condition is STRONG — the body, the `icl::intersects` calls, the `insert_mm_memset` materialization, and the arch checks are confirmed, but the exact branch-by-branch condition under which a memset is forced is partially inferred. The `isa+43 START/STOP/ACCUMULATE` codegen byte and the simulator triad live outside this pass and are cited as cross-references, not re-derived here.
+Two claims on this page sit below that bar and are flagged inline where they appear: the *meaning* of the `is_partition_dim_overlap` mode byte (col-tiled vs quadrant-tiled), and the exact condition under which `legalize_psum_accumulate_flag` forces a memset. The `isa+43` START/STOP/ACCUMULATE codegen byte and the simulator triad live outside this pass and are cited as cross-references, not re-derived here.
 
 ---
 

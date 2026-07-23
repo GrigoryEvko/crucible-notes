@@ -69,7 +69,7 @@ function adl_serializer_Module_from_json(json& j, Module& m):   // 0x48df10
     // two-pass build/resolve; none of these read getVersion()
 ```
 
-> **NOTE —** the instruction immediately after `setVersion` is `cmpb $0x1,(%rbx)`, which *looks* like a `version == 1` branch but is the nlohmann `basic_json` type-tag check (object vs other). Do not transcribe it as a version dispatch — the version is consumed nowhere in this driver. [CONFIRMED — disasm @`0x48df10`; `at<char const(&)[8]>` confirms the 8-byte `"version\0"` key.]
+> **NOTE —** the instruction immediately after `setVersion` is `cmpb $0x1,(%rbx)`, which *looks* like a `version == 1` branch but is the nlohmann `basic_json` type-tag check (object vs other). Do not transcribe it as a version dispatch — the version is consumed nowhere in this driver. The `at<char const(&)[8]>` instantiation is what fixes the key as the 8-byte `"version\0"`.
 
 ### Function Map
 
@@ -81,7 +81,7 @@ function adl_serializer_Module_from_json(json& j, Module& m):   // 0x48df10
 
 ### Considerations
 
-`getVersion` having a single caller is the structural backbone of this whole page, so it is worth stating how it is established rather than asserted: a sweep of every disassembled function in the `libBIR.so` sidecar for a `call` to `Module::getVersion` returns **one** file — `QuasiAffineExpr::createFromJson`. No container deserializer, no per-opcode `readFieldsFromJson`, no operand or AccessPattern reader calls it. [CONFIRMED — `rg -l 'call.*ZNK3bir6Module10getVersionEv'` over the disasm corpus = 1 hit, that file.] If a reimplementer's version int reaches any reader other than the affine-expression reader, they have diverged from the binary.
+`getVersion` having a single caller is the structural backbone of this whole page, so it is worth stating how it is established rather than asserted: a sweep of every disassembled function in the `libBIR.so` sidecar for a `call` to `Module::getVersion` returns **one** file — `QuasiAffineExpr::createFromJson`. No container deserializer, no per-opcode `readFieldsFromJson`, no operand or AccessPattern reader calls it — searching the whole disassembly for a call to `_ZNK3bir6Module10getVersionEv` yields that one body. If a reimplementer's version int reaches any reader other than the affine-expression reader, they have diverged from the binary.
 
 ---
 
@@ -122,9 +122,9 @@ function QuasiAffineExpr_createFromJson(Instruction* instr, json const& j):   //
 
 ### Considerations
 
-`AffinePredicate::createFromJson` (`@0x22ebe0`) calls `QuasiAffineExpr::createFromJson` transitively, so the affine predicates on predicated dependency edges ride the **same** gate — a predicated dependency builds a `vector<QuasiAffineExpr>` plus a `vector<AffinePredicate>`, both of which are pelican expressions and both version-routed through this one branch. [STRONG — `AffinePredicate::createFromJson` calls `QuasiAffineExpr::createFromJson`; the version routing is inherited, not re-implemented.]
+`AffinePredicate::createFromJson` (`@0x22ebe0`) calls `QuasiAffineExpr::createFromJson` transitively, so the affine predicates on predicated dependency edges ride the **same** gate — a predicated dependency builds a `vector<QuasiAffineExpr>` plus a `vector<AffinePredicate>`, both of which are pelican expressions and both version-routed through this one branch. The predicate reader inherits the routing rather than re-implementing it.
 
-`fromJsonv1` and `fromJsonv2` are each reached from **exactly this one branch** — neither has any other caller. There is therefore no parallel "pelican version" selector; the pelican wire version *is* the BIR module version threaded down through `getModule()->getVersion()`. [CONFIRMED — each reader's call graph has the single caller `createFromJson`.]
+`fromJsonv1` and `fromJsonv2` are each reached from **exactly this one branch** — neither has any other caller. There is therefore no parallel "pelican version" selector; the pelican wire version *is* the BIR module version threaded down through `getModule()->getVersion()`.
 
 ---
 
@@ -155,7 +155,7 @@ function QuasiAffineExpr_toJson(json& out, uint version):   // 0x3bbda0
     return toJsonv2(this.expr, out)          // 0x3bbdcb  ── recursive {kind,…} tree emitter
 ```
 
-> **NOTE —** the read and write fatal strings are *distinct* literals, which is a useful tell for whoever is staring at a crash: `0x741110` ("…of bir json file…") fires from the reader, `0x740e20` ("Check the version…") fires from the writer. Both were confirmed at those addresses. [CONFIRMED — string table addrs `0x740e20`/`0x741110`.]
+> **NOTE —** the read and write fatal strings are *distinct* literals, which is a useful tell for whoever is staring at a crash: `0x741110` ("…of bir json file…") fires from the reader, `0x740e20` ("Check the version…") fires from the writer.
 
 ### The producer always writes v2
 
@@ -169,9 +169,9 @@ Every live caller of `QuasiAffineExpr::toJson` loads `mov edx, 2` before the cal
 | `0x3242a3` | `InstDynamicForLoop::toJson` | `mov edx,2` |
 | `0x3242ce` | `InstDynamicForLoop::toJson` | `mov edx,2` |
 
-There is no `mov edx, 1` feeding a `toJson` call anywhere in `libBIR.so`. [CONFIRMED — all three callers of `QuasiAffineExpr::toJson` disassembled; every preceding `mov edx,*` is `mov edx,2`.] The consequence for a reimplementer is precise: **v1 is dead on the write side.** `toJsonv1` and the `version==1` write arm exist, but no in-binary caller selects them; they would only run if external code passed `version=1`, which none does. v1 is therefore a *read-only legacy ingest format*, and v2 the sole produced one.
+There is no `mov edx, 1` feeding a `toJson` call anywhere in `libBIR.so`; across all three calling functions, every preceding `mov edx,*` is `mov edx,2`. The consequence for a reimplementer is precise: **v1 is dead on the write side.** `toJsonv1` and the `version==1` write arm exist, but no in-binary caller selects them; they would only run if external code passed `version=1`, which none does. v1 is therefore a *read-only legacy ingest format*, and v2 the sole produced one.
 
-> **QUIRK —** one more emitter forces v2 unconditionally and ignores even the (always-2) argument plumbing: `adl_serializer<bir::QuasiAffineExpr>::to_json` @`0x482620` hardwires `mov edx, 2` @`0x482623` before delegating. Any `QuasiAffineExpr` serialized through the nlohmann ADL hook — notably `DynamicAPINFO.offset_expr`, the dynamic-DMA byte offset — is emitted in v2 regardless of any module version. Explicit `toJson(json&, version)` callers honour the version argument (which is always 2); ADL callers cannot be v1 even in principle. [CONFIRMED — `mov edx,2` @`0x482623`.]
+> **QUIRK —** one more emitter forces v2 unconditionally and ignores even the (always-2) argument plumbing: `adl_serializer<bir::QuasiAffineExpr>::to_json` @`0x482620` hardwires `mov edx, 2` @`0x482623` before delegating. Any `QuasiAffineExpr` serialized through the nlohmann ADL hook — notably `DynamicAPINFO.offset_expr`, the dynamic-DMA byte offset — is emitted in v2 regardless of any module version. Explicit `toJson(json&, version)` callers honour the version argument (which is always 2); ADL callers cannot be v1 even in principle.
 
 ---
 
@@ -210,7 +210,7 @@ function isV1(Expr* e):                       // 0x3b4110
     return *(numer + 0x10) == 17                // … OK only if that numer is itself a flat AffineExpr
 ```
 
-So v1 can encode **only**: `AffineExpr(17)`, `CCGetRankExpr(2)`, `IndirectArgExpr(3)`, and `FloorDivExpr(25)`/`ModuloExpr(26)`/`CCDivExpr(27)` *when their numerator is a flat affine*. Anything else — a `numer` that is itself a Sum/Mult/Div, or any of the new leaf kinds — is not v1-representable, which is precisely the reason v2 exists. [CONFIRMED — `isV1` body read firsthand @`0x3b4110`; the refcount dance around the `numer` read elided.]
+So v1 can encode **only**: `AffineExpr(17)`, `CCGetRankExpr(2)`, `IndirectArgExpr(3)`, and `FloorDivExpr(25)`/`ModuloExpr(26)`/`CCDivExpr(27)` *when their numerator is a flat affine*. Anything else — a `numer` that is itself a Sum/Mult/Div, or any of the new leaf kinds — is not v1-representable, which is precisely the reason v2 exists. (The refcount dance around the `numer` read is elided from the sketch above.)
 
 ### Added kinds and keys in v2
 
@@ -218,18 +218,18 @@ v2 adds the kinds v1 has no encoding for, plus two fields on existing kinds. The
 
 | Change | Kind(s) | v1 form | v2 form | Status |
 |---|---|---|---|---|
-| **ADDED kind** | `SumExpr(18)` | — (none) | `{kind:"SumKind", n_terms, terms:[…]}` | STRONG |
-| **ADDED kind** | `MultExpr(23)` | — | `{kind:"MultKind", var:<sub>, scale}` | STRONG |
-| **ADDED kind** | `AffineIV(6)` | — | `{kind:"AffIVKind", axis:<name>}` | STRONG |
-| **ADDED kind** | `IntRuntimeValue(7)` | — | `{kind:"IntRuntimeValueKind", regref:<name>}` | STRONG |
-| **ADDED (standalone)** | `ShardId(13)` | flat affine leaf token | `{kind:"ShardIDKind", ub}` (byte-identical in both) | STRONG |
-| **ADDED key** | `CCGetRank(2)` | `op_param` only | `+ channel_id` | STRONG |
-| **ADDED key** | `CCDiv(27)` | not separable | `+ replica_groups_id` | STRONG |
-| **RESTRUCTURED** | `FloorDiv(25)`,`Modulo(26)`,`CCDiv(27)` | `{op,op_param,…flat numer…}` | `{kind, numer:<sub-tree>, denom}` | STRONG |
-| **RENAMED** | `AffineExpr(17)` terms | `{AxisLabel:<name>, coef}` | `{idx:<RECURSE expr>, coeff}` | STRONG |
-| **REMOVED** | (v1-only keys) | `"op"`, `"op_param"`, `"AxisLabel"` | gone | STRONG |
+| **ADDED kind** | `SumExpr(18)` | — (none) | `{kind:"SumKind", n_terms, terms:[…]}` | HIGH |
+| **ADDED kind** | `MultExpr(23)` | — | `{kind:"MultKind", var:<sub>, scale}` | HIGH |
+| **ADDED kind** | `AffineIV(6)` | — | `{kind:"AffIVKind", axis:<name>}` | HIGH |
+| **ADDED kind** | `IntRuntimeValue(7)` | — | `{kind:"IntRuntimeValueKind", regref:<name>}` | HIGH |
+| **ADDED (standalone)** | `ShardId(13)` | flat affine leaf token | `{kind:"ShardIDKind", ub}` (byte-identical in both) | HIGH |
+| **ADDED key** | `CCGetRank(2)` | `op_param` only | `+ channel_id` | HIGH |
+| **ADDED key** | `CCDiv(27)` | not separable | `+ replica_groups_id` | HIGH |
+| **RESTRUCTURED** | `FloorDiv(25)`,`Modulo(26)`,`CCDiv(27)` | `{op,op_param,…flat numer…}` | `{kind, numer:<sub-tree>, denom}` | HIGH |
+| **RENAMED** | `AffineExpr(17)` terms | `{AxisLabel:<name>, coef}` | `{idx:<RECURSE expr>, coeff}` | HIGH |
+| **REMOVED** | (v1-only keys) | `"op"`, `"op_param"`, `"AxisLabel"` | gone | HIGH |
 
-> **NOTE —** the AffineExpr term key change is subtle and worth flagging: v1 stores a term's index *by axis name* (`AxisLabel`, a string from the index node's name accessor) and spells the coefficient `coef`; v2 embeds the index as a *nested expression* (`idx`, recursive) and spells it `coeff` (one extra letter, both spellings present in rodata). A reimplementer's reader must accept both. `ShardIDKind`/`ub` and `IndirectArg` round-trip through either version. [STRONG — kind set and key spellings cross-anchored to the serializer bodies and the rodata tag set; the per-key offsets are on the 7.19 page.]
+> **NOTE —** the AffineExpr term key change is subtle and worth flagging: v1 stores a term's index *by axis name* (`AxisLabel`, a string from the index node's name accessor) and spells the coefficient `coef`; v2 embeds the index as a *nested expression* (`idx`, recursive) and spells it `coeff` (one extra letter, both spellings present in rodata). A reimplementer's reader must accept both. `ShardIDKind`/`ub` and `IndirectArg` round-trip through either version. The kind set and key spellings here are cross-anchored to the serializer bodies and the rodata tag set; the per-key offsets live on the 7.19 page.
 
 ### Why v2 — the features it unlocked
 
@@ -239,9 +239,9 @@ v1 is structurally incapable of expressing a nested arithmetic/index tree; v2 wa
 - **Collective rank/shard math** (FSDP / sharded collectives) needs `CCGetRank(2)+channel_id`, `CCDiv(27)+replica_groups_id`, and a standalone `ShardId(13)`. v1 collapsed `CCGetRank` to a single `op_param` and had no `replica_groups_id`/`channel_id` slot.
 - **Dynamic-shape / runtime-register indices** (dynamic loop bounds, indirect/gather offsets read from device registers) need `AffineIV(6)` by axis-name and `IntRuntimeValueBase(7)` `regref`. v1 had no register-backed leaf.
 
-[STRONG — the v2-only kind set *is* exactly these features' nodes; the calendar date when v2 was introduced is not byte-recoverable from this snapshot — SPECULATIVE.]
+The mapping above rests on the v2-only kind set being exactly these features' nodes; when v2 was actually introduced is not recoverable from this snapshot.
 
-> **GOTCHA —** v2 is **not** about MX or LNC, two tempting but wrong guesses. `InstMatmultMx`/`InstQuantizeMx` add *zero* JSON keys (the former thunks to `MatmultBase`, the latter's `readFieldsFromJson` is a bare `ret`); MX-ness rides in operand dtype enums plus a scale-tensor operand, not in any version-gated field. Dynamic-DMA/LNC are likewise dtype/operand/queue features. The single `getVersion` caller forbids any other version-keyed path, so none of these can be a version concern. [CONFIRMED via the single-caller constraint + the MX no-key bodies.]
+> **GOTCHA —** v2 is **not** about MX or LNC, two tempting but wrong guesses. `InstMatmultMx`/`InstQuantizeMx` add *zero* JSON keys (the former thunks to `MatmultBase`, the latter's `readFieldsFromJson` is a bare `ret`); MX-ness rides in operand dtype enums plus a scale-tensor operand, not in any version-gated field. Dynamic-DMA/LNC are likewise dtype/operand/queue features. The single `getVersion` caller forbids any other version-keyed path, so none of these can be a version concern.
 
 ---
 
@@ -249,39 +249,37 @@ v1 is structurally incapable of expressing a nested arithmetic/index tree; v2 wa
 
 The most reimplementation-relevant content here is the list of things the version does *not* gate, because each is a plausible-but-wrong place to branch.
 
-- **Container wrapping** — Module / Function / BasicBlock / Instruction read and write identically in both versions. The driver (`@0x48df10`) reads `arch`, `archRev`, `functions`, DMAQueues the same way regardless; the two-pass build/resolve is version-agnostic. [CONFIRMED — `getVersion` has no caller in the driver or any container deserializer.]
-- **Operand / AccessPattern encoding** — `Argument::createFromJson` (`@0x235500`) dispatches on an 8-way `"kind"` string (`physical_ap`/`symbolic_ap`/`register_ap`/`imm_value`/`symbolic_imm_value`/`imm_array`/`register_access`/…) that is **not** version-keyed. What changes with the version is the *content* of a symbolic AP's embedded `QuasiAffineExpr` `addrs` (the pelican trees), never the AP container shape. [STRONG — AP kind tags are version-invariant; the embedded pelican expr is the variant part.]
-- **Per-opcode field schemas** — no `bir::Inst*` `readFieldsFromJson` branches on the version. Every op-key is present in both versions. [CONFIRMED — zero `if(version==…)` guards in the opcode readers; they cannot read it, since `getVersion` has one caller.]
+- **Container wrapping** — Module / Function / BasicBlock / Instruction read and write identically in both versions. The driver (`@0x48df10`) reads `arch`, `archRev`, `functions`, DMAQueues the same way regardless; the two-pass build/resolve is version-agnostic, and `getVersion` has no caller in the driver or in any container deserializer.
+- **Operand / AccessPattern encoding** — `Argument::createFromJson` (`@0x235500`) dispatches on an 8-way `"kind"` string (`physical_ap`/`symbolic_ap`/`register_ap`/`imm_value`/`symbolic_imm_value`/`imm_array`/`register_access`/…) that is **not** version-keyed. What changes with the version is the *content* of a symbolic AP's embedded `QuasiAffineExpr` `addrs` (the pelican trees), never the AP container shape.
+- **Per-opcode field schemas** — no `bir::Inst*` `readFieldsFromJson` branches on the version, and every op-key is present in both versions. The opcode readers could not branch on it even if they wanted to, since `getVersion` has a single caller.
 
-> **CORRECTION (S05) —** an early framing treated the BIR module version as a top-level switch over op schemas, and treated the "pelican v1/v2" as an *independent* counter. Both are wrong. There is no module-level schema switch: the version is `setVersion`'d once and consumed by exactly one code path. And the pelican v1/v2 *selection* is the BIR module version itself (`createFromJson` → `getVersion`) — the *formats* are a separate code path, but the *selector* is the single shared int. The one exception is the ADL hook, which forces v2 irrespective of the module version. [CONFIRMED — single `getVersion` caller; `fromJsonv1`/`v2` each have one caller = the gate.]
+> **GOTCHA —** there is no separate "pelican version" counter. The selector for v1-vs-v2 pelican encoding *is* the BIR module version int, reached via `createFromJson → getModule → getVersion`; only the *formats* are separate code paths. The one exception is the ADL hook, which forces v2 irrespective of the module version.
 
 ### The memloc-alias "old/new" is a different axis
 
-`addMemLocAliasesFromJson` (`@0x26f020`) selects between an OLD (memloc-keyed, 2-tuple `[destMemLoc, kind]`) and a NEW (set-keyed, `["memorylocations"]`, 3-tuple `[destSet, destMemLoc, kind]`) alias schema. This is detected by JSON **shape**, not by the version int — `addMemLocAliasesFromJson` does not (and structurally cannot) call `getVersion`, since that function's sole caller is the pelican reader. "old vs new" is therefore overloaded in BIR: the numeric `version 1/2` is the pelican split, while the alias-schema old/new is a separate shape-detected choice. They may correlate in practice but are dispatched independently. [CONFIRMED — `addMemLocAliasesFromJson` has no `getVersion` call.]
+`addMemLocAliasesFromJson` (`@0x26f020`) selects between an OLD (memloc-keyed, 2-tuple `[destMemLoc, kind]`) and a NEW (set-keyed, `["memorylocations"]`, 3-tuple `[destSet, destMemLoc, kind]`) alias schema. This is detected by JSON **shape**, not by the version int — `addMemLocAliasesFromJson` does not (and structurally cannot) call `getVersion`, since that function's sole caller is the pelican reader. "old vs new" is therefore overloaded in BIR: the numeric `version 1/2` is the pelican split, while the alias-schema old/new is a separate shape-detected choice. They may correlate in practice but are dispatched independently.
 
 ### The NEFF container version is unrelated
 
-The BIR-JSON `version:1/2` is not the NEFF container version. NEFF carries its own versioning in a different file and a different component: an `info.json` schema-version *string* (`"0.6"`) plus a binary NEFF-format constant (`+0 = 2` in the NEFF header), both owned by the NEFF packager (Part 12), and **absent** from `libBIR.so` — a scan of the `libBIR.so` disassembly for any `0.5`/`0.6`/`NeffVersion` notion returns nothing. A reader who sees "version 2" must keep these separate: BIR-JSON v2 is the pelican-tree encoding; NEFF format 2 / schema `"0.6"` is the container envelope. [CONFIRMED — NEFF version literals absent from `libBIR.so`; grounded against the NEFF JSON layout, Part 12.]
+The BIR-JSON `version:1/2` is not the NEFF container version. NEFF carries its own versioning in a different file and a different component: an `info.json` schema-version *string* (`"0.6"`) plus a binary NEFF-format constant (`+0 = 2` in the NEFF header), both owned by the NEFF packager (Part 12), and **absent** from `libBIR.so` — a scan of the `libBIR.so` disassembly for any `0.5`/`0.6`/`NeffVersion` notion returns nothing. A reader who sees "version 2" must keep these separate: BIR-JSON v2 is the pelican-tree encoding; NEFF format 2 / schema `"0.6"` is the container envelope.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Summary
 
-Each of the five strongest claims was re-checked against the binary firsthand; the verification ceiling is stated honestly.
+The five strongest claims, their anchors, and the limit of what each can establish.
 
-| Claim | Verification | Ceiling |
+| Claim | Evidence | Confidence |
 |---|---|---|
-| The version gates **pelican only** | `rg -l 'call.*getVersion'` over the whole `libBIR.so` disasm → **1 file**, `QuasiAffineExpr::createFromJson`. No container/opcode/operand reader calls it. | **CONFIRMED** — exhaustive over the disassembled corpus. The corpus is the IDA-resolved function set; a hypothetical hand-written `call` IDA failed to resolve is not excluded, but the caller graph is otherwise complete. |
-| The producer **always writes v2** | All three callers of `QuasiAffineExpr::toJson` disassembled; the five `mov edx,*` immediates are all `2`; the ADL hook hardwires `2` @`0x482623`. No `mov edx,1` feeds any `toJson`. | **CONFIRMED for this build snapshot.** No CLI/env knob to force v1 emission was found, and none could be invoked without a `mov edx,1` site that does not exist — but "no external caller passes 1" is a one-build statement, not a proof over all configurations. |
-| **v1 = flat, v2 = recursive tree** | `isV1` body read firsthand: accepts only `{17}∪{2,3}∪{25,26,27-with-affine-numer}`; `toJsonv1` asserts `isV1`. v2 emitter dispatches over `{2,3,6,7,13,17,18,23,25,26,27}` with a `default→"Unsupported expression kind"`. | **CONFIRMED** for the gate-level shape (which kinds each can encode). The per-kind field byte-layouts are STRONG (serializer bodies, 7.19), not re-disassembled key-by-key here. |
-| **The added kinds** (`Sum/Mult/AffIV/IntRuntime/ShardId`, `channel_id`, `replica_groups_id`) | v2 KIND-tag strings confirmed present in rodata (`SumKind`, `MultKind`, `AffIVKind`, `IntRuntimeValueKind`, `ShardIDKind`, …); `isV1` rejects them from v1. | **STRONG.** The *kind set* and *tag spellings* are anchored; the exact intra-body field read order inside `fromJsonv1`/`v2` is taken from the per-kind analysis (7.19), not re-traced end-to-end on this page. |
-| **NEFF version distinctness** | `libBIR.so` disasm scan for `0.5`/`0.6`/`NeffVersion` → 0 hits; the BIR version is purely the `1/2` int. NEFF's `"0.6"`/`+0=2` live in the NEFF packager (Part 12). | **CONFIRMED** at the level that matters — the two version notions do not co-reside in `libBIR.so` and neither reads the other. |
+| The version gates **pelican only** | A search for a `getVersion` call across the whole `libBIR.so` disassembly yields one body, `QuasiAffineExpr::createFromJson`. No container/opcode/operand reader calls it. | CERTAIN over the IDA-resolved function set; a hand-written `call` IDA failed to resolve would be outside it, but the caller graph is otherwise complete. |
+| The producer **always writes v2** | The five `mov edx,*` immediates preceding `QuasiAffineExpr::toJson` calls are all `2`; the ADL hook hardwires `2` @`0x482623`. No `mov edx,1` feeds any `toJson`. | CERTAIN for this build. "No external caller passes 1" is a one-build statement — no CLI or env knob forcing v1 emission was found, and none could work without a `mov edx,1` site that does not exist. |
+| **v1 = flat, v2 = recursive tree** | `isV1` accepts only `{17}∪{2,3}∪{25,26,27-with-affine-numer}`, and `toJsonv1` asserts it. The v2 emitter dispatches over `{2,3,6,7,13,17,18,23,25,26,27}` with a `default→"Unsupported expression kind"`. | CERTAIN at the gate level — which kinds each version can encode. The per-kind field byte-layouts are the 7.19 page's, not re-derived here. |
+| **The added kinds** (`Sum/Mult/AffIV/IntRuntime/ShardId`, `channel_id`, `replica_groups_id`) | The v2 kind-tag strings are present in rodata (`SumKind`, `MultKind`, `AffIVKind`, `IntRuntimeValueKind`, `ShardIDKind`, …) and `isV1` rejects them. | HIGH. The kind set and tag spellings are anchored; the intra-body field read order inside `fromJsonv1`/`v2` comes from the per-kind analysis in 7.19. |
+| **NEFF version distinctness** | Scanning `libBIR.so` for `0.5`/`0.6`/`NeffVersion` yields nothing; the BIR version is purely the `1/2` int, while NEFF's `"0.6"`/`+0=2` live in the packager (Part 12). | CERTAIN at the level that matters — the two notions do not co-reside and neither reads the other. |
 
-What is **CONFIRMED firsthand** on this page: the version read site and `"version\0"` key; the single `getVersion` caller; the read-side `{2→v2, 1→v1, else→fatal}` branch and its fatal string; the write-side `{1/2/fatal}` branch and its distinct fatal string; all five emit sites passing `2`; the ADL hardwire; `isV1`'s exact kind set; the absence of NEFF version literals in `libBIR.so`.
+Read directly for this page: the version read site and `"version\0"` key; the single `getVersion` caller; the read-side `{2→v2, 1→v1, else→fatal}` branch and its fatal string; the write-side `{1/2/fatal}` branch and its distinct fatal string; all five emit sites passing `2`; the ADL hardwire; `isV1`'s exact kind set; and the absence of NEFF version literals.
 
-What is **STRONG (cross-anchored, not re-disassembled key-by-key here):** the per-kind v1/v2 JSON field layouts (owned by 7.19) and the v2-only kind tag set in rodata.
-
-What is **SPECULATIVE / not pinnable from this snapshot:** the calendar date or build at which v2 was introduced (no changelog or date literal in `libBIR.so`); whether any out-of-binary configuration could force v1 emission (none found, but unprovable from one build).
+Two things this snapshot cannot settle: when v2 was introduced (no changelog or date literal exists in `libBIR.so`), and whether any out-of-binary configuration could force v1 emission — none was found, but that is not provable from one build.
 
 ---
 

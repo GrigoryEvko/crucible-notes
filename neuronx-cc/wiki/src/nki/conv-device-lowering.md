@@ -1,6 +1,6 @@
 # Conv Device-Lowering and Variant Selection
 
-> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. The selector lives in `neuronxcc/starfish/penguin/targets/transforms/TransformConvOp.cpython-310-x86_64-linux-gnu.so` (1.58 MB, Cython, `-g`, UNSTRIPPED with `debug_info`; class `TransformConvOp`, pass title "Match certain convolutions and lower them to NKI kernels"). Method-index numbers are the `__pyx_mdef_…_NN` slots; addresses are the cp310 `__pyx_pw_*` bodies. cp311 (`…_d73596a3051909e3`) and cp312 (`…_bdd23fff2ef905f0`) share the `__pyx` method roster and string table but were not byte-diffed. Provenance: D-AA04, cross-checked against the binary string table and `private_nkl/conv.py`.*
+> *All symbols, addresses, and strings on this page apply to `neuronx_cc` 2.24.5133.0+58f8de22. The selector lives in `neuronxcc/starfish/penguin/targets/transforms/TransformConvOp.cpython-310-x86_64-linux-gnu.so` (1.58 MB, Cython, `-g`, UNSTRIPPED with `debug_info`; class `TransformConvOp`, pass title "Match certain convolutions and lower them to NKI kernels"). Method-index numbers are the `__pyx_mdef_…_NN` slots; addresses are the cp310 `__pyx_pw_*` bodies. cp311 (`…_d73596a3051909e3`) and cp312 (`…_bdd23fff2ef905f0`) share the `__pyx` method roster and string table but were not byte-diffed. Names are cross-checked against the binary string table and `private_nkl/conv.py`.*
 
 ## Abstract
 
@@ -58,7 +58,7 @@ For reimplementation, the contract is:
    neuronxcc.private_nkl.conv.<leaf>   (re-traced through the NKI frontend)
 ```
 
-Two passes, one string. `TransformConvOp` **writes** `func_name` (the selection); `BirCodeGenLoop` **reads** `func_name` and re-traces the leaf (the execution). The name strings written here are byte-for-byte the keys of `_INTERNAL_KERNEL_REGISTRY` and the `def` names in `private_nkl/conv.py` — confirmed against both. `[CONFIRMED — all eight name strings present in the `TransformConvOp` table, the `BirCodeGenLoop` table, and as `conv.py` defs.]`
+Two passes, one string. `TransformConvOp` **writes** `func_name` (the selection); `BirCodeGenLoop` **reads** `func_name` and re-traces the leaf (the execution). The name strings written here are byte-for-byte the keys of `_INTERNAL_KERNEL_REGISTRY` and the `def` names in `private_nkl/conv.py`; all eight appear in the `TransformConvOp` table, the `BirCodeGenLoop` table, and as `conv.py` defs.
 
 ---
 
@@ -91,9 +91,9 @@ function transformConvTensorOp(self, op):                    // mdef #37, @0x48b
     return False;
 ```
 
-`spatial_dims`, `FUNCTIONAL_KERNEL_REGISTRY`, `EXPERIMENTAL_KERNEL_REGISTRY`, `convolution_kernel_match`, `match_and_replace_kernel`, `total_conv_ops`, `matched_conv_ops`, and the `"DIDN'T MATCH KERNEL FOR: "` literal are all present in the binary string table. The two `match_and_replace_kernel` calls in the decompiled body read `FUNCTIONAL_KERNEL_REGISTRY` first, then — only past the `convolution_kernel_match` truth-test — `EXPERIMENTAL_KERNEL_REGISTRY`. `[CONFIRMED — strings + decompiled body @0x48b80: FUNCTIONAL load, then the guard, then EXPERIMENTAL load.]`
+`spatial_dims`, `FUNCTIONAL_KERNEL_REGISTRY`, `EXPERIMENTAL_KERNEL_REGISTRY`, `convolution_kernel_match`, `match_and_replace_kernel`, `total_conv_ops`, `matched_conv_ops`, and the `"DIDN'T MATCH KERNEL FOR: "` literal are all present in the binary string table. The two `match_and_replace_kernel` calls read `FUNCTIONAL_KERNEL_REGISTRY` first, then — only past the `convolution_kernel_match` truth-test — `EXPERIMENTAL_KERNEL_REGISTRY`.
 
-> **QUIRK — `FUNCTIONAL` always; `EXPERIMENTAL` only under an Option.** The two registries are not a single fallthrough list. The functional registry is walked unconditionally; the experimental registry is reached only when `self.convolution_kernel_match` (set from the `experimental-convolution-kernel-match` Option) is truthy — it is an *enabling* predicate, not merely a "functional already matched" short-circuit: when false, the body returns `Py_False` before the experimental registry is ever loaded. A reimplementer who concatenates the two registries into one list will mis-select: the experimental `pbp` kernels would become reachable by attribute alone, which the real pass forbids. Keep them separate and Option-gate the second. `[CONFIRMED — decompiled body @0x48b80: false-branch returns before the EXPERIMENTAL load.]`
+> **QUIRK — `FUNCTIONAL` always; `EXPERIMENTAL` only under an Option.** The two registries are not a single fallthrough list. The functional registry is walked unconditionally; the experimental registry is reached only when `self.convolution_kernel_match` (set from the `experimental-convolution-kernel-match` Option) is truthy — it is an *enabling* predicate, not merely a "functional already matched" short-circuit: when false, the body returns `Py_False` before the experimental registry is ever loaded. A reimplementer who concatenates the two registries into one list will mis-select: the experimental `pbp` kernels would become reachable by attribute alone, which the real pass forbids. Keep them separate and Option-gate the second.
 
 > **GOTCHA — the counters live on the class, not the instance.** `total_conv_ops` / `matched_conv_ops` are set on `TransformConvOp` (a module-global), accumulated across every op the pass visits, and reset in `afterStmtTransform`. They are statistics, not per-op state; do not read them to decide anything mid-pass.
 
@@ -139,9 +139,9 @@ function match_and_replace_kernel(self, op, kernel_registry) -> bool:   // mdef 
     return False;
 ```
 
-`PyObject_GetIter` over `kernel_registry`; `ki.match` subscripted `[0]` and `[1]` (the `match` field is a `(fn, dict)` tuple — see the schema); `is_pglt` SetItem; the `in_perm` / `kern_perm` / `out_perm` callables read and *called*; `insert_transpose` read; the three-RichCompare identity guard; `get_kernel_attr`, `name`, `_lower_to_conv_kernel`, and the `transpose_conv_{input,kern,out}` references are all present in the binary. `[CONFIRMED — strings + decompiled body @0x3c420 (13021 B, 2707 insns).]`
+`PyObject_GetIter` over `kernel_registry`; `ki.match` subscripted `[0]` and `[1]` (the `match` field is a `(fn, dict)` tuple — see the schema); `is_pglt` SetItem; the `in_perm` / `kern_perm` / `out_perm` callables read and *called*; `insert_transpose` read; the three-RichCompare identity guard; `get_kernel_attr`, `name`, `_lower_to_conv_kernel`, and the `transpose_conv_{input,kern,out}` references are all present in the 13021-byte body at `@0x3c420`.
 
-> **QUIRK — first-match-wins, so registry order is priority.** The loop `return True`s inside the body on the first truthy predicate; nothing later in the list is consulted. In the decompiled body the predicate-truthy branch reads `_lower_to_conv_kernel`, sets the return slot to `Py_True`, and jumps straight to the function return — it does not fall through to the next iterator step. `[CONFIRMED — decompiled body @0x3c420: `Py_True` store then function return.]` The functional registry's build order (below) is therefore the variant-selection priority order. This is the same contract as an `iselDAG` matcher table — earlier patterns shadow later ones — and the same reimplementation hazard: get the order wrong and you select a lower-priority kernel for a conv a higher-priority kernel should have claimed.
+> **QUIRK — first-match-wins, so registry order is priority.** The loop `return True`s on the first truthy predicate; nothing later in the list is consulted. The predicate-truthy branch reads `_lower_to_conv_kernel`, sets the return slot to `Py_True`, and jumps straight to the function return rather than advancing the iterator. The functional registry's build order (below) is therefore the variant-selection priority order. This is the same contract as an `iselDAG` matcher table — earlier patterns shadow later ones — and the same reimplementation hazard: get the order wrong and you select a lower-priority kernel for a conv a higher-priority kernel should have claimed.
 
 > **NOTE — the identity-skip is an optimization, not a correctness gate.** When `insert_transpose` is false and the op's layout already equals the target perms, the bridging transposes are skipped (py:686). When the layout differs, `OffloadedTranspose` ops are inserted so the kernel always sees its canonical layout. A reimplementer can always insert the bridge and rely on a later transpose-elimination pass; the skip just avoids emitting identity transposes here.
 
@@ -155,7 +155,7 @@ The decision tree is not an `if/elif` ladder — it is the ordered list of `Kern
 
 ### The functional registry, in build (priority) order
 
-Both registries are constructed once in module-exec as `list[KernelInfo]`. The build order is the order the `match_*` method globals are loaded and `KernelInfo`s constructed. The `__pyx_mdef` method-index numbers below are read directly from the binary symbol table and fix each predicate's identity; the kernel **name** column is byte-confirmed against the string table, the `BirCodeGenLoop` registry, and `conv.py`.
+Both registries are constructed once in module-exec as `list[KernelInfo]`. The build order is the order the `match_*` method globals are loaded and `KernelInfo`s constructed. The `__pyx_mdef` method-index numbers below come from the binary symbol table and fix each predicate's identity; the kernel **name** column matches the string table, the `BirCodeGenLoop` registry, and `conv.py` byte-for-byte.
 
 | Prio | `match_*` predicate (mdef) | Selected kernel **name** | Confidence |
 |---|---|---|---|
@@ -165,7 +165,7 @@ Both registries are constructed once in module-exec as `list[KernelInfo]`. The b
 | 4 | `match_conv_depthwise_backward` (2nd shape) | `conv2d_column_packing_1` / `_io10` | HIGH (trio split inferred) |
 | 5 | `match_conv2d_depthwise_f01b_o01i_bf01` (#21) | `conv2d_depthwise_f01b_o01i_bf01` | CERTAIN (unique) |
 | 6 | `match_conv_depthwise_forward` | (depthwise-forward, stride-3 variant) | HIGH |
-| 9 | `match_replication_conv` | (K-replication path) | STRONG |
+| 9 | `match_replication_conv` | (K-replication path) | HIGH |
 | 10 | `match_Conv2d_dw_fb01_io01_01bf_rep_nhwc_Pcinh2` (#19) | `Conv2d_dw_…_Pcinh` (alt-shape, lowest prio) | CERTAIN (predicate) |
 
 The two experimental entries:
@@ -177,7 +177,7 @@ The two experimental entries:
 
 > **GOTCHA — the column-packing trio's exact predicate↔name binding is INFERRED.** `conv2d_column_packing`, `_1`, and `_io10` all exist as names; `match_conv_depthwise_backward` is registered twice (two shapes) and `is_low_channel_conv_1` is the shared low-channel gate. The exact pairing of which of the three names binds to which registration is inferred from the three-name set plus the duplicated matcher — the unique-name matchers (#9 rep-nhwc, #13 conv1d-dw, #21 conv2d-dw, #23/#25 pbp) are certain by unique match↔name correspondence. A byte-exact fix would read the `KernelInfo` argument tuples literally from module-exec.
 
-The eight per-kernel statistic strings (`"Number of times kernel <NAME> is matched"`) independently corroborate the exact eight names the pass can emit — they were read verbatim from the binary for all eight kernels. `[CONFIRMED — statistic strings.]`
+The eight per-kernel statistic strings (`"Number of times kernel <NAME> is matched"`) independently corroborate the exact eight names the pass can emit — one such string exists verbatim per kernel.
 
 ### The `match_*` predicates
 
@@ -185,11 +185,11 @@ Each predicate reads conv attributes and returns a bool. The tests, in priority 
 
 #### `match_Conv2d_dw_fb01_io01_01bf_rep_nhwc_Pcinh` — dense NHWC-replication (prio 1)
 
-The DENSE (cross-channel) conv that uses the PE array via an NHWC partition-replication layout (`Pcinh` = partition dimension folded from `C_in × h`). The richest dense predicate (~15.4 KB body, py 333). It validates a real dense conv (feature-group count vs channel counts), the input/kernel layout reachable by the rep-NHWC transpose, dtype/`sizeinbytes` within the SBUF budget, the `allow_stride` flag for strided support, and the `is_pglt` (partition-group-local-tensor) gate. Registered prio 1 — a dense conv that fits this path takes it before any depthwise matcher even looks. `[STRONG — attr set CONFIRMED; the dtype/SBUF-budget heuristic mirrors the dense-conv kernel's `MAX_F`/`dtype_size` logic.]`
+The DENSE (cross-channel) conv that uses the PE array via an NHWC partition-replication layout (`Pcinh` = partition dimension folded from `C_in × h`). The richest dense predicate (~15.4 KB body, py 333). It validates a real dense conv (feature-group count vs channel counts), the input/kernel layout reachable by the rep-NHWC transpose, dtype/`sizeinbytes` within the SBUF budget, the `allow_stride` flag for strided support, and the `is_pglt` (partition-group-local-tensor) gate. Registered prio 1 — a dense conv that fits this path takes it before any depthwise matcher even looks. The attribute set it reads is direct; reading the dtype/size arithmetic as an SBUF budget is an inference from its mirroring the dense-conv kernel's `MAX_F`/`dtype_size` logic.
 
 #### `match_Conv1d_depthwise_bf01_oi01_bf01` — 1-D depthwise (prio 3)
 
-The richest depthwise predicate (~15.9 KB body, py 402). Reads `feature_group_count`, `batch_group_count`, both dilations, `rhs_reversal`, `stride`, `padding`, all four perms, and all three shapes. Matches a 1-D depthwise (effective spatial extent 1 on one axis) with `feature_group_count == C_in`, no `rhs_reversal`, and stride/padding within the `conv1d_depthwise` dispatcher's accepted regime. Selects the `conv1d_depthwise_bf01_oi01_bf01` wrapper, which itself dispatches a default vs `f_packing` body. `[STRONG — full attr set CONFIRMED; the rhs_reversal/padding/res_shape tests are the shape-legality guards the conv1d kernel requires.]`
+The richest depthwise predicate (~15.9 KB body, py 402). Reads `feature_group_count`, `batch_group_count`, both dilations, `rhs_reversal`, `stride`, `padding`, all four perms, and all three shapes. Matches a 1-D depthwise (effective spatial extent 1 on one axis) with `feature_group_count == C_in`, no `rhs_reversal`, and stride/padding within the `conv1d_depthwise` dispatcher's accepted regime. Selects the `conv1d_depthwise_bf01_oi01_bf01` wrapper, which itself dispatches a default vs `f_packing` body. The full attribute set it touches is direct; reading the `rhs_reversal`/`padding`/`res_shape` tests as the conv1d kernel's shape-legality guards is an inference from that kernel's requirements.
 
 #### `match_conv2d_depthwise_f01b_o01i_bf01` — direct 2-D depthwise (prio 5)
 
@@ -203,7 +203,7 @@ function match_conv2d_depthwise_f01b_o01i_bf01(self, op):   // mdef #21, @0x3807
     return op.in_shape[op.in_perm[1]] == op.kern_shape[op.kern_perm[0]];   // py:496/498
 ```
 
-The perm-indexed channel-equality test (`in_perm[1]` = the input channel axis, `kern_perm[0]` = the kernel's output/grouped axis) is the pure-depthwise signature. Selects `conv2d_depthwise_f01b_o01i_bf01` — the Vector-engine direct multiply+reduce depthwise that does *not* use the PE array. `[STRONG — the perm-indexed shape equality is the depthwise signature; attr set CONFIRMED.]`
+The perm-indexed channel-equality test (`in_perm[1]` = the input channel axis, `kern_perm[0]` = the kernel's output/grouped axis) is the pure-depthwise signature. Selects `conv2d_depthwise_f01b_o01i_bf01` — the Vector-engine direct multiply+reduce depthwise that does *not* use the PE array.
 
 #### `match_conv_depthwise_forward` — stride-3 forward depthwise (prio 6)
 
@@ -215,11 +215,11 @@ function match_conv_depthwise_forward(self, op):            // @0x36070, py:460
     return op.stride == [3, 3];                              // py:473 — builds [int_3,int_3]
 ```
 
-> **NOTE — this matcher is stride-3-specific.** py:473 builds the list `[3, 3]` (two loads of `__pyx_int_3` at `@0x36bfe`/`@0x36c11`) and RichCompares `op.stride` against it, while the dilation guards use `[1, 1]`. So this is a *specialised stride-3* depthwise-forward variant, not the general unit-stride case — that goes to `match_conv2d_depthwise_f01b_o01i_bf01` above. `[CONFIRMED — disassembly-grounded constant.]`
+> **NOTE — this matcher is stride-3-specific.** py:473 builds the list `[3, 3]` (two loads of `__pyx_int_3` at `@0x36bfe`/`@0x36c11`) and RichCompares `op.stride` against it, while the dilation guards use `[1, 1]`. So this is a *specialised stride-3* depthwise-forward variant, not the general unit-stride case — that goes to `match_conv2d_depthwise_f01b_o01i_bf01` above.
 
 #### `match_conv_depthwise_backward` — backward / transpose-conv depthwise (prio 2/4)
 
-The gradient (backward) depthwise. Reads `batch_group_count`, both dilations. In the backward form, stride is encoded as `rhs_dilation` and the grouping appears on `batch_group_count` (not `feature_group_count`), with the LHS/RHS dilation roles swapped relative to forward. This is the entry that routes to the `column_packing_{1,io10}` shapes. `[STRONG.]`
+The gradient (backward) depthwise. Reads `batch_group_count`, both dilations. In the backward form, stride is encoded as `rhs_dilation` and the grouping appears on `batch_group_count` (not `feature_group_count`), with the LHS/RHS dilation roles swapped relative to forward. This is the entry that routes to the `column_packing_{1,io10}` shapes.
 
 #### `is_low_channel_conv_1` — the column-packing gate (module-level helper)
 
@@ -237,7 +237,7 @@ function is_low_channel_conv_1(op):                         // @0x39550, MODULE-
     return (chain of RichCompares — channel magnitude is "low") ;    // all must pass
 ```
 
-The three assertion messages are verbatim in the binary. This is the predicate the `conv2d_column_packing{,_1,_io10}` entries use to claim low-`C_in` convs (the column-packing / diagonal-extract kernel family). The `_1` suffix on `is_low_channel_conv_1` mirrors the `conv2d_column_packing_1` name. `[CONFIRMED — helper symbol + all three assertion strings; the channel threshold is shape-derived (channel == kernel-channel etc.) not a single literal.]`
+The three assertion messages are verbatim in the binary. This is the predicate the `conv2d_column_packing{,_1,_io10}` entries use to claim low-`C_in` convs (the column-packing / diagonal-extract kernel family). The `_1` suffix on `is_low_channel_conv_1` mirrors the `conv2d_column_packing_1` name. The "low channel" threshold is shape-derived — a chain of comparisons against the kernel's own channel counts — not a single literal.
 
 #### `match_Conv2d_dw_…_Pcinh2` — alt-shape layout fast-path (prio 10)
 
@@ -247,11 +247,11 @@ function match_Conv2d_dw_fb01_io01_01bf_rep_nhwc_Pcinh2(self, op):  // mdef #19,
     return <perms admit the EXPERIMENTAL_KERNEL_ALT_SHAPE layout>;
 ```
 
-A pure layout-permutation predicate that matches the *same* rep-NHWC-`Pcinh` kernel but for a second admissible permutation set (`EXPERIMENTAL_KERNEL_ALT_SHAPE`). Because it inspects only perms + `in_shape`, it is the "data is already (or trivially transposable) to the alt layout" fast-path, registered last so it is the lowest-priority rep-NHWC fallback. `[CONFIRMED — attrs; ALT_SHAPE role from the `EXPERIMENTAL_KERNEL_ALT_SHAPE` constant.]`
+A pure layout-permutation predicate that matches the *same* rep-NHWC-`Pcinh` kernel but for a second admissible permutation set (`EXPERIMENTAL_KERNEL_ALT_SHAPE`). Because it inspects only perms + `in_shape`, it is the "data is already (or trivially transposable) to the alt layout" fast-path, registered last so it is the lowest-priority rep-NHWC fallback. Its alt-shape role is fixed by the `EXPERIMENTAL_KERNEL_ALT_SHAPE` constant it gates on.
 
 #### `match_replication_conv` — K-replication path (prio 9)
 
-The legacy K-replication matcher. It inspects both the `input` and `kernel` tensors and their perms/shapes (reads `input`, `kernel`, `tensor`, `isInput`) to decide whether a stacked-channel replication lowering applies. Registered after the depthwise + dense entries — a lower-priority general path. `[STRONG.]`
+The legacy K-replication matcher. It inspects both the `input` and `kernel` tensors and their perms/shapes (reads `input`, `kernel`, `tensor`, `isInput`) to decide whether a stacked-channel replication lowering applies. Registered after the depthwise + dense entries — a lower-priority general path.
 
 #### `match_Conv2d_pbp_*_experimental_1` — disabled stubs
 
@@ -262,7 +262,7 @@ function match_Conv2d_pbp_fb01_io01_01bf_experimental_1(self, op):  // mdef #25,
     return False;                                            // single return — NO attr reads
 ```
 
-> **GOTCHA — the experimental `pbp` kernels never auto-match.** Both bodies are single-`return False` stubs with no attribute reads at all — the parsed `op` argument is never dereferenced, and both functions are byte-identical in size (1464 bytes / 323 instructions each, `@0x21db0` and `@0x22370`). So even when the experimental registry IS tried (Option on), nothing in it matches by attribute — `transformConvTensorOp` falls to its `print_debug("DIDN'T MATCH KERNEL FOR: …")` branch. The `pbp` ("per-batch-partition") experimental conv kernels are reachable only by an out-of-band path (explicit name / a different Option), not by this decision tree, and there is no `pbp` kernel `def` anywhere in `private_nkl/conv.py` (the capitalized `Conv2d_pbp_*` names exist only in this `.so`'s string pool). A reimplementer wiring `pbp` selection into the attribute matcher is wrong; in this build they are matcher-disabled. `[CONFIRMED — both bodies `return Py_False` with no GetAttr, byte-identical size; no `pbp` def in conv.py.]`
+> **GOTCHA — the experimental `pbp` kernels never auto-match.** Both bodies are single-`return False` stubs with no attribute reads at all — the parsed `op` argument is never dereferenced, and both functions are byte-identical in size (1464 bytes / 323 instructions each, `@0x21db0` and `@0x22370`). So even when the experimental registry IS tried (Option on), nothing in it matches by attribute — `transformConvTensorOp` falls to its `print_debug("DIDN'T MATCH KERNEL FOR: …")` branch. The `pbp` ("per-batch-partition") experimental conv kernels are reachable only by an out-of-band path (explicit name / a different Option), not by this decision tree, and there is no `pbp` kernel `def` anywhere in `private_nkl/conv.py` (the capitalized `Conv2d_pbp_*` names exist only in this `.so`'s string pool). A reimplementer wiring `pbp` selection into the attribute matcher is wrong; in this build they are matcher-disabled.
 
 ---
 
@@ -283,9 +283,9 @@ function match_Conv2d_pbp_fb01_io01_01bf_experimental_1(self, op):  // mdef #25,
 | `out_perm` | `Callable[[ConvTensorOp], dict]` | target output permutation | HIGH |
 | `insert_transpose` | `bool` | force layout-bridging transposes | HIGH |
 | `is_pglt` | `bool` | partition-group-local-tensor flag | HIGH |
-| `force_insert_transpose`, `allow_stride` | `bool` | transpose / stride policy knobs | STRONG |
+| `force_insert_transpose`, `allow_stride` | `bool` | transpose / stride policy knobs | HIGH |
 
-> **QUIRK — `match` is a tuple, not a bare callable.** The dispatcher subscripts `ki.match[0]` for the predicate and `ki.match[1]` for a default-kwargs dict, then calls `match[0](op, **match[1])`. A reimplementer who stores a bare function in `match` will crash on the `[1]` subscript. The kwargs dict lets one `match_*` function serve several `KernelInfo` rows with different per-row defaults. The annotation strings `tuple[Callable[[ConvTensorOp, dict], bool], dict]`, `Callable[[ConvTensorOp], dict]`, and `list[KernelInfo]` are verbatim in the binary. `[CONFIRMED.]`
+> **QUIRK — `match` is a tuple, not a bare callable.** The dispatcher subscripts `ki.match[0]` for the predicate and `ki.match[1]` for a default-kwargs dict, then calls `match[0](op, **match[1])`. A reimplementer who stores a bare function in `match` will crash on the `[1]` subscript. The kwargs dict lets one `match_*` function serve several `KernelInfo` rows with different per-row defaults. The annotation strings `tuple[Callable[[ConvTensorOp, dict], bool], dict]`, `Callable[[ConvTensorOp], dict]`, and `list[KernelInfo]` are verbatim in the binary.
 
 ---
 
@@ -305,7 +305,7 @@ get_bridging_perm(cur, tgt)  // r such that  apply_perm(apply_perm(T, cur), r) =
 get_bridging_output_perm(…)  // the analogous bridge on the output side
 ```
 
-The convention, verbatim from the docstrings: *"apply_perm(input_tensor, _in_perm) == canonical_input_tensor"* and *"apply_perm(kernel_tensor, _kern_perm) == canonical_kernel_tensor"*. So the `ConvTensorOp`'s `_in_perm`/`_kern_perm`/`_out_perm` encode the framework→canonical axis mapping, the `KernelInfo` perms encode the kernel→canonical mapping, and the bridge `r = get_bridging_perm(op.in_perm, target_in_perm)` is the difference. `transpose_conv_input` (docstring "Transposes convolution input (i.e. image) so that it has the desired permutation."), `transpose_conv_kern`, and `transpose_conv_out` each compute that bridge and, unless `r` is identity (and not `force_insert_transpose`), insert one `OffloadedTranspose`. The py:686 identity-skip in the dispatcher is exactly "`r == identity` ⇒ no transpose". `[CONFIRMED — all helper symbols, the verbatim docstrings, and `OffloadedTranspose` are in the binary.]`
+The convention, verbatim from the docstrings: *"apply_perm(input_tensor, _in_perm) == canonical_input_tensor"* and *"apply_perm(kernel_tensor, _kern_perm) == canonical_kernel_tensor"*. So the `ConvTensorOp`'s `_in_perm`/`_kern_perm`/`_out_perm` encode the framework→canonical axis mapping, the `KernelInfo` perms encode the kernel→canonical mapping, and the bridge `r = get_bridging_perm(op.in_perm, target_in_perm)` is the difference. `transpose_conv_input` (docstring "Transposes convolution input (i.e. image) so that it has the desired permutation."), `transpose_conv_kern`, and `transpose_conv_out` each compute that bridge and, unless `r` is identity (and not `force_insert_transpose`), insert one `OffloadedTranspose`. The py:686 identity-skip in the dispatcher is exactly "`r == identity` ⇒ no transpose".
 
 ---
 
@@ -333,9 +333,9 @@ function get_kernel_attr(self, op):                         // mdef #27, @0x2a91
     return d;
 ```
 
-The `PyDict_SetItem` sequence with `getattr(op, …)` for each key is read in order from the body. `[CONFIRMED — key set + insertion order.]`
+The `PyDict_SetItem` sequence with `getattr(op, …)` for each key runs in exactly that order in the body, so the dict's insertion order is fixed.
 
-> **NOTE — a SAME-padding sibling marshaller exists.** `get_kernel_attr_same_hl_pad` (mdef #29, `@0x20330`, py 528) is a variant that normalizes padding/stride to the "same high/low pad" convention (reads only `padding`/`stride`). It is used by the kernels that require symmetric (SAME) padding semantics. A reimplementer needs both marshallers and must pick by the kernel's padding contract. `[CONFIRMED — attrs.]`
+> **NOTE — a SAME-padding sibling marshaller exists.** `get_kernel_attr_same_hl_pad` (mdef #29, `@0x20330`, py 528) is a variant that normalizes padding/stride to the "same high/low pad" convention (reads only `padding`/`stride`). It is used by the kernels that require symmetric (SAME) padding semantics. A reimplementer needs both marshallers and must pick by the kernel's padding contract.
 
 ---
 
@@ -361,7 +361,7 @@ function _lower_to_conv_kernel(self, op, kernel_name, kernel_attrs):    // mdef 
     op.eraseFromParent();                         // delete the original conv
 ```
 
-`IRBuilder`, `NativeKernel`, `srcs`/`dsts`/`tensor`, `json`/`dumps`, `eraseFromParent`, and `add` are all referenced in the body; `kernel_name`/`kernel_attrs` are positional params 2/3. `[CONFIRMED.]`
+`IRBuilder`, `NativeKernel`, `srcs`/`dsts`/`tensor`, `json`/`dumps`, `eraseFromParent`, and `add` are all referenced in the body; `kernel_name`/`kernel_attrs` are positional params 2/3.
 
 > **QUIRK — the kernel is selected by a string, not a pointer.** `_lower_to_conv_kernel` writes a *name*, not a kernel reference. At codegen, `BirCodeGenLoop.codegenInternalNativeNkiKernel → _resolve_kernel_config(func_name)` does `get_internal_kernel_registry().get(func_name)` and re-traces the matching `private_nkl/conv.py` leaf. The decoupling is deliberate: selection (this pass) and execution (codegen) are two passes joined only by the string. That is why the conv kernel leaves have no in-wheel caller — *this* pass is the caller, by name. See [the internal-kernel registry](internal-kernel-registry.md) and [the three-sink kernel-node model](three-sink-kernel-model.md).
 
@@ -375,7 +375,7 @@ After the visitor has processed all statements, `afterStmtTransform` (mdef #35, 
 - Emits `Statistic` counters (via `update`/`print_info`/`reset`): `"Total number of convolution operations processed"`, `"Number of convolution operations matched to kernels"`, `"Percentage of convolution operations matched to kernels"`, and one `"Number of times kernel <NAME> is matched"` per kernel — verbatim for all eight names.
 - Resets the module-global `total_conv_ops` / `matched_conv_ops` counters for the next module.
 
-The eight per-kernel counter strings independently corroborate the exact set of names the pass can emit. `[CONFIRMED — statistic strings + the eight per-kernel counter literals.]`
+The eight per-kernel counter strings independently corroborate the exact set of names the pass can emit.
 
 ---
 
@@ -385,12 +385,12 @@ The eight per-kernel counter strings independently corroborate the exact set of 
 
 | Field | Source | Role | Confidence |
 |---|---|---|---|
-| `convolution_kernel_match` | Option `experimental-convolution-kernel-match` | gates whether `EXPERIMENTAL_KERNEL_REGISTRY` is tried | CONFIRMED |
-| `do_not_insert_convolution` | Option | suppresses the lowering / transpose insertion ("*Optionally* match") | CONFIRMED |
-| `is_pglt` | flag | partition-group-local-tensor flag propagated onto each op during matching | CONFIRMED |
-| `EXPERIMENTAL_KERNEL_ALT_SHAPE` | module constant | gates the `…Pcinh2` alt-shape matcher | CONFIRMED |
+| `convolution_kernel_match` | Option `experimental-convolution-kernel-match` | gates whether `EXPERIMENTAL_KERNEL_REGISTRY` is tried | CERTAIN |
+| `do_not_insert_convolution` | Option | suppresses the lowering / transpose insertion ("*Optionally* match") | CERTAIN |
+| `is_pglt` | flag | partition-group-local-tensor flag propagated onto each op during matching | CERTAIN |
+| `EXPERIMENTAL_KERNEL_ALT_SHAPE` | module constant | gates the `…Pcinh2` alt-shape matcher | CERTAIN |
 
-Pass docstring, verbatim: *"TransformConvOp - Optionally match convolutions and lower them to NKI kernels."* Base class `TensorOpTransform`. `[CONFIRMED — `convolution_kernel_match`, `do_not_insert_convolution`, `is_pglt`, `EXPERIMENTAL_KERNEL_ALT_SHAPE` strings present.]`
+Pass docstring, verbatim: *"TransformConvOp - Optionally match convolutions and lower them to NKI kernels."* Base class `TensorOpTransform`.
 
 ---
 
@@ -420,21 +420,21 @@ Decision summary: **depthwise vs dense** is decided by `feature_group_count` (==
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five highest-risk claims, re-challenged against the binary:
+The five highest-risk claims and what pins each:
 
-1. **"`FUNCTIONAL` is tried before `EXPERIMENTAL`, and `EXPERIMENTAL` is Option-gated."** The decompiled `transformConvTensorOp` body (`@0x48b80`) loads `match_and_replace_kernel` + `FUNCTIONAL_KERNEL_REGISTRY` for the first call, then reads `convolution_kernel_match`; when that test is false the body sets the result to `Py_False` and returns *before* the `EXPERIMENTAL_KERNEL_REGISTRY` global is ever loaded; only on a true test does it load `match_and_replace_kernel` + `EXPERIMENTAL_KERNEL_REGISTRY` for the second call. **CONFIRMED** (decompiled body, not just strings). A reimplementer must keep them as two registries with the Option gate between, not one concatenated list.
+1. **"`FUNCTIONAL` is tried before `EXPERIMENTAL`, and `EXPERIMENTAL` is Option-gated."** `transformConvTensorOp` (`@0x48b80`) loads `match_and_replace_kernel` + `FUNCTIONAL_KERNEL_REGISTRY` for the first call, then reads `convolution_kernel_match`; when that test is false the body sets the result to `Py_False` and returns *before* the `EXPERIMENTAL_KERNEL_REGISTRY` global is ever loaded. Only on a true test does it load the second registry. A reimplementer must keep them as two registries with the Option gate between, not one concatenated list.
 
-2. **"First-match-wins; registry order = priority."** The dispatcher (`@0x3c420`) iterates `kernel_registry` via `GetIter`; on the first truthy predicate it reads `_lower_to_conv_kernel`, sets the return slot to `Py_True`, and jumps to the function return rather than advancing the iterator. **CONFIRMED** (decompiled body). The functional registry's *build* order is read from the module-exec `match_*` reference sequence — the unique-name predicates' positions are CERTAIN; the column-packing trio's exact slots are INFERRED (flagged in the priority table).
+2. **"First-match-wins; registry order = priority."** The dispatcher (`@0x3c420`) iterates `kernel_registry` via `GetIter`; on the first truthy predicate it reads `_lower_to_conv_kernel`, sets the return slot to `Py_True`, and jumps to the function return rather than advancing the iterator. The functional registry's *build* order comes from the module-exec `match_*` reference sequence: the unique-name predicates' positions are certain, the column-packing trio's exact slots are **INFERRED** (flagged in the priority table).
 
-3. **"The two `pbp` experimental matchers are `return False` stubs."** Both `match_Conv2d_pbp_*_experimental_1` bodies (`@0x21db0`, `@0x22370`) return `Py_False` with no `GetAttr` on the `op` argument and are byte-identical in size (1464 B / 323 insns each). No `pbp` kernel `def` exists in `private_nkl/conv.py`. **CONFIRMED** (both bodies + the absence of a leaf). The consequence (pbp reachable only out-of-band) follows directly.
+3. **"The two `pbp` experimental matchers are `return False` stubs."** Both bodies (`@0x21db0`, `@0x22370`) return `Py_False` with no `GetAttr` on the `op` argument and are byte-identical in size (1464 B / 323 insns each). No `pbp` kernel `def` exists in `private_nkl/conv.py`, so "reachable only out-of-band" follows directly.
 
-4. **"`match_conv_depthwise_forward` requires `stride == [3, 3]`."** The decompiled body builds a 2-element list with two `__pyx_int_3` stores (`@0x36bfe`/`@0x36c11`) and RichCompares `op.stride` against it; the dilation guards use `[1, 1]`. **CONFIRMED** (disassembly-grounded); this is the one numeric constant in the tree and it makes this a stride-3 *specialised* matcher.
+4. **"`match_conv_depthwise_forward` requires `stride == [3, 3]`."** The body builds a 2-element list with two `__pyx_int_3` stores (`@0x36bfe`/`@0x36c11`) and RichCompares `op.stride` against it, while the dilation guards use `[1, 1]`. This is the one numeric constant in the whole tree, and it makes this a stride-3 *specialised* matcher.
 
-5. **"`get_kernel_attr` emits stride/padding/dilations/perms/group-counts."** The decompiled body (`@0x2a910`) does `_PyDict_NewPresized` then `PyDict_SetItem` in the order stride → padding → rhs_dilation → lhs_dilation → in_perm → kern_perm → out_perm → (a tensor-shape key) → batch_group_count → feature_group_count. **CONFIRMED** key set + insertion order; the symmetry with `BirCodeGenLoop._get_conv_attrs_with_out_shape` (which adds `out_shape`) is **STRONG** correlation across the name handoff.
+5. **"`get_kernel_attr` emits stride/padding/dilations/perms/group-counts."** The body (`@0x2a910`) does `_PyDict_NewPresized` then `PyDict_SetItem` in the order stride → padding → rhs_dilation → lhs_dilation → in_perm → kern_perm → out_perm → (a tensor-shape key) → batch_group_count → feature_group_count. Its symmetry with `BirCodeGenLoop._get_conv_attrs_with_out_shape` (which adds `out_shape`) is a strong correlation across the name handoff rather than a shared code path.
 
-**Re-verification ceiling.** Every *symbol, kernel name, predicate name, registry name, annotation string, assertion message, docstring, and statistic string* on this page was confirmed directly against the cp310 `.so` string table, and the name handoff was confirmed end-to-end against `BirCodeGenLoop` (`_INTERNAL_KERNEL_REGISTRY` + `_get_conv_attrs`/`_get_conv_attrs_with_out_shape` + the conv name keys) and `private_nkl/conv.py` (the leaf `def`s — `conv2d_column_packing{,_1,_io10}` all present). The *control-flow ordering* (the two-registry order and its enabling guard, first-match return, the two pbp `return-False` stub bodies, the stride-`[3,3]` constant, the `get_kernel_attr` dict key order) was independently re-read from the decompiled function bodies at the cited addresses (`transformConvTensorOp@0x48b80`, `match_and_replace_kernel@0x3c420`, the two pbp stubs, `match_conv_depthwise_forward`, `get_kernel_attr@0x2a910`) and corroborates the report with **no contradictions** — these are now CONFIRMED at the body level, not merely string-grounded. All 16 function addresses on the page match the IDA function map. The single remaining INFERRED gap is the column-packing trio's exact predicate↔name binding (which of `conv2d_column_packing` / `_1` / `_io10` binds to which of the two `match_conv_depthwise_backward` registrations); fixing it byte-exactly requires reading the `KernelInfo` argument tuples literally from module-exec.
+Every symbol, kernel name, predicate name, registry name, annotation string, assertion message, docstring, and statistic string on this page sits in the cp310 `.so` string table, and the name handoff resolves end-to-end against `BirCodeGenLoop` (`_INTERNAL_KERNEL_REGISTRY`, `_get_conv_attrs`/`_get_conv_attrs_with_out_shape`, the conv name keys) and `private_nkl/conv.py`, where `conv2d_column_packing{,_1,_io10}` are all present as leaf `def`s. All 16 function addresses match the IDA function map. The one remaining gap is the column-packing trio's exact predicate↔name binding — which of `conv2d_column_packing` / `_1` / `_io10` binds to which of the two `match_conv_depthwise_backward` registrations — which needs the `KernelInfo` argument tuples read literally from module-exec.
 
 ---
 
