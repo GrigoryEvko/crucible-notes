@@ -1,6 +1,6 @@
 # Dtype-Promotion Lattice (`promote_type`)
 
-> *All addresses, offsets, and symbols on this page apply to neuronx_cc 2.24.5133.0+58f8de22, cp310 wheel. The promotion lattice lives in `neuronxcc/starfish/penguin/dtypes.cpython-310-x86_64-linux-gnu.so` (BuildID `sha1:01c37fd6d3190601e1104533925fcb08b5d4a066`, 694 088 bytes, not stripped, Cython 3.0.10 / GNU C17 `-O3 -fwrapv -fPIC`, source `neuronxcc/starfish/penguin/dtypes.py`). The cp311/cp312 wheels carry the same logic at shifted addresses. All function bodies below were read from the binary directly; the `static_cast_*` conversion math is **not** in this wheel — see [§ The Façade Gap](#the-faade-gap-supportdtypeso).*
+> *All addresses, offsets, and symbols on this page apply to neuronx_cc 2.24.5133.0+58f8de22, cp310 wheel. The promotion lattice lives in `neuronxcc/starfish/penguin/dtypes.cpython-310-x86_64-linux-gnu.so` (BuildID `sha1:01c37fd6d3190601e1104533925fcb08b5d4a066`, 694 088 bytes, not stripped, Cython 3.0.10 / GNU C17 `-O3 -fwrapv -fPIC`, source `neuronxcc/starfish/penguin/dtypes.py`). The cp311/cp312 wheels carry the same logic at shifted addresses. All function bodies below were read from the binary directly; the `static_cast_*` conversion math is **not** in this wheel — see [§ The Façade Gap](#the-façade-gap-supportdtypeso).*
 
 ## Abstract
 
@@ -35,7 +35,7 @@ To reproduce the lattice a reader needs four things, all on this page:
 - **The int rule.** Both-unsigned and both-signed each reduce to wider-itemsize-wins; the mixed-sign case walks a width ladder over `uint{64,32,16,8}` / `int{32,16}` and escapes to `float32` when no integer type can hold both.
 - **The mixed (float×int) rule.** The float side always wins outright — no widening of the float to cover the int's range.
 
-The single counter-intuitive fact a reimplementer must not miss: `float8_e8m0fnu` is a *scale exponent*, not a numeric float, so it is removed from the float widen path before either the itemsize or the ladder rule runs (see [§3.1](#31-the-e8m0-guard-why-a-scale-is-not-a-value) and the cross-reference to the [MX-microscaling page](mx-microscaling.md), §9.8).
+The single counter-intuitive fact a reimplementer must not miss: `float8_e8m0fnu` is a *scale exponent*, not a numeric float, so it is removed from the float widen path before either the itemsize or the ladder rule runs (see [§3.1](#31-the-e8m0-guard--why-a-scale-is-not-a-value) and the cross-reference to the [MX-microscaling page](mx-microscaling.md), §9.8).
 
 ---
 
@@ -83,7 +83,7 @@ PyObject *promote_type(PyObject *t0, PyObject *t1) {
 |---|---|---|
 | `"No available implicit dtype promotion path for input dtypes {t0} and {t1}. Use .astype(dtype) explicitly."` | `0x1e1e0` | a sub-rule finds no path (held in the closure cell, C-line 437) |
 | `"unexpected dtype: "` | `0x1e3c0` | an operand is neither a recognised int nor float |
-| `"Cannot merge type!"` | `0x1e3a0` | the stricter `merge_type` sibling (see [§5](#5-sibling-predicates)) |
+| `"Cannot merge type!"` | `0x1e3a0` | the stricter `merge_type` sibling (see [§6](#6-sibling-predicates)) |
 
 All three strings are present verbatim in the binary string pool at the offsets above.
 

@@ -131,7 +131,7 @@ function REG_allocate(Function* fn):                          // banner "  alloc
     //          "<pct>% REG utilization after allocation"
 ```
 
-> **QUIRK — one scored color, not best-of-N.** The SBUF colorer runs a *heuristic sweep* and keeps the best of several scored colorings (the "best-of-N" reading corrected in [`allocator-drivers`](allocator-drivers.md#the-spill-fixpoint--best-of-n-is-a-correction)). REG does **not**: `select` `@0x9b9de0` produces a *single* `double` score ("REG score … lower is better"), and the outer counter ("REG GCA interation nums") is the spill-reinsert **fixpoint**, not an enumeration of alternative colorings. A reimplementer who copies the 2-D sweep into the scalar colorer will add iterations that this colorer never runs.
+> **QUIRK — one scored color, not best-of-N.** The SBUF colorer runs a *heuristic sweep* and keeps the best of several scored colorings (the "best-of-N" reading corrected in [`allocator-drivers`](allocator-drivers.md#the-spill-fixpoint)). REG does **not**: `select` `@0x9b9de0` produces a *single* `double` score ("REG score … lower is better"), and the outer counter ("REG GCA interation nums") is the spill-reinsert **fixpoint**, not an enumeration of alternative colorings. A reimplementer who copies the 2-D sweep into the scalar colorer will add iterations that this colorer never runs.
 
 ### The spill target — registers spill to memory
 

@@ -88,7 +88,7 @@ std::thread::_M_start_thread(...);              // d6e8f8  LAUNCH candidate
 futures._M_realloc_insert(future);              // d6e9c5  vector<future<tuple<float,int>>> push
 ```
 
-The copy at `d6e88b` is the entire reason the search is data-race-free: each candidate captures its **own** clone of the PGA object (which carries the serialized baseline module at field `+0x70`, see [§2](#2-runvnsplitteronce--one-candidate-confirmed)), so the 64 threads each `load` and mutate a private module.
+The copy at `d6e88b` is the entire reason the search is data-race-free: each candidate captures its **own** clone of the PGA object (which carries the serialized baseline module at field `+0x70`, see [§2](#2-runvnsplitteronce--one-candidate)), so the 64 threads each `load` and mutate a private module.
 
 The launch policy is the default `std::launch::async|deferred`. The binary instantiates **both** state classes for the same invoker type:
 

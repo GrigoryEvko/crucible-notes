@@ -33,7 +33,7 @@ For reimplementation, the contract is:
 
 ### Purpose
 
-A `DependencyEdge` is one directed ordering constraint between two operations: "`src` must be ordered before `dst`, for the reason given by `kind`." It is a *first-class object* — a node you can hold a reference to, put in a list, and `serialize` — which is exactly what makes the Penguin representation differ from BIR (where an edge is a packed `EdgePtr` with no standalone identity, see [BIR contrast](#contrast-with-bir-inline-vs-function-level)).
+A `DependencyEdge` is one directed ordering constraint between two operations: "`src` must be ordered before `dst`, for the reason given by `kind`." It is a *first-class object* — a node you can hold a reference to, put in a list, and `serialize` — which is exactly what makes the Penguin representation differ from BIR (where an edge is a packed `EdgePtr` with no standalone identity, see [BIR contrast](#contrast-with-bir--inline-vs-function-level)).
 
 ### Layout
 
@@ -55,7 +55,7 @@ class DependencyEdge:                         // __pyx_pw_…DependencyEdge_1__i
 
 ### The Edge Direction
 
-`src → dst` is producer→consumer for a `FLOW` (RAW) edge; for `ANTI`/`OUTPUT`/`ORDERED` it is still "earlier→later" in the required program order. The same `(src, dst)` pair can appear under more than one `EdgeKind` in the Penguin list (the list is *not* MAX-merged the way BIR is) — see the [BIR contrast](#contrast-with-bir-inline-vs-function-level).
+`src → dst` is producer→consumer for a `FLOW` (RAW) edge; for `ANTI`/`OUTPUT`/`ORDERED` it is still "earlier→later" in the required program order. The same `(src, dst)` pair can appear under more than one `EdgeKind` in the Penguin list (the list is *not* MAX-merged the way BIR is) — see the [BIR contrast](#contrast-with-bir--inline-vs-function-level).
 
 ---
 

@@ -80,7 +80,7 @@ Each opcode therefore leaves a dual witness in its encoder body: `movl $op,-X(%r
 - `CoreV3GenImpl::visitInst*` — **13** overrides: `TensorTensor, Matmult, MatmultSparse, CoreBarrier, GPSIMDSB2SB, GetSequenceBounds, RangeSelect, MaxIndexAndMatchReplace, NonzeroWithCount, GetRandState, RandGetState, RandSetState, SetRandState`.
 - `CoreV4GenImpl::visitInst*` — **5** overrides: `Activation, Exponential, MatmultMx, QuantizeMx, Rand2`.
 
-Critically, **most overrides keep the same opcode byte** — the override only extends the int32 / extended-engine field bands (e.g. the `CoreV3` DVE overrides `TensorTensor`, `RangeSelect`, `MaxIndexAndMatchReplace`, `NonzeroWithCount`). The genuine per-arch *opcode renumber* is rare; see [§4(b)](#b-per-arch-l3-differences--v4-v3-newvn).
+Critically, **most overrides keep the same opcode byte** — the override only extends the int32 / extended-engine field bands (e.g. the `CoreV3` DVE overrides `TensorTensor`, `RangeSelect`, `MaxIndexAndMatchReplace`, `NonzeroWithCount`). The genuine per-arch *opcode renumber* is rare; see [§4(b)](#b-per-arch-l3-differences-Δv4--Δv3--newvn).
 
 ---
 

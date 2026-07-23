@@ -265,7 +265,7 @@ visit(Instruction& I):
 
 The DMA-family gate reads a 0x31-byte table `off_1DE6420` indexed by `opcode-19`, plus the explicit `opcode == 18` case; the table sets the DMA / DMA-like opcodes `{18,19,22,32,41,42,43,44,45,46,67}`. The `!isDstReduceDGE` assertion (`dynamic_dma.cpp:124`) is the scan's refusal to route a destination-reduce DMA through DGE here — `dst_reduce` is a separate `DGELevel` handled elsewhere in the lowering.
 
-> **QUIRK — the `Unassigned` guard makes the scan idempotent and re-runnable.** Because the stamp only fires on `+0xF8 == 3`, the pass can run twice (it does — once pre-allocation, once post; see [Pipeline Placement](#pipeline-placement)) and the second pass routes only DMAs that were *introduced after* the first (spill/reload clones, SSA re-clones), leaving every already-routed DMA alone. A reimplementation that unconditionally re-stamps would clobber routes the allocator depends on.
+> **QUIRK — the `Unassigned` guard makes the scan idempotent and re-runnable.** Because the stamp only fires on `+0xF8 == 3`, the pass can run twice (it does — once pre-allocation, once post; see [Pipeline Placement](#pass-registration-and-pipeline-placement)) and the second pass routes only DMAs that were *introduced after* the first (spill/reload clones, SSA re-clones), leaving every already-routed DMA alone. A reimplementation that unconditionally re-stamps would clobber routes the allocator depends on.
 
 ---
 

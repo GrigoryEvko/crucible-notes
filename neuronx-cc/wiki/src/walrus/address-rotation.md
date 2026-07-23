@@ -12,7 +12,7 @@ If you know modulo scheduling, the analogy is exact in spirit but inverted in me
 
 For reimplementation, the contract is:
 
-- **The ring-window modulo addressing.** A rotated tensor's address is `base + (iter·stride) mod (N·slotSize)` — the same `(numer mod denom)` index `[pelican::ModuloExpr](../bir/pelican-moduleexpr.md)` produces, but this pass only chooses the **physical slot** the ring maps onto; it does not emit the `ModuloExpr` node (see the correction in [§6](#6-the-post-schedule-variant--multi-buffering-emerges)).
+- **The ring-window modulo addressing.** A rotated tensor's address is `base + (iter·stride) mod (N·slotSize)` — the same `(numer mod denom)` index `[pelican::ModuloExpr](../bir/pelican-moduleexpr.md)` produces, but this pass only chooses the **physical slot** the ring maps onto; it does not emit the `ModuloExpr` node (see the correction in [§6](#the-post-schedule-variant--multi-buffering-emerges)).
 - **The per-space period-selection rule.** PSUM rotates over the architectural **bank count** `N`; SBUF rotates over a per-engine-class **period** (`1/5/10/20/60`); DRAM rotates inside a **CLI-capped GiB window** (`dram_rotation_size ≤ 8`). Three different moduli, three different free-slot allocators.
 - **The dispatch and fixpoint structure.** Which path fires keyed on `Function` attribute flags 9/10/11/12; PSUM rotation runs as a **3-pass fixpoint**; SBUF rotation is partition-band-batched under TBB.
 
@@ -244,7 +244,7 @@ void psum_rotation(this, Function& f, PSUM_ROTATE_TARGET target, int) {   // 0x9
 
 `getPsumBankAlignment` (`0x1088ad0`) is `divideCeil(memlocSize, psumBankSize)` — the number of banks the memloc spans, which doubles as the start-bank alignment. `prefer_bank_alignment` (`0x9185c0`) is the tie-break: `align==2 → s even`, `align==4 → s%4==0`, `align==3 → s%3==0`. All the log strings and the `%`/`prefer_bank_alignment` call sites are present in the 19 KB body.
 
-> **QUIRK — the ring is a priority queue, not a counter.** The choice of *which* free bank in the ring a memloc takes is not a literal circular `(iter mod N)` counter inside this pass. A `priority_queue<pair<MemoryLocation*, u32>, SortFn>` (`memQueue`, push `0x9721d0`) heap-orders the candidate buffers by `SortFn` and pops slots to assign. The modulo arithmetic lives in the *address* the consumer reads — the symbolic `(iter mod N)` index is the `ModuloExpr`, produced elsewhere (see [§6](#6-the-post-schedule-variant--multi-buffering-emerges)); this pass only decides which physical bank that ring index resolves to.
+> **QUIRK — the ring is a priority queue, not a counter.** The choice of *which* free bank in the ring a memloc takes is not a literal circular `(iter mod N)` counter inside this pass. A `priority_queue<pair<MemoryLocation*, u32>, SortFn>` (`memQueue`, push `0x9721d0`) heap-orders the candidate buffers by `SortFn` and pops slots to assign. The modulo arithmetic lives in the *address* the consumer reads — the symbolic `(iter mod N)` index is the `ModuloExpr`, produced elsewhere (see [§6](#the-post-schedule-variant--multi-buffering-emerges)); this pass only decides which physical bank that ring index resolves to.
 
 ### Ring semantics
 

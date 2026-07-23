@@ -64,7 +64,7 @@ The base therefore carries **no numbers** — it is an interface. Each opcode's 
 
 ### The singleton registry
 
-A consumer never constructs a `Hwm` directly. `bir::Hwm::getSingleton(std::string const&)` @ `0x61d680` is keyed by codename (`"Trainium"` / `"Gen3"` / `"CoreV4"`), looks the instance up in the map built by `getSingletonMap` @ `0x5f7ce0`, and returns the per-arch oracle. `PerfSim` resolves the singleton once and pre-bakes every instruction's latency into `cost[]` (see [Layer 2](#layer-2-perfsim-the-cycle-simulator)) — there is **no virtual dispatch in the hot timeline walk**.
+A consumer never constructs a `Hwm` directly. `bir::Hwm::getSingleton(std::string const&)` @ `0x61d680` is keyed by codename (`"Trainium"` / `"Gen3"` / `"CoreV4"`), looks the instance up in the map built by `getSingletonMap` @ `0x5f7ce0`, and returns the per-arch oracle. `PerfSim` resolves the singleton once and pre-bakes every instruction's latency into `cost[]` (see [Layer 2](#layer-2--perfsim-the-cycle-simulator)) — there is **no virtual dispatch in the hot timeline walk**.
 
 ### `getLatency` composes three phases
 
