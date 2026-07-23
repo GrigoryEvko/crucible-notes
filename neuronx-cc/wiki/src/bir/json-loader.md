@@ -339,4 +339,4 @@ loadModule(json M):
 * [MemoryLocation / Storage & the Alias Model](memory-location.md) — the Storage family built in step (b) and the shape-keyed alias schema of `addMemLocAliasesFromJson`.
 * [The BIR-JSON Writer](json-writer.md) *(7.13)* — the `to_json` inverse this page deserializes; the 19-key header and `PointerIntPair` edge model it emits.
 * [The BIR-JSON Schema](json-schema-catalog.md) *(7.14)* — the full member roster and v1/v2 wire-key catalog.
-* [NEFF members](../formats/neff.md) *(12.3, planned)* — where the BIR-JSON document sits inside the NEFF tar.
+* [NEFF members](../formats/neff-json-sidecars.md) *(12.3, planned)* — where the BIR-JSON document sits inside the NEFF tar.

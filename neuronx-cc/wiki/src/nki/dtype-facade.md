@@ -218,5 +218,5 @@ Two things on this page are reconstructed rather than read. First, the claim tha
 ## Cross-References
 
 - [nki/type-system](type-system.md) — 6.3.1, the tracer that consumes these dtypes via `is_number` and category dispatch
-- [dtype catalog](../catalog/dtype-catalog.md) — Part 9 (forward), the FP8/FP4/bf16 bit layouts and `static_cast_*` numeric models behind the impl layer
+- [dtype catalog](../numerics/dtype-catalog.md) — Part 9 (forward), the FP8/FP4/bf16 bit layouts and `static_cast_*` numeric models behind the impl layer
 - BIR `Dtype` enum — Part 7 (forward), the consumer of the `dtype2str` token across the BIR boundary

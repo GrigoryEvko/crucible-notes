@@ -220,7 +220,7 @@ Each core contracts the **full** `I_TP` for its blocks — an expert FFN is comp
 
 > **QUIRK —** the "PING_PONG double-buffering" is **not** an `i%2` two-buffer SBUF swap. `BLOCK_PARALLEL_FACTOR=3` (`bwmm_shard_on_block.py:47`) processes blocks in groups of three with the load fully separated from the compute: PHASE-1 issues *all* token-gathers and hidden-transposes for the three blocks `{3o, 3o+1, 3o+2}` (`:331-511`), then PHASE-2 issues *all* weight-loads and matmuls for the same three (`:513-1038`). Three independent SBUF buffer sets (`block_hidden_states_lst[0..2]`) let block g+1/g+2's loads retire while block g computes — a three-stage software pipeline expressed structurally.
 
-This is the frontend producer of the load/compute split that the backend's `SeparateLoadAndCompute` pass software-pipelines: the frontend pre-separates and triple-buffers; the backend assigns load vs. compute stages and drops the inter-stage barrier, overlapping `DMA(load g+1)` with `PE(compute g)`. The innermost gate/up matmul also drains its PSUM one I-tile behind the matmul (`:615-666`) — the same "compute N while draining N−1" idea at the finest grain. See [dynamic for-loop](../front/dynamic-for-loop.md) and the [matmul worked example](../front/worked-example-matmul.md) for the loop-structuring background.
+This is the frontend producer of the load/compute split that the backend's `SeparateLoadAndCompute` pass software-pipelines: the frontend pre-separates and triple-buffers; the backend assigns load vs. compute stages and drops the inter-stage barrier, overlapping `DMA(load g+1)` with `PE(compute g)`. The innermost gate/up matmul also drains its PSUM one I-tile behind the matmul (`:615-666`) — the same "compute N while draining N−1" idea at the finest grain. See [dynamic for-loop](../penguin/dynamic-for-loop.md) and the [matmul worked example](../front/worked-example-matmul.md) for the loop-structuring background.
 
 > **GOTCHA — `bwmm_shard_on_block`'s loop is static only, whatever its docstring says.** The docstring (`:15`, `:101-102`) promises a "static + dynamic / hybrid early-exit" loop. The shipped body sets `use_dynamic_while=False` and `NUM_STATIC_BLOCKS=N`, carries a single `# STATIC LOOP`, and has no `conditions` argument in its signature at all. The hybrid path exists only in the `_I` and `_mx` siblings. Two related vestiges live in the same leaf: `n_block_per_iter` is forwarded by the dispatch but never read, and `down_activations` is reset to `None` mid-body, which makes activation-checkpointing here a no-op.
 
@@ -293,7 +293,7 @@ for _ in nl.dynamic_range(NUM_STATIC_BLOCKS, cond_reg):                     // b
     core_barrier(block_idx_sbuf, (0,1))
 ```
 
-This optimizes padded variable-length sequences: guaranteed-present blocks run unrolled in the static prefix, padded/maybe-empty blocks in a runtime-gated dynamic loop. See [dynamic for-loop](../front/dynamic-for-loop.md) for `nl.dynamic_range` semantics.
+This optimizes padded variable-length sequences: guaranteed-present blocks run unrolled in the static prefix, padded/maybe-empty blocks in a runtime-gated dynamic loop. See [dynamic for-loop](../penguin/dynamic-for-loop.md) for `nl.dynamic_range` semantics.
 
 > **NOTE — the static-only finding is block-shard's alone.** `bwmm_shard_on_block`'s docstring is the one that overstates. The hybrids in `bwmm_shard_on_I` (enum 2) and `bwmm_shard_on_I_mx` (enum 6) really do emit dynamic-while loops, so the family as a whole is not static-only.
 
@@ -381,6 +381,6 @@ These are truthful code-quality observations, all read directly in the shipped s
 - [Production kernel inventory](production-kernel-inventory.md) — where MoE-CTE sits in the nkilib kernel catalog
 - [ISA compute intrinsics](isa-compute-intrinsics.md) — `nc_matmul`, `nc_matmul_mx`, `nc_transpose`, `quantize_mx`, `dma_compute`, `sendrecv`, the accumulate-group semantics
 - [SPMD programming model](spmd-programming-model.md) — `program_id` / `num_programs`, the 2-core LNC shard model, `core_barrier`
-- [Dynamic for-loop](../front/dynamic-for-loop.md) — `nl.dynamic_range` and the static+dynamic hybrid loop structure
+- [Dynamic for-loop](../penguin/dynamic-for-loop.md) — `nl.dynamic_range` and the static+dynamic hybrid loop structure
 - [Matmul worked example](../front/worked-example-matmul.md) — the PE stationary/moving mapping and PSUM accumulation in a full trace
 - [MX microscaling numerics](../numerics/mx-microscaling.md) — OCP MXFP4/MXFP8, E8M0, x4-packing details

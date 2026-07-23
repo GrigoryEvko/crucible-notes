@@ -352,8 +352,8 @@ Residual gaps: which passes actually run, and in what order, is driver-supplied 
 
 ## Cross-References
 
-- [tensor_map alias](../penguin/tensor-map.md) — §12.3, how the BIR `tensor_map` consumes the resolved alias to fold input/output onto one buffer
-- [Output-Operand Aliasing](../backend/output-operand-aliasing.md) — Part 6, the backend/allocator end of the contract: must-alias = unconditional share, may-alias = liveness-gated
-- [TensorizerLegalization Aliasing](../mlir/tensorizer-legalization.md) — §4.40, where the MHLO `ArgResultAliasAttr` is legalized into the tensorizer dialect
+- [tensor_map alias](../formats/neff-json-sidecars.md) — §12.3, how the BIR `tensor_map` consumes the resolved alias to fold input/output onto one buffer
+- [Output-Operand Aliasing](../bir/memory-location.md) — Part 6, the backend/allocator end of the contract: must-alias = unconditional share, may-alias = liveness-gated
+- [TensorizerLegalization Aliasing](tensorizer-legalization.md) — §4.40, where the MHLO `ArgResultAliasAttr` is legalized into the tensorizer dialect
 - [Collective Combiners](collective-combiners.md) — the sibling "thin XLA wrapper" family; same Neuron-driver-over-upstream-core pattern
 - [The hlo-opt Pass Registry](pass-registry.md) — the `--passes` table that registers slots 44–48 and 72–73

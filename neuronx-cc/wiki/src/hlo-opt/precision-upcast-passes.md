@@ -335,4 +335,4 @@ Raw read from `_rodata.bin` (VA 0x410830 → dump offset 0x203ef0): `01 01 00 00
 - [INT8 Uniform-Quantize / Dequantize Legalization](int8-quantize-legalization.md) — §4.28, the F32-emulation theme applied to int8 matmul lowering
 - [Integer All-Reduce & Scalar-Reduce Decomposition](int-scalar-reduce-decomposition.md) — §4.10, integer-op decomposition at the HLO level
 - [CC-Op Decompose & Legalize Family](ccops-decompose-legalize.md) — the Tensorizer auto-cast machinery keyed by the `auto_cast` frontend attribute
-- [Numerics](../numerics/precision-model.md) — Part 9, the F32/BF16/FP8 datapath precision model these passes feed into
+- [Numerics](../numerics/mixed-precision-accumulation.md) — Part 9, the F32/BF16/FP8 datapath precision model these passes feed into

@@ -6,7 +6,7 @@
 
 Neuron lowers an HLO `arg-min`/`arg-max` not as a single primitive but as a **two-pass bracket** around the rest of the `hlo-opt` pipeline. A frontend emits the reduction as an `AwsNeuronArgMax` or `AwsNeuronArgMin` custom-call carrying the reduction axis in its `backend_config`. Pass #6 `legalize-aws-neuron-arg-max` (`xla::LegalizeAwsNeuronArgMax::Run` @ `0x1eecd30`) **normalizes** that custom-call — parses the axis, attaches an int64 iota constant operand, checks the element dtype against a fixed seven-type set, and re-emits a canonical custom-call. Pass #19 `lower-argminmax-custom-call` (`xla::LowerArgMinMaxCustomCall::Run` @ `0x1f06c60`) later **expands** that canonical custom-call into a pure-HLO subgraph of `iota` + `reduce` + `compare` + arithmetic index selection, then replaces all uses. The expansion engine `handleArgMinMaxCustomCall` @ `0x1f05590` does the real work; the `Run` is a matcher/dispatcher.
 
-The interesting part is the expansion. There is **no `select` op** in the lowered graph. Instead, Neuron uses the *weighted-iota argmax idiom*: a value-reduce finds the extremum, an equality `compare` builds an "is-extremum" PRED mask, an `iota` along the axis is shifted by a large sentinel, the mask multiplies it so matching lanes dominate, and a **second** min/max-reduce selects the matching index — which a final `subtract` un-shifts. Both reduces share a trivial scalar `maximum`/`minimum` comparator computation named `reduction_subcomp`. This arithmetic shape is exactly what maps cleanly onto the DVE search primitives (`Max8`/`FindIndex8`) in [Part 2.16](../arch/dve-search-primitives.md) and the codegen max-index path in [Part 7](../codegen/max-index.md): a reduce that finds the value and a second reduce that finds the index, with no data-dependent control flow.
+The interesting part is the expansion. There is **no `select` op** in the lowered graph. Instead, Neuron uses the *weighted-iota argmax idiom*: a value-reduce finds the extremum, an equality `compare` builds an "is-extremum" PRED mask, an `iota` along the axis is shifted by a large sentinel, the mask multiplies it so matching lanes dominate, and a **second** min/max-reduce selects the matching index — which a final `subtract` un-shifts. Both reduces share a trivial scalar `maximum`/`minimum` comparator computation named `reduction_subcomp`. This arithmetic shape is exactly what maps cleanly onto the DVE search primitives (`Max8`/`FindIndex8`) in [Part 2.16](../isa/dve-search-encoding.md) and the codegen max-index path in [Part 7](../bir/codegen-dve-rng-control.md): a reduce that finds the value and a second reduce that finds the index, with no data-dependent control flow.
 
 For reimplementation, the contract is:
 
@@ -54,7 +54,15 @@ StatusOr<bool> Run(HloModule* module, ExecThreads exec_threads):
         elif cc.custom_call_target == "AwsNeuronArgMin":    // str 0x23bf74; cmp 0x1eed900
             kind = ARGMIN
         else: continue
-        CHECK(inst.shape().element_type() == TUPLE/*16*/)   // cmp eax,0x10 @ 0x1eece42
+
+        // --- dtype gate on operand(0): range bound + 17-bit reject mask ---
+        et = inst.operand(0).shape().element_type()          // operands[0] @ 0x1eece24..0x1eece32
+                                                             //   (inlined-vector: test [inst+0x18],1 / cmovne)
+                                                             // Shape::element_type = [Shape+0] @ 0x1eece3a
+        if et > 0x10:                              continue  // cmp eax,0x10 ; ja  @ 0x1eece42/45
+        if (0xfffffffffffef0cf >> et) & 1:         continue  // bt rcx,rax ; jb    @ 0x1eece52/56
+        // bits CLEAR in the mask over 0..0x10 ⇒ accepted:
+        //   {4,5,8,9,10,11,16} = {S32, S64, U32, U64, F16, F32, BF16}
 
         // --- build the int64 iota index constant ---
         n   = inst.operand(0).shape().dimensions()[axis]    // array_state @ 0x1eece75
@@ -85,7 +93,18 @@ StatusOr<bool> Run(HloModule* module, ExecThreads exec_threads):
     return changed
 ```
 
-> **QUIRK —** the result shape's element type is asserted to be `TUPLE` (16) at `0x1eece42`, not the scalar index type. The `AwsNeuron*` arg-min/max custom-call returns a tuple, so the legalizer's dtype check (below) is on `operand(0)`'s element type (the *value* tensor), not the result.
+The gate is on **`operand(0)`** — the *value* tensor — not on the custom-call's own (tuple) result shape. Both arms reach it: the `AwsNeuronArgMin` string compare at `0x1eed900` jumps back to `0x1eece24`, the head of the same operand-fetch/gate block, so ArgMax and ArgMin share one dtype filter.
+
+The accepted set is decoded from the two-instruction idiom the compiler emitted for a seven-way `PrimitiveType` membership test:
+
+| Step | Instruction | Address | Effect |
+|---|---|---|---|
+| range bound | `cmp eax,0x10` / `ja` | `0x1eece42` | reject every code above `0x10` (BF16, the numerically largest accepted type) |
+| reject mask | `mov rcx,0xfffffffffffef0cf` / `bt rcx,rax` / `jb` | `0x1eece4b`–`0x1eece56` | reject every code whose mask bit is **set** |
+
+Bits `{4,5,8,9,10,11,16}` are the only ones clear in `0xfffffffffffef0cf` at or below `0x10`, giving exactly `{S32, S64, U32, U64, F16, F32, BF16}` — the same seven codes the `retNames` map is keyed on. A rejected dtype takes the `continue` edge to `0x1eecdc0` (the post-order loop's increment): the custom-call is left untouched rather than diagnosed at this site.
+
+> **GOTCHA — `cmp eax,0x10` at `0x1eece42` is a range bound, not a `TUPLE` compare.** `0x10` is 16 = `BF16`, the largest accepted `PrimitiveType`, and the instruction only decides "is this code inside the table's span" before the `bt` mask does the real membership test. `TUPLE` is `0x0D` (13) throughout XLA and throughout this binary — see the direct `cmp DWORD PTR [rax],0xd` tuple tests at `0x1e9f81e` (`DecomposeCCOps`) and `0x1f852e3` (`EnsureDescendingLayoutInRoot`). Reading `0x10` as a `TUPLE` sentinel both invents a 16-valued `TUPLE` and hides the dtype whitelist that is actually being applied.
 
 ### The Two dtype DenseMaps
 
@@ -388,7 +407,7 @@ The structured NCC diagnostics route through `hilo::formatErrorMessage<…>(Erro
 
 ## Cross-References
 
-- [DVE Search Primitives — Max8 / FindIndex8](../arch/dve-search-primitives.md) — the hardware search engine this two-reduce idiom lowers onto (value-reduce → `Max8`, masked-iota index-reduce → `FindIndex8`)
-- [Codegen Max-Index Path](../codegen/max-index.md) — Part 7 codegen of the lowered reduce/iota graph onto the DVE
+- [DVE Search Primitives — Max8 / FindIndex8](../isa/dve-search-encoding.md) — the hardware search engine this two-reduce idiom lowers onto (value-reduce → `Max8`, masked-iota index-reduce → `FindIndex8`)
+- [Codegen Max-Index Path](../bir/codegen-dve-rng-control.md) — Part 7 codegen of the lowered reduce/iota graph onto the DVE
 - [CC-Op Decompose & Legalize Family](ccops-decompose-legalize.md) — sibling `AwsNeuron*` custom-call legalizers and the shared `hilo::formatErrorMessage` / `ErrorCode` diagnostic machinery
 - [The hlo-opt Pass Registry](pass-registry.md) — registry positions #6 and #19, `RegisterHiloHloPasses`

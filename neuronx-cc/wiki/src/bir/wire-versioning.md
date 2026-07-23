@@ -300,5 +300,5 @@ Two things this snapshot cannot settle: when v2 was introduced (no changelog or 
 - [BIR JSON Writer / Dumper](json-writer.md) — 7.13, the emit path whose `Instruction::toJson` hardcodes `version=2`
 - [Affine Expression Algebra](../penguin/affine-expr-algebra.md) — the `pelican::Expr` / `QuasiAffineExpr` algebra whose trees the gate encodes
 - [Argument / AccessPattern / Value Model](value-model.md) — the `SymbolicAccessPattern.addrs` and `SymbolicImmediateValue` that embed version-gated `QuasiAffineExpr` trees
-- [NEFF JSON Schema](../formats/neff-json.md) — 12.3, the NEFF container `"0.6"` schema version (a *different* version number)
-- [NEFF Header & Format Version](../formats/neff-header.md) — 12.7, the NEFF binary-format constant (`+0=2`), distinct from BIR-JSON v2
+- [NEFF JSON Schema](../formats/neff-json-sidecars.md) — 12.3, the NEFF container `"0.6"` schema version (a *different* version number)
+- [NEFF Header & Format Version](../formats/neff-header-bom-writer.md) — 12.7, the NEFF binary-format constant (`+0=2`), distinct from BIR-JSON v2

@@ -289,7 +289,7 @@ MarkerSplitter::split(HloModule*)                         ── the partition d
 
 The whole subsystem exists to serve two transformations that need to know "where one layer ends and the next begins":
 
-- **Gradient checkpointing (activation recomputation).** Forward markers delimit each layer's forward span. A checkpointing scheme keeps only the boundary activations and recomputes the interior of each span during the backward pass. The `-Forward`/`-Backward` direction tells the partitioner which span is the cheap-to-recompute forward and which is the gradient it pairs against. See the norm/checkpoint kernels in [6.7.5](../nki/norm-checkpoint-kernels.md).
+- **Gradient checkpointing (activation recomputation).** Forward markers delimit each layer's forward span. A checkpointing scheme keeps only the boundary activations and recomputes the interior of each span during the backward pass. The `-Forward`/`-Backward` direction tells the partitioner which span is the cheap-to-recompute forward and which is the gradient it pairs against. See the norm/checkpoint kernels in [6.7.5](../nki/normalization-kernels.md).
 - **Pipeline-parallel partitioning.** The cut points are exactly the seams at which a model is sliced into pipeline stages, each stage assigned to a device. `boundaryCount` orders the stages; the Start/End pairs delimit each stage's instructions.
 
 In both cases the marker is pure structural metadata — it carries no profiling payload beyond `boundaryCount=`. The `OpMetadata` cloned through canonicalize (and preserved onto the tuple/GTE) is the channel by which span provenance survives the rewrites.
@@ -344,7 +344,7 @@ Opcodes (byte `(inst+0x14)`): `kCustomCall`=`0x2B`, `kWhile`=`0x79`, `kTuple`=`0
 - The emit→2 / canonicalize→1 `api_version` split is read from the `CreateCustomCall` call-site register setup rather than from a re-disassembly of both call sites end to end. The enum values themselves are directly observed; the assignment of each to a call site is one step removed.
 - The upstream producer of the four `AwsNeuronModuleMarker*` custom-calls is not identified — neither binary contains a creation site, so they must arrive in the input HLO.
 - The module-marker backend-config schema beyond `boundaryCount` is unknown; the content is produced upstream and only read here via `getMarkerBackendConfig`.
-- The precise Start↔End nesting and pairing rule inside `analyzeLayerBoundary` is sketched from callee and string evidence rather than traced; see [Marker Splitter & Penguin Partition](../penguin/marker-splitter-partition.md) for the deeper treatment.
+- The precise Start↔End nesting and pairing rule inside `analyzeLayerBoundary` is sketched from callee and string evidence rather than traced; see Marker Splitter & Penguin Partition for the deeper treatment.
 
 ---
 
@@ -361,5 +361,5 @@ Opcodes (byte `(inst+0x14)`): `kCustomCall`=`0x2B`, `kWhile`=`0x79`, `kTuple`=`0
 
 - [While-Loop Unroll & All-Gather Trip-Count Rewrite](whileloop-unroll-tripcount.md) — 4.11; the while-loop unroller that produces loop-body markers, and the DUS/DS passes that inline-strip them
 - [Pass Registry](pass-registry.md) — the `--passes` table where #30 `canonicalize-boundary-marker` and #31 `boundary-marker-removal` are registered
-- [Marker Splitter & Penguin Partition](../penguin/marker-splitter-partition.md) — Part 5; the layer-cut algorithm in `hlo2penguin` that consumes the module markers
-- [Norm & Checkpoint Kernels](../nki/norm-checkpoint-kernels.md) — 6.7.5; gradient-checkpointing kernels whose recompute spans are delimited by the forward/backward markers
+- Marker Splitter & Penguin Partition — Part 5; the layer-cut algorithm in `hlo2penguin` that consumes the module markers
+- [Norm & Checkpoint Kernels](../nki/normalization-kernels.md) — 6.7.5; gradient-checkpointing kernels whose recompute spans are delimited by the forward/backward markers

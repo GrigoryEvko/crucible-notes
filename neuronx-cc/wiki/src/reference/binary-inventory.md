@@ -18,10 +18,10 @@ These live in `neuronxcc/starfish/bin/` and are forked by the driver as subproce
 | `hlo2penguin` | 232 MB | MLIR front half: mhlo/stablehlo → Penguin Python IR | [Part 4](../hlo-opt/) |
 | `hlo-opt` | 229 MB | HLO/MHLO/StableHLO optimizer; the `--passes` registry | [Part 4](../hlo-opt/) |
 | `hlo-neff-wrapper` | 227 MB | Wraps backend output into the NEFF (the "Kelper" stage) | [12.x](../formats/) |
-| `snapshot-unpack` | 226 MB | Unpacks a decomposed/snapshot compile input | [3.17](../frontend/snapshot-format.md) |
+| `snapshot-unpack` | 226 MB | Unpacks a decomposed/snapshot compile input | [3.17](../frontend/snapshot-input-format.md) |
 | `walrus_bugpoint_driver` | 36 MB | Delta-debugging driver over the backend | [Part 8](../walrus/) |
-| `coloring_allocator_with_loop` | 3.8 MB | Standalone register/memory allocator (loop-aware) entry | [8.16](../walrus/coloring-allocator.md) |
-| `full_unroll` | 2.9 MB | Standalone loop-unroll pass entry | [8.3](../walrus/unroll.md) |
+| `coloring_allocator_with_loop` | 3.8 MB | Standalone register/memory allocator (loop-aware) entry | [8.16](../walrus/allocator-drivers.md) |
+| `full_unroll` | 2.9 MB | Standalone loop-unroll pass entry | [8.3](../walrus/translate-nki-unroll.md) |
 | `walrus_driver` | 708 KB | **Thin shim** — argument marshalling; the backend itself is `libwalrus.so` | [3.7](../frontend/walrus-driver-cli.md) |
 
 > **QUIRK —** `walrus_driver` is under a megabyte, but it is the entry point to the entire backend. It is a launcher: it parses the backend CLI, `dlopen`s `libwalrus.so`, and calls in. Do not look for scheduling or allocation logic in the driver — it is all in the 65 MB library.
@@ -66,7 +66,7 @@ The Penguin middle-end and the NKI frontend ship as per-Python-version Cython ex
 | `driver/commands/CompileCommand.so` | 2.5 MB | The top-level compile command |
 | `driver/jobs/WalrusDriver.so`, `XLAInferGoldens.so` | 3.1 MB ea. | The Python job wrappers that fork the tools |
 
-> **NOTE —** the two-codegen split is visible right here in the file list: `KernelBuilder.so` (`NeuronCodegen`) is the **forward** builder that turns traced NKI Python into Penguin IR, while `NkiCodegen.so` (`NkiCodegen`) is the **reverse** printer that re-emits NKI text from compiled Penguin IR. They are different classes in different files; do not conflate them. See [6.5.1](../nki/neuroncodegen-overview.md) and [6.5.9](../nki/nkicodegen.md).
+> **NOTE —** the two-codegen split is visible right here in the file list: `KernelBuilder.so` (`NeuronCodegen`) is the **forward** builder that turns traced NKI Python into Penguin IR, while `NkiCodegen.so` (`NkiCodegen`) is the **reverse** printer that re-emits NKI text from compiled Penguin IR. They are different classes in different files; do not conflate them. See [6.5.1](../nki/neuroncodegen-forward-builder.md) and [6.5.9](../nki/nkicodegen-printer.md).
 
 ## Reading the tree
 

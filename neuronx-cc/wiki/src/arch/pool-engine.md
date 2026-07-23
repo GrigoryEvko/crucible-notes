@@ -8,7 +8,7 @@ The **Pool engine** is Trainium's windowed-reduction unit — the leg of the TPB
 
 Two design choices make this leg counter-intuitive. First, **the pooling window is not a field** — there is no `window_size`/`stride` in the bundle. The window is the *product of the two innermost access-pattern dimensions*, and for average pooling the encoder folds it into a single reciprocal constant `1/N` written at bundle `+0x28`, so the silicon does a sum and one multiply, never a divide. Second, **`TensorReduce` is two physically distinct datapaths wearing one BIR op**: a *free-axis* path that reduces innermost loop dimensions, and a *cross-lane* path that reduces across the partition (channel) axis — different opcodes, different reduce-command encodings, different legality rules. Choosing the wrong one is silently wrong.
 
-This page is the **functional/architectural model**: the op→datapath→opcode routing, the window-as-reciprocal trick, the two reduce datapaths, and the MaxIndex 1→2 bundle split — enough to map a pooling or reduction op onto the correct Pool-leg datapath and opcode, and to know the engine's hard limits. It does **not** cover the bit-level layout of the sync-command regions or the `TENSORxD` descriptor interiors; that is [ISA: Pool encoding](../isa/pool-encoding.md) (2.12).
+This page is the **functional/architectural model**: the op→datapath→opcode routing, the window-as-reciprocal trick, the two reduce datapaths, and the MaxIndex 1→2 bundle split — enough to map a pooling or reduction op onto the correct Pool-leg datapath and opcode, and to know the engine's hard limits. It does **not** cover the bit-level layout of the sync-command regions or the `TENSORxD` descriptor interiors; that is [ISA: Pool encoding](../isa/pool-reduce-encoding.md) (2.12).
 
 For reimplementation, the contract is:
 
@@ -488,7 +488,7 @@ The reduce-op *semantics* (commutativity, `acc = LHS`) are exactly these functor
 - **CERTAIN (`libwalrus.so` cp310):** all four visitor addresses; Pool opcode `0x45`, func byte `Max→1`/`Avg→2` @ `+0x24`, mode `3` @ `+0x25`, scale `1.0f`/computed `1/N` @ `+0x28`; TensorReduce opcode arithmetic (`0x83`/`0x84` = 131/132, `0x7c`/`0x7d` = 124/125), the `+0x20..+0x23` byte stores, the CR axis fork (`cmp $0x5→1`, `cmp $0x4→0`), the CR mean `movss` @ `+0x28`; Max opcode `0x6c` with the `out==8` / `[8,16384]` asserts and `+0x36`/`+0x3A` flag stores; MaxIndex **both** `0x6d` and `0x6e` seeds; the dtype stride LUT @ `0x1DF59E0`; `PoolFunctionType = {Max, Avg}` only. All headline strings (`"has unimplemented Pooling type"`, `"in0.size() == 5"`, `"Cross-lane-reduce cannot perform negate"`, `"getAxis() == bir::AxisListType::XYZWC"`, `"CROSS_LANE_REDUCE"`, `"MATCH_VALUE_LOAD"`) verbatim.
 - **HIGH:** MaxIndex op109 = `MATCH_VALUE_LOAD`-class (string + single-2D `S2_BN` descriptor); the two bundles are co-issued find-index8 micro-ops; the MAX8→FIND_INDEX8 two-stage argmax; the engine bindings (DVE(5) for Max/MaxIndex, Pool engine for Pool, read from `inst+144`); the `1/N` Avg-fold rationale (sum + single multiply, no on-silicon divide).
 - **MEDIUM:** the `+0x36`/`+0x3A` Max mem-pattern flag words (`0`/`1`) as `is_immediate`/`dim-valid` flags — byte values pinned, meaning not; the Pool `+0x25` "mode = 3" sub-mode — likewise value-pinned, meaning open.
-- **LOW / not field-walked:** the exact bit layout *within* the `S4D4`/`S4D2`/`S2` sync-command regions and the `TENSORxD` descriptor interiors (rendered by `assignAccess`/`setupSync*`, the shared N-strand common code, out of this leg's scope — see [ISA: Pool encoding](../isa/pool-encoding.md)).
+- **LOW / not field-walked:** the exact bit layout *within* the `S4D4`/`S4D2`/`S2` sync-command regions and the `TENSORxD` descriptor interiors (rendered by `assignAccess`/`setupSync*`, the shared N-strand common code, out of this leg's scope — see [ISA: Pool encoding](../isa/pool-reduce-encoding.md)).
 
 ## Related Components
 
@@ -500,7 +500,7 @@ The reduce-op *semantics* (commutativity, `acc = LHS`) are exactly these functor
 
 ## Cross-References
 
-- [ISA: Pool Encoding](../isa/pool-encoding.md) — the bit-level 64-byte bundle layout this page describes functionally (2.12): the `S4D4`/`S4D2`/`S2` descriptor interiors and the dtype/AluOp/Axis wire tables.
+- [ISA: Pool Encoding](../isa/pool-reduce-encoding.md) — the bit-level 64-byte bundle layout this page describes functionally (2.12): the `S4D4`/`S4D2`/`S2` descriptor interiors and the dtype/AluOp/Axis wire tables.
 - [PE Engine](pe-engine.md) — the systolic matmul array (1.08); the sibling per-engine functional model and the shared bundle-prologue ABI.
 - [SBUF / PSUM Bank Geometry](sbuf-psum-geometry.md) — the partition/free-axis memory model the `Pattern[0]` lane count and the 5-dim band-pool AP shape live in.
 - [BIR Instruction Hierarchy](../bir/) — `InstPool` / `InstTensorReduce` / `InstMax` / `InstMaxIndex` as `bir::Instruction` nodes (Part 7), the dormant `ReduceCmdType` enum, and the `readFields` accessors.

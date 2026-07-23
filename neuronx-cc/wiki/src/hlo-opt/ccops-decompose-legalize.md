@@ -376,5 +376,5 @@ The structural claims on this page and what pins each:
 - [Collectives → Custom-Call Forward Conversion](collectives-to-customcall.md) — pass #11, establishes the native collective shapes these three normalize
 - [Collective Stream-ID & Channel-ID Family](collective-stream-channel-id.md) — pass #4 family; CPU normalizer erases what these assign
 - [AllReduce/ReduceScatter/AllGather Combiners & Threshold Model](collective-combiners.md) — the same native AG/AR/RS op-set, combined upstream
-- [Lower Local Collectives](../distribution/lower-local-collectives.md) — Part 8/13 device-side lowering that consumes the Tensorizer-legalized, single-dtype collectives
-- [Distribution & Collectives](../distribution/overview.md) — Part 13 overview of the collective stack these passes feed into before the Penguin hand-off
+- [Lower Local Collectives](../walrus/local-collectives.md) — Part 8/13 device-side lowering that consumes the Tensorizer-legalized, single-dtype collectives
+- Distribution & Collectives — Part 13 overview of the collective stack these passes feed into before the Penguin hand-off

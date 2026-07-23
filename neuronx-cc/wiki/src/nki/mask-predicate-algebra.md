@@ -254,7 +254,7 @@ The lowered `AffinePredicate` tuples feed two distinct backend realisations, and
 
 ### 6.1 `affine_select` — single-predicate masked write
 
-`NeuronCodegen.affine_select` (`_183`, `@0x18cf70`) emits a masked element-level write. It requires **exactly one** affine predicate and asserts otherwise; the guard string in `KernelBuilder.so` is `"'affine_select' only supports single predicate, was provided <N>"`. It builds an `AffSelTensorScalarOp` (interned as `__pyx_k_AffSelTensorScalarOp`) — a TensorScalar variant whose write is masked by the affine predicate: `out = predicate ? on_true(src) : on_false/fill_value`. The compare opcode comes from the predicate's relation (`is_ge → GE`). This is the primitive behind the attention causal mask (`affine_select` with `iota q_pos ≥ k_pos → _FLOAT32_MIN`). See **[6.5.5 affine_select](../nki/affine-select.md)** for the op-emit detail.
+`NeuronCodegen.affine_select` (`_183`, `@0x18cf70`) emits a masked element-level write. It requires **exactly one** affine predicate and asserts otherwise; the guard string in `KernelBuilder.so` is `"'affine_select' only supports single predicate, was provided <N>"`. It builds an `AffSelTensorScalarOp` (interned as `__pyx_k_AffSelTensorScalarOp`) — a TensorScalar variant whose write is masked by the affine predicate: `out = predicate ? on_true(src) : on_false/fill_value`. The compare opcode comes from the predicate's relation (`is_ge → GE`). This is the primitive behind the attention causal mask (`affine_select` with `iota q_pos ≥ k_pos → _FLOAT32_MIN`). See **[6.5.5 affine_select](../nki/neuroncodegen-control.md)** for the op-emit detail.
 
 ### 6.2 The predicate's two BIR fates
 
@@ -263,7 +263,7 @@ The lowered `AffinePredicate` tuples feed two distinct backend realisations, and
 - **Region guard** (`if_scope`/`while_scope` — a control-flow branch) → BIR `CmpBranch` (sequencer branch).
 - **Masked write** (`affine_select`/`tensor_copy_predicated` — a datapath select) → BIR `CopyPredicated` (`InstCopyPredicated`, IT 52).
 
-`lower_predicates` (`_191`) dispatches: one predicate → `lower_simple_predicate` (`_187`, a TensorScalar over a `TileIndex`/`index_value_inst` + the `opcode_for_predicate` compare → an `int32` mask tile); multiple → `lower_compound_predicates` (`_189`, an `np.logical_and` AND-fold). This is the *region-guard* lowering — distinct from the `mask.predicates` algebra of §4, which is the *front-end* lowering. See **[6.3.1 type-system predicates](../nki/nki-type-system.md)** for the type-level view.
+`lower_predicates` (`_191`) dispatches: one predicate → `lower_simple_predicate` (`_187`, a TensorScalar over a `TileIndex`/`index_value_inst` + the `opcode_for_predicate` compare → an `int32` mask tile); multiple → `lower_compound_predicates` (`_189`, an `np.logical_and` AND-fold). This is the *region-guard* lowering — distinct from the `mask.predicates` algebra of §4, which is the *front-end* lowering. See **[6.3.1 type-system predicates](../nki/type-system.md)** for the type-level view.
 
 All of this predicate and select lowering lives in `KernelBuilder.NeuronCodegen.*`, under `nki/compiler/backends/neuron`. The similarly-named `starfish/penguin/targets/codegen/NkiCodegen.so` runs the *opposite* direction: it is a BIR→NKI-Python source-text printer (`write_line`/`quote`/`begin_loop`/`simple_predicates`, entry points `ir_to_nki`/`nki_to_nki`), a debug round-tripper for reading IR back as kernel source.
 

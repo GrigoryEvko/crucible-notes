@@ -439,5 +439,5 @@ Every offset on this page agrees with [1.14](../arch/execution-sync-model.md) an
 - [2.19 SP Register-Lane Encoding](sp-register-encoding.md) — the sibling SP-band page: register-move / TensorLoad-Save encodings (the data-carrying SP ops).
 - [2.1 The 64-Byte Instruction Bundle & Header Skeleton](instruction-bundle.md) — the shared header (`opcode`, `inst_word_len`, reserved) every bundle on this page starts with.
 - [2.10 PE Matmul Encoding](pe-matmul-encoding.md) — the CoreV2/V3/V4 generator dispatch and `setupHeader` convention shared with these control ops.
-- [walrus Part 8 — `lower_control` / `lower_branch`](../walrus/register-allocation.md) — the passes (H35/H38) that mint the fence `Drain`, explode structured loops into a counter `RegisterAlu` + flat `CmpBranch`, and re-home branches onto SP before codegen.
-- [BIR Part 7 — Sim Sequencer](../bir/sim-sequencer.md) — the barrier-expansion (I11) and the simulator bodies that byte-confirm the `CTRL_BR` struct offsets.
+- [walrus Part 8 — `lower_control` / `lower_branch`](../walrus/lower-select-control-branch.md) — the passes (H35/H38) that mint the fence `Drain`, explode structured loops into a counter `RegisterAlu` + flat `CmpBranch`, and re-home branches onto SP before codegen.
+- [BIR Part 7 — Sim Sequencer](../bir/sim-control-sync-customop.md) — the barrier-expansion (I11) and the simulator bodies that byte-confirm the `CTRL_BR` struct offsets.

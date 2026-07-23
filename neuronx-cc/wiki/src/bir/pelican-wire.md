@@ -421,4 +421,4 @@ The kind sets, the tag spellings, the field offsets, the recursion structure, an
 - [AffineExpr / AffinePredicate ⇄ ISL ⇄ pelican Bridge](../penguin/affine-isl-pelican-bridge.md) — the algebra the wire form encodes and how predicates ride the same gate
 - [Two-Pass BIR-JSON Loader](json-loader.md) — where `createFromJson` is invoked during instruction reconstruction
 - [BIR-JSON Write Path](json-writer.md) — `Instruction::toJson`, skip-default, the always-v2 emit sites
-- [NEFF Container Format](../formats/neff.md) — *(planned, Part 12)* where the serialized BIR document is packaged
+- [NEFF Container Format](../formats/neff-container.md) — *(planned, Part 12)* where the serialized BIR document is packaged

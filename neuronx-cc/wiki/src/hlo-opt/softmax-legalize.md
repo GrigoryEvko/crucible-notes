@@ -360,6 +360,6 @@ Open where the binary does not settle it: the exact branch nesting of the two ra
 ## Cross-References
 
 - [HLO → Native / NKI Kernel Lowering](hlo-to-native-kernel-lowering.md) — §4.33; the attention-fusion path that consumes the same custom-call raising machinery and shares the `getNoComputeOpChain` matchers
-- [Attention Kernels with Online Softmax](../nki/attention-online-softmax.md) — §6.7.6; the NKI kernels that ultimately implement `Softmax_<dtype>` / fused attention, where softmax is computed online rather than as a discrete custom-call
+- [Attention Kernels with Online Softmax](../nki/attention-cte.md) — §6.7.6; the NKI kernels that ultimately implement `Softmax_<dtype>` / fused attention, where softmax is computed online rather than as a discrete custom-call
 - [The hlo-opt Pass Registry](pass-registry.md) — the `--passes` table; resolves orders 7/41/42/43 to these passes and their factories
 - [CC-Op Decompose & Legalize Family](ccops-decompose-legalize.md) — sibling custom-call legalization passes that share the CC→CC rewrite shape

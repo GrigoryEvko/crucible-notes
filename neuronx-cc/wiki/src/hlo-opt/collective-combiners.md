@@ -400,4 +400,4 @@ The five structural claims and what pins each:
 
 - [Collectives → CustomCall Lowering](collectives-to-customcall.md) — §4.3, how collectives are lowered after combining; the combined collective is what reaches the lowering
 - [Flip-Collective OpExpander Family](flip-collective-opexpander.md) — §4.6, the flip that enables combining upstream of these passes
-- [Distribution Bucketing](../distribution/bucketing.md) — Part 13, the runtime-side bucket model these byte/count thresholds feed
+- [Distribution Bucketing](../distribution/collective-bucketing-dynamic-est.md) — Part 13, the runtime-side bucket model these byte/count thresholds feed

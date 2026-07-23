@@ -402,5 +402,5 @@ absl::Status xla::FailedPrecondition(...);                         // 0x1eacef0
 
 - [Collective-Permute Path](collectivepermute-to-allgather.md) — 4.8; where `kAllToAll`/`kCollectivePermute` are actually lowered (not here)
 - [Collective Combiners](collective-combiners.md) — 4.5; the key-based RS/AR combiners that run alongside these fusions
-- [SPMD Emission](../distribution/spmd-emission.md) — Part 13; produces the native collectives this pass converts
-- [Lower-Local-Collectives](../walrus/lower-local-collectives.md) — Part 8; the consumer of the `AwsNeuron*` custom-call family
+- [SPMD Emission](../distribution/spmd-collective-emission.md) — Part 13; produces the native collectives this pass converts
+- [Lower-Local-Collectives](../walrus/local-collectives.md) — Part 8; the consumer of the `AwsNeuron*` custom-call family

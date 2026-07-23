@@ -11,8 +11,8 @@
 > Argument Dispatch](./entrypoints.md) — cross-referenced, not duplicated. The
 > framework-side registration of the custom-call is [3.13 Framework
 > Bindings](../frontend/framework-bindings.md); re-trace/cache reuse downstream is
-> [6.6.3](../nki/retrace-cache.md); the BIR wire that `serialize_ir_string` carries is
-> [Part 7 BIR](../bir/inst-hierarchy.md).
+> [6.6.3](../nki/frontend-bridge-cache.md); the BIR wire that `serialize_ir_string` carries is
+> [Part 7 BIR](../bir/instruction-base.md).
 
 **Binaries.** `neuronxcc/nki/compiler/backends/neuron/FrameworkKernel.cpython-310-*.so`
 (1,226,584 B, Cython, partly decompiled by IDA) and
@@ -403,7 +403,7 @@ key schema** — every key below appears as an interned `__pyx_n_u_*` string in
 > hand XLA a symbol to compile later; it base64-embeds the *whole IR* in the
 > `backend_config`. The Neuron compiler backend that consumes the HLO re-reads this
 > string to rebuild the kernel. (Wire details of that IR: [Part 7
-> BIR](../bir/inst-hierarchy.md).) `serialize_ir_string` is both an interned key string
+> BIR](../bir/instruction-base.md).) `serialize_ir_string` is both an interned key string
 > and a `TraceKernel` insert-path vocabulary word, at `0x56030`.
 
 > **QUIRK — `KERNEL_VERSION` is a module global, not a literal in `.rodata`.** Grepping
@@ -546,6 +546,6 @@ Three things are weaker:
   `compute_mode`, `GenericKernel`, the `NumpyKernel` exec path.
 - [3.13 Framework Bindings](../frontend/framework-bindings.md) — JAX / torch-xla
   custom-call registration & lowering hooks (the consumer of `dump_config`).
-- [6.6.3 Re-trace / Cache](../nki/retrace-cache.md) — downstream cache reuse semantics.
-- [Part 7 — BIR Instruction Hierarchy](../bir/inst-hierarchy.md) — the wire format that
+- [6.6.3 Re-trace / Cache](../nki/frontend-bridge-cache.md) — downstream cache reuse semantics.
+- [Part 7 — BIR Instruction Hierarchy](../bir/instruction-base.md) — the wire format that
   `serialize_ir_string` carries inside the `backend_config`.

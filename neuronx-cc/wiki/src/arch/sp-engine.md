@@ -16,7 +16,7 @@ A reimplementer needs to get four things right, and they are the four sections o
 
 4. **The register file and its coloring allocator.** A `bir::Register` is a *named* scalar register spanning `numPhysicalRegs` physical slots (1 for 32-bit, 2 for 64-bit). The file size is a per-engine HW constant, `HwmCore->MaxRegNumPerEngine`. Allocation is a **graph-coloring allocator with spilling** — the dedicated `REG_Allocator` (`simplify`/`live_range` — the classic simplify/select phases), confirmed as both a `libwalrus.so` symbol and a standalone `coloring_allocator_with_loop` tool binary.
 
-Everything structured — `for`, `while`, `do-while` — is **fully lowered before SP codegen**: the middle-end explodes a loop into a counter `RegisterAlu` op plus a back-edge `CompareAndBranch`, so on real silicon the SP sequencer only ever sees the *flat* scalar branch pair. This page covers the functional/architectural model — what the SP engine does and how its state moves. The bit-level field encoding of the 64-byte bundles is [ISA 2.19 (SP register-lane / TensorLoad-Save)](../isa/sp-register-encoding.md) and [ISA 2.20 (SP sync / branch / control encoding)](../isa/sp-sync-encoding.md); the simulator sequencer is [BIR Part 7](../bir/sim-sequencer.md); the register allocator is [walrus Part 8](../walrus/register-allocation.md).
+Everything structured — `for`, `while`, `do-while` — is **fully lowered before SP codegen**: the middle-end explodes a loop into a counter `RegisterAlu` op plus a back-edge `CompareAndBranch`, so on real silicon the SP sequencer only ever sees the *flat* scalar branch pair. This page covers the functional/architectural model — what the SP engine does and how its state moves. The bit-level field encoding of the 64-byte bundles is [ISA 2.19 (SP register-lane / TensorLoad-Save)](../isa/sp-register-encoding.md) and [ISA 2.20 (SP sync / branch / control encoding)](../isa/sp-sync-encoding.md); the simulator sequencer is [BIR Part 7](../bir/sim-control-sync-customop.md); the register allocator is [walrus Part 8](../walrus/alt-allocators-dma-opt.md).
 
 | | |
 |---|---|
@@ -398,7 +398,7 @@ The simulator (`birsim`) replays the result: the **next-BB slot** (PC) follow + 
 
 - [ISA 2.19 — SP register-lane / TensorLoad-Save encoding](../isa/sp-register-encoding.md) — the bit-level field encoding of the scalar register-access lane.
 - [ISA 2.20 — SP sync / branch / control encoding](../isa/sp-sync-encoding.md) — the bit-level `CTRL_BR`/`CTRL_NO` bundle and the semaphore wait/update block.
-- [BIR Part 7 — the simulator sequencer](../bir/sim-sequencer.md) — the `birsim::InstVisitor` next-BB / call-stack / affine-env model in full.
-- [walrus Part 8 — register allocation](../walrus/register-allocation.md) — the `REG_Allocator` / `ColoringAllocatorWithLoop` graph-coloring + spill path.
+- [BIR Part 7 — the simulator sequencer](../bir/sim-control-sync-customop.md) — the `birsim::InstVisitor` next-BB / call-stack / affine-env model in full.
+- [walrus Part 8 — register allocation](../walrus/alt-allocators-dma-opt.md) — the `REG_Allocator` / `ColoringAllocatorWithLoop` graph-coloring + spill path.
 - [PE Engine — the Systolic Matmul Array](pe-engine.md) (1.08) — a datapath engine whose own SP-class sequencer the control ops home onto.
 - [Pool Engine — Windowed Pooling and the Reduce Leg](pool-engine.md) (1.09) — another datapath engine carrying an SP sequencer + register file.

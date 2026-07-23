@@ -8,7 +8,7 @@ Three HLO passes in `hlo-opt` assign the two identity fields that the Neuron run
 
 The two transforms are not the monotonic-counter allocators their names suggest. The injector partitions collectives into exactly **two** streams — `"0"` and `"1"` — by **replica-group equivalence** against two exemplar groups it discovers from `collective_type` frontend attributes (tensor-parallel collectives → group 0, FSDP/data-parallel collectives → group 1). The enforcer assigns fresh `channel_id`s only on collision, drawing them from `xla::hlo_query::NextChannelId(module)` (one past the current global maximum) and inserting each new id back into a SwissTable so two collisions never alias. The checker mutates nothing; its sole output is a single boolean reported through the second `Run` argument: "does some collective already carry a `stream_id`?"
 
-This page reconstructs all three `Run` bodies, the shared collective predicates (a typed `DynCast` route in the injector, an inline `HloOpcode` bitmask route in the enforcer and checker), the `stream_id` 2-way partition, and the channel-id renumbering loop. The HLO opcode and replica-group concepts are owned by [Part 13](../part13/channel-id-replica-group.md); the collective lowering that consumes `stream_id` downstream is [Collectives to CustomCall](collectives-to-customcall.md).
+This page reconstructs all three `Run` bodies, the shared collective predicates (a typed `DynCast` route in the injector, an inline `HloOpcode` bitmask route in the enforcer and checker), the `stream_id` 2-way partition, and the channel-id renumbering loop. The HLO opcode and replica-group concepts are owned by [Part 13](../distribution/mesh-replica-group-math.md); the collective lowering that consumes `stream_id` downstream is [Collectives to CustomCall](collectives-to-customcall.md).
 
 For reimplementation, the contract is:
 
@@ -372,7 +372,7 @@ the two-band `bt` core, giving `{0x4,0x6,0x7,0x9,0xa,0x1c,0x50,0x57}`.
 Every mask, rebase, and selected opcode *value* above is read from the disassembly. What is
 *not* pinned here is the opcode→collective-*name* mapping: the `HloOpcode` enum table is not
 transcribed on this page beyond `op == 7` = `kAllReduce`, so the names behind the other bits
-are [INFERRED] — see [Part 13](../part13/channel-id-replica-group.md). Also untraced: the
+are [INFERRED] — see [Part 13](../distribution/mesh-replica-group-math.md). Also untraced: the
 pass upstream of `hlo-opt` that *produces* `collective_type`, and the exact struct type of the
 checker's second `Run` argument, whose caller is reached only indirectly.
 
@@ -390,5 +390,5 @@ checker's second `Run` argument, whose caller is reached only indirectly.
 
 ## Cross-References
 
-- [Channel-ID & Replica-Group](../part13/channel-id-replica-group.md) — Part 13: the `channel_id`/`replica_group` HLO concepts and the `HloOpcode` enum these masks index
+- [Channel-ID & Replica-Group](../distribution/mesh-replica-group-math.md) — Part 13: the `channel_id`/`replica_group` HLO concepts and the `HloOpcode` enum these masks index
 - [Collectives to CustomCall](collectives-to-customcall.md) — §4.3: the downstream lowering that consumes `stream_id` to place collectives on backend streams

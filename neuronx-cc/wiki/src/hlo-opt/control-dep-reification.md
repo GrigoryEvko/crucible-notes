@@ -333,4 +333,4 @@ mhlo::CustomCallOp::build(OpBuilder&, OperationState&, TypeRange, ValueRange,
 - [HLO/mhlo/stablehlo Ingestion Boundary](hlo-ingestion-boundary.md) — the `xla::hilo::` (HLO) vs lowercase `hilo::` (MLIR) split that puts these passes in different binaries
 - [Collectives → Custom-Call Forward Conversion](collectives-to-customcall.md) — the sibling `AwsNeuron*` custom-call family this op belongs to
 - [Penguin Dependency Model — DependencyEdge & EdgeKind](../penguin/dependency-model.md) — Part 5; the `DependencyEdge`/`EdgeKind` model behind `neuronxcc.starfish.penguin.ir.Dependency` and the `.add_dep_edge(` calls the printer emits on the Penguin side
-- [BIR EdgeKind](../bir/edge-kinds.md) — Part 7; the BIR-level ordering edge the reified control dependency ultimately becomes
+- [BIR EdgeKind](../bir/op-family-enums.md) — Part 7; the BIR-level ordering edge the reified control dependency ultimately becomes

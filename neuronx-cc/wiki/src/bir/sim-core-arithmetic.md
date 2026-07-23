@@ -290,7 +290,7 @@ This is the **only** path that executes a reducing min/max in this build. The co
 ## Cross-references
 
 - [9.3 Cast to New Dtype](../numerics/cast-to-new-dtype.md) — the shared fp8/fp16/bf16 ↔ fp32 conversion LUTs this kernel calls (not duplicated here).
-- [9.10 Negative Results](../numerics/negative-results.md) — the unsupported-dtype and device-vs-sim fp8-saturate gaps as standalone negative findings.
+- [9.10 Negative Results](../numerics/numeric-negative-results.md) — the unsupported-dtype and device-vs-sim fp8-saturate gaps as standalone negative findings.
 - [7.34 Sim Dispatch & State](sim-dispatch-state.md) — the simulator state model this arithmetic reads and mutates.
 - [BIR dtype tables](dtype-tables.md) — the 20-entry `bir::Dtype` enum and the byte-stride vector that is `COPY_SIZE_LUT`.
 - [BIR AluOp modes](aluop-modes.md) — the wide `bir::AluOpType` the converter narrows from.

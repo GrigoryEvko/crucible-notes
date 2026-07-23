@@ -395,5 +395,5 @@ Four things stop short of that:
 ## See also
 
 - **[4.18 — Concatenation Optimizations](concat-optimizations.md)** — the `GetOriginalSource`-based same-source slice→concat collapse that shares `Run`'s `" of sliceConcatPattern"` label.
-- **[4.37 — NeuronInstCombine (MLIR)](../mlir/inst-combine.md)** — the independently-registered Penguin/Tensorizer-dialect peephole combiner; the MLIR-level twin of this HLO pass.
+- **[4.37 — NeuronInstCombine (MLIR)](neuron-instcombine-mlir.md)** — the independently-registered Penguin/Tensorizer-dialect peephole combiner; the MLIR-level twin of this HLO pass.
 - **[The hlo-opt Pass Registry](pass-registry.md)** — pass `#62` `neuron-hlo-inst-comb` in the `--passes` table.
