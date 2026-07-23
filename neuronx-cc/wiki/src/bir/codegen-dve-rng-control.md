@@ -143,11 +143,11 @@ bir::Instruction* codegenNonzeroWithCount(this, shared_ptr<klr::NonzeroWithCount
 
 | Function | @ VA | Role | Confidence |
 |---|---|---|---|
-| `codegenMax8` | `0xf1c970` | `klr::Max8` → `InstMax(88)` via `addMax` (2 op) | CONFIRMED |
-| `codegenFindIndex8` | `0xf1cc80` | `klr::FindIndex8` → `InstMaxIndex(89)` via `addMaxIndex` (3 op) | CONFIRMED |
-| `codegenMatchReplace8` | `0xf29e10` | `klr::MatchReplace8` → `InstMatchReplace(90)` / `InstMaxIndexAndMatchReplace(91)` | CONFIRMED |
-| `codegenNonzeroWithCount` | `0xf2c8f0` | `klr::NonzeroWithCount` → `InstNonzeroWithCount(104)` (2 int32 imms) | CONFIRMED |
-| `InstBuilder::addInstruction<InstMaxIndexAndMatchReplace>` | `0xf43150` | the IT91 allocator (defined-local; 104-B InstArg stride, 480-B AP) | CONFIRMED |
+| `codegenMax8` | `0xf1c970` | `klr::Max8` → `InstMax(88)` via `addMax` (2 op) | CERTAIN |
+| `codegenFindIndex8` | `0xf1cc80` | `klr::FindIndex8` → `InstMaxIndex(89)` via `addMaxIndex` (3 op) | CERTAIN |
+| `codegenMatchReplace8` | `0xf29e10` | `klr::MatchReplace8` → `InstMatchReplace(90)` / `InstMaxIndexAndMatchReplace(91)` | CERTAIN |
+| `codegenNonzeroWithCount` | `0xf2c8f0` | `klr::NonzeroWithCount` → `InstNonzeroWithCount(104)` (2 int32 imms) | CERTAIN |
+| `InstBuilder::addInstruction<InstMaxIndexAndMatchReplace>` | `0xf43150` | the IT91 allocator (defined-local; 104-B InstArg stride, 480-B AP) | CERTAIN |
 
 ### Considerations
 
@@ -207,12 +207,12 @@ inst->addArgument<PhysicalAccessPattern>(codegenTensorRef(node->src)); // state 
 
 | Function | @ VA | Emits (IT) | Engine field | Confidence |
 |---|---|---|---|---|
-| `codegenRng` | `0xf245c0` | `InstMemset(10)`, `MemsetMode=Random` | `codegenEngine` → `+0x90` | CONFIRMED |
-| `codegenRand2` | `0xf24ff0` | `InstRand2(97)` {min,max,dst} | *(none — N/A)* | CONFIRMED |
-| `codegenSetRngSeed` | `0xf24860` | `InstSetRandState(59)`, seed=`addArgument` | *(none — Unassigned)* | CONFIRMED |
-| `codegenRandGetState` | `0xf24d60` | `InstRandGetState(99)`, state=`addOutput` | `+0x90` | CONFIRMED |
-| `codegenRandSetState` | `0xf24ad0` | `InstRandSetState(98)`, state=`addArgument` | `+0x90` | CONFIRMED |
-| `codegenEngine` | `0xf140f0` | `klr::Engine` → `EngineType` via `{2,4,5,3,1,6}` | — | CONFIRMED |
+| `codegenRng` | `0xf245c0` | `InstMemset(10)`, `MemsetMode=Random` | `codegenEngine` → `+0x90` | CERTAIN |
+| `codegenRand2` | `0xf24ff0` | `InstRand2(97)` {min,max,dst} | *(none — N/A)* | CERTAIN |
+| `codegenSetRngSeed` | `0xf24860` | `InstSetRandState(59)`, seed=`addArgument` | *(none — Unassigned)* | CERTAIN |
+| `codegenRandGetState` | `0xf24d60` | `InstRandGetState(99)`, state=`addOutput` | `+0x90` | CERTAIN |
+| `codegenRandSetState` | `0xf24ad0` | `InstRandSetState(98)`, state=`addArgument` | `+0x90` | CERTAIN |
+| `codegenEngine` | `0xf140f0` | `klr::Engine` → `EngineType` via `{2,4,5,3,1,6}` | — | CERTAIN |
 
 ### Considerations
 
@@ -220,7 +220,7 @@ inst->addArgument<PhysicalAccessPattern>(codegenTensorRef(node->src)); // state 
 
 > **NOTE — the engine field is the simulator's generator discriminator.** `visitInstMemset` (`0x1d5060`) reads `mode = inst+0xF0`, `eng = inst+0x90`. For a `Random` Memset (`mode==1`): `eng==1`(Pool) → GEN-2 XORWOW step; else → host MT19937-64 (`((x>>43)^x)+w`, the 312-word `mersenne_twister_engine<u64,…,0xB5026F5AA96619E9,…>`). So the `codegenEngine` value `codegenRng` stamps decides which RNG the "random fill" uses. Same seed ⇒ same stream ⇒ deterministic replay — the compiler enforces seed→state→advance by emitting `SetRngSeed` (install) before `Rng`/`Rand2` (advance), with `RandGetState`/`RandSetState` for checkpoint/replay.
 
-The state tensor of all three of `SetRngSeed`/`RandGetState`/`RandSetState` lives in `MemoryType RNGSTATE = 0x40` (uint32; 6 u32/partition gen-1, 24 u32/partition gen-2 XORWOW). That `MemoryType` is set by the tensor's storage class **upstream**, not stamped numerically by these leaves — they carry only the AP + optional `Dtype`. *(STRONG — sim-side RNGSTATE assertions; not byte-stamped here.)*
+The state tensor of all three of `SetRngSeed`/`RandGetState`/`RandSetState` lives in `MemoryType RNGSTATE = 0x40` (uint32; 6 u32/partition gen-1, 24 u32/partition gen-2 XORWOW). That `MemoryType` is set by the tensor's storage class **upstream**, not stamped numerically by these leaves — they carry only the AP + optional `Dtype`. The `RNGSTATE` identification comes from the sim-side assertions; it is not byte-stamped in these leaves.
 
 ---
 
@@ -283,16 +283,16 @@ bir::Instruction* codegenDropout(bb, klr::Dropout* node) {
 
 | Function | @ VA (`nki_klr_sim`) | Emits (IT) | Key fields | Confidence |
 |---|---|---|---|---|
-| `codegenMemSet` | `sub_4F7D50` | `InstMemset(10)`, `mode=Const` | mode`+0xF0`, fill`+0xF8`, dtype`+144` | CONFIRMED |
-| `codegenIota` | `sub_4FB0B0` | `InstIota(61)` (cpp:1474) | base`+0xF0`, AP-array`+280` | CONFIRMED |
-| `codegenDropout` | `sub_505D20` | `InstDropout(65)` | keep-flag`+240`, out`+192`/in`+160` | CONFIRMED |
-| `dtype remap` | `dword_8AE4E0` | `klr[k-2]` → `{2,4,5,3,1,6}` | written to `InstMemset+144` | CONFIRMED |
+| `codegenMemSet` | `sub_4F7D50` | `InstMemset(10)`, `mode=Const` | mode`+0xF0`, fill`+0xF8`, dtype`+144` | CERTAIN |
+| `codegenIota` | `sub_4FB0B0` | `InstIota(61)` (cpp:1474) | base`+0xF0`, AP-array`+280` | CERTAIN |
+| `codegenDropout` | `sub_505D20` | `InstDropout(65)` | keep-flag`+240`, out`+192`/in`+160` | CERTAIN |
+| `dtype remap` | `dword_8AE4E0` | `klr[k-2]` → `{2,4,5,3,1,6}` | written to `InstMemset+144` | CERTAIN |
 
 ### Considerations
 
 `codegenMemSet` always emits `MemsetMode=Const` (the default inside `addMemset`); the `Random` mode is reached only via `codegenRng` above. `Const` is the sole mode that seeds the constant-propagation lattice — `const_propagate_for_memset0` (`0xbd5fe0`) and `replace_with_memset` (`0xbd3be0`) synthesize an `InstMemset(Const)` to fold an all-equal tensor. For `Iota`, the ramp axis is *implicit* in the stepped AP dim (the entry whose `step != 0`); there is no `AxisListType` field on `InstIota`. The sim and const-prop bounds pass both materialize `value(index) = base + Σ step_d · index_d`.
 
-> **QUIRK — `codegenDropout` binds the rate, not the `1/(1−p)` scale.** The leaf threads the drop probability `p` (as a `double` into the output-AP attach) and the keep/training flag, and binds the RNG seed/state via slot 5. It emits **no** reciprocal or divide. The inverted-dropout `1/(1−p)` scale is applied by the *simulator* / downstream legalization at IT-65 visit time, not in this lowering. *(INFERRED — no divide in `sub_505D20`; consistent with the sim applying `keep·(1/(1−p))`.)* The Bernoulli mask itself is drawn by the `InstDropout` op at sim time (MT19937-64 temper), sharing the per-partition PRNG state with `Rand`/`Rand2`/`Memset(Random)` — so a dropout and a sibling `SetRngSeed`/`Rand2` reference the *same* deterministic stream, advanced in emission order.
+> **QUIRK — `codegenDropout` binds the rate, not the `1/(1−p)` scale.** The leaf threads the drop probability `p` (as a `double` into the output-AP attach) and the keep/training flag, and binds the RNG seed/state via slot 5. It emits **no** reciprocal or divide. The inverted-dropout `1/(1−p)` scale is applied by the *simulator* / downstream legalization at IT-65 visit time, not in this lowering. *(**[INFERRED]** — there is no divide in `sub_505D20`, and the sim applying `keep·(1/(1−p))` is consistent with that.)* The Bernoulli mask itself is drawn by the `InstDropout` op at sim time (MT19937-64 temper), sharing the per-partition PRNG state with `Rand`/`Rand2`/`Memset(Random)` — so a dropout and a sibling `SetRngSeed`/`Rand2` reference the *same* deterministic stream, advanced in emission order.
 
 ---
 
@@ -381,17 +381,17 @@ bir::Instruction* codegenRegisterAluOp(this, shared_ptr<klr::RegisterAluOp> node
 
 | Function | @ VA | Emits (IT) | Engine | Operand model | Confidence |
 |---|---|---|---|---|---|
-| `codegenCopyPredicated` | `0xf1a9c0` | `InstCopyPredicated(52)` | DVE *(in builder)* | tensor (3 AP) | CONFIRMED |
-| `codegenCmpBranch` | `0xf33a70` | `InstCompareAndBranch(78)` / `InstUnconditionalBranch(79)` | Unassigned *(lower_branch→SP6)* | register/imm | CONFIRMED |
-| `codegenRegisterAluOp` | `0xf25f10` | `InstRegisterAlu(73)` | **ALL(7)** | register/imm | CONFIRMED |
-| `codegenRegisterMove` | `0xf26370` | `InstRegisterMove(74)` | **ALL(7)** | register/imm | CONFIRMED |
-| `codegenBrCmpOp` | `0xf141d0` | `klr::BrCmpOp - 2` → `BranchCompareOp` | — | — | CONFIRMED |
-| `isBrRegRegOp` | `0xf14180` | IMM(klr 2..7→0) / REG(klr 8..13→1) | — | — | CONFIRMED |
-| `codegenAluOp` | `0xf140c0` | `(AluOp-1)` → `dword_1DE9760` (29-entry) | — | — | CONFIRMED |
+| `codegenCopyPredicated` | `0xf1a9c0` | `InstCopyPredicated(52)` | DVE *(in builder)* | tensor (3 AP) | CERTAIN |
+| `codegenCmpBranch` | `0xf33a70` | `InstCompareAndBranch(78)` / `InstUnconditionalBranch(79)` | Unassigned *(lower_branch→SP6)* | register/imm | CERTAIN |
+| `codegenRegisterAluOp` | `0xf25f10` | `InstRegisterAlu(73)` | **ALL(7)** | register/imm | CERTAIN |
+| `codegenRegisterMove` | `0xf26370` | `InstRegisterMove(74)` | **ALL(7)** | register/imm | CERTAIN |
+| `codegenBrCmpOp` | `0xf141d0` | `klr::BrCmpOp - 2` → `BranchCompareOp` | — | — | CERTAIN |
+| `isBrRegRegOp` | `0xf14180` | IMM(klr 2..7→0) / REG(klr 8..13→1) | — | — | CERTAIN |
+| `codegenAluOp` | `0xf140c0` | `(AluOp-1)` → `dword_1DE9760` (29-entry) | — | — | CERTAIN |
 
 ### Considerations
 
-> **CORRECTION (I17) —** the register/control ops are stamped on `EngineType::ALL(7)`, **not** `SP(6)`. This is byte-witnessed twice in `codegenRegisterAluOp` (`movl $0x7,0x90(%r12)` @ `0xf2602c`, plus `codegenRegister(name, 7)`) and again in `codegenRegisterMove`. The "SP register file" identity is correct at the *semantic* level (these are the sequencer/control registers), but the codegen-time engine tag is `ALL(7)`; `lower_branch` is the pass that re-homes the control/branch flow onto `SP(6)`. `CmpBranch` writes *no* engine at all (Unassigned until `lower_branch`).
+> **GOTCHA — the register/control ops are stamped `EngineType::ALL(7)`, not `SP(6)`.** Calling them "SP register file" ops is right semantically — they are the sequencer/control registers — but the codegen-time engine tag is `ALL(7)`, witnessed twice in `codegenRegisterAluOp` (`movl $0x7,0x90(%r12)` @ `0xf2602c`, plus `codegenRegister(name, 7)`) and again in `codegenRegisterMove`. `lower_branch` is the pass that later re-homes the control/branch flow onto `SP(6)`. `CmpBranch` writes no engine at all — it stays Unassigned until `lower_branch`.
 
 The `BranchCompareOp` IMM/REG split is byte-exact: `codegenBrCmpOp = klr::BrCmpOp - 2`, with `klr 2..7` = IMM (rhs `ImmediateValue` from `klr+0x40`) → bir `0..5`, and `klr 8..13` = REG (rhs `RegisterAccess` from `klr+0x20`) → bir `6..11`; `always(1)` becomes the `UnconditionalBranch` handled before codegen. The compare op lands at `InstCompareAndBranch+0xF0` — the *same* field `lower_branch`'s `addCompareAndBranch` overloads write and the simulator's `visitInstCompareAndBranch` (`0x1bffb0`) reads (`op@+0xF0`, `on_true@+0xF8`, `on_false@+0x100`).
 
@@ -455,9 +455,9 @@ bir::Instruction* codegenRankId(this, shared_ptr<klr::RankId> node) {
 
 | Function | @ VA | Emits (IT, opcode) | Materialization | Confidence |
 |---|---|---|---|---|
-| `codegenCoreBarrier` | `0xf23c10` | `InstCoreBarrier(87, op 216)` | semaphore RMW + active-core list `+0x320` | CONFIRMED |
-| `codegenRankId` | `0xf26e00` | `InstGetGlobalRankId(11, op 220)` | uint32 → named `Register` (ALL 7) | CONFIRMED |
-| `codegenCurrentProcessingRankId` | `0xf211b0` | `InstGetCurProcessingRankID(66)` | uint32 → `Register` + group geometry | CONFIRMED |
+| `codegenCoreBarrier` | `0xf23c10` | `InstCoreBarrier(87, op 216)` | semaphore RMW + active-core list `+0x320` | CERTAIN |
+| `codegenRankId` | `0xf26e00` | `InstGetGlobalRankId(11, op 220)` | uint32 → named `Register` (ALL 7) | CERTAIN |
+| `codegenCurrentProcessingRankId` | `0xf211b0` | `InstGetCurProcessingRankID(66)` | uint32 → `Register` + group geometry | CERTAIN |
 
 ### Considerations
 
@@ -526,11 +526,11 @@ variant<float,int> codegenImmediate(this, shared_ptr<klr::Immediate> node) {
 
 | Function | @ VA | Emits (IT) | Role | Confidence |
 |---|---|---|---|---|
-| `codegenDevicePrint` | `0xf2cde0` | `InstDevicePrint(57)` | `src`→args; `printPrefix`→`+240`; `(buffer==2)`→`+272` | CONFIRMED |
-| `codegenSequenceBounds` | `0xf276c0` | `InstGetSequenceBounds(64)` | `segmentIds`→in `+0xA8`; `dst`→out `+0xC8` (SBUF tensor) | CONFIRMED |
-| `codegenLncKernel` | `0xf34140` | *(driver)* | per-core stmt-list walk; LNC shard; CFG legalize | CONFIRMED |
-| `codegenImmediate` | `0xf16980` | *(value)* | `variant<float,int>` (tag 4=float / 3=int) | CONFIRMED |
-| `addOperandToInst` | `0xf1be80` | `bir::ImmediateValue` | float→float32(16) / int→int32(15), value union `+0x48` | CONFIRMED |
+| `codegenDevicePrint` | `0xf2cde0` | `InstDevicePrint(57)` | `src`→args; `printPrefix`→`+240`; `(buffer==2)`→`+272` | CERTAIN |
+| `codegenSequenceBounds` | `0xf276c0` | `InstGetSequenceBounds(64)` | `segmentIds`→in `+0xA8`; `dst`→out `+0xC8` (SBUF tensor) | CERTAIN |
+| `codegenLncKernel` | `0xf34140` | *(driver)* | per-core stmt-list walk; LNC shard; CFG legalize | CERTAIN |
+| `codegenImmediate` | `0xf16980` | *(value)* | `variant<float,int>` (tag 4=float / 3=int) | CERTAIN |
+| `addOperandToInst` | `0xf1be80` | `bir::ImmediateValue` | float→float32(16) / int→int32(15), value union `+0x48` | CERTAIN |
 
 ### Considerations
 
@@ -548,15 +548,15 @@ variant<float,int> codegenImmediate(this, shared_ptr<klr::Immediate> node) {
 
 | Function | @ VA | Role | Confidence |
 |---|---|---|---|
-| `codegenTensorRef` | `0xf18b30` | `klr::TensorRef` → `{MemLoc*, SmallVector<APPair,4>, base-idx, opt<Dtype>}`; `dynId!=0` → `sub_F12B40` dynamic-AP splice | CONFIRMED |
-| `codegenImmediate` | `0xf16980` | `klr::Immediate` → host `variant<float,int>` (tag 4/3; else assert cpp:425) | CONFIRMED |
-| `codegenEngine` | `0xf140f0` | `klr::Engine` → `EngineType` via `dword_1DE9740 = {2,4,5,3,1,6}` | CONFIRMED |
-| `codegenRegister` | `0xf141e0` | mint-or-reuse a named `bir::Register` on a chosen `EngineType` (= `Function::addRegister`) | CONFIRMED |
-| `returnAndIncrementId` | — | mint the per-inst name suffix `"<id>"`, bump counter at `KlirToBirCodegen+0xF0` | CONFIRMED |
-| `insertElement<InstT>` | per-T | `NamedObjectContainer<BasicBlock,Instruction>` — alloc typed Inst (stamps IT at `+0x58`), link to BB | CONFIRMED |
-| `sub_F20EC0` | `0xf20ec0` | append the new inst to the codegen book-keeping list (rooted `this+0xE0`) | INFERRED (role; not symbol-named) |
-| `sub_F20CB0` | `0xf20cb0` | hash a BB name into the per-function CFG successor-edge set at `this+0x1B8` | CONFIRMED |
-| `sub_F12B40` | `0xf12b40` | copy/grow a `SmallVector<APPair,4>` (16-byte `APPair`) — the dynamic-AP splice | CONFIRMED |
+| `codegenTensorRef` | `0xf18b30` | `klr::TensorRef` → `{MemLoc*, SmallVector<APPair,4>, base-idx, opt<Dtype>}`; `dynId!=0` → `sub_F12B40` dynamic-AP splice | CERTAIN |
+| `codegenImmediate` | `0xf16980` | `klr::Immediate` → host `variant<float,int>` (tag 4/3; else assert cpp:425) | CERTAIN |
+| `codegenEngine` | `0xf140f0` | `klr::Engine` → `EngineType` via `dword_1DE9740 = {2,4,5,3,1,6}` | CERTAIN |
+| `codegenRegister` | `0xf141e0` | mint-or-reuse a named `bir::Register` on a chosen `EngineType` (= `Function::addRegister`) | CERTAIN |
+| `returnAndIncrementId` | — | mint the per-inst name suffix `"<id>"`, bump counter at `KlirToBirCodegen+0xF0` | CERTAIN |
+| `insertElement<InstT>` | per-T | `NamedObjectContainer<BasicBlock,Instruction>` — alloc typed Inst (stamps IT at `+0x58`), link to BB | CERTAIN |
+| `sub_F20EC0` | `0xf20ec0` | append the new inst to the codegen book-keeping list (rooted `this+0xE0`) | MEDIUM (role inferred; not symbol-named) |
+| `sub_F20CB0` | `0xf20cb0` | hash a BB name into the per-function CFG successor-edge set at `this+0x1B8` | CERTAIN |
+| `sub_F12B40` | `0xf12b40` | copy/grow a `SmallVector<APPair,4>` (16-byte `APPair`) — the dynamic-AP splice | CERTAIN |
 
 ---
 

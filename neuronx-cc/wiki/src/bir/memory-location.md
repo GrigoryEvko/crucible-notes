@@ -55,13 +55,13 @@ bir::StorageBase                         _ZTI 0x9000e0  (__class root; vtable 0x
           alias vector / pointer_ref_memloc
 ```
 
-`setUserAllocated` is `StorageBase`'s *sole* own virtual; `toJson` is added per concrete leaf at vtable slot 3, so `StorageBase` is never serialized as a bare base. `MemoryLocation`'s primary vtable @0x8fdc08 is `{D1, D0, setUserAllocated, getDebugInfoSource}` plus `_ZThn360_` (`360`=`0x168`) thunks for the `SrcHandle` sub-object. [CONFIRMED — `__vmi` base relocs and vtable slot relocs, this pass.] The full polymorphism map of the storage family — and the four other structural roots (`Argument`, `pelican::Expr`, `sync::SyncRef`, `DMAQueue`/`Hwm`) — is on the [BIR structural hierarchy](container-model.md) page's sibling analysis.
+`setUserAllocated` is `StorageBase`'s *sole* own virtual; `toJson` is added per concrete leaf at vtable slot 3, so `StorageBase` is never serialized as a bare base. `MemoryLocation`'s primary vtable @0x8fdc08 is `{D1, D0, setUserAllocated, getDebugInfoSource}` plus `_ZThn360_` (`360`=`0x168`) thunks for the `SrcHandle` sub-object. *Anchors: the `__vmi` base relocs and the vtable slot relocs.* The full polymorphism map of the storage family — and the four other structural roots (`Argument`, `pelican::Expr`, `sync::SyncRef`, `DMAQueue`/`Hwm`) — is on the [BIR structural hierarchy](container-model.md) page's sibling analysis.
 
 > **NOTE —** `MemoryLocation` IS-A `StorageBase` directly but is *also* a `NamedObject<MemoryLocation, MemoryLocationSet>` (its name/id sub-object) and a `logging::SrcHandle` (its source-location diagnostic). The `NamedObject` sub-object sits at `MemoryLocation+0x118` (280) — proven below by the id cascade — and the `SrcHandle` third base shares that `0x118` offset region. This is why the offsets in the layout table jump around the `+280`/`+352` band: those bytes are the embedded `NamedObject` node (list hooks, name, origin, id, owner-back-pointer), not placement data.
 
 ### Set vs Location: which attribute lives where
 
-This split is structurally decisive for a reimplementation because the wire schema and every accessor obey it. `TensorClass` and `MemoryAddressSpace` are **Set-level** (one per logical tensor); `MemoryType` is **Location-level** (one per placement). The xref map proves it: the `TensorClass` serializer is called only from `MemoryLocationSet::{toJson,createFromJson}`, while `MemoryType2string`/`MemoryAddressSpace2string` are called from `MemoryLocation::{toString,getLatency}`. [CONFIRMED — call-site xrefs.]
+This split is structurally decisive for a reimplementation because the wire schema and every accessor obey it. `TensorClass` and `MemoryAddressSpace` are **Set-level** (one per logical tensor); `MemoryType` is **Location-level** (one per placement). The xref map proves it: the `TensorClass` serializer is called only from `MemoryLocationSet::{toJson,createFromJson}`, while `MemoryType2string`/`MemoryAddressSpace2string` are called from `MemoryLocation::{toString,getLatency}`.
 
 | Attribute | Lives on | Wire key | Why |
 |---|---|---|---|
@@ -83,11 +83,11 @@ This split is structurally decisive for a reimplementation because the wire sche
 
 ### Size, anchored
 
-The size is `0x248` = **584 bytes**, taken directly from the minting and freeing sites — not inferred. `NamedObjectContainer<MemoryLocationSet,MemoryLocation>::insertElement<MemoryLocation>` @0x34e7e0 does `v64 = operator new(0x248u)`, runs the ctor, calls `getUniqueId(v64 + 280)`, and on the name-collision rollback does `operator delete(v64, 0x248u)`. [CONFIRMED — both `0x248u` constants read this pass.]
+The size is `0x248` = **584 bytes**, taken directly from the minting and freeing sites — not inferred. `NamedObjectContainer<MemoryLocationSet,MemoryLocation>::insertElement<MemoryLocation>` @0x34e7e0 does `v64 = operator new(0x248u)`, runs the ctor, calls `getUniqueId(v64 + 280)`, and on the name-collision rollback does `operator delete(v64, 0x248u)` — both `0x248u` constants read straight from the body.
 
 ### The pointer-indirected enum block
 
-The enum-valued fields are *not* stored inline. `type`/`kind`/`addr_space`/`pinned` each hold a **pointer** into a separately-allocated `StorageBase` enum sub-block whose `[0]` is the actual int. `toString` reads the type as `**(unsigned int **)(this + 216)` and `MemoryAddressSpace` as `**(unsigned int **)(this + 240)`; the wire ctor writes the same way (`**(this+216) = MemoryType`). A reimplementation may flatten these to inline ints, but a binary-faithful one must allocate the indirection block. [CONFIRMED — `toString` @0x330560 lines 95/249; `createFromJson` @0x33bcf0.]
+The enum-valued fields are *not* stored inline. `type`/`kind`/`addr_space`/`pinned` each hold a **pointer** into a separately-allocated `StorageBase` enum sub-block whose `[0]` is the actual int. `toString` reads the type as `**(unsigned int **)(this + 216)` and `MemoryAddressSpace` as `**(unsigned int **)(this + 240)`; the wire ctor writes the same way (`**(this+216) = MemoryType`). A reimplementation may flatten these to inline ints, but a binary-faithful one must allocate the indirection block. *Anchors: `toString` @0x330560 lines 95/249; `createFromJson` @0x33bcf0.*
 
 ### Layout
 
@@ -133,7 +133,7 @@ Offsets are byte-exact unless a confidence tag says otherwise. Every offset is a
 
 `*` = pointer-indirected enum field (read/written as `**(this+offset)`).
 
-> **CORRECTION (D-D05 §6) —** an earlier pass labeled `+536` as the "SB base partition" and inferred placement from it. The exact one-line setters disagree, and are now byte-anchored: `setAddress` writes `*((u64*)this + 67)` = **+536** = the linear byte *address* (wire key `"addr"`); `setBasePartition` writes `*((u32*)this + 140)` = **+560** = the base *partition* (wire key `"base"`); `setBankId` writes `*((i64*)this + 66)` = **+528** = the PSUM *bank* (wire key `"bank"`). The SB rendering in `toString` prints `+536` because the SBUF branch prints the byte address; the partition is `+560`. The bank fact (+528) was already correct. [CERTAIN — three setters @0x32db60 / 0x32dfb0 / 0x32dc40.]
+> **GOTCHA — `+536` is the byte address, not the SB base partition.** The three one-line setters pin the split exactly: `setAddress` writes `*((u64*)this + 67)` = **+536** = the linear byte *address* (wire key `"addr"`); `setBasePartition` writes `*((u32*)this + 140)` = **+560** = the base *partition* (wire key `"base"`); `setBankId` writes `*((i64*)this + 66)` = **+528** = the PSUM *bank* (wire key `"bank"`). `toString`'s SBUF branch prints `+536` because it prints the byte address — reading that as the partition is the easy mistake. (Setters @0x32db60 / 0x32dfb0 / 0x32dc40.)
 
 ### Addressing by MemoryType
 
@@ -180,7 +180,7 @@ All eight values are CERTAIN, byte-decoded in both directions. The enum is *defi
 
 > **QUIRK —** because the values are powers of two, a `type` field *could* OR multiple flags, but no observed site combines them — each `MemoryLocation` has exactly one type. Whether `Input|DRAM` is ever formed is unverified (D-D05 G2); treat `type` as a single enum value in practice but as a bitmask in the struct. [LOW — no OR-combination site found.]
 
-The three placeable memories are exactly **DRAM=8 / SB=16 / PSUM=32**, proven independently by `getLatency` @0x3365a0: it branches only on own-type ∈{8,16,32} × dst-type ∈{8,16,32}, dispatching to the `bir::Hwm` cost model per `(src,dst)` pair; any other combination fatals `"RESOLUTION_CONTACT_SUPPORT"` with `src_mem_type`/`dst_mem_type` keys. [CONFIRMED — `getLatency` branch lines 184–206 + the assert string at line 239.]
+The three placeable memories are exactly **DRAM=8 / SB=16 / PSUM=32**, proven independently by `getLatency` @0x3365a0: it branches only on own-type ∈{8,16,32} × dst-type ∈{8,16,32}, dispatching to the `bir::Hwm` cost model per `(src,dst)` pair; any other combination fatals `"RESOLUTION_CONTACT_SUPPORT"` with `src_mem_type`/`dst_mem_type` keys. *Anchors: `getLatency` branch lines 184–206, plus the assert string at line 239.*
 
 ### MemoryAddressSpace — a DRAM-only attribute
 
@@ -192,7 +192,7 @@ The three placeable memories are exactly **DRAM=8 / SB=16 / PSUM=32**, proven in
 | 1 | `Shared` | off-chip buffer shared across cores |
 | 2 | `Debug` | instrumented / debug buffer |
 
-> **CORRECTION (D-D05 §5) —** an earlier roster had `0=Shared, 1=Debug, 2=Local`. The real assignment is `Local=0 / Shared=1 / Debug=2`, byte-decoded from both the forward switch (`0` falls through to `Local`) and the inverse `StringSwitch` magic for `"Local"`/`"Shared"`/`"Debug"`. [CERTAIN, both directions.]
+> **NOTE — the ordinals are `Local=0 / Shared=1 / Debug=2`.** Both directions agree: the forward switch falls `0` through to `Local`, and the inverse `StringSwitch` magic for `"Local"`/`"Shared"`/`"Debug"` decodes the same way. A roster that starts `Shared=0` has the order wrong.
 
 The address-space axis exists because off-chip DRAM buffers can be shared across cores, whereas on-chip SBUF/PSUM are inherently per-core. This is the same reason the alias graph is DRAM-only (next section), and it couples to the multi-core sharing fields `is_shared_post_dram_alloc` (+578), `remote_local_target` (+368), and `remote_writer_func` (+456). SB vs PSUM, by contrast, is discriminated at descriptor-emit time by the `ADDR4` byte-address region class (PSUM occupies a fixed 4 MiB window), not by an address-space tag — see [SBUF/PSUM geometry](../arch/sbuf-psum-geometry.md).
 
@@ -200,7 +200,7 @@ The address-space axis exists because off-chip DRAM buffers can be shared across
 
 `TensorClass` (13 values, `0..12`, dense switch, wire key `tensor_class`) names the buffer family — `Neuron*` prefixes are SBUF/on-chip families, `DRAM*` are off-chip, the `2D`/`3D` suffix is the access-pattern descriptor dimensionality. `TensorKind` (10 values, `0..9`, wire key `kind`) is the I/O role, deliberately blocked so that `0..2` are input kinds, `3..5` output kinds (proven by the `isTensorKind*` group predicates `k<=1`, `k<=2`, `(k-3)<=1`, `(k-3)<=2`), with `6=Const`, `7=Internal`, `8=Pointer`, `9=InternalInterface`. The two axes are orthogonal: a `NeuronWeightTensor` (class 3) typically has kind `ExternalInputParameter` (1). These two enums are owned by the logical Set, not the placement; their full rosters are tabulated where the loader reads them ([Penguin tensor/buffer nodes](../penguin/tensor-buffer-node.md)).
 
-> **NOTE —** there is **no** `TensorClass→MemoryType` classifier function in `libBIR` (no `getMemoryType()`/`inferTensorClass()`). The class→memory binding is established by the walrus allocator and merely *serialized* here as both `tensor_class` (Set) and per-location `type`. The allocation pass that performs the binding is documented under the walrus allocators *(planned)*. [CONFIRMED — no such symbol in `libBIR`; D-D05 G1.]
+> **NOTE —** there is **no** `TensorClass→MemoryType` classifier function in `libBIR` (no `getMemoryType()`/`inferTensorClass()`). The class→memory binding is established by the walrus allocator and merely *serialized* here as both `tensor_class` (Set) and per-location `type`. The allocation pass that performs the binding is documented under the walrus allocators *(planned)*.
 
 ---
 
@@ -251,7 +251,7 @@ function getMustAlias(this) -> MemoryLocation*:    // @0x32ffe0
     return 0
 ```
 
-So a "must-alias" query is a linear scan for the first `hasAlias(3)` entry, returning the masked peer pointer. The vector is kept sorted (by `MemoryLocation::AliasPtrCmp`), so a reimplementation could binary-search, but the stock code linear-scans `getMustAlias`. [CONFIRMED — `getMustAlias` @0x32ffe0, this pass.]
+So a "must-alias" query is a linear scan for the first `hasAlias(3)` entry, returning the masked peer pointer. The vector is kept sorted (by `MemoryLocation::AliasPtrCmp`), so a reimplementation could binary-search, but the stock code linear-scans `getMustAlias` (@0x32ffe0).
 
 ### addAlias — the DRAM-only bidirectional insert
 
@@ -280,7 +280,7 @@ function addAlias(this, AliasPtr ap):                            // @0x331680
         emplace back at pos2
 ```
 
-The guard reads `**(this+216)` (own `MemoryType` through the indirection pointer) and `**((ap&~7)+216)` (dst's `MemoryType`); both must equal `8` (DRAM). The thrown string is built as `"<src> -> <dst>. Aliasing only permitted for DRAM locations."`. [CONFIRMED — `addAlias(AliasPtr)` @0x331680, the `*v5 != 8 || **(...+216) != 8` branch and the `runtime_error` construction, this pass.]
+The guard reads `**(this+216)` (own `MemoryType` through the indirection pointer) and `**((ap&~7)+216)` (dst's `MemoryType`); both must equal `8` (DRAM). The thrown string is built as `"<src> -> <dst>. Aliasing only permitted for DRAM locations."`. *Anchors: `addAlias(AliasPtr)` @0x331680 — the `*v5 != 8 || **(...+216) != 8` branch and the `runtime_error` construction.*
 
 > **GOTCHA —** the alias graph is a **DRAM-only equivalence/overlap relation**. SBUF and PSUM placements *cannot* carry alias edges — attempting it throws. A reimplementation that builds an alias edge between two SBUF tiles (the obvious thing to do for a coalescing register allocator) will diverge from the binary, which models on-chip non-interference entirely through the def-use live ranges, not the alias vector. On-chip overlap is the allocator's coloring job; the alias vector exists only to force *off-chip* buffers to share storage. [CERTAIN.]
 
@@ -295,7 +295,7 @@ The on-disk `"alias"` array round-trips through this in-memory field. `MemoryLoc
 | **NEW** (set-keyed) | `[destSetName, destMemLocName, kind]` (3-tuple) | `getMemoryLocationSetByName` → `getMemoryLocationByName` | `"'alias' must be a JSON array"`, `"Unknown alias destination"`, `"Found MemoryLocation that has not been read"` |
 | **OLD** (memloc-keyed) | `[destMemLocName, kind]` (2-tuple) | `Function::getMemoryLocationByName` | parallel asserts at 0x248/0x24B/0x24D/0x24F |
 
-The `aliasKind` is the last array element, coerced from JSON number types `4(bool)/5(u32)/6(i64)/7(double)` to `int` and passed straight to `addAlias`, which ORs it — this is exactly what makes the wire and the in-memory 3-bit field consistent. [CONFIRMED — `addMemLocAliasesFromJson` @0x26f020 both-schema branches.] The two-pass model and the tensor-side `tensor_map` aliasing it feeds are documented under the BIR JSON loader and the tensor-map alias page *(both planned)*.
+The `aliasKind` is the last array element, coerced from JSON number types `4(bool)/5(u32)/6(i64)/7(double)` to `int` and passed straight to `addAlias`, which ORs it — this is exactly what makes the wire and the in-memory 3-bit field consistent. *Anchors: `addMemLocAliasesFromJson` @0x26f020, both schema branches.* The two-pass model and the tensor-side `tensor_map` aliasing it feeds are documented under the BIR JSON loader and the tensor-map alias page *(both planned)*.
 
 ---
 
@@ -315,7 +315,7 @@ function getUniqueId_MemoryLocation(node):          // @0x32dab0 (node = MemoryL
     tailcall getUniqueId_Storage(mls + 0x118)       // MLS's NamedObject<Storage,Function> sub-object
 ```
 
-Two offsets pin this. First, the `NamedObject` sub-object sits at **`MemoryLocation+0x118`** (280) — `insertElement` calls `getUniqueId(v64 + 280)` on the fresh object. Second, the owner back-pointer that `getMemoryLocationSet` returns is `*((u64*)this + 44)` = **`MemoryLocation+352`** (= `+280 + 0x48`, the `NamedObject` sub-object's owner slot). So the same `+0x48` universal owner slot that the [container model](container-model.md) page traces lands at `MemoryLocation+352`, and the cascade adds `+0x118` to reach the *MLS's* `NamedObject<Storage,Function>` sub-object before delegating upward. [CONFIRMED — `getUniqueId` @0x32dab0, `getMemoryLocationSet` @0x32db30, `insertElement` @0x34e7e0, this pass; consistent with the 7.3 id-cascade analysis.]
+Two offsets pin this. First, the `NamedObject` sub-object sits at **`MemoryLocation+0x118`** (280) — `insertElement` calls `getUniqueId(v64 + 280)` on the fresh object. Second, the owner back-pointer that `getMemoryLocationSet` returns is `*((u64*)this + 44)` = **`MemoryLocation+352`** (= `+280 + 0x48`, the `NamedObject` sub-object's owner slot). So the same `+0x48` universal owner slot that the [container model](container-model.md) page traces lands at `MemoryLocation+352`, and the cascade adds `+0x118` to reach the *MLS's* `NamedObject<Storage,Function>` sub-object before delegating upward. *Anchors: `getUniqueId` @0x32dab0, `getMemoryLocationSet` @0x32db30, `insertElement` @0x34e7e0 — consistent with the 7.3 id-cascade analysis.*
 
 > **NOTE —** `tensor_id` (+552) is *also* read off the ilist node at `node+272` during the loader's `buildTensorId2MemLoc` pass, which asserts every `getTensorId() >= 0` (`"Unassigned tensorId"`, MemoryLocationSet.cpp:0x1D9) and populates the Set's `tensorId2MemLoc` lookup vector. Do not conflate this node-relative `+272` (= `MemoryLocation+552`, the `tensor_id`) with the `StorageBase` storage-kind discriminator at struct-`+272` (value `4`=MemoryLocation). They are different fields at coincidentally the same numeric offset relative to different bases. [HIGH — both verified independently; D-E13 note.]
 
@@ -361,17 +361,24 @@ The def-use lists (readers/writers DenseSets) yield the live ranges that build t
 
 ---
 
-## Self-Verification
+## Evidence summary
 
-The five strongest claims on this page were re-challenged against the binary this pass:
+| Claim | Grounding | Confidence |
+|---|---|---|
+| The struct is 584 bytes | `insertElement<MemoryLocation>` @0x34e7e0 contains `operator new(0x248u)` (line 398) and the rollback `operator delete(v64, 0x248u)` (line 450); `0x248` = 584. Read from the allocation site, not inferred from a field span | CERTAIN |
+| `MemoryType` values are bit flags | `MemoryType2string` @0x3ca040 is `if(a2<=32) switch{1:Unallocated,2:Input,4:Output,8:DRAM,16:SB,32:PSUM}; if(a2==64)RNGSTATE; if(a2==128)REG; else "Unknown memory type"` — case labels 1/2/4/8/16/32, not 0..5 | CERTAIN |
+| Aliasing is DRAM-only | `addAlias(AliasPtr)` @0x331680 opens with `if (**(this+216) != 8 \|\| **((ap&~7)+216) != 8) throw runtime_error("… . Aliasing only permitted for DRAM locations.")`, reading both endpoints' `MemoryType` through the +216 indirection and requiring `8` | CERTAIN |
+| The `PointerIntPair` encoding | the `AliasPtr` ctor @0x231560 asserts `(ptr & 7)==0` ("Pointer is not sufficiently aligned", PointerIntPair.h) and `(kind & ~7)==0` ("Integer too large for field", IntBits=3), then stores `kind \| (ptr & ~7)`; the asserts name `PointerIntPair<bir::MemoryLocation*, 3, …>` verbatim | CERTAIN |
+| The id-cascade cross-link | `getUniqueId<ML,MLS>` @0x32dab0 reads `*(node+0x48)` (owner = MLS) and tail-calls `getUniqueId_Storage(mls+0x118)`; `insertElement` calls `getUniqueId(v64+280)`, putting the `NamedObject` node at `MemoryLocation+0x118`; `getMemoryLocationSet` returns `this+352` = node+0x48 — consistent with the [container model](container-model.md) cascade | CERTAIN |
 
-1. **The 584-byte size.** RE-VERIFIED: `insertElement<MemoryLocation>` @0x34e7e0 contains `operator new(0x248u)` (line 398) and the rollback `operator delete(v64, 0x248u)` (line 450); `0x248` = 584. Not inferred from a field span — read from the allocation site. **CONFIRMED.**
-2. **`MemoryType` bit-flag values.** RE-VERIFIED: `MemoryType2string` @0x3ca040 is `if(a2<=32) switch{1:Unallocated,2:Input,4:Output,8:DRAM,16:SB,32:PSUM}; if(a2==64)RNGSTATE; if(a2==128)REG; else "Unknown memory type"`. The case labels are 1/2/4/8/16/32, not 0..5. **CONFIRMED.**
-3. **The DRAM-only aliasing rule.** RE-VERIFIED: `addAlias(AliasPtr)` @0x331680 opens with `if (**(this+216) != 8 || **((ap&~7)+216) != 8) throw runtime_error("… . Aliasing only permitted for DRAM locations.")`. The guard reads both endpoints' `MemoryType` through the +216 indirection and requires `8` (DRAM). **CONFIRMED.**
-4. **The `PointerIntPair` encoding.** RE-VERIFIED: `AliasPtr` ctor @0x231560 asserts `(ptr & 7)==0` ("Pointer is not sufficiently aligned", PointerIntPair.h) and `(kind & ~7)==0` ("Integer too large for field", IntBits=3), then stores `kind | (ptr & ~7)`. The asserts name `PointerIntPair<bir::MemoryLocation*, 3, …>` verbatim. **CONFIRMED.**
-5. **The id-cascade cross-link to 7.3.** RE-VERIFIED: `getUniqueId<ML,MLS>` @0x32dab0 reads `*(node+0x48)` (owner=MLS) and tail-calls `getUniqueId_Storage(mls+0x118)`; `insertElement` calls `getUniqueId(v64+280)` so the `NamedObject` node is at `MemoryLocation+0x118`; `getMemoryLocationSet` returns `this+352` = node+0x48. Consistent with the [container model](container-model.md) cascade. **CONFIRMED.**
+### Open questions
 
-Honest ceiling. The full **`AliasKind` roster** is a GAP: only kinds `1` and `3` (`MustAlias`) are observed, there is no `AliasKind2string` in `libBIR`, so whether a `2` or `4` exists is unverified — the field is structurally a 3-bit mask, so up to three independent kind bits are possible (MED). The **pointer-indirected enum sub-block** layout (whether `type`/`kind`/`addr_space`/`pinned` point into one packed struct or per-field allocations) is not pinned — the (de)serializers only ever touch `[0]` (LOW). The **storage-kind discriminator** at struct-`+272` is anchored only for the `==4` (MemoryLocation) case via `PhysicalAccessPattern::getMemoryLocationSet`; the full kind enum for the other `StorageBase` subtypes was not enumerated (MED). The `+256` `dims`/`memLocSetId` semantic (element count vs secondary id) needs a producer-side site to disambiguate (MED). Everything in the layout table, the alias model, the enum values, and the 584-byte size is CONFIRMED at the byte level.
+- The full **`AliasKind` roster** is **[UNRESOLVED]**: only kinds `1` and `3` (`MustAlias`) are observed, and `libBIR` has no `AliasKind2string`, so whether a `2` or `4` exists is untested. The field is structurally a 3-bit mask, so up to three independent kind bits are possible.
+- The **pointer-indirected enum sub-block** layout — whether `type`/`kind`/`addr_space`/`pinned` point into one packed struct or into per-field allocations — is unpinned, because the (de)serializers only ever touch `[0]`.
+- The **storage-kind discriminator** at struct-`+272` is anchored only for the `==4` (MemoryLocation) case, via `PhysicalAccessPattern::getMemoryLocationSet`; the kind enum for the other `StorageBase` subtypes was not enumerated.
+- The `+256` `dims`/`memLocSetId` field's semantic (element count vs secondary id) needs a producer-side site to disambiguate.
+
+Everything in the layout table, the alias model, the enum values, and the 584-byte size is read at the byte level.
 
 ---
 

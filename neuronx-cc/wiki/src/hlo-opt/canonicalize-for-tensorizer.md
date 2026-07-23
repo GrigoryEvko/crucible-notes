@@ -253,7 +253,7 @@ Both element-type paths route through `DenseElementsAttr::getRawIntOrFloat` with
 function replaceBroadcastsWithBroadcastInDim(FuncOp f):
     for (b : collect<mhlo::BroadcastOp>(f)):          // cmp @0x2084098
         src = b.operand(0).getDefiningOp()            // 0x2084131
-        // CONSTANT-OPERAND CHECK IS ADVISORY (CORRECTION below): if src is not a
+        // CONSTANT-OPERAND CHECK IS ADVISORY ONLY: if src is not a
         // ConstantOp-with-DenseElementsAttr, emit NeuronLogger ERROR (level 4,
         // line 119, ErrorCode 3 via hilo::formatErrorMessage) and CONTINUE anyway.  // 0x2084196
         rty = dyn_cast_if_present<ShapedType>(b.result.type)   // 0x207d420
@@ -272,7 +272,7 @@ function replaceBroadcastsWithBroadcastInDim(FuncOp f):
 
 `broadcast_dimensions = [P, P+1, …, P+R−1]` is exactly the trailing-identity mapping that re-expresses the prepend semantics of `mhlo.broadcast` in `broadcast_in_dim` form.
 
-> **CORRECTION (D-C09) —** an earlier reading treated the "operand must be a constant `DenseElementsAttr`" check as a hard match gate. It is **advisory only**: a non-constant operand drives a `NeuronLogger` ERROR diagnostic (`setCurLogLevel(4)` @ `0x2084196`, source line 119, ErrorCode 3) but the broadcast→broadcast_in_dim conversion proceeds regardless (both branches fall through to `0x20843b9`). The conversion is purely structural; it never needs the operand to be a literal.
+> **GOTCHA — the "operand must be a constant `DenseElementsAttr`" check is not a match gate.** It is advisory: a non-constant operand drives a `NeuronLogger` ERROR diagnostic (`setCurLogLevel(4)` @ `0x2084196`, source line 119, ErrorCode 3), but the broadcast→broadcast_in_dim conversion proceeds regardless — both branches fall through to `0x20843b9`. The conversion is purely structural and never needs the operand to be a literal.
 
 ---
 
@@ -356,7 +356,7 @@ function replaceInvalidBackendConfigs(Operation* cc, FuncOp f):
 
 "Invalid" means the config contains a byte that is neither alphanumeric nor a double-quote — i.e. any structured config with `{ } : , =`. The rewrite preserves target name, api_version, and output-operand aliasing; it only zeroes the config and forces `has_side_effect=false`.
 
-> **CORRECTION (D-C09) —** this is `AwsNeuronErf`-specific, not a generic backend-config rewriter, and the collector lambda `legalizeBackendConfig` is distinct from the worker `replaceInvalidBackendConfigs`. An earlier listing named only the worker and implied it ran on all custom-calls.
+> **GOTCHA — this rewriter is `AwsNeuronErf`-specific, not a generic backend-config cleaner.** It does not run on all custom-calls. Note also that the collector lambda `legalizeBackendConfig` is a distinct symbol from the worker `replaceInvalidBackendConfigs`; naming only the worker hides the filter that selects which ops reach it.
 
 ---
 
@@ -402,7 +402,7 @@ function lowerResizeNearestGrad(CustomCallOp cc) -> WalkResult:
 
 The window stride equals the window size (non-overlapping tiles), padding is 0, dilations are 1 — exactly the geometry of a per-tile sum over each upsampling window. The divide-by-volume converts the sum to a mean.
 
-> **CORRECTION (D-C09) —** `ResizeNearestGrad` is **not** a scatter/gather lowering (an early task hypothesis). It is an average-pool: `Div(ReduceWindow_sum(grad, window=scale), Broadcast(Π scale))`. The reduce-window region body is an `AddOp` (sum), confirmed at `0x207edad`.
+> **GOTCHA — `ResizeNearestGrad` is an average-pool, not a scatter/gather lowering.** It expands to `Div(ReduceWindow_sum(grad, window=scale), Broadcast(Π scale))`, and the reduce-window region body is an `AddOp` (sum) at `0x207edad`.
 
 > **NOTE —** the four `emitOpError` legality strings ("only one operand allowed", "only one output allowed", "input and output have different rank", "output dim … is not an integral multiple …") are verbatim in `.rodata` and confirm this rewriter is the only consumer of `ResizeNearestGrad` in the MHLO pipeline. A separate downstream diagnostic ("op ResizeNearestGrad operation should be lowered to supported operations before reaching this stage", routed through `hilo::lookup_cause(ErrorCode)` @ a different site) fires only if a `ResizeNearestGrad` survives *past* this pass — i.e. it is this rewriter's safety net, not part of its body.
 
@@ -439,21 +439,17 @@ The class is `CanonicalizeForTensorizer`, the source file is `CanonicalizeForTen
 
 ---
 
-## Adversarial self-verification
+## Evidence summary
 
-The five strongest claims on this page, re-challenged against the binary:
+| Claim | Grounding | Confidence |
+|---|---|---|
+| The pass-arg is `canonicalize-for-penguin` | the strings table contains only `canonicalize-for-penguin` (@ `0x21a240`) and `stablehlo-canonicalize-for-penguin` (@ `0x348f10`); no `canonicalize-for-tensorizer` string exists. The former's sole xref is `CanonicalizeForTensorizer::getArgument` @ `0x207c500` | CERTAIN |
+| Eight rewriters, broadcasts last | all eight `_ZN25CanonicalizeForTensorizer…` symbols and addresses match the function index exactly (`fuseIotaSort` `0x207ffb0` … `replaceBroadcastInDimWithConstants` `0x20815f0`); the intra-`runOnOperation` order comes from the disasm at `0x2086a20`–`0x2086bda`, which was not re-walked instruction-by-instruction | CERTAIN (membership), HIGH (order) |
+| `replaceGetDimensionSize` folds to `i32` via the `op.result` type | the `kDynamic` sentinel `0x8000000000000000`, the `RankedTensorType` TypeID gate (`0x9d3fa00`), and `getRawIntOrFloat(..., dataEltSize=4, isInt=true)` are all in the disasm; the `i32` conclusion follows from reading `op.result`'s type (`cast<ShapedType>` @ `0x2080501`) plus the 4-byte element width | CERTAIN |
+| `lowerResizeNearestGrad` is an average-pool with an `AddOp` region body | the four `emitOpError` strings are verbatim in `.rodata`; the builder calls are `ReduceWindowOp::build` @ `0x8f98cb0`, `AddOp::build` @ `0x8fb6750`, `DivOp::build` @ `0x8fb6960`; the lambda sits at `0x207df40` | CERTAIN |
+| `replaceInvalidBackendConfigs` is `AwsNeuronErf`-only | the string `AwsNeuronErf` (@ `0x236819`) is referenced by exactly `replaceInvalidBackendConfigs` (both the mhlo and StableHLO copies) plus two cost-analysis/checker functions, and by no other rewriter; the `"None"` replacement and `has_side_effect=false` come from the disasm | CERTAIN |
 
-1. **Pass-arg is `canonicalize-for-penguin`, not `canonicalize-for-tensorizer`.** Re-checked: the strings table contains only `canonicalize-for-penguin` (@ `0x21a240`) and `stablehlo-canonicalize-for-penguin` (@ `0x348f10`); no `canonicalize-for-tensorizer` exists. The former's sole xref is from `CanonicalizeForTensorizer::getArgument` @ `0x207c500`. CONFIRMED — this **corrects** both backing reports, which named `canonicalize-for-tensorizer` as the pass-arg.
-
-2. **Eight rewriters in the stated order, broadcasts last.** All eight `_ZN25CanonicalizeForTensorizer…` symbols and their addresses match `_function_addresses.json` exactly (`fuseIotaSort` `0x207ffb0` … `replaceBroadcastInDimWithConstants` `0x20815f0`). The intra-`runOnOperation` order (`0x2086a20`–`0x2086bda`) is from disasm. CONFIRMED for the symbol set; the relative call order is CERTAIN per the backing disasm trace (I did not re-walk the 629-byte driver instruction-by-instruction here — STRONG on order, CERTAIN on membership).
-
-3. **`replaceGetDimensionSize` folds to `i32` via `op.result` type.** The `kDynamic` sentinel `0x8000000000000000`, the `RankedTensorType` TypeID gate (`0x9d3fa00`), and `getRawIntOrFloat(..., dataEltSize=4, isInt=true)` are all in the backing disasm with addresses. The `i32` claim rests on reading `op.result`'s type (`cast<ShapedType>` @ `0x2080501`) and the 4-byte element width. CONFIRMED.
-
-4. **`lowerResizeNearestGrad` is average-pool, region body is `AddOp`.** The four `emitOpError` strings are verbatim in `.rodata` (`_strings.json`); `ReduceWindowOp::build` @ `0x8f98cb0`, `AddOp::build` @ `0x8fb6750`, `DivOp::build` @ `0x8fb6960` are the builder calls. The lambda addr `0x207df40` is confirmed in `_function_addresses.json`. CONFIRMED.
-
-5. **`replaceInvalidBackendConfigs` is `AwsNeuronErf`-only.** The string `AwsNeuronErf` (@ `0x236819`) is referenced by exactly `replaceInvalidBackendConfigs` (both mhlo and StableHLO copies) plus two cost-analysis/checker functions, never by any other rewriter. The `"None"` replacement and `has_side_effect=false` are from the backing disasm. CONFIRMED.
-
-No claim required downgrading to SPECULATIVE. The one genuine **CORRECTION** surfaced by re-verification is the pass-arg name (claim 1). The `broadcast-num-elements-to-fold` default value and the `+0x2E` bitfield semantics remain the honest gaps (MED / inferred).
+Two things remain open: the `broadcast-num-elements-to-fold` default value, and the `+0x2E` bitfield semantics. Both are **[INFERRED]** rather than read.
 
 ---
 

@@ -17,7 +17,7 @@ For reimplementation, the contract is:
 - **The hit/miss short-circuit**: the control flow in the orchestrator, the two instance counters, and the three store maps.
 - **The metrics**: how cache statistics and per-kernel-name usage are surfaced to `KernelMetricsCollector` and the debug log.
 
-Provenance: backing reports **D-P14** (frontend bridge) and **D-P19** (binary cache). Every claim below was re-verified against the cp310 decompile/disasm; corrections to the reports are marked in place.
+Every claim below is grounded in the cp310 decompile and disassembly.
 
 | | |
 |---|---|
@@ -87,7 +87,7 @@ function _trace_internal_kernel_to_new_nki_frontend(self, inst, cache_key):   //
     // NO branch, NO n_s_trace_kernel_beta2 load, NO os.environ read in this body.
 ```
 
-> **CORRECTION (D-P19) —** D-P19 §3 renders the bridge signature as `_trace_internal_kernel_to_new_nki_frontend(self, inst)` (single positional). The cp310 prologue (`@0x5cd10`) installs `pyargnames = [self, inst, cache_key]` and rejects any call with `nargs != 3`; the beta3 leaf is invoked with the 2-tuple `(inst, cache_key)`. The argument is **`(self, inst, cache_key)`** — D-P14's signature. The bridge threads the precomputed key through to the leaf, it does not recompute it.
+The bridge takes **three** positional arguments, not two: the cp310 prologue (`@0x5cd10`) installs `pyargnames = [self, inst, cache_key]` and rejects any call with `nargs != 3`. It then invokes the beta3 leaf with the 2-tuple `(inst, cache_key)`. So the bridge *threads* the precomputed key through to the leaf; it never recomputes it.
 
 #### Proving beta3-only, beta2-dormant
 
@@ -104,7 +104,7 @@ n_s_trace_kernel_beta2  appears in 1 decompiled body:
 
 `_trace_kernel_beta2` (`_237` @`0x18ebc0`) is a fully compiled method, but its name is interned and never loaded by any runtime body. It is **dead by xref**. `_trace_kernel_beta3` is loaded exactly once — by the dispatcher. The internal-kernel re-trace is therefore **beta3-only** in this build.
 
-> **QUIRK —** the `NKI_FRONTEND` env read does still happen, but in the *orchestrator*, not the dispatcher. `codegenInternalNativeNkiKernel` calls `os.environ.get(__pyx_tuple__195)` at py3039 (`@0x8d8d5`–`@0x8d944`) and the result is threaded into tensor-info extraction — it does **not** select the trace path. The selection the docstring describes was constant-folded to beta3 (or simplified out) at Cython-compile time; the env value survives as data, not as a branch predicate. *(INFERRED which of const-fold vs. source-simplification produced this; CONFIRMED that the compiled dispatcher does not branch on it.)*
+> **QUIRK —** the `NKI_FRONTEND` env read does still happen, but in the *orchestrator*, not the dispatcher. `codegenInternalNativeNkiKernel` calls `os.environ.get(__pyx_tuple__195)` at py3039 (`@0x8d8d5`–`@0x8d944`) and the result is threaded into tensor-info extraction — it does **not** select the trace path. The selection the docstring describes was constant-folded to beta3 (or simplified out) at Cython-compile time; the env value survives as data, not as a branch predicate. *(That the compiled dispatcher does not branch on it is read directly; which of const-fold vs. source-simplification produced that is **[INFERRED]**.)*
 
 ### The beta3 leaf — `ParserFrontend.compile_to_bir`
 
@@ -144,7 +144,7 @@ The format value `'bir'` is not a guess from the docstring: it is the interned P
 | `_trace_kernel_beta2` (`_237`) | `0x18ebc0` | `TraceKernel.trace` → format `'klir'` (DORMANT) | CERTAIN |
 | `_resolve_kernel_config` (`_235`) | `0xa0ca0` | `registry.get(func_name)` → `(cfg, func, args, call_args)` | HIGH |
 
-> **CORRECTION (D-P14) —** D-P14 §0 lists the cache-stats method at index `_317` (`@0x18cd70`); D-P19 §4 lists it at `_316` (`@0x1833d0`). Both exist and both are real: `_pf_..._316_print_new_nki_frontend_cache_statistics` @`0x1833d0` is the Cython implementation core, and `_pw_..._317_print_new_nki_frontend_cache_statistics` @`0x18cd70` is its argument-clinic wrapper. Cite `_316`/`@0x1833d0` for the body, `_317`/`@0x18cd70` for the entry. This is the normal Cython `pf`/`pw` split, not two distinct methods.
+> **NOTE — the cache-stats method has two addresses, and both are real.** `_pf_..._316_print_new_nki_frontend_cache_statistics` @`0x1833d0` is the Cython implementation core; `_pw_..._317_print_new_nki_frontend_cache_statistics` @`0x18cd70` is its argument-clinic wrapper. Cite `_316`/`@0x1833d0` for the body and `_317`/`@0x18cd70` for the entry. This is the normal Cython `pf`/`pw` split, not two distinct methods.
 
 ---
 
@@ -177,7 +177,7 @@ function _compute_cache_key_from_components(self, key_components):   // _5 @0x7e
     return h.hexdigest()                                       // n_s_hexdigest (L628)
 ```
 
-The faithful Python equivalent — every token in it CONFIRMED:
+The faithful Python equivalent — every token in it read from the decompile:
 
 ```c
 def _compute_cache_key_from_components(self, key_components):
@@ -286,7 +286,7 @@ function codegenInternalNativeNkiKernel(self, inst, bb):   // _243 @0x8d630, py4
     bb.addInstruction(k)
 ```
 
-> **CORRECTION (D-P14 §6) —** D-P14 §2/§6 describes the orchestrator computing a `cache_key` and calling `_get_cached`/`_cache_new` but leaves the key composition to "P19 handoff". The composition is fully recovered here: the key is the SHA-256 of `sorted(key_components.items())` (§[The Cache Key](#the-cache-key)), and the store passes **three** positional arguments — `(cache_key, result, key_components)` (L2300) — not two. The `key_components` is retained for the stats/metrics export.
+Two details of that flow are easy to get wrong. The key is the SHA-256 of `sorted(key_components.items())` (§[The Cache Key](#the-cache-key)), and the store takes **three** positional arguments — `(cache_key, result, key_components)` (L2300), not two. The third, `key_components`, is retained for the stats/metrics export.
 
 ### The env key — `nki_frontend`, lowercase
 
@@ -299,7 +299,7 @@ The orchestrator's `os.environ.get(...)` call passes `__pyx_tuple__195` as its `
 0x8d99b:  mov  rsi, cs:__pyx_n_u_nki_frontend      ; lowercase 'nki_frontend' — the compared key
 ```
 
-> **CORRECTION (D-P14 §1.2) —** D-P14 reports the env key as `"NKI_FRONTEND"` (uppercase, default `"beta2"`), read from the *docstring*. The orchestrator's runtime comparison uses the **lowercase** `__pyx_n_u_nki_frontend` (`@0x8d99b`). Both `nki_frontend` and `NKI_FRONTEND` are interned in the string table, but only the lowercase one is loaded in the internal-kernel codegen body; the uppercase token is referenced exclusively from the external-kernel siblings and `Pyx_CreateStringTabAndInitStrings`. The internal-kernel env gate is **`nki_frontend`**. *(The `__pyx_tuple__195` literal default value is INFERRED from the docstring — the tuple contents were not byte-recoverable.)*
+> **GOTCHA — the internal-kernel env key is lowercase `nki_frontend`, not `NKI_FRONTEND`.** The docstring advertises the uppercase name with default `"beta2"`, but the orchestrator's runtime comparison loads the **lowercase** `__pyx_n_u_nki_frontend` (`@0x8d99b`). Both spellings are interned in the string table; only the lowercase one appears in the internal-kernel codegen body, while the uppercase token is referenced exclusively from the external-kernel siblings and `Pyx_CreateStringTabAndInitStrings`. *(The `__pyx_tuple__195` literal default value is **[INFERRED]** from the docstring — the tuple contents were not byte-recoverable.)*
 
 ### The store and lookup helpers
 
@@ -402,7 +402,7 @@ function _export_new_nki_fe_metrics(self):                  // _315 @0x111bd0
             number_of_variances = stats['variances'])
 ```
 
-> **CORRECTION (brief / D-P14 §3, §6) —** `NEW_NKI_FE` and `NKI_BETA3_FE` are **enum members of `KernelCategory`**, accessed via `GetAttr` off the `KernelCategory` object (L1473/L1586) — metric *buckets*, never compared as strings, never read from the environment. They are not environment variables. The only environment variable in the internal-kernel path is the lowercase `nki_frontend` ([above](#the-env-key--nki_frontend-lowercase)). `NKI_FRONTEND`/`NKI_BETA3_FE` gate the *external*-kernel siblings, a parallel path documented in [three-sink-kernel-model](three-sink-kernel-model.md).
+> **GOTCHA — `NEW_NKI_FE` and `NKI_BETA3_FE` are not environment variables.** They are **enum members of `KernelCategory`**, accessed via `GetAttr` off the `KernelCategory` object (L1473/L1586) — metric *buckets*, never compared as strings, never read from the environment. The only environment variable in the internal-kernel path is the lowercase `nki_frontend` ([above](#the-env-key--nki_frontend-lowercase)). `NKI_FRONTEND` and `NKI_BETA3_FE` gate the *external*-kernel siblings, a parallel path documented in [three-sink-kernel-model](three-sink-kernel-model.md).
 
 Each distinct internal-kernel *name* is recorded once under the `KernelCategory.NEW_NKI_FE` bucket, with `call_count` = sum of per-variant usage counts and `number_of_variances` = number of distinct cached variants (cache keys) that name produced.
 
@@ -436,9 +436,9 @@ The registry maps a macro `func_name` → `InternalKernelConfig` (the *which ker
 
 ---
 
-## Re-Verification Ceiling
+## Evidence summary
 
-What was directly disassembled/decompiled and is CONFIRMED:
+Directly disassembled or decompiled:
 
 - All 13 method symbols, indices, and addresses (`function_addresses.json` + `nm -C`).
 - The order-insensitive SHA-256 key: `PySequence_List` (L533) → `PyList_Sort` (L539) → `hashlib.sha256` (L585) → `.encode` (L600) → `.hexdigest` (L628) in `_5`'s decompile.
@@ -449,10 +449,10 @@ What was directly disassembled/decompiled and is CONFIRMED:
 - The lowercase `nki_frontend` env key (disasm `@0x8d99b`); `NEW_NKI_FE` as a `KernelCategory` GetAttr (not a string/env).
 - All cache-banner and docstring `.rodata` strings at their cited addresses.
 
-Honest gaps:
+Open questions:
 
-- **`__pyx_tuple__195` contents** (the `os.environ.get` `(key, default)` tuple): IDA elided the `PyTuple_Pack` varargs in module-init, so the literal *default* value (docstring says `"beta2"`) is INFERRED, not byte-recovered. The *key* is resolved from the adjacent `n_u_nki_frontend` load.
-- **Which of {compile-time const-fold, source simplification}** produced the beta3-only dispatch: INFERRED. CONFIRMED only that the compiled dispatcher does not branch.
+- **`__pyx_tuple__195` contents** (the `os.environ.get` `(key, default)` tuple): IDA elided the `PyTuple_Pack` varargs in module-init, so the literal *default* value — the docstring says `"beta2"` — is **[INFERRED]**, not byte-recovered. The *key* is resolved from the adjacent `n_u_nki_frontend` load.
+- **Which of {compile-time const-fold, source simplification}** produced the beta3-only dispatch is **[UNRESOLVED]**; only the fact that the compiled dispatcher does not branch is read directly.
 - **The exact `NKIKLIRKernel` attr-binding order in `_243`'s tail** was not byte-ordered here; it is structurally identical to the external-KLIR codegen `_233`, which was traced.
 - **cp311/cp312 parity**: the method roster is present in all three wheels (`native_exports.json`), but the beta2-dormancy xref was only re-confirmed on cp310. Whether another build re-enables the beta2 arm is untested.
 
