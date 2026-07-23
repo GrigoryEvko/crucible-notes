@@ -115,7 +115,7 @@ The two slot stores are `n_u_HLOToTensorizer` (L909–912) then `n_u_Frontend` (
 
 > **GOTCHA — `--meta-module` does two things, and they are coupled.** It both collapses the front sub-list to `[HLOToTensorizer, Frontend]` *and* pins `logical_nc_config = 1` (decomp L896, the `tp_setattro(self, n_s_logical_nc_config_2, int_1)` store). A reimplementation that collapses the list but forgets the LNC pin will diverge on multi-NeuronCore configs: meta-module compilation is single-logical-NC by construction. The two effects are emitted in the same branch arm, in this order (LNC pin first, then list). (CERTAIN — both are explicit stores in the meta-module arm.)
 
-> **CORRECTION — meta-module drops the goldens job, not just `StaticIOTranspose`.** A naive reading of the default 4-list might assume meta-module merely trims the tail. The decompile shows the meta-module arm is a *separate* `PyList_New` of length 2 containing only `HLOToTensorizer` and `Frontend` — both the golden evaluator (`{XLA}InferGoldens`) and `StaticIOTranspose` are absent. Goldens and static IO-transpose are skipped because meta-module compiles a sub-module that is linked later, where those steps are handled at link time. (HIGH)
+> **GOTCHA — meta-module drops the goldens job too, not just `StaticIOTranspose`.** The meta-module arm is a *separate* `PyList_New` of length 2 holding only `HLOToTensorizer` and `Frontend`; it does not trim the tail of the default 4-list. Both the golden evaluator (`{XLA}InferGoldens`) and `StaticIOTranspose` are absent, because meta-module compiles a sub-module that is linked later and those steps are handled at link time.
 
 ---
 
@@ -168,7 +168,7 @@ The gate envelope and per-step gating:
 | B1 | `Kelper` | same | none — always, within the gated block | 1738 |
 | B2 | `NeffWrapper` | same | `enable_internal_neff_wrapper` | 1740–1741 |
 
-> **GOTCHA — `Backend` is gated on the legacy-standalone flag; `Kelper` is not.** Within the four-condition envelope, `Kelper` is appended unconditionally (L868–882, reached via `LABEL_83` from *both* the legacy and non-legacy arms), whereas `Backend` is appended only when `internal_run_standalone_legacy_compilation` is truthy (L946–951). This refines the earlier reading that paired the two as a single "legacy codegen block": the NEFF-linker `Kelper` runs in the common gated flow even when the experimental `Backend` executor does not. (HIGH — the `LABEL_83` fall-through from the non-legacy arm at L865 `if (!v34) goto LABEL_83` is explicit.)
+> **GOTCHA — `Backend` is gated on the legacy-standalone flag; `Kelper` is not.** Within the four-condition envelope, `Kelper` is appended unconditionally (L868–882, reached via `LABEL_83` from *both* the legacy and non-legacy arms), whereas `Backend` is appended only when `internal_run_standalone_legacy_compilation` is truthy (L946–951). So the two are not a single "legacy codegen block": the NEFF-linker `Kelper` runs in the common gated flow even when the experimental `Backend` executor does not. (HIGH — the `LABEL_83` fall-through from the non-legacy arm at L865 `if (!v34) goto LABEL_83` is explicit.)
 
 > **GOTCHA — the entire backend sub-list is empty in three flows.** If `enable_internal_modular_compilation` is true, OR `enable_internal_bir_linker` is true, OR `layer_unroll_factor <= 0`, the outer `if` is false and `collectBackendPipeline` returns `[]`. In the modular / bir-linker flows the `walrus_driver` output is consumed by those paths directly, so `Backend` / `Kelper` / `NeffWrapper` never run. The `layer_unroll_factor > 0` condition is a `PyObject_RichCompare` against `0` (L796/L801, `Py_GT`), so a zero or negative unroll factor also empties the block. (CERTAIN.)
 
@@ -200,7 +200,7 @@ The gate envelope and per-step gating:
 
 **Modular / bir-linker / legacy-standalone-off flow:** backend sub-list empty; the schedule ends at `WalrusDriver` (its output consumed downstream).
 
-> **CORRECTION — `Frontend` runs the HLO frontend in-process, it does not fork `hlo-opt`.** The orientation page [0.2](../front/pipeline.md) lists the `Frontend` job as `hlo-opt (--passes=…)`. Module-level analysis of `jobs/Frontend.so` finds **no** `hlo-opt` / `opt-driver` / `hlo_opt` string and no `Popen`; the HLO/penguin frontend runs in-process via `neuronxcc.starfish.penguin.Penguin` (`runPenguin` / `runXLAFrontend`). `hlo-opt` ships as a standalone debug pass-driver ELF, unwired to any driver Job. Likewise `StaticIOTranspose` writes `io_transposes.json` with in-process Python `json`, not an ELF. Treat this page's table (which marks F2/F3 in-process) as the corrected one; [0.2] is being reconciled. (HIGH — negative string evidence + no Popen in `Frontend.so`.)
+> **GOTCHA — `Frontend` runs the HLO frontend in-process; it does not fork `hlo-opt`.** `jobs/Frontend.so` contains no `hlo-opt` / `opt-driver` / `hlo_opt` string and no `Popen`: the HLO/penguin frontend runs in-process through `neuronxcc.starfish.penguin.Penguin` (`runPenguin` / `runXLAFrontend`), and `hlo-opt` ships as a standalone debug pass-driver ELF wired to no driver Job. `StaticIOTranspose` is likewise in-process — it writes `io_transposes.json` with Python's `json` module, not via an ELF. This page's table marks F2/F3 in-process for that reason. (HIGH — negative string evidence plus the absent `Popen`.)
 
 ---
 
@@ -263,22 +263,22 @@ The job list is shaped by `Namespace` attributes the collectors read. `--optleve
 
 ---
 
-## 9. Adversarial self-verification
+## 9. Evidence anchors and limits
 
-The five strongest claims, re-checked against the binary:
+The five structural claims and what pins each:
 
-1. **`buildPipeline` is at `0x619d0`.** ✔ CERTAIN. The decompiled symbol is `__pyx_pw_9neuronxcc_6driver_8commands_14CompileCommand_14CompileCommand_9buildPipeline_0x619d0` — the Cython public-wrapper mangling carries both the qualified name `CompileCommand.buildPipeline` and the offset `0x619d0`; the file name itself embeds `_9buildPipeline_0x619d0`.
+1. **`buildPipeline` is at `0x619d0`** — CERTAIN. The decompiled symbol is `__pyx_pw_9neuronxcc_6driver_8commands_14CompileCommand_14CompileCommand_9buildPipeline_0x619d0` — the Cython public-wrapper mangling carries both the qualified name `CompileCommand.buildPipeline` and the offset `0x619d0`; the file name itself embeds `_9buildPipeline_0x619d0`.
 
-2. **The three-collector concatenation order is front → walrus → backend.** ✔ CERTAIN. `GetAttrStr` of `collectFrontendPipeline` (L7946), `collectWalrusPipeline` (L8073), `collectBackendPipeline` (L8167) appear in that decompiled order, each anchored to py 1241 / 1243 / 1245, joined by two `PyNumber_Add` (L8257, L8282). No reorder occurs between.
+2. **The three-collector concatenation order is front → walrus → backend** — CERTAIN. `GetAttrStr` of `collectFrontendPipeline` (L7946), `collectWalrusPipeline` (L8073), `collectBackendPipeline` (L8167) appear in that decompiled order, each anchored to py 1241 / 1243 / 1245, joined by two `PyNumber_Add` (L8257, L8282). No reorder occurs between.
 
-3. **Default front order is `[HLOToTensorizer, {XLA}InferGoldens, Frontend, StaticIOTranspose]`.** ✔ HIGH. The four `PyList` slot stores are explicit at L817/819/822/825 with constants `n_u_HLOToTensorizer`, the goldens choice, `n_u_Frontend`, `n_u_StaticIOTranspose`. The slot indices (`*v44`, `v44[1]`, `v44[2]`, `v44[3]`) fix the order. The only variability is `[1]` (goldens choice), driven by the `framework == XLAInterface` RichCompare (L748–807).
+3. **Default front order is `[HLOToTensorizer, {XLA}InferGoldens, Frontend, StaticIOTranspose]`** — HIGH. The four `PyList` slot stores are explicit at L817/819/822/825 with constants `n_u_HLOToTensorizer`, the goldens choice, `n_u_Frontend`, `n_u_StaticIOTranspose`. The slot indices (`*v44`, `v44[1]`, `v44[2]`, `v44[3]`) fix the order. The only variability is `[1]` (goldens choice), driven by the `framework == XLAInterface` RichCompare (L748–807).
 
-4. **`--meta-module` collapses front to `[HLOToTensorizer, Frontend]` and pins `logical_nc_config = 1`.** ✔ HIGH. The meta-module arm (reached when `args.meta_module` is truthy, L679/L687/L894) does `tp_setattro(self, logical_nc_config, int_1)` (L896, py 1642) then `PyList_New` with `n_u_HLOToTensorizer` (L909) and `n_u_Frontend` (L913) — exactly two slots, py 1643.
+4. **`--meta-module` collapses front to `[HLOToTensorizer, Frontend]` and pins `logical_nc_config = 1`** — HIGH. The meta-module arm (reached when `args.meta_module` is truthy, L679/L687/L894) does `tp_setattro(self, logical_nc_config, int_1)` (L896, py 1642) then `PyList_New` with `n_u_HLOToTensorizer` (L909) and `n_u_Frontend` (L913) — exactly two slots, py 1643.
 
-5. **The backend sub-list is gated by a four-condition AND and `Kelper` is unconditional within it.** ✔ HIGH. The nested-`if` reads `enable_internal_modular_compilation` (L743) → `enable_internal_bir_linker` (L769) → `layer_unroll_factor > 0` (L796/801) → `internal_run_standalone_legacy_compilation` (L836); `Backend` appends only on the legacy arm (L946), and *both* arms reach `LABEL_83` (the non-legacy arm via `if (!v34) goto LABEL_83`, L865) which appends `Kelper` (L868–882). `NeffWrapper` is then gated by `enable_internal_neff_wrapper` (L886/L912).
+5. **The backend sub-list is gated by a four-condition AND, and `Kelper` is unconditional within it** — HIGH. The nested-`if` reads `enable_internal_modular_compilation` (L743) → `enable_internal_bir_linker` (L769) → `layer_unroll_factor > 0` (L796/801) → `internal_run_standalone_legacy_compilation` (L836); `Backend` appends only on the legacy arm (L946), and *both* arms reach `LABEL_83` (the non-legacy arm via `if (!v34) goto LABEL_83`, L865) which appends `Kelper` (L868–882). `NeffWrapper` is then gated by `enable_internal_neff_wrapper` (L886/L912).
 
-**Tagged INFERRED / not fully traced:**
-- The exact code→`[F134]/[F137]/[F139]` exitcode thresholds in `handleError` (§7) — branch reconstructed, MED.
-- Whether `MetaInferGoldens` ever substitutes for `InferGoldens` in slot `[1]` (the modular/meta path may route goldens through `MetaInferGoldens`; the default-arm store is `InferGoldens`/`XLAInferGoldens` only) — MED.
-- The keep/drop semantics of each branch in the py-1252 name-filter loop (`Watchpoint` / `BIRSim` / goldens `Equals` tests) — the four `Equals` constants are CERTAIN, the per-branch action MED.
-- `print_dots` / `print_dot_context` fork mechanics in `runPipeline` — MED (`@contextmanager` reconstruction).
+**Limits.** Not fully traced:
+- The exact code→`[F134]/[F137]/[F139]` exitcode thresholds in `handleError` (§7) — branch reconstructed, MEDIUM.
+- Whether `MetaInferGoldens` ever substitutes for `InferGoldens` in slot `[1]`: the modular/meta path may route goldens through `MetaInferGoldens`, but the default-arm store is `InferGoldens`/`XLAInferGoldens` only — MEDIUM.
+- The keep/drop semantics of each branch in the py-1252 name-filter loop (`Watchpoint` / `BIRSim` / goldens `Equals` tests) — the four `Equals` constants are certain, the per-branch action MEDIUM.
+- `print_dots` / `print_dot_context` fork mechanics in `runPipeline` — MEDIUM (`@contextmanager` reconstruction).

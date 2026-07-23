@@ -8,7 +8,7 @@ The Neuron compiler ships a precompiled **sort / top-k builtin** that runs on th
 
 The algorithm is a classic **bitonic sort** within each core followed by a **pairwise tree merge** across cores. Each element travels as a `(value, index)` pair so that the same comparator network that sorts the values simultaneously permutes the original positions — that is what makes the op a top-k provider, not just a sort: the indices come out for free. The output is a single packed tensor of shape `[2, data_dim0, data_dim1]`, where plane 0 carries the sorted values and plane 1 carries the gathered indices. Four named entry points split the work along two axes: **single-core vs. multi-core**, and **full sort vs. partial (`partial_*` = top-k)**.
 
-> **NOTE — strings-only reconstruction.** The eight `.so` files are fully stripped (no `.symtab`, no `.dynsym`; `nm -D` and `readelf -s` return nothing) and contain **Xtensa** machine code, for which this corpus has *no recovered disassembly or decompilation*. Every claim below is reconstructed from `.rodata` — `__FILE__:__LINE__ assert-condition` strings, the four dispatch name literals, the c10/SundaCustomOpLibrary build strings — plus the ELF layout and general knowledge of bitonic networks. The data layout, the dispatch split, the index-pairing, and the `[2,d0,d1]` shape are **directly attested by assert strings**. The comparator network and the exact merge-tree fanout are **inferred from structure**; they are tagged accordingly. No Xtensa instruction sequence is presented here because none was recovered. (Backing analysis: **D-Q04**.)
+> **NOTE — strings-only reconstruction.** The eight `.so` files are fully stripped (no `.symtab`, no `.dynsym`; `nm -D` and `readelf -s` return nothing) and contain **Xtensa** machine code, for which this corpus has *no recovered disassembly or decompilation*. Every claim below is reconstructed from `.rodata` — `__FILE__:__LINE__ assert-condition` strings, the four dispatch name literals, the c10/SundaCustomOpLibrary build strings — plus the ELF layout and general knowledge of bitonic networks. The data layout, the dispatch split, the index-pairing, and the `[2,d0,d1]` shape are **directly attested by assert strings**. The comparator network and the exact merge-tree fanout are **inferred from structure**; they are tagged accordingly. No Xtensa instruction sequence is presented here because none was recovered.
 
 For reimplementation, the contract is:
 
@@ -45,7 +45,7 @@ readelf -h  libbuiltincustomop_cpu7:  Entry 0x84e0cd94   .text @ 0x84e00000
 
 The entry points and section bases differ by exactly `cpu_index * 0x200000` (2 MiB per core; cpu0→cpu7 spans `7 · 0x200000 = 0xe00000`). The eight files therefore have **different md5s** despite identical 579,380-byte sizes — the divergence is in absolute addresses (and a small block of relocated `.data` constants), not in logic. Diffing the *string sets* of cpu0 vs. cpu7 yields only address-bearing noise; every `bitonic_sort.cpp` / `sort_and_merge.cpp` assert string is present and identical in all eight.
 
-> **QUIRK — the same op is shipped twice.** `neuronxcc/l/l_cpu0.stripped.so` and `neuronxcc/data/custom_op/libbuiltincustomop_cpu0.stripped.so` are byte-identical (same md5). The `l/` path is an aliased shipping copy; a reimplementer needs to provide only one eight-image set, not two. (CONFIRMED — md5 match.)
+> **QUIRK — the same op is shipped twice.** `neuronxcc/l/l_cpu0.stripped.so` and `neuronxcc/data/custom_op/libbuiltincustomop_cpu0.stripped.so` are byte-identical (same md5). The `l/` path is an aliased shipping copy; a reimplementer needs to provide only one eight-image set, not two. The md5s match exactly.
 
 > **NOTE —** because the image is stripped of symbols, the four `*_compute` names below are **`.rodata` string literals** (used by the host dispatcher and by the asserts), not exported ELF symbols. They occupy a contiguous run at 0x7ed20; the host selects a kernel by name, not by symbol address.
 
@@ -88,7 +88,7 @@ function compare_exchange(value[a], value[b], index[a], index[b], dir):
         exchange(index[a], index[b])               // ... and its origin together
 ```
 
-> **GOTCHA — the index is not a post-hoc argsort.** A reimplementation that sorts values first and then tries to recover indices by a second pass will mis-handle ties and waste a full pass. The original carries the index in lockstep through the *same* comparator network; ties resolve to whatever the network's stable ordering produces, which an index-rebuilding pass cannot reproduce. The two buffers must be swapped by the *same* predicate, in the same step. (INFERRED — from the always-paired buffer asserts; the swap predicate itself is not recovered.)
+> **GOTCHA — the index is not a post-hoc argsort.** A reimplementation that sorts values first and then tries to recover indices by a second pass will mis-handle ties and waste a full pass. The original carries the index in lockstep through the *same* comparator network; ties resolve to whatever the network's stable ordering produces, which an index-rebuilding pass cannot reproduce. The two buffers must be swapped by the *same* predicate, in the same step. [INFERRED] from the always-paired buffer asserts — the swap predicate itself is not recovered.
 
 ---
 
@@ -153,16 +153,16 @@ These are the only four strings in the image ending in `compute` (a `strings | r
 
 ### The dispatch matrix
 
-| Kernel | Cores | Sort? | Role (INFERRED from name + asserts) | Confidence |
+| Kernel | Cores | Sort? | Role (reconstructed from name + asserts) | Confidence |
 |---|---|---|---|---|
-| `sort_singlecore_compute` | 1 | full | Whole sequence fits one core: bitonic-sort in place, no cross-core merge | STRONG |
-| `sort_multicore_compute` | 8 | full | Per-core bitonic sort of a slice, then full pairwise tree merge to one sorted output | STRONG |
-| `partial_sort_multicore_compute` | 8 | top-k | Per-core sort that keeps only the top-k of each slice (the `partial_*` prefix = top-k) | INFERRED |
-| `partial_merge_multicore_compute` | 8 | top-k | Merge of the per-core partial results, retaining only the global top-k | INFERRED |
+| `sort_singlecore_compute` | 1 | full | Whole sequence fits one core: bitonic-sort in place, no cross-core merge | HIGH |
+| `sort_multicore_compute` | 8 | full | Per-core bitonic sort of a slice, then full pairwise tree merge to one sorted output | HIGH |
+| `partial_sort_multicore_compute` | 8 | top-k | Per-core sort that keeps only the top-k of each slice (the `partial_*` prefix = top-k) | MEDIUM |
+| `partial_merge_multicore_compute` | 8 | top-k | Merge of the per-core partial results, retaining only the global top-k | MEDIUM |
 
-> **QUIRK — `partial_*` means top-k, not "incomplete".** The `partial_sort` / `partial_merge` pair is the top-k path: it is the standard C++ `std::partial_sort` vocabulary — sort *enough* to know the first `k` elements, then stop. The two `partial_*` kernels mirror the two-phase structure of the full sort (`sort` then implicit merge) but prune to `k` at each phase so the merge moves `k` elements per core instead of the whole slice. (INFERRED — the naming is the only evidence; the value of `k` and the pruning point are not recovered from strings.)
+> **QUIRK — `partial_*` means top-k, not "incomplete".** The `partial_sort` / `partial_merge` pair is the top-k path: it is the standard C++ `std::partial_sort` vocabulary — sort *enough* to know the first `k` elements, then stop. The two `partial_*` kernels mirror the two-phase structure of the full sort (`sort` then implicit merge) but prune to `k` at each phase so the merge moves `k` elements per core instead of the whole slice. [INFERRED] — the naming is the only evidence; the value of `k` and the pruning point are not recovered from strings.
 
-> **GOTCHA — there is no `singlecore` top-k kernel.** Only `sort_singlecore_compute` exists for the one-core path; the `partial_*` kernels are both `multicore`. A reimplementer should route a small single-core top-k either through `sort_singlecore` + a host-side slice, or replicate the partial logic single-core; the shipped image does *not* provide a `partial_sort_singlecore_compute`. (CONFIRMED — no such string exists.)
+> **GOTCHA — there is no `singlecore` top-k kernel.** Only `sort_singlecore_compute` exists for the one-core path; the `partial_*` kernels are both `multicore`. A reimplementer should route a small single-core top-k either through `sort_singlecore` + a host-side slice, or replicate the partial logic single-core; the shipped image does *not* provide a `partial_sort_singlecore_compute` — no such string exists.
 
 ---
 
@@ -219,7 +219,7 @@ sort_and_merge.cpp:618   right_start < dim2                   // left/right part
 
 `num_subtensors <= cpu_count` ties the number of sorted runs to the eight-core count: at most one sorted subtensor per core. The presence of a single `merged_*` buffer pair (data + indices), fed by a `left_*` and a `right_*` pair (lines 98/122 and 360/392), is the signature of a **binary merge** — two inputs, one output.
 
-### The merge tree (structure CONFIRMED, fanout INFERRED)
+### The merge tree (binary-merge primitive read from strings; fanout reconstructed)
 
 ```text
 core:   0    1    2    3    4    5    6    7        ← up to 8 sorted subtensors
@@ -231,7 +231,7 @@ level2:     m0123              m4567               ← 2 pairwise merges
 level3:          m01234567                          ← 1 final merge → sorted output
 ```
 
-> **CORRECTION (D-Q04) — the "8→4→2→1" fanout is inferred, not asserted.** What the strings *directly* attest is (a) up to eight sorted subtensors (`num_subtensors <= cpu_count`), (b) a binary `left + right → merged` merge primitive (the paired buffer triples), and (c) a bounded merge write (`merged_subtensor_write_idx < merged_size`). The specific three-level **8→4→2→1** halving tree is the standard way to combine 8 sorted runs with a binary merge and is shown for the reimplementer; the image does **not** contain a level/round counter string proving exactly this schedule. A serial "merge run *i* into the accumulator" loop would satisfy the same asserts. Tag the fanout **INFERRED**; tag the binary-merge primitive and the ≤8-run bound **CONFIRMED**.
+> **NOTE — the "8→4→2→1" fanout is [INFERRED].** The strings directly attest three things: up to eight sorted subtensors (`num_subtensors <= cpu_count`), a binary `left + right → merged` merge primitive (the paired buffer triples), and a bounded merge write (`merged_subtensor_write_idx < merged_size`). The three-level halving tree drawn above is the standard way to combine 8 sorted runs with a binary merge and is shown for orientation, but no level/round counter string pins that schedule — a serial "merge run *i* into the accumulator" loop would satisfy the same asserts equally well.
 
 ### Algorithm (structural)
 
@@ -240,7 +240,7 @@ level3:          m01234567                          ← 1 final merge → sorted
 function multicore_merge(subtensors[n], n):
     assert(n <= cpu_count)                           // line 598: ≤ 8 runs
     runs = subtensors
-    while len(runs) > 1:                             // pairwise tree (INFERRED fanout)
+    while len(runs) > 1:                             // pairwise tree; fanout [INFERRED]
         next = []
         for (left, right) in pairs(runs):
             // left/right each = (data, index) pair; output one merged pair
@@ -251,7 +251,7 @@ function multicore_merge(subtensors[n], n):
     return runs[0]                                   // single globally-sorted [2, d0, d1] tensor
 ```
 
-For the `partial_merge_multicore_compute` (top-k) variant, the same tree runs but each `merge_two_sorted` keeps only the top `k` of its output, so the final run is already trimmed to the global top-k. (INFERRED — from the `partial_` prefix mirroring the full path.)
+For the `partial_merge_multicore_compute` (top-k) variant, the same tree runs but each `merge_two_sorted` keeps only the top `k` of its output, so the final run is already trimmed to the global top-k. [INFERRED] from the `partial_` prefix mirroring the full path.
 
 ---
 

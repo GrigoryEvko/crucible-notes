@@ -8,7 +8,7 @@
 
 The central reverse-engineering finding is that the whole hierarchy is built on **two shared constructors and one fixed header**. `pelican::Expr` is a `RefCountedObject`; its base constructor `sub_5FE310` lays down a four-field header — `vptr@0x00`, `refcount@0x08`, `kind@0x10`, `ctx@0x18` — identical for *every* node. Binary nodes (`MultExpr`, `FloorDivExpr`, `ModuloExpr`, `CCDivExpr`, `CCModExpr`) chain through a second base constructor `sub_60F4B0` that appends `operand@0x20` and `intval@0x28`. Compound nodes (`AffineExpr`, `SumExpr`) skip the binary base and grow a variable-length operand body at `+0x20` — but the two use *different* containers: `AffineExpr` holds a `boost::container::vector<pair<RefPtr<AffineIdx>, long>>` (heap begin/end/cap triple, no inline buffer), while `SumExpr` holds an `llvm::SmallVector<RefPtr<Expr>>` with 8 inline slots (see the per-node sections below). No node moves a base field; subclasses only append.
 
-> **CORRECTION —** an earlier draft described the `AffineExpr` term container as an `llvm::SmallVector<pair<RefPtr<AffineIdx>, long>, 16>`. That is **wrong** — only `SumExpr` (kind 18) uses a `SmallVector`. `AffineExpr` (kind 17) uses a `boost::container::vector`. **CONFIRMED** from `libBIR.so`: factory `sub_62BCF0` @ `0x62bcf0` zeroes a begin/end/cap triple (`[e+0x20]=0; movups [e+0x28],xmm0`) with **no** self-pointer to an inline buffer and **no** capacity literal — the boost empty-init, not the SmallVector `begin = e+0x30; cap = 8` pattern that `SumExpr`'s `sub_62C8D0` does show. The populate-from-terms factory `sub_635860` @ `0x635860` carries verbatim boost assert strings naming both the element type `std::pair<pelican::RefPtr<pelican::AffineIdx>, long int>` and the source path `boost/container/vector.hpp`, and frees the backing store unconditionally (no `begin != inline-buffer` guard).
+> **GOTCHA — the two compound nodes use different containers.** Only `SumExpr` (kind 18) is backed by an `llvm::SmallVector`; `AffineExpr` (kind 17) is a `boost::container::vector`, so do not model its terms as a `SmallVector<pair<RefPtr<AffineIdx>, long>, 16>`. The tell is in the factories: `sub_62BCF0` @ `0x62bcf0` zeroes a begin/end/cap triple (`[e+0x20]=0; movups [e+0x28],xmm0`) with no self-pointer to an inline buffer and no capacity literal — the boost empty-init — whereas `SumExpr`'s `sub_62C8D0` writes the SmallVector `begin = e+0x30; cap = 8` pattern. The populate-from-terms factory `sub_635860` @ `0x635860` settles it with verbatim boost assert strings naming both the element type `std::pair<pelican::RefPtr<pelican::AffineIdx>, long int>` and the source path `boost/container/vector.hpp`, and it frees the backing store unconditionally, with no `begin != inline-buffer` guard.
 
 A reimplementer who reproduces the header, the two payload shapes, and the kind-tag literals can rebuild any core node.
 
@@ -44,7 +44,7 @@ The page proceeds: the universal header ([§1](#1-the-universal-header)), the `B
 
 ### The base constructor
 
-Every `pelican::Expr` node, regardless of subclass, begins life in `sub_5FE310` — the `pelican::Expr` (≡ `RefCountedObject`) base constructor. It is 30 bytes and stores exactly four fields. **CONFIRMED** from the raw disassembly:
+Every `pelican::Expr` node, regardless of subclass, begins life in `sub_5FE310` — the `pelican::Expr` (≡ `RefCountedObject`) base constructor. It is 30 bytes and stores exactly four fields:
 
 ```asm
 ; sub_5FE310 @ 0x5fe310  —  pelican::Expr::Expr(this, int kind, PelicanContext* ctx)
@@ -91,7 +91,7 @@ The `refcount@0x08` confirms `pelican::Expr : pelican::RefCountedObject`: the ty
 
 ### The binary base constructor
 
-`MultExpr`, `FloorDivExpr`, `ModuloExpr`, `CCDivExpr`, and `CCModExpr` are `BinaryExpr` nodes. They chain through `sub_60F4B0`, which calls the `Expr` base ctor and then appends two fields. **CONFIRMED** from disassembly:
+`MultExpr`, `FloorDivExpr`, `ModuloExpr`, `CCDivExpr`, and `CCModExpr` are `BinaryExpr` nodes. They chain through `sub_60F4B0`, which calls the `Expr` base ctor and then appends two fields:
 
 ```asm
 ; sub_60F4B0 @ 0x60f4b0  —  pelican::BinaryExpr::BinaryExpr(this, int kind, ctx, RefPtr lhs, long rhs)
@@ -120,7 +120,7 @@ void BinaryExpr_ctor(BinaryExpr *this, int kind, PelicanContext *ctx,
 
 ### The five binary factories
 
-Each concrete binary node has a factory that `operator new`s the object, calls `sub_60F4B0` with its kind tag, then publishes the derived vtable. **CONFIRMED** — kind literals and `operator new` sizes read directly from each factory's disassembly (`mov edi, <size>` before `__Znwm`, `mov esi, <kind>` before the base-ctor call):
+Each concrete binary node has a factory that `operator new`s the object, calls `sub_60F4B0` with its kind tag, then publishes the derived vtable. Kind literals and `operator new` sizes are read straight off each factory (`mov edi, <size>` before `__Znwm`, `mov esi, <kind>` before the base-ctor call):
 
 | Factory | `new` size | kind tag | Final vtable | Node |
 |---|---|---|---|---|
@@ -145,11 +145,11 @@ MultExpr *make_MultExpr(PelicanContext *ctx, RefPtr<Expr> sub, long coef) {
 
 > **NOTE — `CCModExpr` factory anchor.** The `sub_62B960` row is byte-pinned in `libBIR.so` (cp310): `62b974: bf 38 00 00 00 mov $0x38,%edi` (size `0x38`) → `62b982: call _Znwm@plt` (`operator new`) → `62b990: be 1c 00 00 00 mov $0x1c,%esi` (kind `0x1C` = 28) → `62b9b8: lea 0x2e02f1(%rip),%rax # 90bcb0` then `62b9cb: mov %rax,0x0(%rbp)` (publishes vtable `0x90bcb0`) → `62b9bf: mov %r13,0x30(%rbp)` (`replica_groups_id@+0x30`). This is a **distinct** factory from `sub_62B830` (`ModuloExpr`, `0x30` bytes / kind `0x1A`=26), so kind-28 is not shared with `ModuloExpr`. The same node has a CERTAIN analogue in the `libwalrus` frame — `createCCModExpr` (the libwalrus VA for the same `0x38`/kind-28/`0x90bcb0`-class constructor) — so the two frames cross-confirm the kind-tag.
 
-> **CORRECTION —** the Penguin-algebra page sketches `Sum/Mult/Modulo/FloorDiv` as direct children of `AffineExpr`. The binary disagrees: `MultExpr`/`FloorDivExpr`/`ModuloExpr`/`CCDivExpr`/`CCModExpr` chain through the **`BinaryExpr`** base ctor (`sub_60F4B0`), not the `AffineExpr` body. The clean affine-combination node (`AffineExpr`, kind 17) and the operand-list `SumExpr` (kind 18) are the compound nodes; the multiplicative/division nodes are binary. The vtable/typeinfo evidence (`MultExpr` typeinfo at `0x90b448`, distinct from `AffineExpr` at `0x90aa80`) is on [the hierarchy page](./pelican-hierarchy.md).
+> **GOTCHA —** `Sum`/`Mult`/`Modulo`/`FloorDiv` are often sketched as direct children of `AffineExpr`. In the binary, `MultExpr`/`FloorDivExpr`/`ModuloExpr`/`CCDivExpr`/`CCModExpr` chain through the **`BinaryExpr`** base ctor (`sub_60F4B0`), not the `AffineExpr` body: the compound nodes are the affine-combination `AffineExpr` (kind 17) and the operand-list `SumExpr` (kind 18), while the multiplicative and division nodes are binary. `MultExpr`'s typeinfo sits at `0x90b448`, distinct from `AffineExpr` at `0x90aa80` — see [the hierarchy page](./pelican-hierarchy.md).
 
 ### The CC binary nodes' extra word
 
-`CCDivExpr` (27) and `CCModExpr` (28) are `0x38`-byte objects — one word longer than the plain binary nodes — because they carry a `replica_groups_id` at `+0x30`. **CONFIRMED**: both factories write `v10[6] = a5` (`[obj+0x30]`) after the base ctor.
+`CCDivExpr` (27) and `CCModExpr` (28) are `0x38`-byte objects — one word longer than the plain binary nodes — because they carry a `replica_groups_id` at `+0x30`: both factories write `v10[6] = a5` (`[obj+0x30]`) after the base ctor.
 
 | Offset | Field (CC binary) | Evidence |
 |---|---|---|
@@ -166,7 +166,7 @@ The two compound core nodes skip the `BinaryExpr` base and build a variable-leng
 
 ### `AffineExpr` (kind 17) — object size `0x40`
 
-`AffineExpr` is the canonical affine combination `c + Σ cᵢ·idxᵢ`. Its body is a `boost::container::vector<pair<RefPtr<AffineIdx>, long>>` (the term list) plus a constant. **CONFIRMED** from `sub_62BCF0` @ `0x62bcf0` (the empty-with-const factory) and `sub_635860` @ `0x635860` (the populate-from-terms factory):
+`AffineExpr` is the canonical affine combination `c + Σ cᵢ·idxᵢ`. Its body is a `boost::container::vector<pair<RefPtr<AffineIdx>, long>>` (the term list) plus a constant, as laid down by `sub_62BCF0` @ `0x62bcf0` (the empty-with-const factory) and `sub_635860` @ `0x635860` (the populate-from-terms factory):
 
 ```c
 // sub_62BCF0 @ 0x62bcf0 — pelican::AffineExpr factory (empty body, kind 17)
@@ -194,7 +194,7 @@ AffineExpr *make_AffineExpr(PelicanContext *ctx, long c) {
 
 ### `SumExpr` (kind 18) — object size `0x70`
 
-`SumExpr` is the operand-list compound — a sum of arbitrary sub-`Expr`s — backed by an `llvm::SmallVector<RefPtr<Expr>>` with **8 inline slots**. **CONFIRMED** from `sub_62C8D0` @ `0x62c8d0`:
+`SumExpr` is the operand-list compound — a sum of arbitrary sub-`Expr`s — backed by an `llvm::SmallVector<RefPtr<Expr>>` with **8 inline slots**, laid down by `sub_62C8D0` @ `0x62c8d0`:
 
 ```c
 // sub_62C8D0 @ 0x62c8d0 — pelican::SumExpr factory (kind 18)
@@ -244,7 +244,7 @@ Every cell is a field written by a constructor at the stated offset; blank = fie
 
 ## 5. The kind-tag census
 
-The `ExprKind` discriminator at `+0x10` is a dense small-integer enum. The core affine/binary band is `17`–`28`; the collective leaves `CCGetRankExpr`/`IndirectArgExpr` sit low at `2`/`3`. **CONFIRMED** kinds are pinned to a `mov esi, <lit>` immediately preceding a base-ctor call in the named factory:
+The `ExprKind` discriminator at `+0x10` is a dense small-integer enum. The core affine/binary band is `17`–`28`; the collective leaves `CCGetRankExpr`/`IndirectArgExpr` sit low at `2`/`3`. Each kind below is pinned to a `mov esi, <lit>` immediately preceding a base-ctor call in the named factory:
 
 | Kind | Hex | Node | Pinned at | Base ctor |
 |---|---|---|---|---|
@@ -275,26 +275,26 @@ This single function pins three claims at once: `kind` is a 4-byte field at `+0x
 
 ---
 
-## 6. Adversarial self-verification
+## 6. Evidence anchors and limits
 
-The five strongest claims, each re-checked against the binary from an independent site:
+Each layout claim is anchored on both a write site and an independent read site:
 
-1. **Universal header `{vptr@0, refcount@8, kind@0x10, ctx@0x18}`.** — **CONFIRMED.** Write side: `sub_5FE310` disasm stores `[rdi+8]=1`, `[rdi+10h]=esi`, `[rdi+18h]=rdx`, `[rdi]=Expr_vtable+0x10`. Read side: `isV1`/`isSimpleAffineExpr`/`traverseChildren` all read `[expr+0x10]` as the kind; every factory's tail `retain(obj+8)` confirms `refcount@0x08`. No ambiguity.
+1. **Universal header `{vptr@0, refcount@8, kind@0x10, ctx@0x18}`.** Write side: `sub_5FE310` stores `[rdi+8]=1`, `[rdi+10h]=esi`, `[rdi+18h]=rdx`, `[rdi]=Expr_vtable+0x10`. Read side: `isV1`/`isSimpleAffineExpr`/`traverseChildren` all read `[expr+0x10]` as the kind, and every factory's tail `retain(obj+8)` re-derives `refcount@0x08`.
 
-2. **`refcount@0x08` initialised to `1` (≡ `RefCountedObject`).** — **CONFIRMED.** `mov qword [rdi+8], 1` in the base ctor; `_ZTIN7pelican16RefCountedObjectE` @ `0x90a8f0` exists; retain `sub_638F80`/release `sub_638FB0` operate on `obj + 8`.
+2. **`refcount@0x08` initialised to `1` (≡ `RefCountedObject`).** `mov qword [rdi+8], 1` in the base ctor; `_ZTIN7pelican16RefCountedObjectE` @ `0x90a8f0` exists; retain `sub_638F80` / release `sub_638FB0` both operate on `obj + 8`.
 
-3. **`BinaryExpr` payload `{operand@0x20, intval@0x28}`.** — **CONFIRMED.** `sub_60F4B0` disasm: `mov [rbx+20h], rbp` (lhs), `mov [rbx+28h], r12` (rhs). Read side: `isV1` dereferences `v2[4]` (= `+0x20`) as the operand and recurses on *its* kind.
+3. **`BinaryExpr` payload `{operand@0x20, intval@0x28}`.** `sub_60F4B0` writes `mov [rbx+20h], rbp` (lhs) and `mov [rbx+28h], r12` (rhs); on the read side `isV1` dereferences `v2[4]` (= `+0x20`) as the operand and recurses on *its* kind.
 
-4. **Kind tags `17/18/23/25/26/27` (+28/2/3).** — **CONFIRMED.** Each tag read as the `mov esi, <imm>` immediately before the base-ctor call in the named factory (`0x11,0x12,0x17,0x19,0x1A,0x1B,0x1C`), and as `cmp dword [reg+10h], <imm>` in the readers. Both sides agree.
+4. **Kind tags `17/18/23/25/26/27` (+28/2/3).** Each tag appears as the `mov esi, <imm>` immediately before the base-ctor call in the named factory (`0x11,0x12,0x17,0x19,0x1A,0x1B,0x1C`) and again as `cmp dword [reg+10h], <imm>` in the readers.
 
-5. **Object sizes `0x30 / 0x38 / 0x40 / 0x70`.** — **CONFIRMED.** Each `mov edi, <size>` precedes the `operator new` call in the factory (`0x30` Mult/Floor/Modulo, `0x38` CCDiv/CCMod, `0x40` AffineExpr, `0x70` SumExpr); `SumExpr`'s dtor `operator delete(e, 0x70)` cross-checks.
+5. **Object sizes `0x30 / 0x38 / 0x40 / 0x70`.** Each `mov edi, <size>` precedes the `operator new` call in its factory (`0x30` Mult/Floor/Modulo, `0x38` CCDiv/CCMod, `0x40` AffineExpr, `0x70` SumExpr), and `SumExpr`'s dtor `operator delete(e, 0x70)` cross-checks.
 
-**Re-verify ceiling / what is INFERRED:**
+**Limits.**
 
-- The **base-class chain** (BinaryExpr ⊃ DivLikeExpr ⊃ {FloorDiv, CCDiv}, etc.) is **STRONG-but-inferred** here: argued from which base ctor each factory chains through and from the transient `DivLikeExpr` vtable, not from reading the `__si_class_type_info` base pointers. The authoritative tree is [the hierarchy page](./pelican-hierarchy.md).
-- The **field *semantics*** of `intval@0x28` (coefficient vs denominator vs modulus per node) are **INFERRED** from the assert strings (`denom > 0`) and the node names — the binary stores one `long`; the role label is contextual.
-- `AffineExpr`'s `terms` triple at `0x20/0x28/0x30` is identified as a `boost::container::vector` from `sub_635860`'s asserts; the exact begin/end/cap field assignment is **STRONG** (matches the boost layout and the zeroing pattern) but the precise end-vs-size encoding at `+0x28` was not separately disassembled field-by-field.
-- Kind **`24`** is **unobserved** — no captured factory emits it; whether it is a reserved/abstract `DivLikeExpr` tag or a node outside this page's scope is **SPECULATIVE**.
+- The **base-class chain** (BinaryExpr ⊃ DivLikeExpr ⊃ {FloorDiv, CCDiv}, etc.) is reconstructed here from which base ctor each factory chains through and from the transient `DivLikeExpr` vtable, not from reading the `__si_class_type_info` base pointers — HIGH. The authoritative tree is [the hierarchy page](./pelican-hierarchy.md).
+- The **field *semantics*** of `intval@0x28` (coefficient vs denominator vs modulus per node) are **[INFERRED]** from the assert strings (`denom > 0`) and the node names; the binary stores one `long` and the role label is contextual.
+- `AffineExpr`'s `terms` triple at `0x20/0x28/0x30` is identified as a `boost::container::vector` from `sub_635860`'s asserts. The begin/end/cap field assignment matches the boost layout and the zeroing pattern (HIGH), but the precise end-vs-size encoding at `+0x28` was not disassembled field-by-field.
+- Kind **`24`** is **unobserved** — no captured factory emits it. Whether it is a reserved/abstract `DivLikeExpr` tag or a node outside this page's scope is **[SPECULATIVE]**.
 
 ---
 

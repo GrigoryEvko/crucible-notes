@@ -6,7 +6,7 @@
 
 Native compiler diagnostics in neuronx-cc are produced by **two completely separate C++ loggers** that share nothing but an enum and a default filename. The first, **`NeuronLogger`**, is a Meyers singleton compiled directly into each big native tool (`hlo-opt`, `hlo2penguin`, `walrus`, …). It is a hand-rolled mini-logger: three `std::ostringstream` buffers, three integer severity thresholds, a default logfile name `"log-neuron-cc.txt"`, and a `flush()` that opens that file and dumps one buffer. It never touches Boost.Log. The second, **`logging::Logger`**, lives in `liblogging` and *is* a full `boost::log::v2s_mt_posix` severity/channel logger with a six-element attribute set, a phoenix formatter, and two asynchronous sinks (a colorized console `MergedSink` and a file `text_ostream_backend`). The Python `neuronxlogger` façade (3.19) drives the second one; library-internal `NeuronLogger::getInstance() << …` call sites drive the first.
 
-The reason this matters to a reimplementer is that the two loggers use **two different LogLevel encodings**. `NeuronLogger` gates with a compact integer ordinal (defaults: console threshold `4`, file threshold `2`) where a lower threshold is chattier. `logging::LogLevel` is the public enum `{TRACE=0, DEBUG=10, INFO=20, WARNING=30, ERROR=40, FATAL=50, USER=60, OFF=70}` — a 0,10,…,70 scale, proven byte-for-byte from the jump table in `logging::operator<<(ostream&, LogLevel)`. A bridge table, `neuronToABSLLogLevelMapping`, maps the compact ordinals to `absl::LogSeverity`. Conflating the two scales is the single most likely reimplementation error, and an earlier analysis pass did exactly that (see the correction note in §1).
+The reason this matters to a reimplementer is that the two loggers use **two different LogLevel encodings**. `NeuronLogger` gates with a compact integer ordinal (defaults: console threshold `4`, file threshold `2`) where a lower threshold is chattier. `logging::LogLevel` is the public enum `{TRACE=0, DEBUG=10, INFO=20, WARNING=30, ERROR=40, FATAL=50, USER=60, OFF=70}` — a 0,10,…,70 scale, proven byte-for-byte from the jump table in `logging::operator<<(ostream&, LogLevel)`. A bridge table, `neuronToABSLLogLevelMapping`, maps the compact ordinals to `absl::LogSeverity`. Conflating the two scales is the single most likely reimplementation error.
 
 This page reconstructs both: the `NeuronLogger` struct layout (≈0x4A8 bytes, dominated by three 0x178-byte `ostringstream`s), its lazy-singleton `getInstance`, its per-record `operator<<` format, its `getCurrentTime` microsecond clock, and its `flush`; then the `logging::Logger` Boost.Log type, attribute set, formatter term order, and the two sink front-ends.
 
@@ -32,7 +32,7 @@ For reimplementation, the contract is:
 | **liblogging LogLevel** | `{TRACE 0, DEBUG 10, INFO 20, WARNING 30, ERROR 40, FATAL 50, USER 60, OFF 70}` |
 | **Console / file setup** | `Logger::setup_console_logging` `0x6ee740` · `setup_logfile_logging` `0x6ef06a` |
 
-> **CORRECTION (LOG-A07) —** an earlier pass described "the `NeuronLogger` singleton" as *"backed by Boost.Log v2s_mt_posix severity/channel logger with attributes level_attr, pid_attr, module_attr, source_attr, smessage."* That description is correct for **`logging::Logger` in liblogging**, but **wrong for `NeuronLogger`**: the hlo-opt singleton calls only `std::filebuf`/`std::ostream`/`std::stringbuf` (proven by `flush()` @`0x759d060` referencing no `boost::log` symbol) and is a 3×`ostringstream` mini-logger. The two are distinct subsystems. This page keeps them apart by name everywhere.
+> **GOTCHA —** the Boost.Log v2s_mt_posix severity/channel logger, with its `level_attr` / `pid_attr` / `module_attr` / `source_attr` / `smessage` attributes, is **`logging::Logger` in liblogging** — not `NeuronLogger`. The hlo-opt `NeuronLogger` singleton is a 3×`ostringstream` mini-logger that touches only `std::filebuf`/`std::ostream`/`std::stringbuf`; its `flush()` @`0x759d060` references no `boost::log` symbol at all. This page keeps the two apart by name everywhere.
 
 ---
 
@@ -136,7 +136,7 @@ The single 64-bit store `mov rax, 0x200000002 ; mov [rdi+0x18], rax` writes **tw
 
 > **QUIRK —** which stream is the file buffer is not the first one. `flush()` dumps **`streamFile` at +0x1C0**, the *second* `ostringstream`, not `streamA` at +0x48. This is proven by `flush` reading the stringbuf data/end/base of the +0x1C0 object (`[rbx+0x1F0]` data ptr, `[rbx+0x1E0]` end, `[rbx+0x210]` base, `[rbx+0x208]` length). A reimplementer who assumes "first stream = file" dumps the wrong buffer.
 
-> **NOTE —** the `+0x20` byte (init 0) and the role of the third stream `streamC` at +0x338 are not proven. The byte is plausibly an "enabled/initialized" flag and `streamC` a console/stderr mirror of `streamA`, but only `streamFile` (+0x1C0) is anchored by `flush`. Both are tagged INFERRED.
+> **NOTE —** the `+0x20` byte (init 0) and the role of the third stream `streamC` at +0x338 are **[INFERRED]**. The byte is plausibly an "enabled/initialized" flag and `streamC` a console/stderr mirror of `streamA`, but only `streamFile` (+0x1C0) is anchored by `flush`.
 
 ---
 
@@ -294,7 +294,7 @@ Each attribute tag is a `logging_internal::tag::*` with a `get_name()` export. T
 | `type_attr` | `logging::LogType` | CERTAIN |
 | `smessage` | Boost.Log built-in message tag | CERTAIN |
 
-> **CORRECTION (LOG-A07) —** the earlier pass listed five attributes (`level/pid/module/source/smessage`). The demangled formatter and the `type_dispatcher<logging::LogType>` / `attribute_value_impl<logging::LogType>` symbols add a **sixth**: `type_attr (logging::LogType)`. The attribute set has six members.
+> **NOTE —** the attribute set has **six** members, not the five (`level`/`pid`/`module`/`source`/`smessage`) that the formatter signature suggests at a glance: the demangled formatter plus the `type_dispatcher<logging::LogType>` / `attribute_value_impl<logging::LogType>` symbols add `type_attr (logging::LogType)`.
 
 ### Formatter — phoenix term order
 
@@ -339,7 +339,7 @@ Duplicate attempts to setup console logging.
 Duplicate attempts to setup file logging.
 ```
 
-> **GOTCHA —** the duplicate-setup checks make `setup_console_logging` / `setup_logfile_logging` *one-shot*. A reimplementation that re-initializes logging on, say, a second compile pass in the same process must guard against it or it aborts. (The companion `"Can't dump trace to an empty filename"` guard is reported by the prior pass for the standalone `liblogging.so`; it was not re-located in the walrus copy and is tagged INFERRED here.)
+> **GOTCHA —** the duplicate-setup checks make `setup_console_logging` / `setup_logfile_logging` *one-shot*. A reimplementation that re-initializes logging on, say, a second compile pass in the same process must guard against it or it aborts. (The companion `"Can't dump trace to an empty filename"` guard belongs to the standalone `liblogging.so`; its presence in the walrus copy is **[INFERRED]** — the string was not located there.)
 
 ---
 

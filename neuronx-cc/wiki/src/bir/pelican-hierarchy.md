@@ -75,7 +75,7 @@ Two `pelican` typeinfos sit in the namespace but **outside** the `Expr` tree:
 
 That is **26 tree classes + `RefCountedObject` (the intrusive base of `Expr`, in-tree but counted with the spine) + `PelicanContext` + `PelicanAssertion` = 29** (see [§5](#5-the-29-count)).
 
-> **CONFIRMED —** every parent edge above was read mechanically from a RELA base-pointer reloc; not one is inferred. The Python resolver walked all 29 `__si`/`__vmi`/`__class` records and the parent of each matched D-R03's hand-built tree edge-for-edge. The decode is reproduced in [§4](#4-how-the-tree-was-recovered).
+Every parent edge above was read mechanically from a RELA base-pointer reloc — none is reconstructed. The resolver walked all 29 `__si`/`__vmi`/`__class` records and recovered each record's parent; the decode is reproduced in [§4](#4-how-the-tree-was-recovered).
 
 ### The two-way split, in design terms
 
@@ -111,7 +111,7 @@ nanobind::intrusive_base                       _ZTIN8nanobind14intrusive_baseE  
 
 `RefCountedObject`'s sole instance field is the refcount at `+0x08`; `intrusive_base` is folded into that single word (empty-base / single-counter). The smart pointer is **`pelican::RefPtr<T>`** with `intrusive_ptr` semantics — pervasive in the backend: `SumExpr` and `AffineExpr` term vectors are `llvm::SmallVector<RefPtr<Expr>,8>`, the `PelicanContext::create*` factories return `RefPtr<Expr>`, and backend `DenseMap`/`HashSet` containers are keyed by `RefPtr<Expr>` through an `ExprRefHasher`.
 
-> **NOTE —** no out-of-line `addRef`/`release` symbol survives. `RefPtr`'s copy-ctor (atomic inc on `+0x08`) and dtor (atomic dec, free at zero) are **inlined at every use site** — the signature of a header-only intrusive pointer. A reimplementer should expect the refcount arithmetic to appear inline, not as a call. (Confidence: STRONG — inferred from the absence of the symbols plus the inline `lock inc/dec` patterns at `RefPtr` use sites, not from a named body.)
+> **NOTE —** no out-of-line `addRef`/`release` symbol survives. `RefPtr`'s copy-ctor (atomic inc on `+0x08`) and dtor (atomic dec, free at zero) are **inlined at every use site** — the signature of a header-only intrusive pointer. A reimplementer should expect the refcount arithmetic to appear inline, not as a call. (HIGH — argued from the absence of the symbols plus the inline `lock inc/dec` patterns at `RefPtr` use sites, not from a named body.)
 
 ---
 
@@ -219,7 +219,7 @@ The total number of **pure `pelican` class typeinfo objects** — `_ZTIN7pelican
 
 `26 + 3 = 29`.
 
-> **CORRECTION — `pelican::User` is *not* a 30th RTTI class.** The typeinfo-name string `N7pelican4UserE` is present in `.rodata`, but a full-binary scan of `.data.rel.ro` finds **no typeinfo *object*** for it — it appears only as a parameter type in `bir::BirIntRuntimeValue::{addUser,removeUser,isUsedBy}(pelican::User*)`. `pelican::User` is a non-polymorphic use-tracking handle (a def-use list edge), so the compiler emitted its name string but never an RTTI record. Counting the name string would inflate the total to 30; counting actual typeinfo objects gives the correct 29. (A naive `rg` of class-name strings in `libwalrus.so` also surfaces a `calculateTripcount` artifact that fails the length-prefix check — another reason to count typeinfo *objects*, not name strings.)
+> **GOTCHA — `pelican::User` is not a 30th RTTI class.** Its typeinfo-*name* string `N7pelican4UserE` is in `.rodata`, but no typeinfo *object* for it exists anywhere in `.data.rel.ro`; it appears only as a parameter type in `bir::BirIntRuntimeValue::{addUser,removeUser,isUsedBy}(pelican::User*)`. It is a non-polymorphic use-tracking handle — a def-use list edge — so the compiler emitted the name string and no RTTI record. Count typeinfo objects, not name strings: a naive `rg` over class-name strings in `libwalrus.so` also surfaces a `calculateTripcount` artifact that fails the length-prefix check.
 
 > **NOTE — `ExprKind` ≠ class count.** There are 16 concrete leaf classes but the `ExprKind` enum runs through 28; the index-family kinds (6..13) share the `AffineIdx → FoldingIdx → InvariantId` chain, and the v1/v2 JSON wrappers ([7.15](wire-versioning.md)) are not separate classes (same typeinfo, op-tag in the JSON only). Sixteen instantiable classes cover the full kind range.
 
@@ -251,9 +251,9 @@ Validate each candidate by the length prefix (`N7pelican<len><Name>E` is genuine
 
 A script reading all 16 213 RELA entries, keyed each typeinfo by its `+0x00` ABI vptr, resolved the `+0x08` name and the `+0x10` (or `__vmi base_info[]`) base, and emitted the parent of all 29 records. Every edge matched the hand-built tree.
 
-**(c) Vtable slot relocations.** The `AffineExpr` vtable at `0x90abe0` is 39 consecutive `R_X86_64_RELATIVE` slots into `.text` (`0x5fd…/0x60…/0x609…`), terminated at slot 39 by the `_ZTV…__si_class_type_info` header of the adjacent `AffineIdx` vtable. Slot 14 alone retains an `R_X86_64_64` to the named `_ZNK7pelican4Expr13getIndicesSetEv`, fixing the absolute numbering. `ModuloExpr` @ `0x90ba10` and `FloorDivExpr` @ `0x90b8c0` show the same primary-vtable shape, with the shared slot 14 (`getIndicesSet`) landing at the same offset `0x70` past the vptr.
+**(c) Vtable slot relocations.** The `AffineExpr` vtable at `0x90abe0` is 39 consecutive `R_X86_64_RELATIVE` slots into `.text` (`0x5fd…/0x60…/0x609…`), terminated at slot 39 by the `_ZTV…__si_class_type_info` header of the adjacent `AffineIdx` vtable. Slot 14 alone retains an `R_X86_64_64` to the named `_ZNK7pelican4Expr13getIndicesSetEv`, fixing the absolute numbering. `ModuloExpr` @ `0x90ba10` and `FloorDivExpr` @ `0x90b8c0` share that primary-vtable shape, with slot 14 (`getIndicesSet`) landing at the same offset `0x70` past the vptr.
 
-> **CORRECTION —** the `ModuloExpr` and `FloorDivExpr` vtables are **40-slot**, not 39-slot. The 39-slot count is the `Expr` interface, witnessed by the two `CompoundExpr`-direct leaves `AffineExpr` (`0x90abe0`, vptr `0x90abf0`) and `SumExpr` (`0x90b778`, vptr `0x90b788`), both **39** function slots. The five `BinaryExpr`-family nodes — `MultExpr` (vptr `0x90b4e8`), `FloorDivExpr` (`0x90b8d0`), `ModuloExpr` (`0x90ba20`), `CCDivExpr` (`0x90bb70`), `CCModExpr` (`0x90bcc0`) — each carry **40** slots: `BinaryExpr` introduces one extra virtual function appended at slot 39 (past `Expr`'s slot 38). The retained-symbol anchors are unmoved by this — in the `ModuloExpr` table the named `Expr::` slots land at exactly slot 2 (`isConst`), 3 (`getConst`), 4 (`isAffine`), 11 (`equalInt`), 14 (`getIndicesSet`), 31 (`containExpr`), confirming the first 39 slots are the `Expr` interface and only slot 39 is the binary addition. Evidence: `data_tables.json` slot runs at vptr `0x90ba20` (40 entries, slot 39 → `sub_60DA40`) vs `0x90abf0` (39 entries, last slot 38 → `sub_6091E0`).
+**39 slots is the `Expr` interface; the `BinaryExpr` family carries 40.** The two `CompoundExpr`-direct leaves — `AffineExpr` (`0x90abe0`, vptr `0x90abf0`) and `SumExpr` (`0x90b778`, vptr `0x90b788`) — have exactly **39** function slots, which fixes the size of the `Expr` interface. The five `BinaryExpr`-family nodes — `MultExpr` (vptr `0x90b4e8`), `FloorDivExpr` (`0x90b8d0`), `ModuloExpr` (`0x90ba20`), `CCDivExpr` (`0x90bb70`), `CCModExpr` (`0x90bcc0`) — carry **40**, because `BinaryExpr` introduces one extra virtual function appended at slot 39, past `Expr`'s last slot 38. The retained-symbol anchors are unaffected: in the `ModuloExpr` table the named `Expr::` slots still land at slot 2 (`isConst`), 3 (`getConst`), 4 (`isAffine`), 11 (`equalInt`), 14 (`getIndicesSet`) and 31 (`containExpr`). The slot runs are visible in `data_tables.json` at vptr `0x90ba20` (40 entries, slot 39 → `sub_60DA40`) against `0x90abf0` (39 entries, last slot 38 → `sub_6091E0`).
 
 ### Cross-binary identity
 
@@ -297,16 +297,16 @@ A script reading all 16 213 RELA entries, keyed each typeinfo by its `+0x00` ABI
 
 | Claim | Confidence | Basis |
 |---|---|---|
-| 29 pelican class typeinfos | **CONFIRMED** | length-validated name strings + 29 typeinfo objects in `.data.rel.ro`; identical in both libs |
-| 39 `Expr` vtable slots | **CONFIRMED** | `AffineExpr` vtable @`0x90abe0` — 39 `.text` slots terminated by the next class's `_ZTV` header |
-| `SimpleExpr`/`CompoundExpr` split under `Expr` | **CONFIRMED** | both base pointers (`0x8fd150`, `0x90aa78`) resolve to `Expr` TI `0x90a908` |
-| `nanobind::intrusive_base` base | **CONFIRMED** | `RefCountedObject` base ptr resolves to `N8nanobind14intrusive_baseE` |
-| Index/CC/div-mod subtree membership | **CONFIRMED** | every parent edge from a RELA base reloc (table in §6) |
-| Slot *names* (slots 0–38) | **STRONG** | from `libwalrus` `pelican` method symbols; slot 14 (`getIndicesSet`) confirmed in-binary; other slot↔name pairings rely on walrus symbolisation, not re-derived here |
-| `addRef`/`release` are inlined | **INFERRED** | absence of out-of-line symbols + inline refcount arithmetic at `RefPtr` sites |
-| Per-class slot override sets | **STRONG** | `ModuloExpr`/`AffineExpr` vtables decoded; not every leaf's vtable was slot-diffed |
+| 29 pelican class typeinfos | **CERTAIN** | length-validated name strings + 29 typeinfo objects in `.data.rel.ro`; identical in both libs |
+| 39 `Expr` vtable slots | **CERTAIN** | `AffineExpr` vtable @`0x90abe0` — 39 `.text` slots terminated by the next class's `_ZTV` header |
+| `SimpleExpr`/`CompoundExpr` split under `Expr` | **CERTAIN** | both base pointers (`0x8fd150`, `0x90aa78`) resolve to `Expr` TI `0x90a908` |
+| `nanobind::intrusive_base` base | **CERTAIN** | `RefCountedObject` base ptr resolves to `N8nanobind14intrusive_baseE` |
+| Index/CC/div-mod subtree membership | **CERTAIN** | every parent edge from a RELA base reloc (table in §6) |
+| Slot *names* (slots 0–38) | **HIGH** | from `libwalrus` `pelican` method symbols; slot 14 (`getIndicesSet`) confirmed in-binary; other slot↔name pairings rely on walrus symbolisation, not re-derived here |
+| `addRef`/`release` are inlined | **MEDIUM** | absence of out-of-line symbols + inline refcount arithmetic at `RefPtr` sites |
+| Per-class slot override sets | **HIGH** | `ModuloExpr`/`AffineExpr` vtables decoded; not every leaf's vtable was slot-diffed |
 
-**Re-verify ceiling.** The hard facts — the 29-node tree and its edges, the 39-slot count, the `FoldingIdx __vmi` layout, the refcount spine — are byte-exact and re-derivable from this build with `readelf -rW` and the §6 resolver. The **slot semantics** (what slot 18 *computes*) and the **per-leaf override maps** are STRONG, not CONFIRMED: they lean on `libwalrus`'s retained method names and on the cross-references below, and only `AffineExpr`/`ModuloExpr`/`FloorDivExpr` vtables were decoded slot-by-slot. The body of any individual slot (e.g. `ModuloExpr::eval` = Euclidean modulo) is documented in the struct/eval pages, not re-traced here.
+**Limits.** The structural facts — the 29-node tree and its edges, the 39-slot count, the `FoldingIdx __vmi` layout, the refcount spine — are byte-exact and re-derivable from this build with `readelf -rW` and the §6 resolver. The **slot semantics** (what slot 18 *computes*) and the **per-leaf override maps** are only HIGH: they lean on `libwalrus`'s retained method names and on the cross-references below, and only the `AffineExpr`/`ModuloExpr`/`FloorDivExpr` vtables were decoded slot-by-slot. The body of any individual slot (e.g. `ModuloExpr::eval` = Euclidean modulo) is documented in the struct/eval pages, not re-traced here.
 
 ---
 
