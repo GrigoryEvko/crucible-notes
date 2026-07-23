@@ -20,11 +20,11 @@ staged random tensor (§5).
 
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
-**OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve re-derived
-this session from `libnrtucode_internal.so`; every host-ISA fact is read out of the
+**OBSERVED/INFERRED/CARRIED**. Every device fact is byte-pinned to a carve out of
+`libnrtucode_internal.so`; every host-ISA fact is read out of the
 public `aws_neuron_isa_tpb_*.h` headers shipped in the same customop-lib package.
 
-> **NOTE — what was carved this session, and the exact objects used.** The firmware
+> **NOTE — the exact objects used.** The firmware
 > container is
 > `…/custom_op/c10/lib/libnrtucode_internal.so`
 > (`sha256 b7c67e898a116454…`, `10,276,288 B`, ELF64 x86-64 DYN — the FW-26/27/28/41
@@ -41,8 +41,8 @@ public `aws_neuron_isa_tpb_*.h` headers shipped in the same customop-lib package
 > | `DVE_DEBUG_DRAM` | `0x18b320` / `0x06d60` | `c106642d38386cb7` | (string source: `S: Dropout` @`0x1ee7`) |
 > | `DVE_PERF_IRAM` | `0x06f600` / `0x15c20` | `9fa066f40f3cafc5` | (IVP-vocabulary corroboration) |
 >
-> All three sha256 reproduce the published SX-IMG-04 DVE anchors **exactly**; the
-> DEBUG IRAM reset vector reads `j 0x1dc` (the SEQ/DVE boot vector). `[HIGH/OBSERVED]`
+> All three sha256 reproduce the DVE image anchors **exactly**; the
+> DEBUG IRAM reset vector reads `j 0x1dc` (the SEQ/DVE boot vector).
 
 ---
 
@@ -59,7 +59,6 @@ re-interpreted in its light.
    (`NEURON_ISA_TPB_OPCODE_DROPOUT = 0x7f, // Y`) and the
    `instruction_mapping.json` `struct2opcode` binding
    `NEURON_ISA_TPB_S3D3_DROPOUT_STRUCT → [NEURON_ISA_TPB_OPCODE_DROPOUT]`.
-   `[HIGH/OBSERVED]`
 
 2. **The inline RNG is an LFSR — *not* a staged Xorwow tensor.** The header's own
    doc-comment states it verbatim: Dropout *"generates a u32 LFSR for each lane for
@@ -75,7 +74,7 @@ re-interpreted in its light.
    device. A byte-scan of the Dropout body confirms it: zero `1.0f`/reciprocal/scale
    literal in `0x96bc..0x9ac4` or the workers. `[HIGH/OBSERVED — header + byte-negative]`
 
-> **CORRECTION (vs the firmware-body survey, SX-FW-41).** The backing survey, working
+> **CORRECTION (vs the firmware-body survey).** The backing survey, working
 > from the firmware body **alone** (it did not read `s3d3_dropout.h`), reached three
 > conclusions that the header overturns:
 >
@@ -93,11 +92,11 @@ re-interpreted in its light.
 4. **Per-generation presence: all four generations.** `OPCODE_DROPOUT = 0x7f, // Y`
    and an `s3d3_dropout.h` ship for **SUNDA (v2), CAYMAN (v3), MARIANA (v4), MAVERICK
    (v5)**. The struct is byte-identical across v2/v3/v4; MAVERICK's only delta is a
-   tile-aware channel-range gate (§8). `[HIGH/OBSERVED]`
+   tile-aware channel-range gate (§8).
 
 5. **Threshold polarity is a field, not a fixed convention.** `threshold_type`
    (`DROP_RATE=0` / `KEEP_RATE=1`) selects whether `threshold` is a *drop* rate or a
-   *keep* rate, flipping the compare direction (§6). `[HIGH/OBSERVED]`
+   *keep* rate, flipping the compare direction (§6).
 
 ---
 
@@ -111,7 +110,7 @@ NEURON_ISA_TPB_OPCODE_DROPOUT = 0x7f,    // Y
 ```
 
 The `// Y` annotation marks Dropout a **maintained, wired** op (contrast the
-deprecated `Rand = 0x76, // n`). `[HIGH/OBSERVED]`
+deprecated `Rand = 0x76, // n`).
 
 **Struct binding.** The shipped `instruction_mapping.json` `struct2opcode` table binds
 the operand struct to the opcode exactly once:
@@ -122,7 +121,7 @@ the operand struct to the opcode exactly once:
 
 The `S3D3` struct family is the predicated/3-source tensor family — Dropout is a
 sibling of `S3D3_CP_PRED_SCALAR` (CopyPredicatedScalar), `S3D3_TS_SELECT`
-(TensorScalarSelect), and `S3D3_AC` (Activate) in the same struct group. `[HIGH/OBSERVED]`
+(TensorScalarSelect), and `S3D3_AC` (Activate) in the same struct group.
 
 **Engine.** Dropout runs on the **DVE** sequencer (`engine_idx = 3`). The handler
 self-names via the DEBUG build's own log string `S: Dropout` at DVE DRAM file offset
@@ -132,7 +131,7 @@ at **IRAM `0x96bc`**; its prologue immediately loads and logs the self-name:
 ```asm
 96bc:  entry   a1, 80               ; the Dropout handler frame
 96c2:  const16 a10, 8               ┐ build DRAM VA 0x81ee7
-96c5:  const16 a10, 0x1ee7          ┘ (bytes a4e71e — byte-verified this pass)
+96c5:  const16 a10, 0x1ee7          ┘ (bytes a4e71e — byte-verified)
 96c8:  call8   0x18010              ; LOG "S: Dropout"
 ```
 
@@ -146,8 +145,7 @@ The handler is registered into the DVE dispatch table by the registration stub a
 217f:  call8   0x951c              ; the DVE kernel-register routine
 ```
 
-`[HIGH/OBSERVED — the `const16 a10,0x1ee7` log site at `0x96c5` and the `const16
-a2,0x96bc` registration at `0x2172` both read directly from the carved disasm.]`
+`[HIGH/OBSERVED]`
 
 > **NOTE — the dispatch chain (SEQ-opcode → trampoline → thin-handler → Handler-invoke).**
 > A SEQ-decoded Dropout instruction (opcode `0x7f`) resolves through the DVE dispatch
@@ -183,8 +181,7 @@ The authoritative operand layout is `NEURON_ISA_TPB_S3D3_DROPOUT_STRUCT`
 | 44 | 4 | `threshold` | `IMM_VAL_INST_FIELD` | the keep/drop rate: fp32 imm / ptr / reg |
 | 48 | 16 | `dst_mem_pattern` | `TENSOR3D` | the **output** tensor (same element count as src) |
 
-`[HIGH/OBSERVED — every offset is the header's own `// (NN)` column; the 64-byte size
-is `ISA_STATIC_ASSERT`-pinned.]`
+`[HIGH/OBSERVED — offsets are the header's own `// (NN)` column]`
 
 The supporting types:
 
@@ -222,7 +219,7 @@ typedef enum NEURON_ISA_TPB_DROPOUT_THRESHOLD_TYPE {
 > (`s3d3_dropout_src_dst_count_check`) and `out_dtype == in_dtype`
 > (`s3d3_dropout_same_src_dst_type`). Dropout is a **bitvec op** — it does not convert
 > dtype between input and output; the threshold-compare is the only float operation.
-> A mismatched src/dst dtype or element count fails decode. `[HIGH/OBSERVED]`
+> A mismatched src/dst dtype or element count fails decode.
 
 ### 3.1 The firmware handler's frame decode (corroboration)
 
@@ -248,15 +245,14 @@ The dtype default is byte-verified: `movi.n a2, 10` at `0x9715` (bytes `0ca2`), 
 by the `bnez.n a2, 0x971a` / `j 0x9715` guard at `0x9710` — i.e. *"if the operand dtype
 byte is zero, default it to `0xA` = FP32."* This matches the header's back-compat note
 *"threshold_dtype == 0 is treated as FP32 for backward compatibility"* and the data-path
-default. `[HIGH/OBSERVED — the `movi.n a2,10` @`0x9715`, the count==1 `saltu`, the
-dtype-checker call all read directly from the carved disasm.]`
+default. `[HIGH/OBSERVED]`
 
 ---
 
 ## 4. The dtype-class checker `0x9ac8`
 
 The handler routes the int-vs-float vector lane path through an **is-integer-dtype**
-predicate at IRAM `0x9ac8`, decoded byte-exact this pass:
+predicate at IRAM `0x9ac8`, decoded byte-exact:
 
 ```asm
 9ac8:  entry  a1, 48
@@ -285,8 +281,8 @@ The `beqi` immediates **are** the `NEURON_ISA_TPB_DTYPE` codes. The valid-intege
 
 So the checker returns true for `{INT8, UINT8, INT16, UINT16, INT32, UINT32} =
 {2,3,4,5,8,9}` and false for the FP dtypes — it selects the **integer vs float**
-vector datapath. `[HIGH/OBSERVED — the `beqi` immediates are the dtype codes; the
-int/float routing INFERRED-HIGH.]` The full enum (`common.h:722`):
+vector datapath. `[HIGH/OBSERVED; int/float routing INFERRED-HIGH]` The full enum
+(`common.h:722`):
 
 ```c
 typedef enum NEURON_ISA_TPB_DTYPE {
@@ -302,7 +298,7 @@ typedef enum NEURON_ISA_TPB_DTYPE {
 > the LFSR draw is still cast to fp32 for the threshold compare (the threshold is fp32
 > unless an FP `in_dtype` allows an FP threshold — §6). The integer lanes do not float
 > the *data*, only the *random draw vs threshold* comparison. `[in/out same-dtype HIGH;
-> the int-lane select INFERRED-HIGH from the checker routing + the bitvec-op header.]`
+> int-lane select INFERRED-HIGH]`
 
 ---
 
@@ -326,8 +322,7 @@ Three facts follow, each reconciled against the wider RNG subsystem:
    generator: each of the (up to) 128 lanes is an independent single-register LFSR,
    seeded from `rand_state[0]`, advanced one or more times, emitting one `u32`. This is
    exactly the "generates a u32 LFSR for each lane for each element" the header
-   describes. `[HIGH/OBSERVED — header verbatim + the LFSR state model in
-   `rng-lfsr-dispatch.md` §5]`
+   describes. `[HIGH/OBSERVED — header verbatim]`
 
 2. **It is generated INLINE, per element — not staged.** The operand struct has **no
    random-tensor field** (§3), and the handler makes **no cross-engine call to the POOL
@@ -339,9 +334,8 @@ Three facts follow, each reconciled against the wider RNG subsystem:
    **no** Weyl constant and **no** embedded tap-mask constant (an exhaustive scan of the
    POOL LFSR body for the eight classical 32-bit tap masks returned zero — see
    [rng-lfsr-dispatch.md](rng-lfsr-dispatch.md) §5.4), so a constant byte-search *cannot*
-   find it; it rides inside the FLIX-desync'd worker. `[absence-of-Xorwow HIGH/OBSERVED;
-   the inline-LFSR reading HIGH from the header; the exact LFSR recurrence is a named
-   wall — see below.]`
+   find it; it rides inside the FLIX-desync'd worker. `[HIGH/OBSERVED; the exact LFSR
+   recurrence is a named wall]`
 
 3. **The `uint32 → float[0,1)` cast is the `0x3F800000` seam.** The header's "converts
    it to an f32 in range (0.0 to 1.0)" is the canonical `uint32 → fp32` uniform cast: take
@@ -351,8 +345,7 @@ Three facts follow, each reconciled against the wider RNG subsystem:
    `0x3f80` (1.0f high half) literal finds it **only once, as a branch target**
    (`beqz a5, 0x3f80`), never as a clean literal — i.e. the cast constant rides inside
    the FLIX-desync'd worker, exactly as on the POOL producer side and in
-   [Rand2](rand2.md). `[the seam direction HIGH; the exact mantissa-fill cast MED through
-   the FLIX desync.]`
+   [Rand2](rand2.md). `[seam direction HIGH; mantissa-fill cast MED]`
 
 ```c
 /* The inline per-element LFSR randomness path the Dropout handler runs, per lane.
@@ -383,9 +376,8 @@ static inline float lfsr_uniform01(uint32_t u)
 > The two DVE stochastic ops pick *different* algorithms from the same `rand_algo` enum:
 > [Rand2](rand2.md) is hard-restricted to `XORWOW(3)` (`restrict_rand2_algorithm`),
 > while Dropout uses `LFSR(0)`. A reimplementer must not assume Dropout consumes the POOL
-> Xorwow draws — it generates its own LFSR stream inline. `[HIGH/OBSERVED — the
-> `s3d3_dropout.h` "u32 LFSR" comment vs the `d3_rand.h` `restrict_rand2_algorithm ==
-> XORWOW`.]`
+> Xorwow draws — it generates its own LFSR stream inline. `[HIGH/OBSERVED —
+> `s3d3_dropout.h` vs `d3_rand.h`]`
 
 > **WALL — the LFSR feedback polynomial is a named wall (`closable-with-corpus` /
 > `closable-with-hardware`).** The Dropout RNG's exact taps, width-direction, and
@@ -430,8 +422,7 @@ from the header semantics):
 | compare → predicate | `ivp_oltn_2xf32t` / `ivp_oltnxf16t` (ordered fp less-than, `t`-suffix = per-lane `vbool` write) | `rand < threshold` (or `>`) → the per-lane keep/drop **mask** |
 | predicated select | `ivp_dsel*` / `ivp_sel*..t` | select `input`-vs-`0.0` per lane under the mask predicate |
 
-`[the IVP op family HIGH/OBSERVED in the PERF IRAM histogram; the exact bundle order +
-operands MED — flat-image FLIX-bundle desync, the corpus-wide ceiling.]`
+`[IVP op family HIGH/OBSERVED; bundle order + operands MED]`
 
 > **CORRECTION — there is NO multiply, NO `1/(1-p)` survivor scale.** The firmware-body
 > survey listed a multiply (`ivp_muln_2xf32t`) as the "scale-by-`1/(1-p)`" step. That op
@@ -500,8 +491,7 @@ static void dve_dropout_handler(dve_ctx_t *ctx /* a1 frame */)
 }
 ```
 
-`[HIGH the op set + the loop structure + the two worker call edges / OBSERVED; the exact
-per-step bundle order MED — flat-image FLIX desync, SX-FW-00.]`
+`[HIGH/OBSERVED op set + loop + worker call edges; bundle order MED]`
 
 > **GOTCHA — FLIX-bundle desync bounds the worker recovery to MED.** The two Dropout
 > workers are densely-scheduled FLIX-VLIW (32-byte bundles, up to a scalar/branch slot +
@@ -511,7 +501,7 @@ per-step bundle order MED — flat-image FLIX desync, SX-FW-00.]`
 > recovered bundle decode to internally-valid IVP ops, but their exact operands/order are
 > MED. The cleaner PERF IRAM (no log call-sites) corroborates the IVP op *vocabulary*
 > (compare-to-predicate / uint→float / predicated-select), not the Dropout-worker-exact
-> schedule. `[per SX-FW-00 / the corpus FLIX-desync ceiling]`
+> schedule. `[the corpus FLIX-desync ceiling]`
 
 ---
 
@@ -539,17 +529,15 @@ Dropout is a **bitvec op** with a **single dtype** for input and output
 | `INT32` | `0x8` | YES | integer |
 | `UINT32` | `0x9` | YES | integer |
 
-`[HIGH/OBSERVED — the `is_valid_dtype` calls in `is_valid_dropout` + the firmware
-dtype-class checker §4 routing int vs float.]` The default dtype, when the operand byte
-is `0` (Invalid), is **`0xA` = FP32** (the `movi.n a2,10` @`0x9715`, §3.1). The
-`threshold_dtype` defaults to FP32 too (header back-compat). `[HIGH/OBSERVED]`
+`[HIGH/OBSERVED — the `is_valid_dtype` calls in `is_valid_dropout`]` The default dtype,
+when the operand byte is `0` (Invalid), is **`0xA` = FP32** (the `movi.n a2,10`
+@`0x9715`, §3.1). The `threshold_dtype` defaults to FP32 too (header back-compat).
 
 > **NOTE — the c10 `ScalarType` bridge.** The host customop layer maps PyTorch
 > `c10::ScalarType` (`…/c10/core/ScalarType.h`) onto these `NEURON_ISA_TPB_DTYPE` codes
 > when it lowers a `torch.nn.functional.dropout` to the device instruction. The device
 > only ever sees the `NEURON_ISA_TPB_DTYPE` byte; the ScalarType bridge is host-side.
-> See [the dtype model](dtype-model.md). `[the ScalarType header ships HIGH/OBSERVED; the
-> exact lowering map is host-side, out of this binary's device scope.]`
+> See [the dtype model](dtype-model.md). `[header HIGH/OBSERVED; lowering map host-side]`
 
 ---
 
@@ -565,8 +553,7 @@ Dropout is present on **every** generation that ships an arch-isa header — bot
 | **MARIANA** (v4) | `0x7f` `// Y` | YES (NC-v4) | 64 B, identical | — |
 | **MAVERICK** (v5) | `0x7f` `// Y` | YES (NC-v5) | 64 B | **tile-aware channel gate** (below) |
 
-`[HIGH/OBSERVED — `OPCODE_DROPOUT` re-grepped in all four `common.h`; `s3d3_dropout.h`
-present in all four arch dirs; `diff` of the four headers run in-task.]`
+`[HIGH/OBSERVED — `OPCODE_DROPOUT` + `s3d3_dropout.h` in all four arch dirs]`
 
 The struct + validation are **byte-identical** across SUNDA/CAYMAN/MARIANA. The **only**
 MAVERICK (v5) delta is the channel-range gate — the same NC-v5 tile-aware change
@@ -580,11 +567,10 @@ MAVERICK (v5) delta is the channel-range gate — the same NC-v5 tile-aware chan
 ```
 
 Both channel counts are `128` (`POOLING_NUM_CHANNELS == DVE_NUM_CHANNELS == 128U`); v5
-adds tile-aware ranging keyed on `header.inst_flags`. `[HIGH/OBSERVED — the one-line
-header `diff`.]`
+adds tile-aware ranging keyed on `header.inst_flags`. `[HIGH/OBSERVED — header diff]`
 
 > **NOTE — v5/MAVERICK interior is header-OBSERVED only.** The MAVERICK Dropout *header*
-> is read directly (HIGH); its firmware *body* was not separately carved this pass (the v5
+> is read directly (HIGH); its firmware *body* is not separately carved (the v5
 > DVE image is nm-aliased onto its DRAM symbol, per the corpus v5 policy). The decoded
 > firmware body (§2–§7) is **CAYMAN**; the MAVERICK body is INFERRED identical-family from
 > the byte-identical struct + the matching opcode. Do not cite a MAVERICK Dropout handler
@@ -645,7 +631,7 @@ cast MED through the FLIX desync.]`
   the dtype-class checker `0x9ac8` admitting `{2,3,4,5,8,9}` (the `beqi` immediates ARE
   the dtype codes); the count==1 `saltu` flag; the two Dropout-specific workers
   `0xeff0`/`0xf110`.
-- Carve sha256 reproduce the SX-IMG-04 DVE anchors exactly (DEBUG IRAM `259769ff`,
+- Carve sha256 reproduce the DVE anchors exactly (DEBUG IRAM `259769ff`,
   DEBUG DRAM `c106642d`, PERF IRAM `9fa066f4`); DEBUG IRAM 44,989 disasm lines, exit 0,
   empty stderr; reset vector `j 0x1dc`.
 - Per-gen presence: Dropout on SUNDA/CAYMAN/MARIANA/MAVERICK; struct byte-identical on

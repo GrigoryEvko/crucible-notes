@@ -26,7 +26,7 @@ the completion-info bitfield) is read field-exact (and **compile-asserted**, §2
 (`0.21.2.0`) package. The `extracted/` and `ida/` trees are gitignored — reach them with
 `fd --no-ignore` or absolute paths. Confidence/evidence tags follow the project
 [Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
-read-from-byte / read-from-header / compile-asserted this pass, `[MED/INFERRED]` = reasoned
+read-from-byte / read-from-header / compile-asserted, `[MED/INFERRED]` = reasoned
 over OBSERVED (typically across a FLIX/literal-pool desync), `[…/CARRIED]` = re-used at a
 cited sibling page's confidence.
 
@@ -127,7 +127,6 @@ per-instruction SBUF descriptor index. `[HIGH/OBSERVED — trampoline disasm + .
 > literal `0x02000468` (the `.bss` state slot, shared with `ExtendedInstCopy` per
 > [pool-ext-0xf0.md §4](../pool/pool-ext-0xf0.md#4-per-kernel-state-slots--the-bss-descriptor-band)),
 > and `const16 a2,0x34b0` (preceded by a `0x0100`-band high half) forms `0x010034b0`.
-> `[HIGH/OBSERVED]`
 
 ### 1.2 Contrast with the FW-49 base routes
 
@@ -150,7 +149,7 @@ The host driver registers the spec presence at boot. `nrtucode_opset_add_instruc
 (x86-64 symbol `0x9b2660` in `libnrtucode_internal.so`, 294 B / `0x126`) reads the instruction
 word's **byte 12** (`= extended_opcode`, the wire field at off 12, §2) **only** when the base
 opcode is `0xF0`, and records that spec in a 256-entry presence table. The x86-64 disassembly
-this pass pins the gate and the read exactly:
+pins the gate and the read exactly:
 
 ```asm
  9b2688:  41 81 fe f0 00 00 00   cmp    $0xf0, %r14d      ; opcode == 0xF0 gate
@@ -211,7 +210,7 @@ typedef struct NEURON_ISA_TPB_EXTENDED_TTA_STRUCT {
 } NEURON_ISA_TPB_EXTENDED_TTA_STRUCT;
 ```
 
-Compile-assertion output this pass (`/tmp/fw67v/v`, `gcc -I<cayman/tpb>`):
+Compile-assertion output (`gcc -I<cayman/tpb>`):
 
 ```
 sizeof EXTENDED_TTA = 64
@@ -435,7 +434,7 @@ partition's element vector per FLIX bundle. `[MED — IVP vocabulary recovered; 
 > `.bss` state slot `0x02000468`. There is **no** reloc/call to `tensor_tensor_arith_impl`
 > (`0x01001280`), `setup_64bit_rw` (`0x01001108`), or any
 > `tensor_tensor_64bit_dispatch<>` (`0x1f7c`/`0x2720`). The extended decode does **not**
-> re-enter the base worker and has **no** i64/u64 split (§6). `[HIGH/OBSERVED — reloc-pinned this pass]`
+> re-enter the base worker and has **no** i64/u64 split (§6). `[HIGH/OBSERVED — reloc-pinned]`
 
 ---
 
@@ -488,7 +487,7 @@ decode.** (The [tensor-tensor-64bit kernel page](tensor-tensor-64bit.md) — pla
   reached from `decode_tensor_tensor_arith` (`0x41`/`0x51`), which reads the `S3S3D3_TT` struct
   and branches `INT64`/`UINT64` operands to them. `[HIGH/OBSERVED — CARRIED from tensor-tensor.md §1.1/§5.1]`
 * The **extended** decode (`0x010034b0`) has **no reloc/call** to any of those addresses
-  (§4 step 4, reloc-pinned this pass). So the extended TTA and the 64-bit dispatch are
+  (§4 step 4, reloc-pinned). So the extended TTA and the 64-bit dispatch are
   **siblings under different parents**:
 
   ```
@@ -503,7 +502,7 @@ decode.** (The [tensor-tensor-64bit kernel page](tensor-tensor-64bit.md) — pla
 * The 64-bit sibling therefore covers the **base** kernel's `INT64`/`UINT64` synthesis (no
   native 64-bit ALU on `ncore2gp`; 64-bit built from 32-bit halves via the
   `<VectorInt64>`/`<VectorUint64>` templates). The extended TTA neither uses nor is used by it.
-  The two are independent. `[HIGH/OBSERVED]`
+  The two are independent.
 
 ---
 
@@ -521,10 +520,10 @@ Every per-gen POOL EXTISA_0 image is embedded in the shipped host driver
 | MAVERICK | POOL_PERF | `0x0000393c` | (in trampoline) | 0 (stripped) | NO |
 | SUNDA | POOL_RELEASE | **ABSENT** (not embedded) | — | — | NO |
 
-`[HIGH/OBSERVED — kernel_info_table 0xF0/spec2 idx8 row + .xt.prop census per embedded blob this pass]`
+`[HIGH/OBSERVED — kernel_info_table 0xF0/spec2 idx8 row + .xt.prop census per blob]`
 
 The five `0xF0` rows are byte-identical in spec order `[0,1,2,4,3]` across all five gens; only
-the funcVAs shift. The full idx8-band funcVA sets observed this pass:
+the funcVAs shift. The full idx8-band funcVA sets:
 CAYMAN `0x01003370 / 0x01003380 / 0x01003484 / 0x010037a8 / 0x01003a60`;
 MARIANA / MARIANA_PLUS `0x01003390 / 0x010033a0 / 0x010034a4 / 0x010037d8 / 0x01003a90`;
 MAVERICK `0x00003824 / 0x00003840 / 0x0000393c / 0x00003c5c / 0x00003e58` (re-based `.text`
@@ -539,14 +538,13 @@ shift by build delta: MARIANA == MARIANA_PLUS (idx8 `0x010034a4`, uniform +0x20 
 base VMA** (`0x00000000`, not `0x01000000`) and a leaner image, so its idx8 funcVA is
 `0x0000393c` — the *same* `0xF0`/spec2 row, just re-based. The trampoline shape is invariant
 across all four: idx8 funcVA lands on `entry a1,32` (`36 41 00`), loads the `.bss` state-slot
-band, then `const16`+`callx8` to the body. `[HIGH/OBSERVED]`
+band, then `const16`+`callx8` to the body.
 
 **(B) The named `.xt.prop` record** `_Z40decode_extended_inst_tensor_tensor_arithbj` is present
 in CAYMAN / MARIANA / MARIANA_PLUS. **MAVERICK is fully stripped** (no `.xt.prop`, no
 symbol/string table for kernels) — the function exists (table row + trampoline + body,
 byte-shape-identical) but the symbolic name is gone. MAVERICK presence is therefore
 established **structurally** (idx8 `0xF0`/spec2 row + matching trampoline), not by symbol.
-`[HIGH/OBSERVED]`
 
 **(C) SUNDA does NOT ship the `0xF0` ExtendedInst dispatch in this driver copy.** In
 `libnrtucode_internal.so` the SUNDA EXTISA getter `SUNDA_Q7_POOL_RELEASE_EXTISA_0_SO_get` (and
@@ -555,7 +553,7 @@ internal `.so`). SUNDA ships a **POOL_RELEASE** build, not POOL_PERF, and the PO
 *does* embed here (`SUNDA_Q7_POOL_RELEASE_IRAM/DRAM/EXTRAM`) are **raw loadable-memory dumps,
 not Xtensa ELF objects** — they carry no `\x7fELF` magic and no 8-byte `kernel_info_table`
 structure, so there is **no `0xF0`/spec row to find** (any `00 00 ?? f0` byte hit inside them
-points at junk funcVAs). `[HIGH/OBSERVED — readelf weak-UND + non-ELF raw dumps this pass]`
+points at junk funcVAs). `[HIGH/OBSERVED — readelf weak-UND + non-ELF raw dumps]`
 
 So from *this* binary, SUNDA's absence of an embedded EXTISA `kernel_info_table` is OBSERVED;
 the stronger reading — that SUNDA **re-tables** its POOL dispatch and reaches elementwise add
@@ -564,7 +562,7 @@ that also dropped the `0xF0` escape) — is the cross-page POOL-dispatch finding
 original confidence (it cannot be re-grounded against a structured table in this driver copy,
 because SUNDA's POOL image here is a raw dump). What is **firmly OBSERVED here**: SUNDA has **no
 `decode_extended_inst_tensor_tensor_arith` symbol** and **no embedded `0xF0` EXTISA table** in
-this driver. `[OBSERVED no-EXTISA-table this pass / MED-CARRIED for the "base 0x41 only" routing]`
+this driver. `[OBSERVED no-EXTISA-table / MED-CARRIED for the "base 0x41 only" routing]`
 
 **(D) Header (wire-format) presence is BROADER than firmware presence.** The `EXTENDED_TTA`
 **struct block** is **byte-identical** (md5 `dca0c816…` over the 14-line typedef region) across
@@ -575,13 +573,13 @@ MARIANA_PLUS reuses MARIANA's headers (no separate arch_isa dir). So the wire **
 arch-uniform even where the device dispatch is absent**: SUNDA's header still *defines*
 `NEURON_ISA_TPB_EXTENDED_TTA_STRUCT` (and the `op restricted to add/multiply` comment), but
 SUNDA's firmware never registers a kernel for it. The struct is a stable ABI; the kernel is
-per-gen. `[HIGH/OBSERVED — struct-region md5 this pass]`
+per-gen. `[HIGH/OBSERVED — struct-region md5]`
 
 > **CORRECTION — the struct-region md5 is `dca0c816…`, not the file md5.** A whole-file md5 of
 > `extended_utils.h` differs across gens (`99853d22…` etc.), which would *falsely* suggest the
 > struct diverges. Hashing the **14-line `EXTENDED_TTA` typedef block** shows it is
 > byte-identical (`dca0c816…`) in all four. Re-ground any "struct identical across gens" claim
-> to the *struct region*, not the file. `[HIGH/OBSERVED]`
+> to the *struct region*, not the file.
 
 **PER-GEN VERDICT.** `decode_extended_inst_tensor_tensor_arith` (`0xF0`/spec 2 `EXTENDED_TTA`)
 is present **gen-wide across the POOL_PERF family** — CAYMAN, MARIANA, MARIANA_PLUS, MAVERICK —
@@ -590,7 +588,7 @@ build-delta funcVAs + MAVERICK's re-based/stripped image). It is **absent in SUN
 (POOL_RELEASE, re-tabled dispatch, `0xF0` escape removed). The wire struct itself ships in
 every header set including SUNDA's. There is **no MARIANA_PLUS-specific addition** — MARIANA
 already carries it byte-for-byte identically to MARIANA_PLUS; the op predates the
-MARIANA→MARIANA_PLUS step. `[HIGH/OBSERVED]`
+MARIANA→MARIANA_PLUS step.
 
 ---
 

@@ -64,7 +64,7 @@ compile-verify. No vendor source was consulted. Lawful interoperability RE (DMCA
 | `xtensa-elf-readelf`/`objdump` | `gpsimd_tools/tools/XtensaTools/bin/`, `XTENSA_CORE=ncore2gp` |
 | Carved POOL images | `extisa_{SUNDA,CAYMAN}_POOL_PERF_EXTISA_0.so` — `kernel_info_table` SUNDA `@file 0xb260/0x90`, CAYMAN `@0x7400/0x88` |
 | MAVERICK DVE carve | `NX_DVE_DEBUG_DRAM` dispatch table `@flat off 0x820`; `NX_DVE_DEBUG_IRAM` trampolines `0x2eff`/`0x2f1f`; `NX_DVE_PROF_CAM` |
-| Backing report | **GX-OP-06** (`raw/GX-OP-06_dve_read_state.txt`) — anchored to FW-46 (DVE blob roster), FW-62 (`SelectReduce`/`CopyPredicatedReduce` accumulator producer), GX-OP-01 + FW-44 (the index producer cluster), FW-54/55 (the cache accumulator producers), GX-MAV-03 (the ACT→DVE fold + MAVERICK dispatch table), ISS-06 (`wvec`-vs-DVE-accumulator) |
+| Backing anchors | FW-46 (DVE blob roster), FW-62 (`SelectReduce`/`CopyPredicatedReduce` accumulator producer), FW-44 (the index producer cluster), FW-54/55 (the cache accumulator producers), ISS-06 (`wvec`-vs-DVE-accumulator) |
 
 > **NOTE (where FLIX desync does and does not bite).** Every **primary** fact below — the opcode
 > enums, the `D1_RD`/`D4_MR` struct layouts (compile-verified), the validator pseudocode
@@ -103,7 +103,7 @@ NEURON_ISA_TPB_OPCODE_ACTIVATION_READ_ACCUMULATOR = 0x24,    // Y   <- the ACT s
 ```
 
 `0x9b` is encoded **immediately after** its cache-reduce producer `0x9a` — the drain sits beside
-the source. [HIGH/OBSERVED]
+the source.
 
 **Enum neighborhood of `0xe9`** (cayman — the index/gather/select-reduce cluster):
 
@@ -118,7 +118,7 @@ the source. [HIGH/OBSERVED]
 
 `0xe9` sits between the cache/scan accumulator producers and `SelectReduce`, **beside
 `INDIRECT_COPY`** (`0xe7`) — the gather that ultimately consumes the indices `DveReadIndices`
-spills. [HIGH/OBSERVED]
+spills.
 
 ### 3.1 The per-gen existence split (the one asymmetry)
 
@@ -140,7 +140,7 @@ validator block does not list `dve_read_indices`. This mirrors the index produce
 > read-backs predate MAVERICK. `0x9b` is present **from SUNDA**; `0xe9` **from CAYMAN**. What is
 > MAVERICK-specific is *not* opcode-space growth but the **ACT→DVE fold** (§9): on v5 the
 > standalone ACT read-accumulator handler is gone and `DveReadAccumulator` is its renamed
-> DVE-native survivor. The opcode byte `0x9b` has been valid since NC-v2. [HIGH/OBSERVED]
+> DVE-native survivor. The opcode byte `0x9b` has been valid since NC-v2.
 
 ### 3.2 The `struct2opcode` bindings (`instruction_mapping.json`)
 
@@ -160,7 +160,7 @@ extensions (§5/§8). `DveReadIndices` rides `D4_MR`, the **destination-only** m
 descriptor: it has **no source operand** because the source is the hidden DVE index state — it is
 structurally a *"drain the index flops to a dst tensor"* writer, which is why it borrows the
 `Memset`/`Rng`/`RegStore` struct. The SUNDA `D4_MR` list omits `DVE_READ_INDICES` (the struct still
-ships there for `Memset`/`Rng`/`RegStore`). [HIGH/OBSERVED — `jq` over all 4 per-gen maps]
+ships there for `Memset`/`Rng`/`RegStore`). [HIGH/OBSERVED — all 4 per-gen maps]
 
 ---
 
@@ -216,14 +216,14 @@ MATCH_REPLACE8 instruction."*
 `compile-verify (4 gens)`: `sizeof == 64`; `header=0 events=4 reserved0=12 dst_element_count=28
 dtype=32 reserved1=33 num_active_channels=34 reserved2=35 serialization_mode=36 reserved3=37
 set_value=40 dst_mem_pattern=44`. (SUNDA compiles the struct for `Memset`/`Rng`/`RegStore`, but
-`0xe9` is not a legal opcode there.) [HIGH/OBSERVED]
+`0xe9` is not a legal opcode there.)
 
 > **GOTCHA (offset 33 is `negated` on `D1_RD`, but `reserved1` on `D4_MR`).** The two read-back
 > structs put **different** meanings at byte 33: on `D1_RD` (the accumulator read) it is the live
 > `negated` flag; on `D4_MR` (the index read) it is a **forced-zero reserved** byte. A
 > reimplementer porting the negate concept across the two ops will write a non-zero byte 33 on a
 > `DveReadIndices` and **fail validation** (`d4_mr_reserved_zero`). Negate is meaningful only for
-> the floating-point accumulator value; an integer index has no sign to flip. [HIGH/OBSERVED]
+> the floating-point accumulator value; an integer index has no sign to flip.
 
 ---
 
@@ -242,9 +242,9 @@ So `DveReadAccumulator`:
 - **Optionally negates** the read-out value via the `negated` field (off 33, `0` or `1`). When
   `1`, the spilled value is sign-flipped — useful when the accumulator holds a running `min`/`sum`
   the downstream consumer wants negated (e.g. converting a tracked `−max` back to `+max`). This is
-  the **only** compute facet beyond a bare read. [HIGH/OBSERVED]
+  the **only** compute facet beyond a bare read.
 - **Narrows to the output dtype** on read: the accumulator is held fp32 internally and converted
-  to `{FP8e3, FP8e4, FP8e5, FP16, BF16, FP32, FP32R}` (§6). [HIGH/OBSERVED]
+  to `{FP8e3, FP8e4, FP8e5, FP16, BF16, FP32, FP32R}` (§6).
 
 ```c
 // is_valid_dve_read_accumulator (d1_rd.h:90–102) gates entry:
@@ -289,7 +289,6 @@ So `DveReadIndices`:
 
 - **Reads back the 8 per-lane INDEX flops** the search cluster leaves in DVE state and writes them
   to an **8-element dst** tensor (`dst_element_count == 8`, `dve_read_indices_elem_count_8`).
-  [HIGH/OBSERVED]
 - **Output dtype is UINT16 or UINT32 only** (`is_valid_dtype_dve_read_indices`) — the **same**
   index dtype set as `FindIndex8`'s `out_dtype` (`has_find_index8_dst_type`,
   [`search-cluster.md §5.2/§6.3`](search-cluster.md)). The indices are flat positions; `FindIndex8`
@@ -298,10 +297,10 @@ So `DveReadIndices`:
   u16/u32 index encoding]
 - **Validates `num_active_channels` against `DVE_NUM_CHANNELS` (128)** — *not*
   `POOLING_NUM_CHANNELS` — the one validator clause that explicitly names the DVE channel constant,
-  reinforcing the DVE-engine assignment. [HIGH/OBSERVED]
+  reinforcing the DVE-engine assignment.
 - **`set_value == 0`, `serialization_mode == Serial`, all reserved zero** — it borrows the
   memset-family `D4_MR` struct purely as a destination-tensor descriptor; the "source" is the
-  hidden DVE index state. [HIGH/OBSERVED]
+  hidden DVE index state.
 
 ```c
 // is_valid_dve_read_indices (d4_mr.h:157–171) gates entry:
@@ -462,7 +461,7 @@ write to PSUM+SBUF, the reserved-zero fields — is **identical**.
 > [`activate-pwl.md §6`](activate-pwl.md)). `DveReadAccumulator` (`0x9b`) drains the **DVE
 > engine's** per-lane fp32 reduce accumulator (built by `CacheReduce`/`CacheCumulative`/
 > `SelectReduce`, §7.2). Same 64-byte format, **two physically distinct accumulators on two
-> engines**. Do not conflate the two same-named-shape read-accumulators. [HIGH/OBSERVED]
+> engines**. Do not conflate the two same-named-shape read-accumulators.
 
 ---
 
@@ -488,7 +487,7 @@ CAYMAN kernel_info_table @file 0x7400/0x88 = 17 entries:
 Neither `0x9b` nor `0xe9` is a POOL kernel in either carved table. [HIGH/OBSERVED]
 
 **(ii) DVE self-name multiplicity = 4** for both read-backs (`rg -ao` over
-`libnrtucode_internal.so`, re-grounded this task):
+`libnrtucode_internal.so`):
 
 ```text
 S: DveReadAccumulator   4   @ 0x18dbe0 0x427ec0 0x6efbe0 0x8aff90
@@ -511,7 +510,7 @@ CAYMAN DVE blob places both read-backs inside the same blob as every producer th
 ```
 
 The two read-back tags sit **inside the same DVE blob** as every accumulator/index producer.
-[HIGH/OBSERVED] **Verdict:** both `0x9b` and `0xe9` are DVE-engine, hardware-native — neither is a
+**Verdict:** both `0x9b` and `0xe9` are DVE-engine, hardware-native — neither is a
 `Q7_POOL` software kernel.
 
 ### 9.2 The MAVERICK dispatch table → `call8` → worker (FLIX-confirmed)
@@ -540,7 +539,7 @@ shared stub. The MAVERICK dispatch chain `opcode → table[op−0x30] → call8 
 FLIX-confirmed for both. [table decode + `call8` resolution + worker `entry`-prologue FLIX-decode
 HIGH/OBSERVED] Neither op is in the MAVERICK DVE `PROF_CAM` (53 armed opcodes; both ABSENT) —
 PROF-arming is profiling instrumentation, orthogonal to dispatch/ISA presence; the read-backs are
-simply not profiled. [HIGH/OBSERVED]
+simply not profiled.
 
 > **SUNDA note.** `0xe9` does not exist on SUNDA (no enum, not in `d4_mr.h`) → no `DveReadIndices`
 > dispatch there. `0x9b DveReadAccumulator` exists (enum + `D1_RD` map) but the SUNDA DVE ships as
@@ -642,5 +641,5 @@ its compute interior is not byte-decoded here]
 - the `negated`-belongs-to-`DveReadAccumulator` CORRECTION, established by
   [`activate-pwl.md §6`](activate-pwl.md) (#736) and re-confirmed here against the two `D1_RD`
   validators
-- the MAVERICK ACT→DVE fold mechanism (GX-MAV-03 / `activate-pwl.md`); the ISA-definition layer is
+- the MAVERICK ACT→DVE fold mechanism (see `activate-pwl.md`); the ISA-definition layer is
   OBSERVED here, the v5 worker interior carried/inferred

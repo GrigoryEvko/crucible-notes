@@ -14,7 +14,7 @@ the **quantize/dequantize** paths; (3) the **CPTC** sub-byte transport encoding
 layers, and where un-mappable codes die); and (5) the two **master tables** —
 per-generation × per-dtype availability, and per-dtype × per-op-class support.
 
-Everything below is re-grounded **this pass** against the shipped binaries. The enum bodies,
+Everything below is grounded against the shipped binaries. The enum bodies,
 the validity-gate predicates, the CPTC comment, the MX descriptor, and the opcode codes are
 read **byte-for-byte** from the four shipped arch-isa headers
 `neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/aws_neuron_isa_tpb_common.h` plus
@@ -26,11 +26,11 @@ the customop-lib package's `c10/include` tree, mirrored into the DWARF of
 (gitignored — reach with `fd --no-ignore` or an absolute path). Confidence tags per
 [the Confidence & Walls model](../../reference/confidence-model.md): `[HIGH/OBSERVED]` =
 read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED, `[…/CARRIED]`
-= re-used at a sibling report's confidence without re-reading the artifact this pass.
+= re-used at a sibling page's confidence without re-reading the artifact.
 
 > **NOTE — the four byte-grounded generations are SUNDA / CAYMAN / MARIANA / MAVERICK
 > (= NC-v2 / v3 / v4 / v5), plus the older 8-code TONGA (V1) subset.** All five enum bodies
-> were read verbatim this pass. The `mariana`→`maverick` step is the MX wave; whether a
+> were read verbatim. The `mariana`→`maverick` step is the MX wave; whether a
 > distinct *MARIANA_PLUS* trim exists is **not** witnessed by a separate header here — the
 > superset chain is `tonga ⊂ {sunda = cayman} ⊂ mariana ⊂ maverick`. Treat the v4/v4+ split
 > as MARIANA/MAVERICK. `[HIGH/OBSERVED for the five headers; MED/INFERRED that no separate
@@ -44,7 +44,7 @@ read-from-byte / proven-by-execution, `[MED/INFERRED]` = reasoned over OBSERVED,
    **strict additive superset chain** by generation: a 16-code base (`0x0..0xF`, SUNDA ==
    CAYMAN byte-identical) → MARIANA adds `FP4_EXP2(0x10)` + `CPTC1..7(0x19..0x1F)` → MAVERICK
    adds `FP8_EXP2(0x11)` + `INT4(0x12)` + `SFP8_E8..E5(0x13..0x16)`. **Codes never change
-   meaning; generations only *add*.** `[HIGH/OBSERVED — §1, all five enums read this pass.]`
+   meaning; generations only *add*.** `[HIGH/OBSERVED — §1, all five enums]`
 2. **The same byte flows everywhere unchanged.** The custom-op `ARG_TENSOR` descriptor
    (`dtype@0x02`), the ucode instruction structs (`in_dtype`/`out_dtype`, the `DTYPE_PAIR`
    nibble field), the SDMA descriptor (`SDMA_DTYPE`), and the collective2 descriptor
@@ -78,7 +78,7 @@ is an explicit `= 0xN`. Codes `≤ 0xF` are **nibble-packable** (they fit a `DTY
 nibble-packable and live only in full-byte dtype fields. `[HIGH/OBSERVED — DWARF byte_size +
 the `DTYPE_PAIR` bitfield read §1b.]`
 
-The MAVERICK body (the 30-code superset) read byte-for-byte this pass (header lines
+The MAVERICK body (the 30-code superset) read byte-for-byte (header lines
 850–879, comments preserved):
 
 | Code | Name | SU | CA | MA | MV | Width | Sign | Format / semantics | Role |
@@ -114,13 +114,13 @@ The MAVERICK body (the 30-code superset) read byte-for-byte this pass (header li
 | `0x1E` | `CPTC6`    | – | – | ● | ● | 6-bit | — |  | transport |
 | `0x1F` | `CPTC7`    | – | – | ● | ● | 7-bit | — | (`0x1F` is the reserved sentinel anchor) | transport |
 
-`[HIGH/OBSERVED — every row read byte-for-byte from the maverick header this pass; the SU/CA/MA
-columns are the per-gen presence rg-counted §1a. `●` = present, `–` = absent in that gen's enum.]`
+Rows are read byte-for-byte from the maverick header; the SU/CA/MA columns are the per-gen
+presence counts of §1a. `●` = present, `–` = absent in that gen's enum. `[HIGH/OBSERVED]`
 
-**Per-gen enumerator counts (rg-counted this pass): SUNDA 16, CAYMAN 16, MARIANA 24,
+**Per-gen enumerator counts: SUNDA 16, CAYMAN 16, MARIANA 24,
 MAVERICK 30.** Exact command:
 `rg 'NEURON_ISA_TPB_DTYPE_[A-Z0-9_]+\s*=\s*0x' FILE | rg -v 'BASIC|_PAIR|ALLOW|SDMA|MXTENSOR'
-| wc -l` → 16 / 16 / 24 / 30. `[HIGH/OBSERVED.]`
+| wc -l` → 16 / 16 / 24 / 30.
 
 > **GOTCHA — the `FP8_EXPn` suffix is the EXPONENT width, and it is *not* monotone with the
 > code.** `FP8_EXP3 = E3M4`, `FP8_EXP4 = E4M3`, `FP8_EXP5 = E5M2`, and `FP8_EXP2 = E2M5`. The
@@ -133,7 +133,6 @@ MAVERICK 30.** Exact command:
 > comment on `FP32(0xA)` states verbatim: *"RTL will used 0xB for FP22 partial fp32 type"*.
 > `FP32R` is 4-byte storage, maps to `Float` on the host, and is **output-only** — every gate
 > admits it only on `out_dtype` under an explicit `ALLOW_FP32R` permission (§1c, §5).
-> `[HIGH/OBSERVED.]`
 
 † **`INT64`/`UINT64` compute is *gated*.** The `ncore2gp` has no native 64-bit ALU; 64-bit is
 synthesised from 32-bit halves and is admitted **only** where the op passes the
@@ -143,7 +142,7 @@ plain 32-bit ALU gate (`is_valid_dtype`) **excludes** both. `[HIGH/OBSERVED — 
 ### 1a. The TONGA (V1) subset
 
 The oldest generation ships a **distinct name family** `TONGA_ISA_TPB_DTYPE_*` — an **8-code
-strict subset** read verbatim this pass from `aws_tonga_isa_tpb_common.h`:
+strict subset** read verbatim from `aws_tonga_isa_tpb_common.h`:
 
 | Code | TONGA name | Header role comment |
 |---|---|---|
@@ -159,8 +158,7 @@ strict subset** read verbatim this pass from `aws_tonga_isa_tpb_common.h`:
 TONGA has **no** FP8, **no** `INT8`/`INT16`, **no** `UINT32`/`UINT64`, **no** `FP32R`, and
 none of the MX/FP4/CPTC codes. The codes it lacks (`0x1,0x2,0x4,0x9,0xB,0xD,0xE,0xF`) are
 exactly the CAYMAN-base additions. The codes it **does** carry use the *same* ordinals as the
-modern enum — the superset chain is ordinal-preserving back to V1. `[HIGH/OBSERVED — the TONGA
-enum body read this pass.]`
+modern enum — the superset chain is ordinal-preserving back to V1. `[HIGH/OBSERVED — the TONGA enum body]`
 
 ### 1b. Companion / alias / packing types
 
@@ -169,37 +167,35 @@ enum body read this pass.]`
   SUNDA/CAYMAN). It *types* the 4-bit nibble fields of `DTYPE_PAIR` (the `≤0xF` subset that
   fits a nibble), keeping the full `NEURON_ISA_TPB_DTYPE` byte free to carry `0x10..0x1F`.
   `is_valid_dtype_for_sdma` requires `is_valid_enum(EnumList::DtypeBasic, dtype)` — i.e. only
-  the BASIC subset is SDMA-marshallable. `[HIGH/OBSERVED — `is_valid_dtype_for_sdma` body +
-  the per-gen presence read this pass.]`
+  the BASIC subset is SDMA-marshallable. `[HIGH/OBSERVED — `is_valid_dtype_for_sdma` body]`
 
   > **CORRECTION — the BASIC alias has 16 enumerators, not 20.** An earlier synthesis recorded
-  > "20 enumerators". Re-grounded this pass with
+  > "20 enumerators". Re-grounded with
   > `rg 'NEURON_ISA_TPB_DTYPE_BASIC_[A-Z0-9_]+' FILE -o | sort -u | wc -l` → **16** for both
-  > MARIANA and MAVERICK (one BASIC alias per base code `0x0..0xF`). `[HIGH/OBSERVED.]`
+  > MARIANA and MAVERICK (one BASIC alias per base code `0x0..0xF`).
 
 * **`DTYPE_PAIR`** (`{ dtype_lo : 4; dtype_hi : 4; }`, 1 byte) — two 4-bit dtype nibbles, used
   where an op carries a src0/src1 dtype pair (Tensor-Tensor). It can address **only** the
-  `≤0xF` (BASIC) codes — the extended dtypes cannot ride a pair. `[HIGH/OBSERVED — bitfield
-  read this pass.]`
+  `≤0xF` (BASIC) codes — the extended dtypes cannot ride a pair. `[HIGH/OBSERVED — bitfield]`
 
 * **`DTYPE_ALLOW_FP32R` / `_ALLOW_U64` / `_ALLOW_I64`** (`{ FALSE = 0, TRUE = 1 }`) — per-op
   dtype-permission gates; `FP32R`, `UINT64`, `INT64` are "conditional" dtypes admitted only
   when the op sets the matching flag. (MAVERICK additionally ships `DtypeAllowFP4` and
-  `DtypeAllowScale` — see §1c.) `[HIGH/OBSERVED — all enum bodies read this pass.]`
+  `DtypeAllowScale` — see §1c.) `[HIGH/OBSERVED — all enum bodies]`
 
 * **`NEURON_ISA_TPB_MXTENSOR_V2`** (MARIANA+/MAVERICK) — the Microscaled-Tensor descriptor,
-  read verbatim this pass:
+  read verbatim:
   `{ NEURON_ISA_TPB_ADDR4 data_addr; NEURON_ISA_TPB_ADDR4 scale_addr; uint8_t num_elem[2];
   int16_t step_elem_data_1; int16_t step_elem_scale_1; uint8_t p_f_dim; NEURON_ISA_TPB_DTYPE
   scale_dtype; }`. `scale_dtype` is a `NEURON_ISA_TPB_DTYPE` (`0` = no scales); `p_f_dim`
-  packs the F (upper nibble) and P (lower nibble) block dims as 2's exponents. `[HIGH/OBSERVED.]`
+  packs the F (upper nibble) and P (lower nibble) block dims as 2's exponents.
 
 ### 1c. The validity-gate predicates — the dtype *legality* algebra
 
 The arch-isa header ships the gate predicates as **Rust pseudocode comments** (the
 specification the host ucode decoder and the device firmware both implement). These **are**
 binary-derived (they ship in the package) and are the authoritative legality source. Read
-verbatim this pass:
+verbatim:
 
 ```rust
 // the universal scalar gate (Cast/Copy, ALU src/dst, …) — REJECTS 64-bit, 4-bit, scale, fp32r-unless-allowed
@@ -235,7 +231,7 @@ fn is_valid_64b_int_dtype(dtype)      { INT64|UINT64 }
 fn is_valid_dtype_for_sdma(dtype, allow_fp32r) { is_valid_dtype(dtype, allow_fp32r) && is_valid_enum(DtypeBasic, dtype) }
 ```
 
-`[HIGH/OBSERVED — all predicate bodies read verbatim this pass; 48 such `fn is_valid_*` /
+`[HIGH/OBSERVED — all predicate bodies read verbatim; 48 such `fn is_valid_*` /
 `fn dtype_*_check` comment-functions live in the maverick header.]`
 
 > **GOTCHA — the universal `is_valid_dtype` gate rejects **more** than just INVALID/64-bit.**
@@ -244,7 +240,7 @@ fn is_valid_dtype_for_sdma(dtype, allow_fp32r) { is_valid_dtype(dtype, allow_fp3
 > Cast/Copy/ALU op can never name a 4-bit or scale dtype directly — those reach the datapath
 > only through the dedicated MX/dequant descriptors (§2.4, §2.6). An earlier synthesis listed
 > only the invalid/fp32r/u64/i64 checks; the 4-bit and scale checks are the MAVERICK
-> additions. `[HIGH/OBSERVED — the `is_valid_dtype` body read this pass.]`
+> additions. `[HIGH/OBSERVED — the `is_valid_dtype` body]`
 
 ---
 
@@ -281,7 +277,7 @@ enum; CARRIED for the offsets.]`
 
 * **Scalar path** (the shared ALU evaluator + per-kernel decoders). The dtype select is a
   **chain of `beqi`/`bnei` immediate compares against the enum codes** — *not* an indexed jump
-  table (no dtype-keyed `jx`/`l32r`+`callx` was found on device this pass). The compares match
+  table (no dtype-keyed `jx`/`l32r`+`callx` on device). The compares match
   the enum ordinals exactly; observed in the carved firmware `.text` (VMA base `0x1000000`):
   `bnei a7, 7` (FP16=0x7) at `0x1000c94`, `beqi a3, 10` (FP32=0xA) at `0x10008b6`, an
   `INT8(2)/UINT8(3)/INT64(12)` cluster at `0x1002f0c`, `beqi a0, 8` (INT32) at `0x10013cc`,
@@ -292,10 +288,8 @@ enum; CARRIED for the offsets.]`
   vs `saltu`/`bltu` unsigned), so one leaf serves both signednesses. A **separate** 64-bit
   switch (`bnei a*,1` UINT64 / `bnei a*,12` INT64 → else "not supported dtype") gates the
   synthesised 64-bit handlers (the `tensor_tensor_64bit_dispatch<VectorInt64/VectorUint64>` and
-  `setup_64bit_rw` kernels, demangled from the firmware `.xt.prop` name table). `[HIGH/OBSERVED
-  — the compare-chain addresses disassembled on device this pass with the native
-  `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`); the per-arm leaf identity MED under FLIX
-  desync §7.]`
+  `setup_64bit_rw` kernels, demangled from the firmware `.xt.prop` name table).
+  `[HIGH/OBSERVED compare-chain addresses; per-arm leaf identity MED under the FLIX desync §7]`
 
 * **Vector path** (DVE / POOL). The same `(ALU_OP, dtype)` selects an IVP intrinsic whose
   **lane geometry encodes the width** (`2nx8` = 64×i8, `nx16` = 32×i16, `n_2x32` = 16×i32,
@@ -316,9 +310,9 @@ The single most consequential dtype-flow fact:
 * The **only native float-width converts are `fp16 ↔ fp32`** (a widen `fp16 → fp32` and a
   narrow `fp32 → fp16`).
 * **`bf16` and all three `fp8` formats (e3m4 / e4m3 / e5m2) have NO native convert op.** The
-  device soft-float library is **binary16 + binary32 only**; a negative-control sweep this pass
-  finds **zero** bf16/fp8/e4m3/e5m2 convert primitives. Two independent witnesses, both grounded
-  this pass: (a) the `ncore2gp` ISA header `xt_ivp32.h` —
+  device soft-float library is **binary16 + binary32 only**; a negative-control sweep
+  finds **zero** bf16/fp8/e4m3/e5m2 convert primitives. Two independent witnesses:
+  (a) the `ncore2gp` ISA header `xt_ivp32.h` —
   `rg -ic 'bf16|bfloat|fp8|e4m3|e5m2|float8|vecNxf8' xt_ivp32.h` → **0** (the only native vector
   float types are `f16` and `f32`; the native converts are `IVP_CVTF16F32`/`IVP_CVTF32F16`/
   `IVP_CVTF16N_2XF32`/`IVP_CVTF32NXF16`); (b) the device symbol tables (via
@@ -326,7 +320,7 @@ The single most consequential dtype-flow fact:
   `rg -ic 'cvtbf16|bf16cvt|cvtfp8|fp8cvt|cvte4m3|cvte5m2' syms` → **0** (the only `BFloat16`
   hits are C++ container template instantiations, not converts; the only fp16↔fp32 *software*
   symbol is `c10::detail::fp16_ieee_to_fp32_value`). `[HIGH/OBSERVED — both witnesses grounded
-  on device this pass; CARRIED corroboration from ISS-07's earlier exhaustive sweep.]`
+  on device; CARRIED corroboration from ISS-07.]`
 * **Therefore every conversion that touches `bf16` or `fp8` routes *through* FP32.** `Cast`
   is the canonical consumer:
 
@@ -367,7 +361,7 @@ FW-75; `DEQUANT_FMT` enum re-read §2.6.]`
 bit). `p_f_dim` carries the power-of-two block dims. The **MX element** set (`is_valid_mx_dtype`,
 read verbatim §1c) is exactly `{ FP8_EXP2(0x11), FP8_EXP3(0xD), FP8_EXP4(0xE), FP8_EXP5(0xF),
 FP4_EXP2(0x10), INT4(0x12) }`. `[HIGH/OBSERVED — the MX descriptor §1b + `is_valid_mx_dtype`
-§1c + `QUANTIZE_MX = 0xe3`, `MATMUL_MX = 0x0A`, `LDWEIGHTS_MX = 0x09` opcodes read this pass.]`
+§1c + `QUANTIZE_MX = 0xe3`, `MATMUL_MX = 0x0A`, `LDWEIGHTS_MX = 0x09` opcodes]`
 
 > **NOTE — `SFP8_E8..E5` are scale-only.** They appear **only** as `scale_dtype`, never as a
 > compute element, and are rejected by `is_valid_dtype` via `dtype_scale_illegal_check`.
@@ -386,19 +380,19 @@ is **FP32** (the PSUM banks); output is FP32 (gen2/gen3) or FP32/BF16 (gen4+). T
 `[HIGH/OBSERVED structure — CARRIED from FW-66; see the matmul page below.]`
 
 > **GOTCHA — `tf32` is NOT a dtype ordinal.** It is the reduced-mantissa fp32 **input mode** —
-> the `S3D3_MM.fp32_mode` bit (TF32-vs-FP32 select). Confirmed this pass:
+> the `S3D3_MM.fp32_mode` bit (TF32-vs-FP32 select). Confirmed:
 > `rg -c 'TPB_DTYPE_TF32|TPB_DTYPE_TFLOAT' maverick.h` → **0 hits**. Rule: if either input is
-> tf32/fp32, both must be tf32/fp32. `[HIGH/OBSERVED.]`
+> tf32/fp32, both must be tf32/fp32.
 
-The PSUM accumulate mode (read verbatim this pass) is
+The PSUM accumulate mode (read verbatim) is
 `MATMUL_PSUM_ACCUMULATE_MODE { MULTI_MID = 0, MULTI_START = 1, MULTI_END = 2, SINGLE = 3 }`
 (`static const uint32_t`). The MX matmul (`MatmulMX 0x0A`/`LdweightsMX 0x09`) carries the
-FP4/MX block-scale via `MXTensorV2` — MARIANA+. `[HIGH/OBSERVED.]`
+FP4/MX block-scale via `MXTensorV2` — MARIANA+.
 See [the PE matmul page](pe-matmul.md).
 
 ### 2.6 The quantize / dequantize paths
 
-The `DEQUANT_FMT` enum (read verbatim this pass) is the sub-byte micro-format selector — it,
+The `DEQUANT_FMT` enum (read verbatim) is the sub-byte micro-format selector — it,
 **not** `NEURON_ISA_TPB_DTYPE`, is what `TensorDequantize` switches on:
 
 | `DEQUANT_FMT` | value | meaning (header comment) |
@@ -412,15 +406,14 @@ The `DEQUANT_FMT` enum (read verbatim this pass) is the sub-byte micro-format se
 * **`TensorDequantize`** (POOL, NC-v3+): `UINT32`-transport + `dequant_fmt` selects the
   sub-byte input micro-format → FP8 output. The kernel does **not** switch on the dtype enum.
   Three paths: grp-8 MX-scaled, grp-0 non-MX 2:1, grp-0 6-bit non-MX (FP6/E2M3 — **FP6 can
-  never be MX**). `[HIGH/OBSERVED — `DEQUANT_FMT` body read this pass; the path triage CARRIED
-  from FW-63/75.]`
+  never be MX**). `[HIGH/OBSERVED — `DEQUANT_FMT` body; path triage CARRIED from FW-63/75]`
 * **`QuantizeMX`** (`0xe3`, DVE, NC-v5): the **forward** data → MX direction, out-of-band E8M0
-  scale (§2.4 B). `[HIGH/OBSERVED — opcode read this pass.]`
+  scale (§2.4 B). `[HIGH/OBSERVED — opcode]`
 
 > **NOTE — `NF4` and `FP6_E2M3` are `dequant_fmt` micro-formats, *not* `NEURON_ISA_TPB_DTYPE`
 > ordinals.** There is no `0xNN` enum code for them — they exist only as `DEQUANT_FMT` values
 > consumed by the dequant expansion. `NF4` is a 16-entry codebook; `FP6_E2M3` is the
-> `E2M3TO_E4M3` format. `[HIGH/OBSERVED.]`
+> `E2M3TO_E4M3` format.
 
 ### 2.7 The role partition
 
@@ -431,21 +424,21 @@ The `DEQUANT_FMT` enum (read verbatim this pass) is the sub-byte micro-format se
 | **Transport** | `UINT32` (dequant transport); `FP4_EXP2`/`INT4` (sub-byte packed); `CPTC1..7` (trellis, `code & 0x7` bits) | `dtype_4bit_illegal_check`, the CPTC identity §3 |
 | **Scale-only** | `SFP8_E8`(E8M0)/`E7`/`E6`/`E5` — only as `scale_dtype` | `dtype_scale_illegal_check` |
 
-`[HIGH/OBSERVED — every role keyed to a header gate read this pass.]`
+`[HIGH/OBSERVED — every role keyed to a header gate]`
 
 ---
 
 ## 3. The CPTC encoding (`0x19..0x1F`)
 
 `CPTC1..7` are **Computed Permutation Trellis Coding** transport widths — sub-byte
-compressed-tensor codes that ride `32-bit-aligned` storage. The header comment (read verbatim
-this pass, MARIANA and MAVERICK identical) is the normative spec:
+compressed-tensor codes that ride `32-bit-aligned` storage. The header comment (read verbatim,
+MARIANA and MAVERICK identical) is the normative spec:
 
 > *"32-bit aligned Computed Permutation Trellis Coding format space. Dtype & 0x7 gives the bit
 > count of the dtype. Reserved 0x1F so that `(dtype & 0xF8) == 0x18 && (dtype & 0x7) != 0`
 > check always works to determine if a dtype is a CPTC dtype."*
 
-The two structural facts, **verified byte-exact this pass** (python over the literal codes):
+The two structural facts, **verified byte-exact**:
 
 ```text
 bit-count:  code & 0x7  ==  N   for CPTCn
@@ -468,7 +461,7 @@ exactly.]`
 > The designers reserved `0x1F` (CPTC7, the max bit-count) and aligned the whole family to the
 > `0x18` base **precisely so** the single mask test `(code & 0xF8) == 0x18 && (code & 0x7) != 0`
 > classifies a byte as CPTC with no table lookup. A decoder can branch CPTC-vs-not in two
-> instructions. `[HIGH/OBSERVED.]`
+> instructions.
 
 > **NOTE — only the CPTC *classification* + bit-width is recovered; the trellis *decode
 > algorithm* is a wall.** How a CPTC code stream is unpacked (the "computed permutation
@@ -496,7 +489,7 @@ canonical MX configuration uses `SFP8_E8` (E8M0): the scale is purely a power-of
 applied to a block of MX elements. The scale is carried out-of-band via
 `MXTensorV2.scale_dtype` (`0` = no scales), and the elements it scales are the
 `is_valid_mx_dtype` set (`FP8_EXP2/3/4/5`, `FP4_EXP2`, `INT4`). `[HIGH/OBSERVED — the `SFP8_*`
-enum comments + the MX descriptor + `is_valid_mx_dtype` read this pass.]`
+enum comments + the MX descriptor + `is_valid_mx_dtype`]`
 
 > **NOTE — the dequant-side in-band block-of-8 scale's exact bit-format is not pinned.**
 > Whether the in-band POOL-dequant scale (§2.4 A) is itself E8M0 is **not** byte-proven — the
@@ -576,8 +569,7 @@ The full host-side reconciliation (the `c10::ScalarType` ordinals, element sizes
 
 ### Table A — per-generation × per-dtype availability
 
-`●` = present in that gen's `NEURON_ISA_TPB_DTYPE` enum; `–` = absent. `[HIGH/OBSERVED — the
-per-gen enum bodies read + counted this pass.]`
+`●` = present in that gen's `NEURON_ISA_TPB_DTYPE` enum; `–` = absent. `[HIGH/OBSERVED]`
 
 | DTYPE (code) | TONGA | SUNDA | CAYMAN | MARIANA | MAVERICK | role |
 |---|:-:|:-:|:-:|:-:|:-:|---|
@@ -611,7 +603,7 @@ Capability-arrival notes: FP8 (E3/E4/E5) enters at **SUNDA** in the enum (comput
 FP32 hub all gens; TONGA had no FP8). `FP4_EXP2` + `CPTC` enter at **MARIANA**. `FP8_EXP2` +
 `INT4` + `SFP8_E8..E5` (the full MX micro-format + E8M0 scale) + the `MXTensorV2` v2 addressing
 enter at **MAVERICK**. The POOL `TensorDequantize` MX surface predates the MARIANA
-`MXTensorV2`/DVE-`QuantizeMX`/PE-`MatmulMX` wave — two distinct MX surfaces. `[HIGH/OBSERVED.]`
+`MXTensorV2`/DVE-`QuantizeMX`/PE-`MatmulMX` wave — two distinct MX surfaces.
 
 ### Table B — per-dtype × per-op-class support
 
@@ -680,16 +672,16 @@ flow lives in [tensor-dequantize](tensor-dequantize.md) and [mx-dequant](mx-dequ
 > `xtensa-elf-objdump` in ELF mode falls back to a raw data dump (0 mnemonics). The only working
 > disassembly is **raw-binary mode**, which decodes mnemonics and groups some FLIX bundles but
 > loses the bundle boundaries → **28.4 % of instruction lines emit as `.byte`** (3349 / 11782,
-> consistent across the three carved EXEC images this pass). A *non-stripped* device object
+> consistent across the three carved EXEC images). A *non-stripped* device object
 > (`libneuroncustomop.a`) by contrast decodes at **0 %** desync — confirming the desync is the
 > stripped-firmware / raw-mode limitation, not a tool defect. The function **entries**,
 > string-loaders, the dtype-test `bnei`/`beqi` compare chains (§2.2), and the byte-clean scalar
 > leaves are OBSERVED; the *mid-bundle arm selection* is structural. The header gate predicates
 > (§1c) are byte-exact, so Table B's **legality** is HIGH even where a cell's switch-arm is
-> only MED-confirmed on device. `[MED — FLIX wall; the 28.4 % figure OBSERVED this pass.]`
+> only MED-confirmed on device. `[MED — FLIX wall; the 28.4 % figure OBSERVED]`
 
 The `move` full-register path is gated, byte-exact, to `{ UINT32, INT32, FP32 }` — the
-firmware rodata carries the verbatim assert (read this pass from `libnrtucode_internal.so`):
+firmware rodata carries the verbatim assert (from `libnrtucode_internal.so`):
 
 ```text
 /opt/workspace/NeuronUcode/src/decode/move.cpp:41
@@ -701,14 +693,14 @@ firmware rodata carries the verbatim assert (read this pass from `libnrtucode_in
 
 This is the byte-exact witness that the firmware's `ins.dtype` field is the **same**
 `NEURON_ISA_TPB_DTYPE` enum documented here, and that `move`'s non-32-bit legs are explicitly
-incomplete. See [move-dtype](move-dtype.md). `[HIGH/OBSERVED — string read this pass.]`
+incomplete. See [move-dtype](move-dtype.md). `[HIGH/OBSERVED — string]`
 
 ---
 
 ## Cross-references
 
 * [ScalarType ↔ dtype Rosetta](../../abi/scalartype-dtype-rosetta.md) — *forward link, Part 7
-  (not yet authored; `abi/` is empty this pass)*: the host-side `c10::ScalarType` ordinals,
+  (not yet authored; `abi/` is empty)*: the host-side `c10::ScalarType` ordinals,
   element sizes, and the `isa_to_torch_dtype` arm analysis.
 * [ALU op matrix](alu-op-matrix.md) — the per-op × per-dtype ALU support grid that
   Table B summarises.

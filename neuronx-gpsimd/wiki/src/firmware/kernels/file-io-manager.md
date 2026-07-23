@@ -25,8 +25,8 @@ the `[severity][NUL-string]` record parser — is documented at
 (forward-link; that page is planned, not yet authored). §5 reconciles the two
 channels so the relationship to `'S:'`/`'P%i:'` is unambiguous.
 
-> **NOTE — what was carved this session, and the exact objects used.** Every fact
-> below is byte-pinned to a shipped artifact re-carved this session from
+> **NOTE — the exact objects used.** Every fact
+> below is byte-pinned to a shipped artifact carved from
 > `libnrtucode.a` (`10,235,636 B`, `435` members). The anchor image for the manager
 > itself is `img_SUNDA_Q7_POOL_DEBUG_IRAM_contents.c.o` (code) /
 > `img_SUNDA_Q7_POOL_DEBUG_DRAM_contents.c.o` (strings). Carved via
@@ -81,7 +81,7 @@ TU build `0x8xxxx` addresses (e.g. the SOC-window global is assembled as
 > appear in **both** `SUNDA_Q7_POOL_DEBUG` *and* `SUNDA_Q7_POOL_RELEASE` DRAM (3
 > hits each: `strings … | rg -c 'file_io_manager'` → `3` / `3`). Only the assert
 > *verbosity* differs by build; the ring machinery itself ships in RELEASE too
-> (code-signature check in §7). `[HIGH/OBSERVED]`
+> (code-signature check in §7).
 
 **Per-generation.** The `file_io_manager` token and its 256-byte-slot ring code
 exist **only** on the SUNDA generation's Q7 POOL image; CAYMAN / MARIANA /
@@ -175,7 +175,7 @@ The device buffers raw bytes into the 240-byte (`0xF0`) line buffer at `f+0x38`;
 whenever the buffer fills to exactly 240 it flushes **one** 256-byte ring slot. The
 `memcpy` destination is assembled as `f + 0x28` (slot base) `+ 0x10` (past the
 16-byte header) `+ fill_count` — i.e. the 240-byte body starts 16 bytes into the
-256-byte slot. `[HIGH/OBSERVED — every instruction address above read this session.]`
+256-byte slot. `[HIGH/OBSERVED]`
 
 > **GOTCHA — a write of `len` bytes can produce many slots, and the last partial
 > line is NOT flushed.** The loop flushes only on the exact `fill_count == 240`
@@ -272,7 +272,7 @@ the two 40-byte `memcpy`s, and both `full_policy==2` asserts: HIGH/OBSERVED.]`
 > **CORRECTION (vs the backing report) — the 40-byte `.desc` template is published
 > to the *DRAM ring*, not copied into the in-SRAM file struct.** The backing report
 > read the two `memcpy(…, 40)` as "install a 40-byte descriptor into each file."
-> Re-disassembling the dst computation this session shows the destination is
+> Re-disassembling the dst computation shows the destination is
 > `ring_soc` (the SOC-translated ring base, `a1+8`) `+ slot_idx*40` for `stdout`,
 > and `ring_soc + 0x140 + slot_idx*40` for `stderr` (`0xd80` `addx4 a4,a4,a4`
 > `→ 5x`; `0xd85` `slli a4,a4,3` `→ *8`; net `*40`). So `init` writes a **40-byte
@@ -351,10 +351,8 @@ slot N-1| [16B hdr | 240B line ]   (N = num_slots@+0x0C) |
 The host **polls the published head word**, sees it advance, and drains the new
 256-byte slots out of the ring. This is neither a memhandle-staged DMA nor an MSI-X
 surprise — it is a poll-a-DRAM-head SPSC ring, written through the Q7's SOC window,
-read by the host from DRAM. `[Device producer half: HIGH/OBSERVED. The host poll-read
-half: HIGH/INFERRED — the head is published to a host-known DRAM word with a fence,
-which is only useful to a polling consumer; the host code is the NRT custom-op
-runtime, out of this device blob's scope.]`
+read by the host from DRAM. The host code is the NRT custom-op runtime, out of this
+device blob's scope. `[device producer half HIGH/OBSERVED; host poll-read half HIGH/INFERRED]`
 
 ---
 
@@ -367,7 +365,7 @@ has tracked those strings. There are **two distinct device→host text channels*
 
 > **CORRECTION — `file_io_manager` is NOT the `'S:'` emitter. The `'S:'`/`'P%i:'`
 > lines come from a separate newlib `printf` logger in a different core.**
-> Re-disassembled this session in `CAYMAN_NX_POOL_DEBUG_IRAM`:
+> Re-disassembled in `CAYMAN_NX_POOL_DEBUG_IRAM`:
 
 **(A) The `'S:'` / `'P%i:'` channel = a newlib `FILE*` `printf` logger.** The SEQ
 emitter at IRAM **`0x18b84`** is a `vfprintf`-style logger: it builds a newlib
@@ -408,9 +406,8 @@ per-core control block; the host `print_logs` reads that head, bulk-copies the n
 the message body; the host adds its **own** prefix (the per-core `friendly_name`).
 That host-consumer half is documented at
 [nrtucode Logging + Leak-Tracking Allocator](../../runtime/nrtucode-logging-allocator.md).
-`[The `[sev][\0str]` record format + the `friendly_name` re-emit: HIGH/OBSERVED on
-the host side. That the `pool_stdio` ring the host drains is the identical ring the
-`0x18b84` logger feeds: MED — the on-device head-advance is SEQ-firmware scope.]`
+`[record format + `friendly_name` re-emit HIGH/OBSERVED host-side; the "same ring as the
+`0x18b84` logger feeds" claim MED — the on-device head-advance is SEQ-firmware scope]`
 
 > **NOTE — count metric for the survey strings.** The DEBUG-DRAM `'S:'` figure is a
 > **format-string** count, not a runtime-record count: `CAYMAN_NX_POOL_DEBUG_DRAM`
@@ -419,8 +416,7 @@ the host side. That the `pool_stdio` ring the host drains is the identical ring 
 > `'P%i:'` format strings (`grep -ao 'P%i:' … | wc -l` → `156`). These are the
 > *number of distinct log call sites* (one format string each), not the 178-entry
 > SEQ dispatch table — the two counts (`178` dispatch records vs `187` `'S:'`
-> formats) are different quantities and should not be conflated. `[HIGH/OBSERVED —
-> exact `grep`/`rg` commands above.]`
+> formats) are different quantities and should not be conflated. `[HIGH/OBSERVED]`
 
 **Verdict.** `file_io_manager` is the SUNDA-era Q7 custom-op kernel's
 `stdout`/`stderr`-to-DRAM channel — the device side of "`printf` from inside a
@@ -456,9 +452,9 @@ head%slots + `movi a12,0x100` 256-byte slot copy), counted over the native disas
 
 Both checks agree: the 256-byte-slot file_io ring ships on SUNDA Q7-POOL in **both**
 DEBUG and RELEASE, and is **retired** on CAYMAN / MARIANA / MARIANA_PLUS Q7 (which
-have zero `file_io_manager` tokens and zero `slot256` copies). `[HIGH/OBSERVED —
-exact `rg -c` / disasm-grep commands; the `slot256` count is the decisive code
-signal because the `memw`/`remu` opcodes also occur in unrelated DMA code.]`
+have zero `file_io_manager` tokens and zero `slot256` copies). The `slot256` count is the
+decisive code signal, because the `memw`/`remu` opcodes also occur in unrelated DMA code.
+`[HIGH/OBSERVED]`
 
 **What replaced it.** CAYMAN+ Q7 emits kernel `stdout`/`stderr` via the newlib
 `printf` path with a `'P%i:'` per-POOL-core prefix (e.g.
@@ -472,7 +468,7 @@ the *same* stdio family as the SEQ `'S:'` engine. So:
 `file_io_manager` is therefore the **SUNDA-era predecessor** of the unified
 `printf`/`'S:'`/`'P%i:'` stdio logging the later generations converged on. It is the
 GPSIMD core's own kernel-stdout mechanism, not the cross-gen `'S:'` firmware-log
-channel. `[HIGH/OBSERVED.]`
+channel.
 
 ---
 
@@ -485,9 +481,9 @@ channel. `[HIGH/OBSERVED.]`
   `[HIGH/OBSERVED.]`
 - **Disabled file** — every entry (`write 0x1d50`, `flush 0x1e1b`, guard `0x1d10`)
   bails if `file->enabled (file+0) == 0`. A disabled stream is a silent no-op that
-  returns the full `len` (write), so callers see success. `[HIGH/OBSERVED.]`
+  returns the full `len` (write), so callers see success.
 - **`bytes_to_copy > 0`** (`hpp:182`) — a DEBUG sanity check that each per-chunk copy
-  is non-empty (`blti n,1 → const16 a10,0x5f1 → call8 0x39e0`). `[HIGH/OBSERVED.]`
+  is non-empty (`blti n,1 → const16 a10,0x5f1 → call8 0x39e0`).
 - **The Q7 fault path is SEPARATE.** The Q7 core's exception handler
   (`GPSIMD EXCEPTION OCCURRED:` @DRAM `0x806c0`; `exception.hpp:172` @`0x8067b`;
   `ILLEGAL INSTRUCTION` / `STACK OVERFLOW` / …) is the Q7 analogue of the
@@ -517,7 +513,7 @@ channel. `[HIGH/OBSERVED.]`
 
 ## 10. Confidence ledger
 
-**HIGH / OBSERVED** (direct disassembly or byte read this session):
+**HIGH / OBSERVED** (direct disassembly or byte read):
 
 - Manager located in `img_SUNDA_Q7_POOL_{DEBUG,RELEASE}` (Q7 GPSIMD core); source
   `file_io_manager.hpp`; 3 asserts at DRAM `0x2ce`/`0x362`/`0x5f1`; DRAM VA model
