@@ -48,7 +48,7 @@ A deduplicated grep of every `bucket`-containing string in `hlo2penguin` (`rg -i
 | `_ZN3xla18literal_comparison…ErrorBuckets…` (in `EqualHelper`/`Equal`) | `xla::literal_comparison::ErrorBuckets` | **No** — numerical diff |
 | `_ZN4llvm13StringMapImpl15LookupBucketForE…` | `llvm::StringMapImpl::LookupBucketFor` | **No** — LLVM hashtable |
 | `_ZN4llvm14FoldingSetBase15GrowBucketCountE…` | `llvm::FoldingSetBase::GrowBucketCount` | **No** — LLVM hashtable |
-| `--internal-ccop-*-bucketing` (driver-side, `Frontend.so`) | collective combiner byte thresholds | **No** — see [§ ccop](#ccop-bucketing-is-byte-size-not-shape) |
+| `--internal-ccop-*-bucketing` (driver-side, `Frontend.so`) | collective combiner byte thresholds | **No** — see [§ ccop](#ccop-bucketing-is-byte-size-not-shape-neuron-collective) |
 
 > **GOTCHA —** the only token that *looks* shape-relevant is `bucket_limit`, and it is the most innocent of all. It is a field of `tensorflow::HistogramProto` — confirmed: the string `"HistogramProto"`, the mangled type `N10tensorflow14HistogramProtoE`, and the descriptor path `…/summary_go_proto` are all co-located in the same `.rodata` region as `bucket_limit`/`bucket`. `HistogramProto` is `{min, max, num, sum, sum_squares, bucket_limit[], bucket[]}`, an XLA/TSL metrics message for plotting value distributions. It has nothing to do with tensor shapes. A reimplementer who finds `bucket_limit` and concludes "here is the shape-bucket list" has misread a histogram.
 

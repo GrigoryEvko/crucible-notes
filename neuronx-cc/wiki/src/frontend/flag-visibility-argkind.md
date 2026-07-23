@@ -69,7 +69,7 @@ PUBLIC            no prefix; documented user surface; stable
 Harg-tagged args are never user-facing on any surface.
 ```
 
-The three naming *families* map onto these tiers by name convention, and only one of the mappings is automatic (see [Classification](#classification-the-only-automatic-rule)):
+The three naming *families* map onto these tiers by name convention, and only one of the mappings is automatic (see [Classification](#classification--the-only-automatic-rule)):
 
 | Family | Example | Resolved kind | Surface |
 |---|---|---|---|

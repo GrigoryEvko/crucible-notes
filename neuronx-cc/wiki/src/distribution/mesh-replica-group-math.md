@@ -26,7 +26,7 @@ For reimplementation, the contract is:
 | **TP-group discovery** | `neuron::GetTpReplicaGroup` @ `0x1f80360` / `0x1f808f0` **[NEURON]** |
 | **NEFF 3-D reader** | `NeffInfo.getCCRankWorldSize` (Cython `NeffInfo.so`) **[NEURON]** |
 
-> **NOTE — provenance.** Everything in [§1](#1-the-replica-group-representation)–[§4](#4-channel_id--use_global_device_ids) is **stock OpenXLA** (`xla/hlo/ir/collective_device_list.{h,cc}`, `xla/service/collective_ops_utils.cc`), statically linked. The Neuron-authored code is confined to [§5](#5-reconciliation--xla-2-d-vs-neuron-3-d-rank-model) and is tagged inline. Where this page touches `channel_id`/`use_global_device_ids` it must not contradict [4.4 Collective Stream-ID & Channel-ID Family](../hlo-opt/collective-stream-channel-id.md) or [13.6 SPMD Collective Emission](spmd-collective-emission.md); any discrepancy is called out with byte evidence. The 3-D rank model is detailed in [13.8 (3-D rank model)](three-d-rank-model.md).
+> **NOTE — provenance.** Everything in [§1](#1-the-replica-group-representation)–[§4](#4-channel_id--use_global_device_ids) is **stock OpenXLA** (`xla/hlo/ir/collective_device_list.{h,cc}`, `xla/service/collective_ops_utils.cc`), statically linked. The Neuron-authored code is confined to [§6](#6-reconciliation--xla-2-d-vs-neuron-3-d-rank-model) and is tagged inline. Where this page touches `channel_id`/`use_global_device_ids` it must not contradict [4.4 Collective Stream-ID & Channel-ID Family](../hlo-opt/collective-stream-channel-id.md) or [13.6 SPMD Collective Emission](spmd-collective-emission.md); any discrepancy is called out with byte evidence. The 3-D rank model is detailed in [13.8 (3-D rank model)](three-d-rank-model.md).
 
 ---
 

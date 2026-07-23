@@ -36,7 +36,7 @@ The ordinals are grounded from three classes of in-binary evidence, every one re
 | 20 | `_BRANCH_COMPARE_OP` (`bir::BranchCompareOp`) | 12 (0..11 wired) | LUT (E3) | [2.20](sp-sync-encoding.md) | ✗ reorder | CERTAIN |
 | 21 | `_IMM_SRC` (`NEURON_ISA_TPB_IMM_SRC`) | 3 `{0,1,2}` | validator only (E2) | scalar imm ops | INFERRED names | CERTAIN |
 
-The two operand-carried LUTs — `_DTYPE` wire-tag (`byte_1DFBAD0` / `byte_1DF5760`) and the parallel dtype→stride table (`qword_1DFC040`) — are tabulated in [§ENUM 3](#enum-3--_dtype). The three engine/sync support enums reached only as a name (`DGEType`, `RandomDistributionKind`, `IndexMissBehavior`) are listed in [§Supplementary](#supplementary--enums-reached-only-as-a-name-or-codepath).
+The two operand-carried LUTs — `_DTYPE` wire-tag (`byte_1DFBAD0` / `byte_1DF5760`) and the parallel dtype→stride table (`qword_1DFC040`) — are tabulated in [§ENUM 3](#enum-3--_dtype-birdtype--wire-tag--stride). The three engine/sync support enums reached only as a name (`DGEType`, `RandomDistributionKind`, `IndexMissBehavior`) are listed in [§Supplementary](#supplementary--enums-reached-only-as-a-name-or-codepath).
 
 > **NOTE — what "wire ordinal" means here.** Three layers carry an enum: L1 (libBIR in-memory `int`), L2 (BIR-JSON name), L3 (the libwalrus silicon byte the encoder writes / the LUT indexes). **This page is L3.** Where L3 = L1 the row is marked `=`; where it differs the row is marked ✗ with the delta, and the L1 ordinal is given so a reimplementer holding a BIR `int` can find the wire byte. The L1 catalog and the JSON spellings live in [Part 7 BIR](../bir/); the consolidated master enum table is [Part 14](../appendix/).
 

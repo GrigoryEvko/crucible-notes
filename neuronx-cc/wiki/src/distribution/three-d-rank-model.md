@@ -289,7 +289,7 @@ The device id `4` that XLA placed in group 0 is exactly the rank the simulator r
 
 - `xla::GetReplicaGroups(HloInstruction*)` @ `0x1f8ca40` — flatten `replica_groups()` to `vector<vector<int64>>` ([§5(i)](#5-the-bridge-functions--flatten-discover-read))
 - `HloInstruction::replica_groups()` @ `0x965e7e0` (lazy `ExpandIota`; the 2-D representation itself is [13.7](mesh-replica-group-math.md))
-- the `kFlattenedID` global-id convention `replica*num_partitions + partition` ([§3](#3-the-rank-identity--device-id--core--numcorespernlnc), table in 13.7 §4)
+- the `kFlattenedID` global-id convention `replica*num_partitions + partition` ([§3](#3-the-rank-identity--device-id--core--numcoresperlnc), table in 13.7 §4)
 
 **NEURON-authored** (the only Neuron code on this page):
 
@@ -297,7 +297,7 @@ The device id `4` that XLA placed in group 0 is exactly the rank the simulator r
 - `neuron::HasMatchingReplicaGroups` @ `0x1f7e060` — gate combiners on group equality
 - `NeffInfo.getCCRankWorldSize` @ `0x1ade0` (`NeffInfo.so`) — the 3-D reader + the MPMD rejection ([§4](#4-the-mpmd-rejection--why-the-outer-axis-stays-length-1))
 - `writeCCInfo` @ `0x1523af0` (`libwalrus`) — the 3-D `replica_groups` writer + the outer-dim de-dup
-- `getRankIdforCore` @ `0x272380` / `isInReplicaGroup` @ `0x1aa460` (birsim) — the `core / numCoresPerLNC` rank map ([§3](#3-the-rank-identity--device-id--core--numcorespernlnc))
+- `getRankIdforCore` @ `0x272380` / `isInReplicaGroup` @ `0x1aa460` (birsim) — the `core / numCoresPerLNC` rank map ([§3](#3-the-rank-identity--device-id--core--numcoresperlnc))
 
 **Honest flag:** Neuron invents *no* replica-group encoding and *no* rank arithmetic beyond the LNC division. The 2-D↔3-D "reconciliation" is, in the supported flow, a containment: XLA's per-op list becomes Neuron's `topology[0]`. Neuron's genuine contributions are (a) discovering the TP group from the graph rather than recomputing it, (b) keying combiners on the groups, (c) the NEFF 3-D envelope with its MPMD guard, and (d) the `core / numCoresPerLNC` rank map. `>1` topology = MPMD = rejected.
 

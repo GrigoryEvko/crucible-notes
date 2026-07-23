@@ -53,7 +53,7 @@ out[:d/2] = x1*cos[:d/2] - x2*sin[:d/2];    // rope.py:185 "out[even]=x[even]*co
 out[d/2:] = x2*cos[d/2:] + x1*sin[d/2:];    // rope.py:186 "out[odd]=x[odd]*cos + x[even]*sin"
 ```
 
-cos and sin satisfy `cos = cat(freqs, freqs)` and `sin = cat(freqs, freqs)` — the two halves are **identical** (the per-position frequency vector, repeated). Only half of cos/sin is therefore unique, which several sites exploit to carry half-width tables (see [cos/sin Provenance](#cossin-provenance-precomputed-vs-on-device)).
+cos and sin satisfy `cos = cat(freqs, freqs)` and `sin = cat(freqs, freqs)` — the two halves are **identical** (the per-position frequency vector, repeated). Only half of cos/sin is therefore unique, which several sites exploit to carry half-width tables (see [cos/sin Provenance](#cossin-provenance--precomputed-vs-on-device)).
 
 > **GOTCHA —** the `rope.py` docstring (`rope.py:185-186`) names the halves "even" and "odd". This is *not* the GPT-J even/odd-index interleaving. "even" means the **first half** `x[:d/2]`, "odd" the **second half** `x[d/2:]`; the code rotates `x_in_sb[:half_d]` against `x_in_sb[half_d:]` (`rope.py:226-252`). Reading "even/odd" as element interleaving is the single easiest way to reimplement the wrong rotation.
 

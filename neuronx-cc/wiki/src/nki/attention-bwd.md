@@ -28,7 +28,7 @@ For reimplementation, the contract is:
 | **Rowsum `D`** | `compute_rowsum_single_tile` — `attention_bwd.py:614` |
 | **Golden math** | `attention_bwd_torch.py:26` (`attention_bwd_torch_ref`) |
 | **NKI layer** | Python trace → `penguin.ir` → BIR (see [BirCodeGenLoop](bircodegenloop.md)) |
-| **Dropout** | **none** in this kernel (`rg -ci dropout` = 0) — see [§ Masking & dropout](#masking-causalswasequence-packingand-the-absent-dropout) |
+| **Dropout** | **none** in this kernel (`rg -ci dropout` = 0) — see [§ Masking & dropout](#masking-causalswasequence-packing--and-the-absent-dropout) |
 
 ---
 
