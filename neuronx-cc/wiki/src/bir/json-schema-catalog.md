@@ -47,7 +47,7 @@ Every wire record is the union of two disjoint key sets:
 
 The common header is anchored verbatim to the `.rodata` refs inside `Instruction::toJson` (`0x2e2ea0`) and is the subject of [the base-struct page](./instruction-base.md); it is listed here once and never repeated. The op-specific keys are the catalog.
 
-> **NOTE —** the common header does **not** carry `target` / `on_true` / `queue` / `arguments`. Those are *op-emitted* (a `BasicBlock*` or operand reference serialized as the block/object name string), even though the corresponding object is *linked* later by the common `createFromJsonHelper` successor/operand resolver, not by the op's own reader. So a control-flow op's reader key set can omit `target` while its writer emits it — see [§ Control-flow family](#control-flow-family).
+> **NOTE —** the common header does **not** carry `target` / `on_true` / `queue` / `arguments`. Those are *op-emitted* (a `BasicBlock*` or operand reference serialized as the block/object name string), even though the corresponding object is *linked* later by the common `createFromJsonHelper` successor/operand resolver, not by the op's own reader. So a control-flow op's reader key set can omit `target` while its writer emits it — see [§ Control-flow family](#control-flow-family-13-ops).
 
 ### Read vs write mechanics
 
@@ -146,7 +146,7 @@ The 13 fields lie on a regular 0x28-byte stride from `+0xF0` (counting `tile_siz
 
 > **GOTCHA —** the "MX-ness" of `MatmultMx`/`QuantizeMx` (FP8/E8M0 packed weights, block scaling) is **not** in any JSON scalar field. It is carried by (a) the operand tensors' `dtype` (the FP4/FP8/E8M0 `Dtype` ordinals — see [the dtype tables](./dtype-tables.md)) and (b) an extra scale-tensor operand in `ins`. The MX `block_size`=32 is an HLO `backend_config` baked at codegen — it is **absent from BIR-JSON**. A reimplementer searching for a `block_size`/`scale`/`scale_method` key will find none; they do not exist in `libBIR`.
 
-> **NOTE —** `quant_kernel` is not a matmul/MX field despite the name. It belongs to `InstBIRKernel` (`readFields` `0x433d40`, key at `+0x250`; see [§ Kernel family](#kernel--custom-op-family)).
+> **NOTE —** `quant_kernel` is not a matmul/MX field despite the name. It belongs to `InstBIRKernel` (`readFields` `0x433d40`, key at `+0x250`; see [§ Kernel family](#kernel--custom-op-family-4-ops)).
 
 ---
 
@@ -214,7 +214,7 @@ The common base object is 240 bytes (`0xF0`); every subclass's first own field i
 | `InstIndirectCopy` (26) | `0x415260` / `0x437900` | `num_valid_indices` `+0xF0` MaybeAffine\<u16\> (=`variant<u16,QuasiAffineExpr>`) **req** |
 | `InstCopyPredicated` (52) | `0x419470` / `0x439a00` | `can_read_uninit` `+0xF0` MA\<bool\> opt · `reverse_pred` `+0x118` MA\<bool\> opt · `reduce_op` `+0x140` AluOpType bypass(0) · `accumulator_cmd` `+0x144` `EngineAccumulationType` Idle(0) |
 
-> **NOTE —** `InstAbstractCopy` (IT 3) appears in this family *and* in the DMA family because it is a copy-like op whose only key is `dma_qos`. Its parent is `InstEventSemaphore`, **not** `InstDMA` — see [§ DMA family](#dma-family-three-class-trees). Its `dma_qos` at `+0xF0` is in the `InstGeneric` tree, offset-coincident-but-semantically-distinct from `InstDMA+0xF0` (a `DMAQueue*` pointer).
+> **NOTE —** `InstAbstractCopy` (IT 3) appears in this family *and* in the DMA family because it is a copy-like op whose only key is `dma_qos`. Its parent is `InstEventSemaphore`, **not** `InstDMA` — see [§ DMA family](#dma-family--three-class-trees). Its `dma_qos` at `+0xF0` is in the `InstGeneric` tree, offset-coincident-but-semantically-distinct from `InstDMA+0xF0` (a `DMAQueue*` pointer).
 
 ### Tensor-scalar group
 

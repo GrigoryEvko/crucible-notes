@@ -10,13 +10,13 @@ This appendix is the generated reference dump behind the diagnostics narrative p
 2. The **224 native `NCC_<CAT><idx>` codes** baked per-call-site into the HLO/penguin frontend binaries (`hlo2penguin`, `hlo-opt`, `hlo-neff-wrapper`, `xla_infergoldens`) — a *separate* catalog whose code→text binding lives in those binaries' own rodata.
 3. The **NKI `err_*` funnel** — 78 `err_*` diagnostic leaves + 24 `assert_*` + 32 `check_*` validators in `nki/.../sema.so`, the front-end semantic-analysis layer (D-W05).
 
-> **NOTE —** the central artifact here is the `ErrorMessages.so` dict, and it is not reverse-engineered text. The `.so` imports standalone — its only dependency is `typing` — so the live Python object was dumped directly rather than reconstructed from `strings`. Every `(category,index)→(cause,resolution)` row in [§4](#4-errormessagesso-the-full-2556-entry-catalog) is the exact runtime value.
+> **NOTE —** the central artifact here is the `ErrorMessages.so` dict, and it is not reverse-engineered text. The `.so` imports standalone — its only dependency is `typing` — so the live Python object was dumped directly rather than reconstructed from `strings`. Every `(category,index)→(cause,resolution)` row in [§4](#4-errormessagesso--the-full-2556-entry-catalog) is the exact runtime value.
 
 ### How to use this page
 
 | You have… | Look in… |
 |---|---|
-| A `[NCC_<CAT><idx>]` token from a **backend** failure (BIR/walrus/codegen/ISA/scheduler) | [§4](#4-errormessagesso-the-full-2556-entry-catalog) — find category `<CAT>`, then index `<idx>` |
+| A `[NCC_<CAT><idx>]` token from a **backend** failure (BIR/walrus/codegen/ISA/scheduler) | [§4](#4-errormessagesso--the-full-2556-entry-catalog) — find category `<CAT>`, then index `<idx>` |
 | A `[NCC_<CAT><idx>]` from a **frontend** failure (`EVRF`/`PYP`/`ISPP`/`MOD`/`HPM`/`OPT`/…) | [§3](#3-the-224-native-ncc_-codes-frontend-binaries) — these are *not* in the `ErrorMessages` dict |
 | A `[F134]`/`[F137]`/`[F139]` fatal | [§2](#2-driver-fatal-exit-codes) |
 | An NKI tracing error (`err_*`, raised from `nl.*`/`nisa.*`) | [§5](#5-nki-err_-funnel-sema) |
@@ -93,9 +93,9 @@ The only three top-level `[F1xx]` codes. Emitted by `driver/CommandDriver.so` `h
 
 ## 3. The 224 Native `NCC_*` Codes (Frontend Binaries)
 
-These are a **separate** catalog from the `ErrorMessages.so` dict in [§4](#4-errormessagesso-the-full-2556-entry-catalog). The fully-rendered token `NCC_<CAT><idx>` is baked per-call-site into the rodata of `hlo2penguin` / `hlo-opt` / `hlo-neff-wrapper` / `xla_infergoldens`; the cause/resolution body for these frontend categories is **not** in `NEURON_ASSERT_ERROR_MESSAGES` (the dict holds the backend bodies). The two catalogs overlap only at `IIOT`, which appears in the dict solely as the generated `(IIOT,901)`/`(IIOT,902)` pair — established by category presence and absence in the dumped dict.
+These are a **separate** catalog from the `ErrorMessages.so` dict in [§4](#4-errormessagesso--the-full-2556-entry-catalog). The fully-rendered token `NCC_<CAT><idx>` is baked per-call-site into the rodata of `hlo2penguin` / `hlo-opt` / `hlo-neff-wrapper` / `xla_infergoldens`; the cause/resolution body for these frontend categories is **not** in `NEURON_ASSERT_ERROR_MESSAGES` (the dict holds the backend bodies). The two catalogs overlap only at `IIOT`, which appears in the dict solely as the generated `(IIOT,901)`/`(IIOT,902)` pair — established by category presence and absence in the dumped dict.
 
-> **GOTCHA —** do not look up `NCC_EVRF001`, `NCC_PYP001`, `NCC_ISPP001`, `NCC_MOD001`, `NCC_HPM001`, `NCC_OPT001`, `NCC_INL001`, `NCC_INFG001`, `NCC_IHCA001`, `NCC_ITUP001`, or `NCC_IHNW001` in [§4](#4-errormessagesso-the-full-2556-entry-catalog) — those frontend categories have **zero** entries in the dict. Their text lives in the native HLO binaries' rodata and is out of scope for the runtime dump. The `ErrorMessages` dict is the *backend* (BIR/walrus/codegen) catalog.
+> **GOTCHA —** do not look up `NCC_EVRF001`, `NCC_PYP001`, `NCC_ISPP001`, `NCC_MOD001`, `NCC_HPM001`, `NCC_OPT001`, `NCC_INL001`, `NCC_INFG001`, `NCC_IHCA001`, `NCC_ITUP001`, or `NCC_IHNW001` in [§4](#4-errormessagesso--the-full-2556-entry-catalog) — those frontend categories have **zero** entries in the dict. Their text lives in the native HLO binaries' rodata and is out of scope for the runtime dump. The `ErrorMessages` dict is the *backend* (BIR/walrus/codegen) catalog.
 
 ### 3a. Code format & severity convention
 

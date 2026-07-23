@@ -53,7 +53,7 @@ slot.operator=(tmp);                   // copy the value into the slot
 // ~tmp
 ```
 
-This is the exact primitive the loader inverts with `j.at("k")` / `j.find("k")`. There is no custom serializer object, no visitor, no stream — just `nlohmann::basic_json` mutation. `nlohmann`'s object is a `std::map`, so on `dump()` the keys come out **lexicographically sorted regardless of emission order** ([§7](#7-round-trip--toJson--from_json)); emission order determines *which keys exist*, not their on-wire position.
+This is the exact primitive the loader inverts with `j.at("k")` / `j.find("k")`. There is no custom serializer object, no visitor, no stream — just `nlohmann::basic_json` mutation. `nlohmann`'s object is a `std::map`, so on `dump()` the keys come out **lexicographically sorted regardless of emission order** ([§7](#7-round-trip--tojson--from_json)); emission order determines *which keys exist*, not their on-wire position.
 
 ---
 
@@ -122,7 +122,7 @@ replication_num_rows · is_transpose · is_fmap_onezero · is_weight_onezero ·
 tile_size · tile_position · ifmap_quant_offset · weights_quant_offset · perf_mode
 ```
 
-The first eight + the two quant-offsets are emitted by `MaybeAffine<T>::writeIntoJson` (the field-level writer for "constant-or-loop-affine" values, [§5d](#5d-maybeaffinet--the-constant-or-affine-writer)); `tile_size` / `tile_position` are 2-element `[int,int]` JSON arrays (an `initializer_list` `basic_json` + `MaybeAffine<int>` writes + two `push_back`s); `perf_mode` goes through `bir::to_json(json&, MatmultPerfMode)` and is **always emitted** (not skip-default). The 13-key roster and offsets are owned by the [BIR-JSON Record Schema §2.A](json-schema-catalog.md); this is the emission witness for the count.
+The first eight + the two quant-offsets are emitted by `MaybeAffine<T>::writeIntoJson` (the field-level writer for "constant-or-loop-affine" values, [§5d](#5d-maybeaffinetwriteintojson--the-constant-or-affine-writer)); `tile_size` / `tile_position` are 2-element `[int,int]` JSON arrays (an `initializer_list` `basic_json` + `MaybeAffine<int>` writes + two `push_back`s); `perf_mode` goes through `bir::to_json(json&, MatmultPerfMode)` and is **always emitted** (not skip-default). The 13-key roster and offsets are owned by the [BIR-JSON Record Schema §2.A](json-schema-catalog.md); this is the emission witness for the count.
 
 ### 3b. The Matmult family — thunks vs. wrapper (a refinement)
 
@@ -178,7 +178,7 @@ The pattern generalizes to three gate shapes:
 | vector / intrusive list | begin == end (empty) | `dependencies`, `loopnest`, `predicates`, `order`, `indirection_ins` |
 | optional sub-object | present-flag byte clear | `sync_info`, `debug` |
 
-This is symmetric with the loader, which reads each optional key with `j.find("k") != end()` / a value-with-default and restores the constructor default when the key is absent ([BIR JSON Loader](json-loader.md)). **Absence ⇄ default is therefore a fixpoint**, which is what makes skip-default safe for round-trip ([§7](#7-round-trip--toJson--from_json)). The corollary: an input that *redundantly spells* a default value is dropped on re-emit — a benign canonicalizing diff.
+This is symmetric with the loader, which reads each optional key with `j.find("k") != end()` / a value-with-default and restores the constructor default when the key is absent ([BIR JSON Loader](json-loader.md)). **Absence ⇄ default is therefore a fixpoint**, which is what makes skip-default safe for round-trip ([§7](#7-round-trip--tojson--from_json)). The corollary: an input that *redundantly spells* a default value is dropped on re-emit — a benign canonicalizing diff.
 
 > **Skip-default is decisive, not cosmetic.** It is why a default-elided BIR-JSON is the canonical representative of its equivalence class, and why the loader's defaults are the exact inverse of the writer's omissions. A reimplementer who emits all keys unconditionally produces *semantically equal* but *non-canonical* output that will diff against the reference re-emit.
 

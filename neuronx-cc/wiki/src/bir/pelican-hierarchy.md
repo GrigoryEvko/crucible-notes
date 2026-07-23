@@ -75,7 +75,7 @@ Two `pelican` typeinfos sit in the namespace but **outside** the `Expr` tree:
 
 That is **26 tree classes + `RefCountedObject` (the intrusive base of `Expr`, in-tree but counted with the spine) + `PelicanContext` + `PelicanAssertion` = 29** (see [§5](#5-the-29-count)).
 
-Every parent edge above was read mechanically from a RELA base-pointer reloc — none is reconstructed. The resolver walked all 29 `__si`/`__vmi`/`__class` records and recovered each record's parent; the decode is reproduced in [§4](#4-how-the-tree-was-recovered).
+Every parent edge above was read mechanically from a RELA base-pointer reloc — none is reconstructed. The resolver walked all 29 `__si`/`__vmi`/`__class` records and recovered each record's parent; the decode is reproduced in [§6](#6-how-the-tree-was-recovered).
 
 ### The two-way split, in design terms
 
@@ -84,7 +84,7 @@ The split under `Expr` is the single most important structural fact for a reimpl
 - **`SimpleExpr`** is the **leaf / atomic** side: things that are not an arithmetic combination of other expressions. It has no own data fields. Under it live the **index family** (everything that names a coordinate — loop IVs, AP indices, symbolic/shard IDs, runtime scalars) and the **opaque family** (`OpaqueFnExpr` — values produced at runtime by a function call whose delinearized form is "always illegal", i.e. cannot be treated as a legal address; see slot 12 below).
 - **`CompoundExpr`** is the **tree / arithmetic** side: a node whose value is computed from child expressions. Also field-less and abstract; its leaves are the affine workhorse (`AffineExpr`), n-ary sum (`SumExpr`), integer compare (`ICmpExpr`), and the binary `operand op int64` family (`BinaryExpr → {MultExpr, DivLikeExpr}`).
 
-> **GOTCHA —** the index family is a **deep chain, not a flat set**. `AffineIdx → FoldingIdx → InvariantId → APIndexLike → {APIndex, TiledAPIndex}` is four inheritance levels, and `FoldingIdx` is where the LLVM-`FoldingSet` interning mixin enters ([§3](#3-the-foldingidx-multiple-inheritance-mixin)). A reimplementer who flattens these into siblings will mis-place the interning seam and the `getNameStr` accessor (`SymbolicIdx`/`ShardId`).
+> **GOTCHA —** the index family is a **deep chain, not a flat set**. `AffineIdx → FoldingIdx → InvariantId → APIndexLike → {APIndex, TiledAPIndex}` is four inheritance levels, and `FoldingIdx` is where the LLVM-`FoldingSet` interning mixin enters ([§4](#4-the-foldingidx-multiple-inheritance-mixin)). A reimplementer who flattens these into siblings will mis-place the interning seam and the `getNameStr` accessor (`SymbolicIdx`/`ShardId`).
 
 > **QUIRK — collective ops *derive* their plain ops.** `CCDivExpr : public FloorDivExpr` and `CCModExpr : public ModuloExpr` (the binary base pointers at `0x90b490+0x10 → 0x90b478` and `0x90b4c0+0x10 → 0x90b4a8` prove it). The collective div/mod are **specialisations** that add a replica-group field on top of the plain floor-div / modulo — not independent siblings under `DivLikeExpr`. So `simplify()` on a `CCDivExpr` can fall through to `FloorDivExpr`'s arithmetic and only re-attach the collective metadata.
 

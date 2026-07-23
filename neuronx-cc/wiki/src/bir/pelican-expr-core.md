@@ -36,7 +36,7 @@ To rebuild a core node a reimplementer must reproduce:
 
 > **NOTE —** the base-class chain (which node derives from `BinaryExpr` vs `CompoundExpr` vs `Expr`) is owned by [the hierarchy page](./pelican-hierarchy.md). Here it is *inferred from construction evidence only*: a node that chains through `sub_60F4B0` is a `BinaryExpr`; a node built directly on `sub_5FE310` with a vector body is a `CompoundExpr`. That inference agrees with the typeinfo tree but is restated, not re-derived.
 
-The page proceeds: the universal header ([§1](#1-the-universal-header)), the `BinaryExpr` payload and the binary nodes ([§2](#2-binaryexpr--the-binary-nodes)), the compound nodes `AffineExpr`/`SumExpr` ([§3](#3-compound-nodes-affineexpr--sumexpr)), the consolidated member-offset map ([§4](#4-the-consolidated-member-offset-map)), the kind-tag census ([§5](#5-the-kind-tag-census)), and the adversarial self-verification ([§6](#6-adversarial-self-verification)).
+The page proceeds: the universal header ([§1](#1-the-universal-header)), the `BinaryExpr` payload and the binary nodes ([§2](#2-binaryexpr--the-binary-nodes)), the compound nodes `AffineExpr`/`SumExpr` ([§3](#3-compound-nodes-affineexpr--sumexpr)), the consolidated member-offset map ([§4](#4-the-consolidated-member-offset-map)), the kind-tag census ([§5](#5-the-kind-tag-census)), and the adversarial self-verification ([§6](#6-evidence-anchors-and-limits)).
 
 ---
 

@@ -70,7 +70,7 @@ Five discriminated unions appear in the descent and operand graph. Each is a sea
 | `klr::ReplicaGroup` | `literal == 3`, plus `named`/`unspecified` arms | `sub_500990:136`, `sub_4FF840:110` assert `…Tag::literal && "guaranteed by frontend API"` | CERTAIN (literal=3), MEDIUM (named/unspecified ordinals) |
 | `klr::TensorRef` | `1` = sbuf/psum access path, `4` = HBM path | `sub_4F6950` ([§4](#4-tensorref--the-universal-operand)) | CERTAIN |
 
-The `StmtOperWrapper → Operator → Operator<Op>Wrapper → <Op>` chain is the **wrapper pattern**: each leaf op `klr::<Op>` is boxed by an `Operator<Op>Wrapper` variant arm, and `codegenOperator` (`sub_50EDA0`) unboxes via the variant tag → a thunk → `codegenNc<Op>(Ptr<klr::<Op>>)`. The rationale and the full Operator→leaf routing table live in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--kloperator-kind--wrapper--leaf); this page documents the *records*, not the dispatch.
+The `StmtOperWrapper → Operator → Operator<Op>Wrapper → <Op>` chain is the **wrapper pattern**: each leaf op `klr::<Op>` is boxed by an `Operator<Op>Wrapper` variant arm, and `codegenOperator` (`sub_50EDA0`) unboxes via the variant tag → a thunk → `codegenNc<Op>(Ptr<klr::<Op>>)`. The rationale and the full Operator→leaf routing table live in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--klroperator-kind--wrapper--leaf); this page documents the *records*, not the dispatch.
 
 > **GOTCHA — "four levels" counts discriminants, not objects.** There are four *discriminated* levels (`Contents`, `Stmt`, `Operator`, leaf), but the carrier nesting is deeper: a `StmtOperWrapper` sits between `Stmt` and `Operator`, and an `Operator<Op>Wrapper` between `Operator` and `<Op>` (both named in RTTI). A reimplementer who models only four physical objects will mis-place the two wrapper boxes and read fields at the wrong offset.
 
@@ -115,7 +115,7 @@ The roster is a structured catalog, not a data dump — each row's type-id is th
 
 ### Leaf operator records
 
-This is the body of the roster — the ~60 leaf ops the codegen consumes. (The Operator-variant in-memory tags differ; see [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--kloperator-kind--wrapper--leaf).)
+This is the body of the roster — the ~60 leaf ops the codegen consumes. (The Operator-variant in-memory tags differ; see [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--klroperator-kind--wrapper--leaf).)
 
 | Class | type-id | fields | Class | type-id | fields |
 |---|---|---|---|---|---|
@@ -267,7 +267,7 @@ The variant's returned discriminant is `0` for the float arm, `1` for the int ar
 
 ## 7. Worked node layouts
 
-The codegen bodies reveal each leaf's field offsets directly. Two are reproduced here as representative — the multi-operand matmul and the routed copy — both pinned to their consumer bodies. The remaining ~60 follow the same `[+0] tag, [+10/+20/…] Ptr<TensorRef> operands, [+30…] scalar attrs` skeleton; their routing tags are tabulated in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--kloperator-kind--wrapper--leaf).
+The codegen bodies reveal each leaf's field offsets directly. Two are reproduced here as representative — the multi-operand matmul and the routed copy — both pinned to their consumer bodies. The remaining ~60 follow the same `[+0] tag, [+10/+20/…] Ptr<TensorRef> operands, [+30…] scalar attrs` skeleton; their routing tags are tabulated in [7.21](klir-codegen-dispatch.md#3-the-master-routing-table--klroperator-kind--wrapper--leaf).
 
 ### `NcMatMul` (183,0,9) — `codegenNcMatMul` `sub_4F7580`
 

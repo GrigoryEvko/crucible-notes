@@ -308,7 +308,7 @@ return std::string(reg + 296, reg + 296 + len@+304) // same Register-name read
 > belongs to the `IntRuntimeValueBase`/`BirIntRuntimeValue` *Expr-node* inside a dynamic
 > expression tree — the field `rewireDynamicAPRegisters` re-binds when registers are renamed.
 > They are different objects; see the correction note in
-> [Symbolic-AP → Register-ALU](../penguin/symbolic-ap-register-alu.md#1).
+> [Symbolic-AP → Register-ALU](../penguin/symbolic-ap-register-alu.md#1-what-kind-2--kind-3-means).
 
 ### OpaqueFnExpr — the escape hatch
 

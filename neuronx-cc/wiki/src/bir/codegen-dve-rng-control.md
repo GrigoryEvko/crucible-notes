@@ -161,7 +161,7 @@ The "8" is silicon, not an attribute: `InstMax` is header-only (zero op-keys); t
 
 ### Purpose
 
-The five KLR RNG ops install, advance, and checkpoint the per-partition PRNG state. The decisive fact is the remap table in [the non-1:1 opcode map](#the-non-1-1-opcode-map): the *names* do not match the *opcodes*. The wire-level RNG bit-fields are owned by [RNG-Family Encoding](../isa/rng-encoding.md) (2.18); the simulator's MT19937-64 / XORWOW kernels by [BirCodeGenLoop Compute Codegens](../nki/bircodegen-compute.md) (6.5.11).
+The five KLR RNG ops install, advance, and checkpoint the per-partition PRNG state. The decisive fact is the remap table in [the non-1:1 opcode map](#the-non-11-opcode-map): the *names* do not match the *opcodes*. The wire-level RNG bit-fields are owned by [RNG-Family Encoding](../isa/rng-encoding.md) (2.18); the simulator's MT19937-64 / XORWOW kernels by [BirCodeGenLoop Compute Codegens](../nki/bircodegen-compute.md) (6.5.11).
 
 ### Entry Point
 
