@@ -222,7 +222,9 @@ nki.isa.builtin_custom_op(
     lib_file_name = <libbuiltincustomop_cpu*>, # the embedded builtin .so
     ulib_to_ucode_version = …, ulib_to_isa_version = …,
     srcs = [input_tensor(s)],
-    dsts = [out_values, out_indices?])          # → §3 → §1 → CustomOp → §5 wire
+    dsts = [out])                               # ONE tensor; for TOPK its leading axis is 2
+                                                #   (plane 0 = values, plane 1 = indices)
+                                                # → §3 → §1 → CustomOp → §5 wire
 ```
 
 The crucial observation: **K, axis, descending-ness, and index-output are NOT parameters of `builtin_custom_op`.** There is no `k=`, no `axis=`, no `descending=`. The caller encodes them structurally:
@@ -231,9 +233,9 @@ The crucial observation: **K, axis, descending-ness, and index-output are NOT pa
 |---|---|
 | **K** and **descending/sorted** | baked into *which* `function_name` is chosen, and into the **`dst` tensor shapes** (out length = K); captured as `dsts_shapes` in `CustomOp.__init__` (§4). The bitonic-sort lib implements the comparator/K internally. |
 | **axis** | expressed by the **layout / access pattern** of the src/dst tensors — i.e. the AP packed into the `0x86` payload bundles (§5) — not as a scalar attribute. |
-| **index output** (argsort indices) | an **additional `dst` tensor** in `dsts` (TOPK returns values *and* indices → `dsts` has 2 entries). |
+| **index output** (argsort indices) | packed into the **single** output tensor's leading axis: the builtin's output is one rank-3 tensor `[2, d0, d1]` — plane 0 = values, plane 1 = indices — so `dsts` carries **one** entry, captured whole as `dsts_shapes`. |
 
-> **GOTCHA — the ≤1-output rule vs TOPK's two outputs.** The CoreV2 validator forbids more than one output per custom op (`l.4195`). A TOPK that returns both values *and* indices cannot emit two `0x86` OUTPUT bundles. It is therefore realized either as a builtin whose single `CUSTOM_OP` output is a *packed values+indices buffer*, or split upstream into separate ops. The exact values/indices packing lives inside `libbuiltincustomop`, whose internal ABI is not in this binary — which of the two realizations applies is [SPECULATIVE].
+> **GOTCHA — the ≤1-output rule is satisfied by packing values+indices into one tensor.** The CoreV2 validator forbids more than one output per custom op (`l.4195`), and TOPK returns both values *and* indices. It does not emit two `0x86` OUTPUT bundles: the builtin writes **one** output tensor whose leading axis is 2 — plane 0 = values, plane 1 = indices. The embedded `libbuiltincustomop_cpu*` Xtensa images state this directly: `sort_and_merge.cpp` asserts `t_out.size(0) == 2 && t_out.size(1) == data_dim0 && t_out.size(2) == data_dim1` (at VA `0x8407d44c`, `0x8407d4da`, `0x8407d568` in cpu0), and the sort/merge routines carry paired `*_data_buffer` / `*_indices_buffer` throughout `bitonic_sort.cpp` (e.g. `left_data_buffer != nullptr && left_indices_buffer != nullptr` at `bitonic_sort.cpp:360`, `merged_data_buffer`/`merged_indices_buffer` at `:425`, `data_buffer`/`indices_buffer_i32` at `:523`). So one BIR output (the `[2, …]` tensor) carries both planes and the ≤1-output rule holds.
 
 ---
 
