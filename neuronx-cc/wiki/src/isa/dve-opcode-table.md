@@ -8,7 +8,7 @@ This page is the byte-for-byte decode of the DVE **`opcode_table`** blob — the
 
 `opcode_table.bin` is a **headerless, 256-slot, direct-opcode-indexed array**. There is no magic, no length prefix, no offset table — the whole file *is* the array, and slot `k` is the descriptor for DVE opcode integer `k`. The entry stride is `filesize / 256`: **8 bytes** (gen2, `u64`-LE) or **4 bytes** (gen3/gen4, `u32`-LE). Each nonzero entry is a packed selector into the *control* table(s): a low **fast-row** field and a high **slow-program** field. A zero entry means the opcode is **disabled** in this table-set. The set of nonzero slots equals the table-set's `ops[]` roster (plus slot 0, the idle/reset descriptor), to the integer.
 
-The bar for this page: a reader can **parse any `opcode_table.bin` and map every opcode to its microcode rows** — compute the stride, read slot `k` at byte `k·stride`, split it into `(fast_row, slow_row)`, and know which control rows the on-device sequencer will fetch. Every claim carries a confidence tag (CONFIRMED = exact from the shipped bytes + JSON; STRONG = cross-table-consistent; INFERRED = read off the layout, no shipped decoder; SPECULATIVE). The byte values quoted are `xxd`/`struct.unpack` of the shipped blob; none is fabricated. The **payload** the rows point at — the control-word and datapath-word field maps — is the scope of [2.26 control table](dve-control-table.md) *(planned)* and [2.27 datapath table](dve-datapath-table.md) *(planned)*; this page decodes only the opcode→row map.
+The bar for this page: a reader can **parse any `opcode_table.bin` and map every opcode to its microcode rows** — compute the stride, read slot `k` at byte `k·stride`, split it into `(fast_row, slow_row)`, and know which control rows the on-device sequencer will fetch. Every byte value quoted is an `xxd` / `struct.unpack` of the shipped blob. The **payload** the rows point at — the control-word and datapath-word field maps — is the scope of [2.26 control table](dve-control-table.md) *(planned)* and [2.27 datapath table](dve-datapath-table.md) *(planned)*; this page decodes only the opcode→row map.
 
 ## At a glance
 
@@ -32,7 +32,7 @@ gen2  (u64):  row  = V & 0x7F ;  slow_idx = V >> 7
 gen3/4 (u32): fast = V & 0xFF ;  slow_row = V >> 8        # slow == 0 → fast-only op
 ```
 
-The opcode counts mirror [1.11](../arch/dve-engine.md)'s 46→52→59 roster growth exactly: gen2 `default` `ops[]` = 46 (the blob adds slot 0 + four residents `{147,240,241,242}` → 51 nonzero; of those, 147/240 are promoted into the gen3/4 roster and 241/242 are gen2-only — §7); gen3 = 52 (+idle = 53); gen4 = 59 (+idle = 60). CONFIRMED.
+The opcode counts mirror [1.11](../arch/dve-engine.md)'s 46→52→59 roster growth exactly: gen2 `default` `ops[]` = 46 (the blob adds slot 0 + four residents `{147,240,241,242}` → 51 nonzero; of those, 147/240 are promoted into the gen3/4 roster and 241/242 are gen2-only — §7); gen3 = 52 (+idle = 53); gen4 = 59 (+idle = 60).
 
 `default_opcode_table.bin` hashes (sha256, cp310):
 
@@ -42,7 +42,7 @@ gen3  894b52a1ed661ada99860783db5077e853cd05e900354cb0a0ad3918741ad0a1
 gen4  3a796d2cc413247d8b32e1d1ba4cb2a75f209939604b40838f495286e9a57623
 ```
 
-The gen3 blob is `md5`-identical across the cp310/cp311/cp312 wheels (`33215204be9e838d41a4af59584f0c4f`). CONFIRMED.
+The gen3 blob is `md5`-identical across the cp310/cp311/cp312 wheels (`33215204be9e838d41a4af59584f0c4f`).
 
 ---
 
@@ -50,7 +50,7 @@ The gen3 blob is `md5`-identical across the cp310/cp311/cp312 wheels (`33215204b
 
 The blob is a flat array keyed by the raw DVE opcode integer. No header, no magic, no offset table, no length prefix. Three proofs, all from the bytes.
 
-**(a) `size == 256 · stride`, exactly.** `2048 = 256·8` (gen2), `1024 = 256·4` (gen3/gen4). No bytes are left for a header — the file is wholly the array. CONFIRMED.
+**(a) `size == 256 · stride`, exactly.** `2048 = 256·8` (gen2), `1024 = 256·4` (gen3/gen4). No bytes are left for a header — the file is wholly the array.
 
 **(b) Nonzero slots == the JSON `ops[]` roster (+ idle slot 0), zero off-by-one.** Parsing gen3 `default` as 256 `u32`-LE, the nonzero indices are
 
@@ -60,7 +60,7 @@ The blob is a flat array keyed by the raw DVE opcode integer. No header, no magi
  157,158, 188, 229,230, 232,233,234, 240}
 ```
 
-The set `{65..240}` is exactly gen3 `default` `ops[]` (52 ints, [1.11](../arch/dve-engine.md)); index 0 is the extra idle/reset slot. `nonzero − ops = {0}`; `ops − nonzero = {}`. CONFIRMED — re-derived this turn:
+The set `{65..240}` is exactly gen3 `default` `ops[]` (52 ints, [1.11](../arch/dve-engine.md)); index 0 is the extra idle/reset slot. `nonzero − ops = {0}`; `ops − nonzero = {}`. Across all three generations:
 
 ```
 gen2: |ops|=46 |nonzero|=51   nonzero−ops = {0,147,240,241,242}   ops−nonzero = {}
@@ -68,7 +68,7 @@ gen3: |ops|=52 |nonzero|=53   nonzero−ops = {0}                   ops−nonzer
 gen4: |ops|=59 |nonzero|=60   nonzero−ops = {0}                   ops−nonzero = {}
 ```
 
-gen2's four extra nonzero slots `{147,240,241,242}` are *residents* — nonzero but absent from the 46-op gen2 roster (§7). At gen3/gen4, 147 and 240 are **promoted into the `ops[]` roster** (so they are rostered there, not residents) while 241/242 are zeroed; gen3/gen4 therefore carry no residents and their nonzero set is exactly `ops[] + idle` (§7 CORRECTION, [2.28](dve-engine-migration.md)). If the blob were header+offset, the nonzero positions would not coincide with the raw opcode integers — they do, to the byte.
+gen2's four extra nonzero slots `{147,240,241,242}` are *residents* — nonzero but absent from the 46-op gen2 roster (§7). At gen3/gen4, 147 and 240 are **promoted into the `ops[]` roster** (so they are rostered there, not residents) while 241/242 are zeroed; gen3/gen4 therefore carry no residents and their nonzero set is exactly `ops[] + idle` (§7, [2.28](dve-engine-migration.md)). If the blob were header+offset, the nonzero positions would not coincide with the raw opcode integers — they do, to the byte.
 
 **(c) Stride proof by byte address (gen3 `default`).** Opcode 65 (`TensorTensorArithOp`) must live at `65·4 = 260 = 0x104`:
 
@@ -81,7 +81,7 @@ $ xxd -s 0x3a8 -l 4 …                # opcode 234 SelectReduce @ 234·4 = 0x3A
 000003a8: 7d00 0000     →  0x0000007d  →  fast 0x7d=125, slow 0 ✓
 ```
 
-Every opcode resolves at `offset = opcode · stride`. The index *is* the opcode. CONFIRMED.
+Every opcode resolves at `offset = opcode · stride`. The index *is* the opcode.
 
 > **GOTCHA — only the opcode_table is opcode-keyed.** The descriptor it yields is a *control row*, and the sibling `control_*`/`datapath` tables are keyed by that **row**, not by the opcode (the datapath block index equals `fast_row`, [2.27](dve-datapath-table.md) *(planned)*). The opcode→row indirection happens exactly once, here.
 
@@ -94,9 +94,9 @@ stride = filesize / 256          # 256 = the full 8-bit opcode index space
   gen4 : 1024 / 256 = 4 B  (u32-LE)
 ```
 
-> **CORRECTION — divide by 256, not by the opcode count.** A tempting wrong model is `filesize / opcode_count`. gen2 `default` has 46 ops, and `2048 / 46 = 44.5` — not an integer, so the model is false. The table is sized to the **full 256-slot index space**, most of which is zero (disabled opcodes). `opcode_count` tells you how many slots are *nonzero* (membership), never the stride. CONFIRMED — the only divisor that yields an integer stride consistent with the byte-address proof of §1(c) is 256.
+> **GOTCHA — divide by 256, not by the opcode count.** `filesize / opcode_count` is the tempting wrong model: gen2 `default` has 46 ops and `2048 / 46 = 44.5`, not an integer. The table is sized to the **full 256-slot index space**, most of which is zero (disabled opcodes), and 256 is the only divisor that yields a stride consistent with the byte-address proof of §1(c). `opcode_count` tells you how many slots are *nonzero* — membership, never stride.
 
-**The gen2→gen3 halving (2048→1024) is a width change, not a row-count change.** gen2's `u64` entries are wasteful: across the gen2 `default` set the maximum entry value is `0x9cf` (12 bits), and **every** entry's bytes `[2..7]` are `0x00` — verified this turn (`gen2 entries with bytes[2..7] nonzero: []`). gen3 re-packed the same 256 slots into `u32` and halved the file. Same index space, same information, narrower word. CONFIRMED.
+**The gen2→gen3 halving (2048→1024) is a width change, not a row-count change.** gen2's `u64` entries are wasteful: across the gen2 `default` set the maximum entry value is `0x9cf` (12 bits), and **every** entry's bytes `[2..7]` are `0x00` (the set of gen2 entries with a nonzero byte in `[2..7]` is empty). gen3 re-packed the same 256 slots into `u32` and halved the file. Same index space, same information, narrower word.
 
 ## 3. The bit-split — forced, not chosen
 
@@ -110,7 +110,7 @@ split @ bit 8  (row = V & 0xFF):  7 entries land on row ≥ 128 → OUT OF RANGE
     op77 V=0x1a5 → row 165      op102 V=0x9cf → row 207
     op105 V=0x5cf → row 207     op106 V=0x281 → row 129    op159 V=0x180 → row 128
 split @ bit 7  (row = V & 0x7F):  0 entries out of range; ALL land on a used row → VALID, unique
-⇒ gen2 split is BIT 7:  control_row = V & 0x7F ;  slow_idx = V >> 7        CONFIRMED — forced
+⇒ gen2 split is BIT 7:  control_row = V & 0x7F ;  slow_idx = V >> 7        (forced — no other split fits)
 ```
 
 **gen3 / gen4 `default` (`control_fast` and `control_slow` are each 256-row tables):**
@@ -119,14 +119,14 @@ split @ bit 7  (row = V & 0x7F):  0 entries out of range; ALL land on a used row
 split @ bit 8  (fast = V & 0xFF, slow = V >> 8):
     gen3: 53 nonzero — all fast rows used; 16 entries with slow ≠ 0, all on used slow rows → VALID
     gen4: 60 nonzero — all fast rows used; 18 entries with slow ≠ 0 → VALID
-⇒ gen3/4 split is BIT 8:  fast_row = V & 0xFF ;  slow_row = V >> 8         CONFIRMED
+⇒ gen3/4 split is BIT 8:  fast_row = V & 0xFF ;  slow_row = V >> 8
 ```
 
-**Why the split moved 7→8.** gen2 had a 128-row combined control table, so 7 bits address it and the spare top bits hold the proto-slow index. gen3 grew control to a 256-row `control_fast_table` (needs the full low byte) and gave the slow program its own 256-row `control_slow_table` (the next byte). The split tracks the control-table row count exactly. CONFIRMED — the schema change is the one fixed in [1.11](../arch/dve-engine.md) (`dve_table_keys` goes from 3 to 4 keys at gen3).
+**Why the split moved 7→8.** gen2 had a 128-row combined control table, so 7 bits address it and the spare top bits hold the proto-slow index. gen3 grew control to a 256-row `control_fast_table` (needs the full low byte) and gave the slow program its own 256-row `control_slow_table` (the next byte). The split tracks the control-table row count exactly. This is the same schema change [1.11](../arch/dve-engine.md) records as `dve_table_keys` going from 3 to 4 keys at gen3.
 
 ## 4. The cross-generation slow-selector invariant
 
-The gen2 high field (`V>>7`) and the gen3 high field (`V>>8`) are the **same logical field** — the slow-program selector — with gen3 having doubled the slow-table granularity. Proof: for every opcode that is slow in both gen2 and gen3 `default`, `gen3_slow == 2 · gen2_slow`, exactly. Re-derived this turn:
+The gen2 high field (`V>>7`) and the gen3 high field (`V>>8`) are the **same logical field** — the slow-program selector — with gen3 having doubled the slow-table granularity. Proof: for every opcode that is slow in both gen2 and gen3 `default`, `gen3_slow == 2 · gen2_slow`, exactly:
 
 ```
 op    gen2 (V>>7)   gen3 (V>>8)   ratio
@@ -145,9 +145,9 @@ op    gen2 (V>>7)   gen3 (V>>8)   ratio
                                           → 12 / 12 EXACT
 ```
 
-A coincidence this clean across 12 ops at this many distinct values is not plausible: the high field is the same selector, scaled ×2 when gen3 split control into a 256-row slow table (gen2 packed slow in 7 spare bits of a 128-row combined table). This is an arithmetic fact over the shipped bytes, independent of any decompiled decoder. CONFIRMED.
+A coincidence this clean across 12 ops at this many distinct values is not plausible: the high field is the same selector, scaled ×2 when gen3 split control into a 256-row slow table (gen2 packed slow in 7 spare bits of a 128-row combined table). This is an arithmetic fact over the shipped bytes, independent of any decompiled decoder.
 
-> **NOTE — the slow field's exact role is INFERRED past the ×2 scaling.** The ×2 invariant shows it indexes the `control_slow` table. Whether the on-device sequencer further indirects (e.g. uses it as a program *base* rather than a row index) cannot be verified from this wheel, because the unit that *decodes* a slow row into datapath signals is firmware/libtpu-side and does not ship here (§6). The opcode_table *format* is fully decoded; the row payload is [2.26](dve-control-table.md)/[2.27](dve-datapath-table.md) *(planned)*.
+> **NOTE — past the ×2 scaling, the slow field's role is [INFERRED].** The ×2 invariant shows it indexes the `control_slow` table. Whether the on-device sequencer further indirects (e.g. uses it as a program *base* rather than a row index) cannot be verified from this wheel, because the unit that *decodes* a slow row into datapath signals is firmware/libtpu-side and does not ship here (§6). The opcode_table *format* is fully decoded; the row payload is [2.26](dve-control-table.md)/[2.27](dve-datapath-table.md) *(planned)*.
 
 ## 5. Byte layout & a worked decode
 
@@ -155,10 +155,10 @@ A coincidence this clean across 12 ops at this many distinct values is not plaus
 
 | Field | gen2 (`u64`-LE, 8 B) | gen3/gen4 (`u32`-LE, 4 B) | Meaning | Confidence |
 |---|---|---|---|---|
-| Low row | bits `[0:7]` (`V & 0x7F`) | bits `[0:8]` (`V & 0xFF`) | `control[_fast]` row — the inline (single-cycle) program | CONFIRMED |
-| High slow | bits `[7:]` (`V >> 7`) | bits `[8:]` (`V >> 8`) | slow-program index (`>0` ⇒ multi-cycle / iterative op) | CONFIRMED |
-| Upper pad | bits `[12:64]` always 0 | — | gen2 `u64` waste (max value `0x9cf`) | CONFIRMED |
-| Whole entry | `== 0` | `== 0` | opcode **disabled** in this set | CONFIRMED |
+| Low row | bits `[0:7]` (`V & 0x7F`) | bits `[0:8]` (`V & 0xFF`) | `control[_fast]` row — the inline (single-cycle) program | CERTAIN |
+| High slow | bits `[7:]` (`V >> 7`) | bits `[8:]` (`V >> 8`) | slow-program index (`>0` ⇒ multi-cycle / iterative op) | CERTAIN |
+| Upper pad | bits `[12:64]` always 0 | — | gen2 `u64` waste (max value `0x9cf`) | CERTAIN |
+| Whole entry | `== 0` | `== 0` | opcode **disabled** in this set | CERTAIN |
 
 ### Reference parser (annotated C)
 
@@ -230,11 +230,11 @@ $ rg -l 'opcode_table' <cp310-wheel-tree>/   # excluding .bin
   …/neuronx_cc-…dist-info/RECORD              # the manifest only
 ```
 
-The literal never occurs in any Python source or any shared-library `.text`. CONFIRMED — verified this turn.
+The literal never occurs in any Python source or any shared-library `.text`.
 
-**(b) `dve_info.json` references the blob by filename, beside an integer `ops[]` roster that equals the blob's nonzero set.** Each table-set is one JSON object: `{name, opcode_table, control_fast_table, control_slow_table, datapath_table, ops[]}`. The four table fields are *filenames*; `ops[]` is a flat integer list. The compiler-side DVE pass (`neuronxcc::backend::LowerDVE::fillAllDVEInfos`, pinned at `libwalrus.so` `@0x116f9d0` in the libwalrus disassembly — STRONG, the `.so` is not retained in this repo so the address is cited, not re-derived this turn) walks `dve_table_keys`, reads each table's filename, and deserializes the referenced `.bin` into a `std::vector<unsigned char>` via the `nlohmann …, std::vector<unsigned char>` `from_json` template — i.e. as an **opaque byte vector** for embedding into the NEFF. The only opcode-level logic compiler-side is *membership*: `LowerDVE::checkMissingOpcodes` (`@0x116b260`) fatals with *"dve_info.json is missing a DVE opcodes table that contains union of: …"* if the chosen set's `ops[]` (the JSON int list, a `DenseSet<u32>`) does not cover every DVE opcode the module emits. That assertion reads the JSON `ops[]`, never the `.bin` rows.
+**(b) `dve_info.json` references the blob by filename, beside an integer `ops[]` roster that equals the blob's nonzero set.** Each table-set is one JSON object: `{name, opcode_table, control_fast_table, control_slow_table, datapath_table, ops[]}`. The four table fields are *filenames*; `ops[]` is a flat integer list. The compiler-side DVE pass — `neuronxcc::backend::LowerDVE::fillAllDVEInfos` at `libwalrus.so` `@0x116f9d0` — walks `dve_table_keys`, reads each table's filename, and deserializes the referenced `.bin` into a `std::vector<unsigned char>` via the `nlohmann …, std::vector<unsigned char>` `from_json` template — i.e. as an **opaque byte vector** for embedding into the NEFF. The only opcode-level logic compiler-side is *membership*: `LowerDVE::checkMissingOpcodes` (`@0x116b260`) fatals with *"dve_info.json is missing a DVE opcodes table that contains union of: …"* if the chosen set's `ops[]` (the JSON int list, a `DenseSet<u32>`) does not cover every DVE opcode the module emits. That assertion reads the JSON `ops[]`, never the `.bin` rows.
 
-> **NOTE — opaque-ship is the reason field semantics are firmware-side.** The compiler treats `opcode_table.bin` as bytes to copy, not a structure to read. The unit that turns `(fast_row, slow_row)` into datapath mux/ALU signals — the row *decoder* — is on the silicon (firmware/libtpu side) and does **not** ship in this wheel. Consequently this page's **format** claims (stride, index scheme, bit-split, membership) are CONFIRMED from the bytes + JSON, while the **meaning** of a row is INFERRED from the cross-gen ×2 invariant (§4) and the architecture page, not from a decompiled decoder. A reimplementer reproducing the compiler need only ship the blob verbatim and assert `ops[]` coverage; a reimplementer reproducing the *engine* must additionally decode the rows ([2.26](dve-control-table.md)/[2.27](dve-datapath-table.md) *(planned)*).
+> **NOTE — opaque-ship is the reason field semantics are firmware-side.** The compiler treats `opcode_table.bin` as bytes to copy, not a structure to read. The unit that turns `(fast_row, slow_row)` into datapath mux/ALU signals — the row *decoder* — is on the silicon (firmware/libtpu side) and does **not** ship in this wheel. Consequently this page's **format** claims — stride, index scheme, bit-split, membership — are read off the bytes and the JSON, while the **meaning** of a row is **[INFERRED]** from the cross-gen ×2 invariant (§4) and the architecture page rather than from a decompiled decoder. A reimplementer reproducing the compiler need only ship the blob verbatim and assert `ops[]` coverage; a reimplementer reproducing the *engine* must additionally decode the rows ([2.26](dve-control-table.md)/[2.27](dve-datapath-table.md) *(planned)*).
 
 ## 7. Table-set membership, residents, and the idle slot
 
@@ -246,7 +246,7 @@ DROPPED (entry → 0x0):  {88 MaxPoolSelect, 108 Max8, 109 MatchValueLoad,
 ADDED   (0x0 → nonzero): {138, 139, 143, 154, 155, 230}         # bf16-fused + cache ops on
 ```
 
-Ops present in both sets carry **different** row numbers, because each set compacts its own control/datapath tables — the row number is set-local; the opcode is global. CONFIRMED this turn.
+Ops present in both sets carry **different** row numbers, because each set compacts its own control/datapath tables — the row number is set-local; the opcode is global.
 
 **`saturate` (gen4 only) is a datapath-payload variant, not an opcode-map variant.** Its `opcode_table` differs from gen4 `default` in exactly **2 of 256** entries — op225 (`SparsityCompressTag`, fast 170→171) and op234 (`SelectReduce`, fast 180→181):
 
@@ -255,7 +255,7 @@ gen4 default vs saturate opcode_table diffs: 2
     op225: 0xaa → 0xab     op234: 0xb4 → 0xb5
 ```
 
-The opcode map is essentially identical; the divergence is in the `datapath` blobs (clamp vs wrap). CONFIRMED — matches [1.11](../arch/dve-engine.md)'s *"`saturate` is not an alias of `default`"* QUIRK.
+The opcode map is essentially identical; the divergence is in the `datapath` blobs (clamp vs wrap). This matches [1.11](../arch/dve-engine.md)'s *"`saturate` is not an alias of `default`"* QUIRK.
 
 **Slot 0 is the engine idle/reset descriptor, invariant across every set in a generation.** It is *not* a real opcode (opcode 0 is never emitted) — it is the default/reset program pointer:
 
@@ -265,22 +265,23 @@ gen3 slot-0 = 0x600   (all 5 sets)     fast 0, slow 6
 gen4 slot-0 = 0x600   (all 3 sets)     fast 0, slow 6
 ```
 
-CONFIRMED this turn. In gen2, slot-0's descriptor `0x180` is byte-identical to op159 `EngineNop` — the NOP op literally points at the reset program; gen3 dropped `EngineNop`, so `0x600` has no named twin there.
+In gen2, slot-0's descriptor `0x180` is byte-identical to op159 `EngineNop` — the NOP op literally points at the reset program; gen3 dropped `EngineNop`, so `0x600` has no named twin there.
 
 **gen2 residents `{147, 240, 241, 242}` — two promoted, two gen2-only.** Beyond its 46-op JSON roster, gen2's `opcode_table` carries four fixed nonzero entries: 147 = `0x102` (`TransposeTensorScalarArithOp`), 240 = `0x369` (`ExtendedInst`), 241 = `0x074`, 242 = `0x077`. These four split into two classes at gen3:
 
 - **147 and 240 are PROMOTED into the gen3/gen4 JSON `ops[]` roster** — on gen3 slot 147 = `0x0410` and slot 240 = `0x0C68`, both **roster members**, not residents (gen4: 147 = `0x0420`, 240 = `0x0C6F`). So on gen3/gen4 they are ordinary rostered ops, and the gen3/gen4 nonzero set = `ops[]` + idle for them.
 - **Only 241 and 242 are gen2-decode-table-only** — `0x074` (control row 116) / `0x077` (control row 119); gen3/gen4 **zero** these slots (`0x00000000`). They are decode-resident on gen2 but never compiler-emittable on any gen, and become real compiler ops on **other engines** at gen3 (241 = `DmaGatherTranspose` on DMA/gather, 242 = `NonzeroWithCount` on Pool). The slot values `0x074`/`0x077` are control **rows** 116/119, not opcodes.
 
-CONFIRMED that all four entries exist on gen2; the engine-migration reconcile and the 241/242 names are resolved in [2.28](dve-engine-migration.md).
+All four entries exist on gen2; the engine-migration reconcile and the 241/242 names are worked out in [2.28](dve-engine-migration.md), where they resolve to `0xF1` = `DmaGatherTranspose` and `0xF2` = `NonzeroWithCount`.
 
-> **CORRECTION (refined by [2.28](dve-engine-migration.md)) — not all four are "gen2-only", and gen3/4 do not carry "zero residents" for all four.** An earlier reading of this section called `{147, 240, 241, 242}` all "gen2-only residents" and said gen3/gen4 carry zero residents. Binary re-check ([2.28 §2](dve-engine-migration.md), `struct.unpack` of each gen's blob): **147 and 240 are PROMOTED into the gen3/gen4 `ops[]` roster** (they are rostered ops there, not residents); only **241 and 242** are gen2-decode-table-only (zeroed on gen3/gen4). The "gen2-only for all four" and "gen3/4 zero residents" sub-claims are corrected here; the residents exist exactly as found, but their gen3/4 fate differs by op. The 241/242 names — earlier marked INFERRED ("extended-op helper candidates") and read as opcode `0x74` — are resolved in [2.28](dve-engine-migration.md): `0xF1`=`DmaGatherTranspose`, `0xF2`=`NonzeroWithCount`, and `0x074` is the slot **value** (control row 116), not opcode `0x74`. CONFIRMED.
+> **GOTCHA — `0x074` is a slot *value*, not an opcode.** Slot 241's descriptor `0x074` decodes as control row 116; it is not a reference to opcode `0x74`. The same applies to slot 242's `0x077` (control row 119). Reading these as opcodes produces a phantom cross-reference into an unrelated part of the opcode space.
 
-> **GOTCHA — opcode_table rows ≠ the wire bundle word `0x10NN`.** Two different "opcode→number" structures share the opcode integer as a hinge but are otherwise unrelated. The 16-bit **bundle header word** `0x10NN` (`NN` = opcode byte, `0x10` = `inst_word_len` for the 64-byte bundle; [PE matmul page](pe-matmul-encoding.md) `setupHeader`) is what the compiler **emits** into each instruction. The `opcode_table` entry is a **control-row selector** the on-device sequencer uses to **decode** a received opcode. J27's word low byte equals the `opcode_table` index, but its high byte (`0x10`, a length) has no bearing on the fast/slow rows. The opcode integer is the hinge; encode and decode are different layers. The 0xF1/0xF2 residency reconciliation is [2.28 DVE engine migration](dve-engine-migration.md) *(planned)*.
+> **GOTCHA — opcode_table rows ≠ the wire bundle word `0x10NN`.** Two different "opcode→number" structures share the opcode integer as a hinge but are otherwise unrelated. The 16-bit **bundle header word** `0x10NN` (`NN` = opcode byte, `0x10` = `inst_word_len` for the 64-byte bundle; [PE matmul page](pe-matmul-encoding.md) `setupHeader`) is what the compiler **emits** into each instruction. The `opcode_table` entry is a **control-row selector** the on-device sequencer uses to **decode** a received opcode. The header word's low byte equals the `opcode_table` index, but its high byte (`0x10`, a length) has no bearing on the fast/slow rows. The opcode integer is the hinge; encode and decode are different layers. The 0xF1/0xF2 residency reconciliation is [2.28 DVE engine migration](dve-engine-migration.md) *(planned)*.
 
-## 8. Confidence summary
+## 8. Evidence summary
 
-**CONFIRMED** (byte-exact from the shipped blobs + JSON):
+Read byte-exact from the shipped blobs plus `dve_info.json`:
+
 - Headerless, 256-slot, direct opcode-indexed array; opcode `k` at byte `k·stride`.
 - `stride = filesize/256` = 8 B (gen2, `u64`-LE) / 4 B (gen3,gen4, `u32`-LE); not `filesize/opcode_count`.
 - `entry == 0` ⇒ opcode disabled; nonzero ⇒ enabled (nonzero set == JSON `ops[]` + idle, to the integer).
@@ -290,11 +291,12 @@ CONFIRMED that all four entries exist on gen2; the engine-migration reconcile an
 - Slot-0 invariant idle/reset descriptor (`0x180` gen2 / `0x600` gen3,4) across all sets.
 - The compiler ships the blob opaque: `opcode_table` appears in no `.py`/`.so` text, only in JSON + the manifest.
 
-**STRONG**: control-row sharing by arith/bitvec op-family (one sequencer program per family); the `LowerDVE` loader address `@0x116f9d0` and the membership-assert at `@0x116b260` (from the libwalrus disassembly; the `.so` is not retained here, so cited not re-derived).
+## Limits of this reading
 
-**INFERRED**: the names of gen2-only residents 241/242; the slow field's precise role past indexing `control_slow` (the firmware row decoder does not ship here).
-
-**SPECULATIVE / out of scope**: the control-word and datapath-word bit-field semantics — [2.26](dve-control-table.md)/[2.27](dve-datapath-table.md) *(planned)*.
+- Control-row sharing by arith/bitvec op-family — one sequencer program per family — is **[INFERRED]** from equal descriptors, not from a decoder.
+- The `LowerDVE` loader at `@0x116f9d0` and the membership assert at `@0x116b260` come from the libwalrus disassembly, which is not carried in this repo alongside the blobs.
+- The slow field's role past indexing `control_slow` is **[INFERRED]**: the firmware row decoder does not ship in this wheel.
+- The control-word and datapath-word bit-field semantics are **[UNRESOLVED]** here and belong to [2.26](dve-control-table.md) / [2.27](dve-datapath-table.md) *(planned)*.
 
 ## Cross-References
 
