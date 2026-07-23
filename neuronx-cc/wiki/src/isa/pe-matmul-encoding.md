@@ -12,7 +12,7 @@ This page is the byte-for-byte field map of every instruction the **PE array** (
 
 Every bundle is a `std::array<unsigned char, 64>`: emplaced into a `SmallVector`, pxor-zeroed in full (so any byte the encoder does not write is a hard `0x00`), header-stamped, field-filled, validated by the ISA checker, and `fwrite(buf, 1, 0x40, bin)`-ed. The arch map is the one fixed in [1.05 codename taxonomy](../arch/codename-taxonomy.md): `CoreV2GenImpl`=20, `CoreV3GenImpl`=30, `CoreV4GenImpl`=40, dispatched from the `std::variant<monostate, CoreV2Gen, CoreV3Gen, CoreV4Gen>` in `initCodegen`.
 
-The bar for this page: a reader can **byte-encode any PE matmul instruction by hand**, knowing for each control byte its offset, width, semantic, the value source, the `<op>_info.so` / pybind assert string that *names* it, and the disassembly store-site that pins it. Every field row carries a confidence tag (CONFIRMED = exact store disassembled; STRONG = LUT/predicate cross-checked; INFERRED = zero-init implied, no direct store; SPECULATIVE). The control bands are recovered from the encoder bodies in `libwalrus.so`; bit positions are pinned against the literal shift/mask constants in the disassembly, never inferred. Where a bit has no recovered name, it is tagged INFERRED/unnamed — no field name is fabricated.
+The bar for this page: a reader can **byte-encode any PE matmul instruction by hand**, knowing for each control byte its offset, width, semantic, the value source, the `<op>_info.so` / pybind assert string that *names* it, and the disassembly store-site that pins it. Every field row carries a confidence tag: **CERTAIN** = the exact store is disassembled; **HIGH** = LUT- or predicate-cross-checked; **MEDIUM** = zero-init implied, no direct store. The control bands are recovered from the encoder bodies in `libwalrus.so`; bit positions are pinned against the literal shift/mask constants in the disassembly, never inferred. Where a bit has no recovered name it is left unnamed — no field name is fabricated.
 
 ## At a glance
 
@@ -36,7 +36,7 @@ The whole family shares one skeleton — bytes `0x00..0x03` are the header, `0x1
  byte +0x02..+0x03  reserved = 0x0000
 ```
 
-The header is written either by a virtual call to `setupHeader`, or — in every CoreV4 generate arm — by an inlined devirtualised `mov WORD[base], <opcode>` after the body checks that `*(*this+0x48)` still points at the concrete `setupHeader` (identical wire result). So the 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian: `0x1002` (dense MM), `0x1009`/`0x100A`/`0x10E3` (MX). CONFIRMED — `setupHeader @0x143f440` disassembled below.
+The header is written either by a virtual call to `setupHeader`, or — in every CoreV4 generate arm — by an inlined devirtualised `mov WORD[base], <opcode>` after the body checks that `*(*this+0x48)` still points at the concrete `setupHeader` (identical wire result). So the 16-bit word at `bundle[0:2]` is `(0x10<<8) | opcode`, little-endian: `0x1002` (dense MM), `0x1009`/`0x100A`/`0x10E3` (MX). Here is `setupHeader @0x143f440` in full:
 
 ```asm
 143f440:  movzx eax, BYTE [rdx]      ; al = src[0] = opcode byte
@@ -61,7 +61,7 @@ Every generator runs the same five-step cycle; the `CodeGenMode` at `this+0x270`
 4. **Control band.** the per-opcode field fills mapped below.
 5. **ISA check + emit.** `runISACheck*` (the `d3_mm_*`/`mxmem1d_valid` asserts) `@0x1249678`, then `fwrite(buf,1,0x40,findBin(I))`.
 
-`CodeGenMode` arms (CONFIRMED for CoreV4 `@0x143e070/848/f01b`): **1 = GENERATE_ISACODE** (fill + `fwrite`); **2 = RUN_ISA_CHECKS** (build the *byte-identical* bundle on a stack frame, feed the checker, no `fwrite`); **0 = COLLECT_OPCODES** (push the opcode int into a `DenseMap` census, emit nothing). The field map below is shared between modes 1 and 2 — the only difference is the destination.
+`CodeGenMode` arms (CoreV4 dispatch at `0x143e070` / `…848` / `…f01b`): **1 = GENERATE_ISACODE** (fill + `fwrite`); **2 = RUN_ISA_CHECKS** (build the *byte-identical* bundle on a stack frame, feed the checker, no `fwrite`); **0 = COLLECT_OPCODES** (push the opcode int into a `DenseMap` census, emit nothing). The field map below is shared between modes 1 and 2 — the only difference is the destination.
 
 ---
 
@@ -71,25 +71,25 @@ Stages the stationary weight tile into the PE weight latches. Wire struct `NEURO
 
 | Off | W | Field | pybind / `s3_lw_*` name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `1` | `s3_lw_opcode` | setupHeader src=1 | hdr | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CONFIRMED |
-| `+0x0C` | 1 | transpose/xbus marker | (`s3_lw_m`/transpose) | **V3 only**: `=2` (arch≥40 bg-transpose) | V3 `+0x0C` | CONFIRMED |
-| `+0x10` | 16 | weights AP (`TENSOR3D`) | `s3_lw_valid_src_partition` | `assignAccess<TENSOR3D>`; `+0x16=0`, `+0x1c=0x00010001` | `0x12593f7`/`0x12588a8` | CONFIRMED |
-| `+0x13` | 1 | transpose flag = `0x80` | (V2 transpose) | **V2 only**: `[+0x13]=0x80` | `0x125936c` | CONFIRMED |
-| `+0x20` | 1 | in-dtype (wire tag) | `lw_dtype` | LUT `byte_1DF5760[dtype]` (V2) / `sub_1348870` (V3) | `0x12586b9` | CONFIRMED |
-| `+0x20` | 2 | fp32r WORD override `0x020A` | `lw_dtype`+marker | when `dtype==float32r`: `WORD[+0x20]=0x020A` | `0x1258f16`/`0x1361ca4` | CONFIRMED |
-| `+0x21` | 1 | perf/opcode-variant byte | (`s3_lw` perf) | `0`/`2`(load-weights perf)/`bl`; V2 fp32 = `0x80` | `0x12586e2`/`0x125913a`/`0x125952b` | CONFIRMED |
-| `+0x23` | 1 | perf-opt dtype | `lw_perf_opt_dtype` | `perfModeToDstDtype(perfMode)` `@0x1203630` | `0x1258a05` | STRONG |
-| `+0x24` | 1 | replication lo (tonga) | (`tonga_replication`) | **V2 only**: `[+0x24]=al` | `0x1258a05`/V2 | CONFIRMED |
-| `+0x25` | 1 | replication hi (tonga) | (`tonga_replication`) | **V2 only**: `[+0x25]=al` | `0x1258a18` | CONFIRMED |
-| `+0x26` | 1 | num_active_rows / wt base | `lw_valid_num_rows` | `*(*(groups[+0x50])+0x8)` = base partition | `0x1258921` | CONFIRMED |
-| `+0x27` | 1 | num_active_cols | `lw_valid_num_active_cols` | `getNumActiveCols(srcAP)`; V3 via `runSingleISACheck @0x1352590` | `0x12586f4`/V3 | CONFIRMED |
-| `+0x2C` | 1 | row group | `lw_valid_row_group` | `translateToRowGroup(pos, max(rowExt,+0x26))` | `0x125898a` | CONFIRMED |
-| `+0x2D` | 1 | col group | `lw_valid_col_group_active_column` | `translateToColGroup(pos, max(colExt,+0x27), force)` | `0x1258973` | CONFIRMED |
-| `+0x2E` | 1 | normalized/xbus group | `lw_valid_xbus` | **V2 only**: `=0x10` (collapse switch) | `0x12589c2` | CONFIRMED |
-| `+0x22`,`+0x28`..`+0x2A`,`+0x2F` | — | reserved-zero | `lw_reserved_zero` | pxor zero-init; asserted `==0` | — | INFERRED |
+| `+0x00` | 1 | opcode = `1` | `s3_lw_opcode` | setupHeader src=1 | hdr | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hdr constant | hdr | CERTAIN |
+| `+0x0C` | 1 | transpose/xbus marker | (`s3_lw_m`/transpose) | **V3 only**: `=2` (arch≥40 bg-transpose) | V3 `+0x0C` | CERTAIN |
+| `+0x10` | 16 | weights AP (`TENSOR3D`) | `s3_lw_valid_src_partition` | `assignAccess<TENSOR3D>`; `+0x16=0`, `+0x1c=0x00010001` | `0x12593f7`/`0x12588a8` | CERTAIN |
+| `+0x13` | 1 | transpose flag = `0x80` | (V2 transpose) | **V2 only**: `[+0x13]=0x80` | `0x125936c` | CERTAIN |
+| `+0x20` | 1 | in-dtype (wire tag) | `lw_dtype` | LUT `byte_1DF5760[dtype]` (V2) / `sub_1348870` (V3) | `0x12586b9` | CERTAIN |
+| `+0x20` | 2 | fp32r WORD override `0x020A` | `lw_dtype`+marker | when `dtype==float32r`: `WORD[+0x20]=0x020A` | `0x1258f16`/`0x1361ca4` | CERTAIN |
+| `+0x21` | 1 | perf/opcode-variant byte | (`s3_lw` perf) | `0`/`2`(load-weights perf)/`bl`; V2 fp32 = `0x80` | `0x12586e2`/`0x125913a`/`0x125952b` | CERTAIN |
+| `+0x23` | 1 | perf-opt dtype | `lw_perf_opt_dtype` | `perfModeToDstDtype(perfMode)` `@0x1203630` | `0x1258a05` | HIGH |
+| `+0x24` | 1 | replication lo (tonga) | (`tonga_replication`) | **V2 only**: `[+0x24]=al` | `0x1258a05`/V2 | CERTAIN |
+| `+0x25` | 1 | replication hi (tonga) | (`tonga_replication`) | **V2 only**: `[+0x25]=al` | `0x1258a18` | CERTAIN |
+| `+0x26` | 1 | num_active_rows / wt base | `lw_valid_num_rows` | `*(*(groups[+0x50])+0x8)` = base partition | `0x1258921` | CERTAIN |
+| `+0x27` | 1 | num_active_cols | `lw_valid_num_active_cols` | `getNumActiveCols(srcAP)`; V3 via `runSingleISACheck @0x1352590` | `0x12586f4`/V3 | CERTAIN |
+| `+0x2C` | 1 | row group | `lw_valid_row_group` | `translateToRowGroup(pos, max(rowExt,+0x26))` | `0x125898a` | CERTAIN |
+| `+0x2D` | 1 | col group | `lw_valid_col_group_active_column` | `translateToColGroup(pos, max(colExt,+0x27), force)` | `0x1258973` | CERTAIN |
+| `+0x2E` | 1 | normalized/xbus group | `lw_valid_xbus` | **V2 only**: `=0x10` (collapse switch) | `0x12589c2` | CERTAIN |
+| `+0x22`,`+0x28`..`+0x2A`,`+0x2F` | — | reserved-zero | `lw_reserved_zero` | pxor zero-init; asserted `==0` | — | MEDIUM |
 
-> **CORRECTION (supersedes a "row-only at +0x2C" reading).** The CoreV3 LoadStationary writes **both** the row group at `+0x2C` *and* the col group at `+0x2D` (via `translateToColGroup` with a `force` bool), the same split as CoreV2 — it only **drops** the `+0x2E` normalized byte that CoreV2 keeps. Disassembly of the body confirms two separate group stores.
+The CoreV3 LoadStationary writes **both** group bytes, exactly as CoreV2 does: the row group at `+0x2C` and the col group at `+0x2D` (the latter via `translateToColGroup` with a `force` bool), as two separate stores. The only group-band difference between the two generations is that CoreV3 **drops** the `+0x2E` normalized byte CoreV2 keeps.
 
 **Annotated encode (CoreV2 `generateLoadWeights`, the load-weights opcode of the shared struct):**
 
@@ -121,26 +121,26 @@ The dense multiply. Wire struct `NEURON_ISA_TPB_S3D3_MM_STRUCT` (`s3d3_mm_*`). C
 
 | Off | W | Field | pybind / `s3d3_mm_*` name | Value source | Store-site (V2) | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | mm_opcode = `2` | `s_s3d3_mm_opcode` | setupHeader src=2 | hdr | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | constant | hdr | CONFIRMED |
-| `+0x10` | 16 | ifmap (moving) AP `TENSOR3D` | `d3_mm_valid_src_partition` | `assignAccess<TENSOR3D>(&b[0x10], srcAP)` | `0x1248c39` | CONFIRMED |
-| `+0x20` | 1 | in-dtype (ifmap+weights) | `d3_mm_dtype` (in arm) | `byte_1DF5760[srcAP.dtype]` (V2) / `sub_1348870` (V3) | `0x1248872` | CONFIRMED |
-| `+0x20` | 2 | fp32r WORD override `0x020A` | `d3_mm_dtype`+marker | when `dtype==float32r`: `WORD[+0x20]=0x020A` | `0x124972d` | CONFIRMED |
-| `+0x21` | 1 | opcode-variant / perf-select | `s_s3d3_mm_opcode` + perf | `0`=dense, `2`=load-weights, `3`=perf/transpose | `0x12488a2`/`0x124a6fa`/`0x124a3ea` | CONFIRMED |
-| `+0x22` | 1 | reserved-zero | `d3_mm_reserved_z*` | pxor zero-init | — | INFERRED |
-| `+0x23` | 1 | dst-dtype (PSUM accumulator) | `d3_mm_dtype` (dst arm) | `perfModeToDstDtype(perfMode)` `@0x1203630` | `0x1248882` | CONFIRMED |
-| `+0x24` | 1 | perf-opt dtype | `d3_mm_perf_opt_dtype` | `InstMatmult[+0x2d8]` (perf-opt config byte) | `0x1248c92` | CONFIRMED |
-| `+0x25` | 1 | perf-opt src / replication | `d3_mm_perf_opt_src` | same `al` as `+0x24`; `Inst[+0x2f8]` asserted `==0` | `0x1248caa` | CONFIRMED |
-| `+0x26` | 1 | weight/PE-row base | `d3_mm_valid_row_*` | `*(*(groups[+0x50])+0x8)` | `0x1248923` | CONFIRMED |
-| `+0x27` | 1 | num-cols / num_elements | `d3_mm_num_elements` | `getNumElementsPerPartition(srcAP)/(1+isDoublePixel)` | `0x12488dd` | CONFIRMED |
-| `+0x2B` | 1 | accumulate / calc flags | `mm_psum_flags` | init 0; `or 0x1`=CalcStart, `or 0x2`=CalcStop | `0x12493b3`/`0x124963d`/`0x1249664` | CONFIRMED |
-| `+0x2C` | 1 | row-group code | `d3_mm_valid_row_*` | `translateToRowGroup(numRows, base)` | `0x124898b` | CONFIRMED |
-| `+0x2D` | 1 | col-group code | `d3_mm_valid_col_group_active_col` | `translateToColGroup(numCols, base, bool)` | `0x1248975` | CONFIRMED |
-| `+0x2E` | 1 | xbus / fp32r restriction | `d3_mm_valid_xbus` / `d3_mm_fp32r_restrictions` | constant `0x10` (V2); **V3 drops it** | `0x1248c25` | CONFIRMED |
-| `+0x30` | 16 | PSUM dst AP `TENSOR3D` | `d3_mm_valid_dst_*` | `assignAccess<TENSOR3D>(&b[0x30], dstAP)` | `0x1248c4e` | CONFIRMED |
-| `+0x28`,`+0x29`,`+0x2A`,`+0x2F` | — | reserved-zero | `d3_mm_reserved_z*` / `reserved2_tonga_replication` | pxor zero-init; asserted `==0` | — | INFERRED |
+| `+0x00` | 1 | mm_opcode = `2` | `s_s3d3_mm_opcode` | setupHeader src=2 | hdr | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | constant | hdr | CERTAIN |
+| `+0x10` | 16 | ifmap (moving) AP `TENSOR3D` | `d3_mm_valid_src_partition` | `assignAccess<TENSOR3D>(&b[0x10], srcAP)` | `0x1248c39` | CERTAIN |
+| `+0x20` | 1 | in-dtype (ifmap+weights) | `d3_mm_dtype` (in arm) | `byte_1DF5760[srcAP.dtype]` (V2) / `sub_1348870` (V3) | `0x1248872` | CERTAIN |
+| `+0x20` | 2 | fp32r WORD override `0x020A` | `d3_mm_dtype`+marker | when `dtype==float32r`: `WORD[+0x20]=0x020A` | `0x124972d` | CERTAIN |
+| `+0x21` | 1 | opcode-variant / perf-select | `s_s3d3_mm_opcode` + perf | `0`=dense, `2`=load-weights, `3`=perf/transpose | `0x12488a2`/`0x124a6fa`/`0x124a3ea` | CERTAIN |
+| `+0x22` | 1 | reserved-zero | `d3_mm_reserved_z*` | pxor zero-init | — | MEDIUM |
+| `+0x23` | 1 | dst-dtype (PSUM accumulator) | `d3_mm_dtype` (dst arm) | `perfModeToDstDtype(perfMode)` `@0x1203630` | `0x1248882` | CERTAIN |
+| `+0x24` | 1 | perf-opt dtype | `d3_mm_perf_opt_dtype` | `InstMatmult[+0x2d8]` (perf-opt config byte) | `0x1248c92` | CERTAIN |
+| `+0x25` | 1 | perf-opt src / replication | `d3_mm_perf_opt_src` | same `al` as `+0x24`; `Inst[+0x2f8]` asserted `==0` | `0x1248caa` | CERTAIN |
+| `+0x26` | 1 | weight/PE-row base | `d3_mm_valid_row_*` | `*(*(groups[+0x50])+0x8)` | `0x1248923` | CERTAIN |
+| `+0x27` | 1 | num-cols / num_elements | `d3_mm_num_elements` | `getNumElementsPerPartition(srcAP)/(1+isDoublePixel)` | `0x12488dd` | CERTAIN |
+| `+0x2B` | 1 | accumulate / calc flags | `mm_psum_flags` | init 0; `or 0x1`=CalcStart, `or 0x2`=CalcStop | `0x12493b3`/`0x124963d`/`0x1249664` | CERTAIN |
+| `+0x2C` | 1 | row-group code | `d3_mm_valid_row_*` | `translateToRowGroup(numRows, base)` | `0x124898b` | CERTAIN |
+| `+0x2D` | 1 | col-group code | `d3_mm_valid_col_group_active_col` | `translateToColGroup(numCols, base, bool)` | `0x1248975` | CERTAIN |
+| `+0x2E` | 1 | xbus / fp32r restriction | `d3_mm_valid_xbus` / `d3_mm_fp32r_restrictions` | constant `0x10` (V2); **V3 drops it** | `0x1248c25` | CERTAIN |
+| `+0x30` | 16 | PSUM dst AP `TENSOR3D` | `d3_mm_valid_dst_*` | `assignAccess<TENSOR3D>(&b[0x30], dstAP)` | `0x1248c4e` | CERTAIN |
+| `+0x28`,`+0x29`,`+0x2A`,`+0x2F` | — | reserved-zero | `d3_mm_reserved_z*` / `reserved2_tonga_replication` | pxor zero-init; asserted `==0` | — | MEDIUM |
 
-> **CORRECTION — the dst-dtype lives at `+0x23`, not `+0x28`.** No `+0x28` store exists in either CoreV2 encoder; `+0x28` is a stale offset from an older struct revision. The on-this-build dst-dtype is `byte +0x23` (`mov [r15+0x23],al @0x1248882`). On `MatmultMx` (`+0x28`, below) the PSUM-dst-dtype genuinely *is* at `+0x28` — different struct.
+> **GOTCHA — the dense dst-dtype lives at `+0x23`; only the MX struct puts it at `+0x28`.** No `+0x28` store exists in either CoreV2 dense encoder — the dst-dtype is `byte +0x23` (`mov [r15+0x23],al` @ `0x1248882`), and `+0x28` reads back as pxor zero. `MatmultMx` (below) genuinely does carry its PSUM-dst dtype at `+0x28`, but that is a different wire struct; the offset does not transfer.
 
 ### The accumulate byte `+0x2B` — the PSUM start/stop/accu contract
 
@@ -152,14 +152,16 @@ The calc bits encode how the matmul interacts with the PSUM accumulation bank. C
  bit2 (0x04) = ACCUMULATE = add into the bank               (getCalcAccu)
 ```
 
-The byte is validated by `checkAccumulationFlag` (CoreV2 `@0x1178f30`). The `{START, Continue, Stop, Accu, Auto}` set of `InstMatmultBase::setCalc*` collapses onto these three bits; the two-pass FP32 split selects START on pass-1 and STOP/ACCU on pass-2. CONFIRMED — the three `or` bit literals (`0x1`,`0x2`,`0x4`) and `getCalc{Start,Stop,Accu}` callees `@0x5f20a0/0x5fb350/0x5f9f40`.
+The byte is validated by `checkAccumulationFlag` (CoreV2 `@0x1178f30`). The `{START, Continue, Stop, Accu, Auto}` set of `InstMatmultBase::setCalc*` collapses onto these three bits; the two-pass FP32 split selects START on pass-1 and STOP/ACCU on pass-2.
+
+*Anchors: the three `or` bit literals (`0x1`, `0x2`, `0x4`); `getCalc{Start,Stop,Accu}` @ `0x5f20a0` / `0x5fb350` / `0x5f9f40`.*
 
 ### CoreV2 → CoreV3 control-band deltas
 
 The Cayman PE array is **not wider** (still 128×128, four 32-lane quadrants; the row/col LUTs are byte-identical — see below). The override is purely encoding/legality:
 
-- **dtype legality:** CoreV3 `sub_1348870` (SWITCH, jump-table `@0x1df9574`) **rejects** the three ×4-packed dtypes `{2=fp4_e2m1fn_x4, 8=fp8_e4m3fn_x4, 9=fp8_e5m2_x4}` (falls through `cmp edi,0x13; ja → NeuronAssertion`). CoreV2's flat LUT silently maps them to `{0x05,0x0e,0x0f}`. The other 17 tags are byte-identical, so the wire **encoding** is shared; only the **legality gate** diverges (Cayman PE matmul does not consume ×4-packed operands directly — that is the gen4 MX path). CONFIRMED — full jump-table decode + per-target `mov eax,imm; ret`.
-- **row/col group packing:** CoreV2 writes two separate bytes (`+0x2C` row, `+0x2D` col); CoreV3 packs them into **one WORD at `+0x2C`** = `(colGroup<<8 | rowGroup)` via `getCoreV3MatmulRowColGroup @0x1096110`, but only when module arch-order ≤ 40 — on arch>40 the boxed setter is NULLed and the group bytes are skipped. STRONG (the packed value path is via an arch-order boxed setter).
+- **dtype legality:** CoreV3 `sub_1348870` (SWITCH, jump-table `@0x1df9574`) **rejects** the three ×4-packed dtypes `{2=fp4_e2m1fn_x4, 8=fp8_e4m3fn_x4, 9=fp8_e5m2_x4}` (falls through `cmp edi,0x13; ja → NeuronAssertion`). CoreV2's flat LUT silently maps them to `{0x05,0x0e,0x0f}`. The other 17 tags are byte-identical, so the wire **encoding** is shared; only the **legality gate** diverges (Cayman PE matmul does not consume ×4-packed operands directly — that is the gen4 MX path).
+- **row/col group packing:** CoreV2 writes two separate bytes (`+0x2C` row, `+0x2D` col); CoreV3 packs them into **one WORD at `+0x2C`** = `(colGroup<<8 | rowGroup)` via `getCoreV3MatmulRowColGroup @0x1096110`, but only when module arch-order ≤ 40 — on arch>40 the boxed setter is NULLed and the group bytes are skipped. The packed-value path runs through that arch-order boxed setter, so it is HIGH rather than store-pinned.
 - **`+0x2E` dropped:** CoreV3 takes the raw `{1,2,4,8|3,12,32,64|15}` codes; the V2 normalized-collapse byte is gone.
 - **`+0x24/+0x25` replication pair:** written on V2, **not** on V3 (Cayman routes replication legality through a gate; the bytes stay 0).
 - **signature:** V2 `generateMatMul` takes an explicit `bir::MatmultPerfMode`; V3 takes a plain `bool` and reads perf mode from `Inst[+180]`.
@@ -168,7 +170,7 @@ The Cayman PE array is **not wider** (still 128×128, four 32-lane quadrants; th
 
 ## Dense look-up tables (shared V2/V3)
 
-**Row/col group geometry** — `translateToRowGroup` (V2 free fn `@0x6043e0`; V3 member `@0x1346100`), `translateToColGroup` (`@0x6264f0` / `@0x13460b0`). Both read two `.rodata` LUTs, xxd-verified this pass:
+**Row/col group geometry** — `translateToRowGroup` (V2 free fn `@0x6043e0`; V3 member `@0x1346100`), `translateToColGroup` (`@0x6264f0` / `@0x13460b0`). Both read two `.rodata` LUTs:
 
 ```
 LUT32 @0x1DD33F0 = 01 00 00 00  02 00 00 00  04 00 00 00  08 00 00 00   → {1,2,4,8}
@@ -179,9 +181,9 @@ LUT64 @0x1DBEDA0 = 03 00 00 00  0c 00 00 00  20 00 00 00  40 00 00 00   → {3,1
   else:                rg = 0x0F               (full 128-row/col)
 ```
 
-`translateToColGroup` adds a `force` bool that returns `0x0F` on transpose / fast-FP32 / background-transpose. The thresholds `0x20`/`0x40` are the 32/64-row tile boundaries. CONFIRMED — both LUTs xxd-verified at the addresses above.
+`translateToColGroup` adds a `force` bool that returns `0x0F` on transpose / fast-FP32 / background-transpose. The thresholds `0x20`/`0x40` are the 32/64-row tile boundaries.
 
-**dtype → ISA wire tag** — CoreV2 flat LUT `byte_1DF5760` (xxd-verified `03 02 05 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 …`); CoreV3 `sub_1348870` SWITCH (same tags except the three ×4 rejects). Indexed by BIR `Dtype` ordinal `0..19`. The fp32r path additionally writes `WORD[+0x20]=0x020A` (`=522`): `byte+0x20=0x0A` (float32 tag) + `byte+0x21=0x02` (two-pass marker), requiring `weights.Dtype==float32r` too.
+**dtype → ISA wire tag** — CoreV2 flat LUT `byte_1DF5760` (`03 02 05 0d 0e 0e 03 0f 0e 0f 05 04 06 07 09 08 …`); CoreV3 `sub_1348870` SWITCH (same tags except the three ×4 rejects). Indexed by BIR `Dtype` ordinal `0..19`. The fp32r path additionally writes `WORD[+0x20]=0x020A` (`=522`): `byte+0x20=0x0A` (float32 tag) + `byte+0x21=0x02` (two-pass marker), requiring `weights.Dtype==float32r` too.
 
 | BIR ord | dtype | V2 `byte_1DF5760` | V3 `sub_1348870` | V4 `byte_1DFBAD0` |
 |---|---|---|---|---|
@@ -200,7 +202,7 @@ LUT64 @0x1DBEDA0 = 03 00 00 00  0c 00 00 00  20 00 00 00  40 00 00 00   → {3,1
 | 16 / 17 | float32 / float32r | `0x0a` / `0x0b` | same | same |
 | 18 / 19 | uint64 / int64 | `0x01` / `0x0c` | same | same |
 
-> **QUIRK — the fp4 wire tag moved on CoreV4.** `byte_1DFBAD0[2] = 0x10` on Mariana vs `byte_1DF5760[2] = 0x05` on Sunda. The MX decoder `mxmem1d_valid` keys on this: a DATA ADDR4 validates as 4-byte DTYPE 9, or as 2-byte DTYPE 5 *iff* the descriptor's DTYPE arg `== 0x10` (the FP4-x4 2-byte container). Both bytes verified by xxd this pass.
+> **QUIRK — the fp4 wire tag moved on CoreV4.** `byte_1DFBAD0[2] = 0x10` on Mariana vs `byte_1DF5760[2] = 0x05` on Sunda. The MX decoder `mxmem1d_valid` keys on this: a DATA ADDR4 validates as 4-byte DTYPE 9, or as 2-byte DTYPE 5 *iff* the descriptor's DTYPE arg `== 0x10` (the FP4-x4 2-byte container).
 
 ---
 
@@ -215,18 +217,18 @@ CoreV3 gen3-NEW: there is **no** CoreV2/CoreV4 sparse symbol. `visitInstMatmultS
 
 | Off | W | Field | name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `6` | (LoadTags) | setupHeader src=6 | `0x135eac3` | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | constant | hdr | CONFIRMED |
-| `+0x10` | 4 | tags DWORD addr/bank | (`s3_lw` src) | `vtable+0x20(this,…)` → `[+0x10]` | `0x135eb4c` | CONFIRMED |
-| `+0x14` | 4 | = `0x00000001` (single col) | const | const | `0x135eb50` | CONFIRMED |
-| `+0x18` | 2 | = `0` | const | const | `0x135eb36` | CONFIRMED |
-| `+0x1A` | 2 | num-elements | (tags NEPP) | `getNumElementsPerPartition(tags)` | `0x135eb2d` | CONFIRMED |
-| `+0x1C` | 4 | = `0x00010001` (stride pair) | const | const | `0x135eb58` | CONFIRMED |
-| `+0x20` | 1 | tags dtype (= `0x04`, int16) | `s3_lw_dtype` | `sub_1348870(tagsAP.dtype)` | `0x135eaf9` | CONFIRMED |
-| `+0x21` | 1 | col_grp (LUT-remapped) | `col_grp` | jump-table `@0x1df97c0` from row-group | `0x135ebf9` | CONFIRMED |
-| `+0x26` | 1 | tile-size | (tile) | `max(getLegalTileSize, [rbx+0x50]+8)` | `0x135eb8d` | CONFIRMED |
-| `+0x2C` | 1 | row group (sparsity ratio) | `s3_lw_valid_row_group` | `translateToRowGroup(pos, max(tile,+0x26))` | `0x135ebcd` | CONFIRMED |
-| `+0x2D` | 1 | ISA-check aux | `col_grp` (0xF bound) | `runSingleISACheck @0x1350810` | — | STRONG |
+| `+0x00` | 1 | opcode = `6` | (LoadTags) | setupHeader src=6 | `0x135eac3` | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | constant | hdr | CERTAIN |
+| `+0x10` | 4 | tags DWORD addr/bank | (`s3_lw` src) | `vtable+0x20(this,…)` → `[+0x10]` | `0x135eb4c` | CERTAIN |
+| `+0x14` | 4 | = `0x00000001` (single col) | const | const | `0x135eb50` | CERTAIN |
+| `+0x18` | 2 | = `0` | const | const | `0x135eb36` | CERTAIN |
+| `+0x1A` | 2 | num-elements | (tags NEPP) | `getNumElementsPerPartition(tags)` | `0x135eb2d` | CERTAIN |
+| `+0x1C` | 4 | = `0x00010001` (stride pair) | const | const | `0x135eb58` | CERTAIN |
+| `+0x20` | 1 | tags dtype (= `0x04`, int16) | `s3_lw_dtype` | `sub_1348870(tagsAP.dtype)` | `0x135eaf9` | CERTAIN |
+| `+0x21` | 1 | col_grp (LUT-remapped) | `col_grp` | jump-table `@0x1df97c0` from row-group | `0x135ebf9` | CERTAIN |
+| `+0x26` | 1 | tile-size | (tile) | `max(getLegalTileSize, [rbx+0x50]+8)` | `0x135eb8d` | CERTAIN |
+| `+0x2C` | 1 | row group (sparsity ratio) | `s3_lw_valid_row_group` | `translateToRowGroup(pos, max(tile,+0x26))` | `0x135ebcd` | CERTAIN |
+| `+0x2D` | 1 | ISA-check aux | `col_grp` (0xF bound) | `runSingleISACheck @0x1350810` | — | HIGH |
 
 ### The row-group → `col_grp` remap (`+0x21` jump-table `@0x1df97c0`)
 
@@ -240,7 +242,7 @@ After `[+0x2C]=rowGroup`, a `cmp al,0xF; ja → llvm_unreachable` guards a `movs
  row-group  0,5,6,7,9,10,11,13,14 → llvm_unreachable (invalid structured-sparsity rg)
 ```
 
-`col_grp(+0x21)` is the active-column-group code **derived** from the row-group density ratio — a log2-style `{pow-of-2 rg → 0/4/8/12}` remap. The jump table is 8 rel32 entries, xxd-verified `@0x1df97c0` this pass (`c0 56 56 ff  30 54 56 ff  20 57 56 ff  30 54 56 ff …`). CONFIRMED.
+`col_grp(+0x21)` is the active-column-group code **derived** from the row-group density ratio — a log2-style `{pow-of-2 rg → 0/4/8/12}` remap. The jump table is 8 rel32 entries at `0x1df97c0` (`c0 56 56 ff  30 54 56 ff  20 57 56 ff  30 54 56 ff …`).
 
 ---
 
@@ -250,17 +252,17 @@ After `[+0x2C]=rowGroup`, a `cmp al,0xF; ja → llvm_unreachable` guards a `movs
 
 | Off | W | Field | name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | mm_opcode = `7` | `s_s3d3_mm_opcode` | setupHeader src=7 | `0x135d2d6` | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | constant | hdr | CONFIRMED |
-| `+0x10` | 16 | ifmap AP **`TENSOR4D`** | `d3_mm_valid_src_partition` | `assignAccess<TENSOR4D>` | `0x135d40b` | CONFIRMED |
-| `+0x20` | 1 | in-dtype | `s3d3_mm_dtype` | `sub_1348870(ifmapAP.dtype)`; fp32r → `0x020A` | `0x135d337`/`0x135d6f8` | CONFIRMED |
-| `+0x21` | 1 | perf byte = `3·(dtype==FP32)` | (perf) | `cmp eax,0x10; sete al; lea eax,[rax+rax*2]` → `3` if FP32 else `0` | `0x135d350` | CONFIRMED |
-| `+0x26` | 1 | tile-size | (tile) | `[rbx+0x50]+8` | `0x135d3ac` | CONFIRMED |
-| `+0x27` | 1 | num_active_cols | `s3d3_mm` `num_active_cols` | `getNumElementsPerPartition(weights)`; `runSingleISACheck @0x134ff80` | `0x135d36a` | CONFIRMED |
-| `+0x2B` | 1 | control (fp32-pass bits) | (pass flags) | init 0; `or 0x1`(low), `or 0x2`(high) | `0x135d472`/`0x135e1b0`/`0x135e1a0` | CONFIRMED |
-| `+0x2C` | 1 | row group (density ratio) | `s3d3_mm_valid_row` | `translateToRowGroup(pos, max(tile,+0x26))` | `0x135d404` | CONFIRMED |
-| `+0x2D` | 1 | ISA-check aux | `col_grp` (0xF bound) | `runSingleISACheck @0x1350810` | — | STRONG |
-| `+0x30` | 16 | PSUM dst AP `TENSOR3D` | `d3_mm_valid_dst_*` | `assignAccess<TENSOR3D>` | `0x135d420` | CONFIRMED |
+| `+0x00` | 1 | mm_opcode = `7` | `s_s3d3_mm_opcode` | setupHeader src=7 | `0x135d2d6` | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | constant | hdr | CERTAIN |
+| `+0x10` | 16 | ifmap AP **`TENSOR4D`** | `d3_mm_valid_src_partition` | `assignAccess<TENSOR4D>` | `0x135d40b` | CERTAIN |
+| `+0x20` | 1 | in-dtype | `s3d3_mm_dtype` | `sub_1348870(ifmapAP.dtype)`; fp32r → `0x020A` | `0x135d337`/`0x135d6f8` | CERTAIN |
+| `+0x21` | 1 | perf byte = `3·(dtype==FP32)` | (perf) | `cmp eax,0x10; sete al; lea eax,[rax+rax*2]` → `3` if FP32 else `0` | `0x135d350` | CERTAIN |
+| `+0x26` | 1 | tile-size | (tile) | `[rbx+0x50]+8` | `0x135d3ac` | CERTAIN |
+| `+0x27` | 1 | num_active_cols | `s3d3_mm` `num_active_cols` | `getNumElementsPerPartition(weights)`; `runSingleISACheck @0x134ff80` | `0x135d36a` | CERTAIN |
+| `+0x2B` | 1 | control (fp32-pass bits) | (pass flags) | init 0; `or 0x1`(low), `or 0x2`(high) | `0x135d472`/`0x135e1b0`/`0x135e1a0` | CERTAIN |
+| `+0x2C` | 1 | row group (density ratio) | `s3d3_mm_valid_row` | `translateToRowGroup(pos, max(tile,+0x26))` | `0x135d404` | CERTAIN |
+| `+0x2D` | 1 | ISA-check aux | `col_grp` (0xF bound) | `runSingleISACheck @0x1350810` | — | HIGH |
+| `+0x30` | 16 | PSUM dst AP `TENSOR3D` | `d3_mm_valid_dst_*` | `assignAccess<TENSOR3D>` | `0x135d420` | CERTAIN |
 
 > **GOTCHA — sparse `+0x2B` is NOT the calc/accumulate byte.** Dense `Matmul` uses `+0x2B` for `{START,STOP,ACCU}` (computed). Sparse `MatmultSparse` reuses the *same offset* but stamps the **FP32 low/high-pass flags** (`or 0x1`/`or 0x2`) — there is no `generateMatMulAccumulateFlag` call here. The structured-sparsity matmul is always a fresh-accumulate single drain. Two FP32 passes ⇒ two `fwrite` sites (`@0x135dc00` / `@0x135e1df`).
 
@@ -276,15 +278,15 @@ Operands: `arg1 = getArgument(1)` = weights ×4 DATA; `arg3 = getArgument(3)` = 
 
 | Off | W | Field | name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x09` | (LdWeightMx) | `WORD[r14]=0x1009` | `0x143e4d1` | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hi byte of `0x1009` | hdr | CONFIRMED |
-| `+0x10` | 16 | MX operand (MXMEM_PATTERN1D) | — | `assignAccessForMX` (weights DATA+SCALE) | `0x143e623` | CONFIRMED |
-| `+0x20` | 1 | weights dtype (wire tag) | `d3_mm_dtype` | `byte_1DFBAD0[arg1.Dtype]` via `@0x14347c0` | `0x143e529` | CONFIRMED |
-| `+0x26` | 1 | num_partitions (K rows) | `d3_mm_valid_num` | `arg1.Pattern[0].num` | `0x143e5e8` | CONFIRMED |
-| `+0x27` | 1 | num_active | `num_active_cols` | `(*arg1.vtbl+0x90)(arg1)` low | (WORD@26) | CONFIRMED |
-| `+0x2C` | 1 | row group (PE-row tile) | `d3_mm_valid_row` | `translateToRowGroup(pos, +0x26)` | `0x143e611` | CONFIRMED |
-| `+0x2D` | 1 | col group = `0x0F` (full) | `d3_mm_valid_col_group_active_col` | forced full 128-wide column | `0x143e606` | CONFIRMED |
-| `+0x21`..`+0x25`,`+0x28`..`+0x2B`,`+0x2E`,`+0x2F` | — | reserved-zero | `d3_mm_reserved_z*` | pxor zero-init | — | CONFIRMED |
+| `+0x00` | 1 | opcode = `0x09` | (LdWeightMx) | `WORD[r14]=0x1009` | `0x143e4d1` | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hi byte of `0x1009` | hdr | CERTAIN |
+| `+0x10` | 16 | MX operand (MXMEM_PATTERN1D) | — | `assignAccessForMX` (weights DATA+SCALE) | `0x143e623` | CERTAIN |
+| `+0x20` | 1 | weights dtype (wire tag) | `d3_mm_dtype` | `byte_1DFBAD0[arg1.Dtype]` via `@0x14347c0` | `0x143e529` | CERTAIN |
+| `+0x26` | 1 | num_partitions (K rows) | `d3_mm_valid_num` | `arg1.Pattern[0].num` | `0x143e5e8` | CERTAIN |
+| `+0x27` | 1 | num_active | `num_active_cols` | `(*arg1.vtbl+0x90)(arg1)` low | (WORD@26) | CERTAIN |
+| `+0x2C` | 1 | row group (PE-row tile) | `d3_mm_valid_row` | `translateToRowGroup(pos, +0x26)` | `0x143e611` | CERTAIN |
+| `+0x2D` | 1 | col group = `0x0F` (full) | `d3_mm_valid_col_group_active_col` | forced full 128-wide column | `0x143e606` | CERTAIN |
+| `+0x21`..`+0x25`,`+0x28`..`+0x2B`,`+0x2E`,`+0x2F` | — | reserved-zero | `d3_mm_reserved_z*` | pxor zero-init | — | CERTAIN |
 
 > **NOTE — `LdWeightMx` has no accumulate byte, no PSUM-dst, no ifmap.** It *only* stages the weight tile. The exhaustive write list is: `WORD[+0x00]`, `BYTE[+0x20]`, `WORD[+0x26]` (`{num_partitions, num_active}`), `BYTE[+0x2C]`, `BYTE[+0x2D]=0xF`, + MXMEM `@+0x10`. Nothing else is stored.
 
@@ -298,19 +300,19 @@ Operands: `arg0`=ifmap ×4 DATA; `arg1`=weights ×4 DATA (K-rows/num_active only
 
 | Off | W | Field | name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0x0A` | (MatmultMx) | `WORD[r13]=0x100A` | `0x143ed5a` | CONFIRMED |
-| `+0x01` | 1 | inst_word_len = `0x10` | — | hi byte of `0x100A` | hdr | CONFIRMED |
-| `+0x10` | 16 | MX operand (MXMEM_PATTERN1D) | — | `assignAccessForMX` (ifmap DATA+SCALE) | `0x143eede` | CONFIRMED |
-| `+0x20` | 1 | ifmap dtype (wire tag) | `d3_mm_dtype` | `byte_1DFBAD0[arg0.Dtype]` | `0x143edca` | CONFIRMED |
-| `+0x26` | 1 | num_partitions (K rows) | `d3_mm_valid_num` | `arg1(weights).Pattern[0].num` | `0x143ee80` | CONFIRMED |
-| `+0x27` | 1 | num_active | `num_active_cols` | `(*arg1.vtbl+0x90)(arg1)` low | `0x143eea1` | CONFIRMED |
-| `+0x28` | 1 | PSUM-dst dtype (wire tag) | `d3_mm_dtype` (dst) | `byte_1DFBAD0[out0.Dtype]` | `0x143eded` | CONFIRMED |
-| `+0x2B` | 1 | accumulate flag | `mm_psum_flags` | **RAW** `Inst+0xF0` (pre-packed MaybeAffine) | `0x143ef1d` | CONFIRMED |
-| `+0x2C` | 1 | row group (PE-row tile) | `d3_mm_valid_row` | `translateToRowGroup(pos, +0x26)` | `0x143eecf` | CONFIRMED |
-| `+0x2D` | 1 | col group = `0x0F` (full) | `d3_mm_valid_col_group_active_col` | forced full 128-wide column | `0x143eec4` | CONFIRMED |
-| `+0x2F` | 1 | psum_zero_region | (psum_zero) | **RAW** `Inst+0x118` (MaybeAffine<u8>) | `0x143ef3b` | CONFIRMED |
-| `+0x30` | 16 | PSUM dst AP `MEM_PATTERN3D` | `d3_mm_valid_dst_*` | `assignAccess<3D>(out0)` | `0x143eef3` | CONFIRMED |
-| `+0x21`..`+0x25`,`+0x29`,`+0x2A`,`+0x2E` | — | reserved-zero | `d3_mm_reserved_z*` | pxor zero-init | — | CONFIRMED |
+| `+0x00` | 1 | opcode = `0x0A` | (MatmultMx) | `WORD[r13]=0x100A` | `0x143ed5a` | CERTAIN |
+| `+0x01` | 1 | inst_word_len = `0x10` | — | hi byte of `0x100A` | hdr | CERTAIN |
+| `+0x10` | 16 | MX operand (MXMEM_PATTERN1D) | — | `assignAccessForMX` (ifmap DATA+SCALE) | `0x143eede` | CERTAIN |
+| `+0x20` | 1 | ifmap dtype (wire tag) | `d3_mm_dtype` | `byte_1DFBAD0[arg0.Dtype]` | `0x143edca` | CERTAIN |
+| `+0x26` | 1 | num_partitions (K rows) | `d3_mm_valid_num` | `arg1(weights).Pattern[0].num` | `0x143ee80` | CERTAIN |
+| `+0x27` | 1 | num_active | `num_active_cols` | `(*arg1.vtbl+0x90)(arg1)` low | `0x143eea1` | CERTAIN |
+| `+0x28` | 1 | PSUM-dst dtype (wire tag) | `d3_mm_dtype` (dst) | `byte_1DFBAD0[out0.Dtype]` | `0x143eded` | CERTAIN |
+| `+0x2B` | 1 | accumulate flag | `mm_psum_flags` | **RAW** `Inst+0xF0` (pre-packed MaybeAffine) | `0x143ef1d` | CERTAIN |
+| `+0x2C` | 1 | row group (PE-row tile) | `d3_mm_valid_row` | `translateToRowGroup(pos, +0x26)` | `0x143eecf` | CERTAIN |
+| `+0x2D` | 1 | col group = `0x0F` (full) | `d3_mm_valid_col_group_active_col` | forced full 128-wide column | `0x143eec4` | CERTAIN |
+| `+0x2F` | 1 | psum_zero_region | (psum_zero) | **RAW** `Inst+0x118` (MaybeAffine<u8>) | `0x143ef3b` | CERTAIN |
+| `+0x30` | 16 | PSUM dst AP `MEM_PATTERN3D` | `d3_mm_valid_dst_*` | `assignAccess<3D>(out0)` | `0x143eef3` | CERTAIN |
+| `+0x21`..`+0x25`,`+0x29`,`+0x2A`,`+0x2E` | — | reserved-zero | `d3_mm_reserved_z*` | pxor zero-init | — | CERTAIN |
 
 The two `MaybeAffine<u8>` fields are emitted with a present-tag guard — a non-affine (immediate) value asserts its present-tag (`Inst+0x110`/`Inst+0x138`) is 0 (else `std::out_of_range` `@0x75927e`), then copies the already-bit-packed byte straight to the bundle:
 
@@ -321,7 +323,7 @@ The two `MaybeAffine<u8>` fields are emitted with a present-tag guard — a non-
 143ef3b:  mov   BYTE [r13+0x2f], al
 ```
 
-> **CORRECTION — CoreV4 does NOT recompute the accumulate byte.** CoreV2 (inline) and CoreV3 (`generateMatMulAccumulateFlag @0x1428630`) *compute* `+0x2B` from `getCalc{Start,Stop,Accu}` + a two-pass split. CoreV4 has **no** `getCalc*` calls — the bit-packing was done **upstream** by `legalize_mm_accumulation_groups` into `Inst+0xF0`, and the encoder copies it verbatim. The silicon contract is the same: `bit0`=START, `bit1`=STOP, `bit2`=ACCU. There is no arch>40 gate (MX matmul is always arch 40, always writes the byte).
+CoreV4 does not recompute the accumulate byte at all. CoreV2 (inline) and CoreV3 (`generateMatMulAccumulateFlag @0x1428630`) *compute* `+0x2B` from `getCalc{Start,Stop,Accu}` plus a two-pass split; CoreV4 has no `getCalc*` calls anywhere. The bit-packing happened upstream, in `legalize_mm_accumulation_groups`, which writes the finished byte into `Inst+0xF0`; the encoder copies it verbatim. The silicon contract is unchanged — `bit0`=START, `bit1`=STOP, `bit2`=ACCU — and there is no arch>40 gate here, since MX matmul is always arch 40 and always writes the byte.
 
 The byte is validated by `checkAccumulationFlag @0x150db50`, which lazily builds (via `__cxa_guard`) a hash-set seeded from `DWORD 0x03020100 + WORD 0x0604` — i.e. the valid set `{0, 1, 2, 3, 4, 6}`:
 
@@ -330,7 +332,7 @@ The byte is validated by `checkAccumulationFlag @0x150db50`, which lazily builds
 150dbd4:  mov eax, 0x604                     ; {0x04,0x06}
 ```
 
-> **QUIRK — accumulate values 5 and 7 are illegal.** `{0,1,2,3,4,6}` admits START(1), STOP(2), START|STOP(3), ACCU(4), STOP|ACCU(6), and 0 (no-op). The combos `5 = START|ACCU` and `7 = START|STOP|ACCU` are **rejected** — START (zero-the-bank) cannot co-occur with ACCU (add-into-the-bank) in one pass. The DWORD+WORD seed was disassembled this pass.
+> **QUIRK — accumulate values 5 and 7 are illegal.** `{0,1,2,3,4,6}` admits START(1), STOP(2), START|STOP(3), ACCU(4), STOP|ACCU(6), and 0 (no-op). The combos `5 = START|ACCU` and `7 = START|STOP|ACCU` are **rejected** — START (zero-the-bank) cannot co-occur with ACCU (add-into-the-bank) in one pass.
 
 > **NOTE — MatmultMx has NO perf-mode byte.** The CoreV2 DoubleRow AP-halving and CoreV3 AP dim-swap are absent; `+0x21..+0x25` are all reserved-zero. MX has a single fixed PE-feed mode — the "perf mode" is implicit in the ×4 block geometry.
 
@@ -344,19 +346,19 @@ Operands: `ins[0]`=SRC (bf16/fp16); `outs[0]`=DATA (fp8/fp4-x4); `outs[1]`=SCALE
 
 | Off | W | Field | name | Value source | Store-site | Tag |
 |---|---|---|---|---|---|---|
-| `+0x00` | 1 | opcode = `0xE3` | (QuantizeMx, =227) | `WORD[r13]=0x10E3` | `0x143ddea` | CONFIRMED |
-| `+0x01` | 1 | inst_word_len `0x10` \| sat bit0 | (saturate) | `0x10`; `or 0x1` when `!FP8ConvConfig[0]` | `0x143df3f` | CONFIRMED |
-| `+0x04` | 1 | sync WAIT mode | (sync) | `Wait::getMode` via `setupSyncWait @0x143cbe0` | sync | CONFIRMED |
-| `+0x05` | 1 | sync WAIT sem-id | (sync) | `SyncRef::getId(wait)` | sync | CONFIRMED |
-| `+0x06` | 1 | sync UPDATE mode | (sync) | `Update::getMode` via `setupSyncUpdate @0x143c950` | sync | CONFIRMED |
-| `+0x07` | 1 | sync UPDATE sem-id | (sync) | `SyncRef::getId(update)` | sync | CONFIRMED |
-| `+0x08` | 4 | sync value/reg | (sync) | GE_IMM value or GE_REG regId | sync | CONFIRMED |
-| `+0x10` | 16 | SRC input AP `MEM_PATTERN3D` | — | `assignAccess<3D>(srcAP)` | `0x143df18` | CONFIRMED |
-| `+0x21` | 1 | SRC partition count | (src part) | `srcAP.Pattern[0].num` | `0x143df14` | CONFIRMED |
-| `+0x22` | 1 | SRC dtype (wire tag) | `d3_mm_dtype` (src) | `byte_1DFBAD0[srcAP.Dtype]` (bf16→`0x06`, fp16→`0x07`) | `0x143de53` | CONFIRMED |
-| `+0x23` | 1 | DATA-out dtype (wire tag) | `d3_mm_dtype` (data) | `byte_1DFBAD0[dataAP.Dtype]` (e4m3-x4→`0x0E`, e5m2-x4→`0x0F`, fp4-x4→`0x10`) | `0x143de71` | CONFIRMED |
-| `+0x30` | 16 | MX output (MXMEM_PATTERN1D) | — | `assignAccessForMX` ({DATA,SCALE}) | `0x143df2e` | CONFIRMED |
-| `+0x0C`..`+0x0F`,`+0x24`..`+0x2F` | — | reserved-zero | — | pxor zero-init | — | INFERRED |
+| `+0x00` | 1 | opcode = `0xE3` | (QuantizeMx, =227) | `WORD[r13]=0x10E3` | `0x143ddea` | CERTAIN |
+| `+0x01` | 1 | inst_word_len `0x10` \| sat bit0 | (saturate) | `0x10`; `or 0x1` when `!FP8ConvConfig[0]` | `0x143df3f` | CERTAIN |
+| `+0x04` | 1 | sync WAIT mode | (sync) | `Wait::getMode` via `setupSyncWait @0x143cbe0` | sync | CERTAIN |
+| `+0x05` | 1 | sync WAIT sem-id | (sync) | `SyncRef::getId(wait)` | sync | CERTAIN |
+| `+0x06` | 1 | sync UPDATE mode | (sync) | `Update::getMode` via `setupSyncUpdate @0x143c950` | sync | CERTAIN |
+| `+0x07` | 1 | sync UPDATE sem-id | (sync) | `SyncRef::getId(update)` | sync | CERTAIN |
+| `+0x08` | 4 | sync value/reg | (sync) | GE_IMM value or GE_REG regId | sync | CERTAIN |
+| `+0x10` | 16 | SRC input AP `MEM_PATTERN3D` | — | `assignAccess<3D>(srcAP)` | `0x143df18` | CERTAIN |
+| `+0x21` | 1 | SRC partition count | (src part) | `srcAP.Pattern[0].num` | `0x143df14` | CERTAIN |
+| `+0x22` | 1 | SRC dtype (wire tag) | `d3_mm_dtype` (src) | `byte_1DFBAD0[srcAP.Dtype]` (bf16→`0x06`, fp16→`0x07`) | `0x143de53` | CERTAIN |
+| `+0x23` | 1 | DATA-out dtype (wire tag) | `d3_mm_dtype` (data) | `byte_1DFBAD0[dataAP.Dtype]` (e4m3-x4→`0x0E`, e5m2-x4→`0x0F`, fp4-x4→`0x10`) | `0x143de71` | CERTAIN |
+| `+0x30` | 16 | MX output (MXMEM_PATTERN1D) | — | `assignAccessForMX` ({DATA,SCALE}) | `0x143df2e` | CERTAIN |
+| `+0x0C`..`+0x0F`,`+0x24`..`+0x2F` | — | reserved-zero | — | pxor zero-init | — | MEDIUM |
 
 ### The saturate bit `+0x01.bit0`
 
@@ -367,9 +369,9 @@ Operands: `ins[0]`=SRC (bf16/fp16); `outs[0]`=DATA (fp8/fp4-x4); `outs[1]`=SCALE
 143df3f:  or  BYTE [r13+0x1], 0x1    ; SET the saturate bit
 ```
 
-`bundle[1].bit0` is forced ON when `FP8ConvConfig[0]==0` (saturation not already arranged by config) — the wire counterpart of the sim's unconditional `saturate=1` (fp8 narrow with no Inf/NaN out). There is **no round-mode field** — rounding is hard RNE in silicon (the fp4 e2m1 packer and the libBIR e4m3fn/e5m2 narrows are all RNE). CONFIRMED — the `FP8ConvConfig` compare and `or` literal disassembled.
+`bundle[1].bit0` is forced ON when `FP8ConvConfig[0]==0` (saturation not already arranged by config) — the wire counterpart of the sim's unconditional `saturate=1` (fp8 narrow with no Inf/NaN out). There is **no round-mode field** — rounding is hard RNE in silicon (the fp4 e2m1 packer and the libBIR e4m3fn/e5m2 narrows are all RNE).
 
-> **GOTCHA — the ×4-pack codegen guard.** Between the dtype stamps and the MX assign, the encoder FATALs unless the DATA output is an ×4-packed dtype: `mov eax,[rbx+0x30]; cmp eax,2; je ok; sub eax,8; cmp eax,1; setbe r8b` then `reportError("MX dtype must be packed with 4 elements into 1")` — duplicating the verifier EC211 gate. The `{2,8,9}` predicate `dt==2 || (dt-8)<=1` is byte-identical across encoder, verifier, simulator and `QuantizeMx`. String xxd-verified `@0x1d71c10`.
+> **GOTCHA — the ×4-pack codegen guard.** Between the dtype stamps and the MX assign, the encoder FATALs unless the DATA output is an ×4-packed dtype: `mov eax,[rbx+0x30]; cmp eax,2; je ok; sub eax,8; cmp eax,1; setbe r8b` then `reportError("MX dtype must be packed with 4 elements into 1")` — duplicating the verifier EC211 gate. The `{2,8,9}` predicate `dt==2 || (dt-8)<=1` is byte-identical across encoder, verifier, simulator and `QuantizeMx`. The error string is interned at `0x1d71c10`.
 
 **Block geometry** is *not* a scalar field. The 32-element OCP-MXFP block (8-partition × 4-element) is implicit in the operand APs: `+0x38` K-extent = (out free-dim)×4 (the inner FP8/FP4 packing); `+0x21` src partition count `∈{32,64,96,128}`; the `+0x30/+0x34` ADDR4 pair + `+0x3B` scalePart keep data & E8M0 in the same 32-partition quadrant. The amax-reduce + EMAX-biased E8M0 derivation + round-to-grid live in silicon (the DVE microscaling unit); the verifier `checkQuantizeMxInstruction @0x1009a60` enforces `block_size=32`.
 
@@ -381,12 +383,12 @@ All four MX opcodes share **one** operand encoder: `assignAccessForMX<MXMEM_PATT
 
 | Off (in slot) | W | Field | Value source | Store-site | Tag |
 |---|---|---|---|---|---|
-| `+0` | 4 | DATA ADDR4 (×4-packed data base) | `assignStartAddr<ADDR4>(B+0, dataAP, isOut=0)` → `CoreV4Hwm::getStartAddress` (SB\|PSUM) | `0x150e54f` | CONFIRMED |
-| `+4` | 4 | SCALE ADDR4 (E8M0 base) | `assignStartAddr<ADDR4>(B+4, scaleAP, isOut=1)` → `getStartAddressForMXScale` (**SBUF-only**) | `0x150e563` | CONFIRMED |
-| `+8` | 2 | K-extent (×4-unpacked u16) | `NEPP(dataAP)`, ×4 iff `Dtype∈{2,8,9}` | `0x150e61c` | CONFIRMED |
-| `+0xA` | 1 | step-direction sign | `(Pattern[last].step>>63)\|1` ∈ `{0x01, 0xFF}` (`sar rax,0x3f; or 1`) | `0x150e5e0` | CONFIRMED |
-| `+0xB` | 1 | SCALE base-partition %PE_count | `scaleAP.getBasePartition() % 128` | `0x150e57c` | CONFIRMED |
-| `+0xC` | 4 | reserved = 0 | (no encoder write) | — | CONFIRMED |
+| `+0` | 4 | DATA ADDR4 (×4-packed data base) | `assignStartAddr<ADDR4>(B+0, dataAP, isOut=0)` → `CoreV4Hwm::getStartAddress` (SB\|PSUM) | `0x150e54f` | CERTAIN |
+| `+4` | 4 | SCALE ADDR4 (E8M0 base) | `assignStartAddr<ADDR4>(B+4, scaleAP, isOut=1)` → `getStartAddressForMXScale` (**SBUF-only**) | `0x150e563` | CERTAIN |
+| `+8` | 2 | K-extent (×4-unpacked u16) | `NEPP(dataAP)`, ×4 iff `Dtype∈{2,8,9}` | `0x150e61c` | CERTAIN |
+| `+0xA` | 1 | step-direction sign | `(Pattern[last].step>>63)\|1` ∈ `{0x01, 0xFF}` (`sar rax,0x3f; or 1`) | `0x150e5e0` | CERTAIN |
+| `+0xB` | 1 | SCALE base-partition %PE_count | `scaleAP.getBasePartition() % 128` | `0x150e57c` | CERTAIN |
+| `+0xC` | 4 | reserved = 0 | (no encoder write) | — | CERTAIN |
 
 ```asm
 150e57c:  mov  BYTE [rbx+0xb], dl   ; scalePart % PE_count
@@ -395,7 +397,7 @@ All four MX opcodes share **one** operand encoder: `assignAccessForMX<MXMEM_PATT
 150e5d9:  sar  rax, 0x3f            ; (step>>63) for the sign byte
 ```
 
-The **×4-unpack**: `n = isTensorIndirect ? getNumIndirectIndices() : getNumElementsPerPartition(); if (Dtype==2 || (Dtype-8)<=1) n *= 4; MXMEM.K = n`. The dtypes `{2=fp4_e2m1fn_x4, 8=fp8_e4m3fn_x4, 9=fp8_e5m2_x4}` pack 4 logical elements per physical container; the K-extent counts **unpacked** logical elements while the ADDR4 leaf writes the start in **packed** container units (stride `qword_1DFC040[dt]`: fp4→2, fp8→4, both xxd-verified). This predicate is byte-identical across encoder, verifier EC211, simulator deinterleave-4, and the `QuantizeMx` ×4-pack assert.
+The **×4-unpack**: `n = isTensorIndirect ? getNumIndirectIndices() : getNumElementsPerPartition(); if (Dtype==2 || (Dtype-8)<=1) n *= 4; MXMEM.K = n`. The dtypes `{2=fp4_e2m1fn_x4, 8=fp8_e4m3fn_x4, 9=fp8_e5m2_x4}` pack 4 logical elements per physical container; the K-extent counts **unpacked** logical elements while the ADDR4 leaf writes the start in **packed** container units (stride `qword_1DFC040[dt]`: fp4→2, fp8→4). This predicate is byte-identical across encoder, verifier EC211, simulator deinterleave-4, and the `QuantizeMx` ×4-pack assert.
 
 **Indirect variant — `MXINDIRECT16B @0x150de90`.** If `dataAP->vtbl[+0x80]()` (`isTensorIndirectDynamicAP`) returns true, `assignAccessForMX` tail-jumps to the indirect encoder, which packs the same 16 bytes as a **three-ADDR4 gather triple**, every field +4-shifted: `+0` INDICES, `+0x03.bit5` indirect-mode marker (`or [B+3],0x20`), `+0x04` DATA, `+0x08` SCALE, `+0x0C` K-extent (u16), `+0x0F` scalePart. This is the only MX-indirect form. Full algorithm: [2.6](mxmem-pattern1d.md).
 
@@ -413,9 +415,9 @@ All matmul/weight bundles (V2/V3/V4) compute the PE row group identically: `row_
 
 ## Field-naming census
 
-Across the nine bundles, **every** semantic control byte is named to a recovered pybind/`<op>_info.so` string or a const-purpose: dense `Matmul` (`d3_mm_dtype`, `s_s3d3_mm_opcode`, `d3_mm_perf_opt_dtype`/`_src`, `d3_mm_num_elements`, `mm_psum_flags`, `d3_mm_valid_row_*`/`_col_group_active_col`, `d3_mm_valid_xbus`, `d3_mm_valid_src_partition`/`dst_*`); `LoadStationary` (`s3_lw_opcode`, `lw_dtype`, `lw_valid_num_rows`/`_active_cols`, `lw_valid_row_group`, `lw_valid_col_group_active_column`, `lw_valid_xbus`, `lw_perf_opt_src`/`_dtype`); sparse (`col_grp`, `num_active_cols`); MX (`d3_mm_dtype`, `d3_mm_valid_row`/`_col_group_active_col`, `mm_psum_flags`). The recovered strings were grepped live from `libwalrus.so` this pass (`d3_mm_dtype`, `d3_mm_valid_src_partition`, `d3_mm_valid_xbus`, `s3_lw_opcode`, `col_grp`, `num_active_cols`, `psum_flags`, `perf_opt_s`, … all present, suffix-interned).
+Across the nine bundles, **every** semantic control byte is named to a recovered pybind/`<op>_info.so` string or a const-purpose: dense `Matmul` (`d3_mm_dtype`, `s_s3d3_mm_opcode`, `d3_mm_perf_opt_dtype`/`_src`, `d3_mm_num_elements`, `mm_psum_flags`, `d3_mm_valid_row_*`/`_col_group_active_col`, `d3_mm_valid_xbus`, `d3_mm_valid_src_partition`/`dst_*`); `LoadStationary` (`s3_lw_opcode`, `lw_dtype`, `lw_valid_num_rows`/`_active_cols`, `lw_valid_row_group`, `lw_valid_col_group_active_column`, `lw_valid_xbus`, `lw_perf_opt_src`/`_dtype`); sparse (`col_grp`, `num_active_cols`); MX (`d3_mm_dtype`, `d3_mm_valid_row`/`_col_group_active_col`, `mm_psum_flags`). All of these are present in `libwalrus.so` as suffix-interned strings.
 
-The **only** bytes left as INFERRED/unnamed are the pxor-zeroed reserved padding (`d3_mm_reserved_z*` / `lw_reserved_zero` — named as a family but with no per-byte distinguishing member) and the sparse `+0x2D` ISA-check aux (the value path is STRONG via `runSingleISACheck`, the field NAME is the generic `col_grp` 0xF-bound). No field name is fabricated.
+The **only** bytes left unnamed are the pxor-zeroed reserved padding (`d3_mm_reserved_z*` / `lw_reserved_zero` — named as a family, with no per-byte distinguishing member) and the sparse `+0x2D` ISA-check aux, whose value path runs through `runSingleISACheck` but whose field name is only the generic `col_grp` 0xF-bound. No field name is fabricated.
 
 ---
 
