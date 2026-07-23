@@ -51,7 +51,7 @@ For reimplementation, the contract is:
 | **Collective-rank kinds** | `CCGetRank=2`, `ShardId=13`, `CCDiv=27`, `CCMod=28` |
 | **Runtime kinds** | `IndirectArg=3`, `IntRuntimeValueBase=7` |
 | **The dynamic-shape field** | `IntRuntimeValueBase.regref` @ **`+0x40`** (a `bir::Register*`) |
-| **Legality virtual** | `isLegalDelinearizedAddress` @ **vtable slot 12 = `+0x60`** (CONFIRMED across 6 subclasses) |
+| **Legality virtual** | `isLegalDelinearizedAddress` @ **vtable slot 12 = `+0x60`** (same slot in all six subclasses) |
 | **Serializers** | `toJsonv2` `0x3bab90` / `fromJsonv2` `0x3bc8c0` / `toJsonv1` `0x3b9f30` / `fromJsonv1` `0x3bbe90` / `isV1` `0x3b4110` (all libBIR) |
 | **Uniquing arena** | `pelican::PelicanContext` (vtable libBIR `0x90c238`): `BumpPtrAllocator@+0x08`, `FoldingSet<FoldingIdx>@+0x68` |
 

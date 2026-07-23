@@ -593,7 +593,7 @@ These reports exist in `raw/` but are cited by **zero** wiki pages. They represe
 
 No page cites a `D-ID` that fails to resolve to a `raw/` file. Every evidence anchor in the wiki points at a report that exists.
 
-> **CORRECTION — the one apparent dangle is a regex artifact, not a real one.** A loose scan (`rg 'D-SB2'` without word boundaries) reports `D-SB2` as cited-but-missing. It is not a citation: it is the substring `SB2` inside the hardware term `GPSIMD-SB2SB` on `walrus/legality-dispatch.md` (a SBUF-to-SBUF GPSIMD op, `bir::InstGPSIMDSB2SB`). Anchoring the match with `\bD-[A-Z]+[0-9]+\b` rejects it and the dangling count is **0**. This is the canonical reason the regeneration recipe in [§5](#5-how-this-page-is-regenerated) mandates word boundaries — drop them and this index manufactures a phantom gap.
+> **GOTCHA —** an unanchored scan manufactures a phantom dangle. `rg 'D-SB2'` without word boundaries reports `D-SB2` as cited-but-missing; it is not a citation at all, but the substring `SB2` inside the hardware term `GPSIMD-SB2SB` on `walrus/legality-dispatch.md` (a SBUF-to-SBUF GPSIMD op, `bir::InstGPSIMDSB2SB`). Anchoring with `\bD-[A-Z]+[0-9]+\b` rejects it and the dangling count is **0**. This is why the regeneration recipe in [§5](#5-how-this-page-is-regenerated) mandates word boundaries.
 
 ---
 
@@ -625,9 +625,9 @@ Two invariants any regeneration must preserve, or it will produce wrong findings
 
 ---
 
-## 6. Adversarial verification
+## 6. Verification checks
 
-Five forward edges and the three census totals, re-checked by hand against the repo. Every check passed.
+Five forward edges and the three census totals, checked by hand against the repo. Every check passed.
 
 | Check | Method | Result |
 |---|---|---|
@@ -644,6 +644,6 @@ Five forward edges and the three census totals, re-checked by hand against the r
 
 ## See also
 
-- [§0.3 Methodology & Confidence Model](../methodology.md) — what a `CONFIRMED` / `INFERRED` tag means and how reports earn one.
+- [§0.3 Methodology & Confidence Model](../methodology.md) — what the `CERTAIN` / `HIGH` / `MEDIUM` / `LOW` grades mean and how a claim earns one.
 - [§14.4 Symbol / Offset Index](symbol-offset-index.md) — the sibling provenance index, mapping binary symbols and addresses to the pages that document them.
 - [§14.1 Master Opcode Reference](master-opcode-table.md), [§14.2 Master Enum & Dtype Table](master-enum-dtype-table.md), [§14.3 Error-Message Catalog](error-message-catalog.md) — the consolidated lookup appendices whose own backing reports appear in [§2](#2-forward-map--report--consuming-pages).

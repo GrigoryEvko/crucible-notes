@@ -301,7 +301,7 @@ This mixes all three index idioms in one function: an exact test (`== 18`), a ta
 
 The 49-byte table at `byte_786480` (`.rodata`, `VA == file offset`) reads `01 00 00 01 …`: the bytes set within the window admit opcodes **`{19 Load, 22 Save, 32 DMACopy, 41 ReadVarAddr, 42 GenericIndirectLoad, 43 IndirectLoad, 44 GenericIndirectSave, 45 IndirectSave, 46 IndirectSaveAccumulate, 67 DMATrigger}`**. Together with `18 DMA`, the `75..76` and `68..72` tails, that is the full AXI-instruction set.
 
-> **CORRECTION —** an earlier reading of this subsystem looked for a literal symbol named `sameInst` *family-mask function* and a single opcode→family bit register. Neither exists. `sameInst` is per-opcode structural equality (Encoding-free, field-by-field); the *families* are computed by the `isXxx` predicates above using four different encodings, and one opcode can belong to several families depending on a sub-type field (`DMACopy` is at once copy, transpose, or replicate). Any reimplementation that flattens families into a static opcode→family map will mis-classify the multiplexed opcodes.
+> **GOTCHA —** there is no opcode→family bit register anywhere in libBIR, and `sameInst` is not one. `sameInst` is per-opcode structural equality, compared field by field; the *families* are computed on demand by the `isXxx` predicates above using four different encodings. One opcode can belong to several families depending on a sub-type field — `DMACopy` is copy, transpose, or replicate depending on `+0x128`. Flattening families into a static opcode→family map mis-classifies every multiplexed opcode.
 
 ---
 
@@ -315,10 +315,17 @@ The 49-byte table at `byte_786480` (`.rodata`, `VA == file offset`) reads `01 00
 
 ---
 
-## Verification ceiling
+## Evidence summary
 
-The 110-count and the name table are **CONFIRMED at the strongest level**: they are read directly off the live switch body in `libBIR.so` (`0x2d5bf0`), the case count was independently re-counted (110 string-emit calls), and the out-of-range path names the source file and line. The opcode field offset (`+0x58`) is **CONFIRMED** — it is the identical read in `InstructionType2string`'s callers, `sameInst`, and every `isXxx`.
+| Claim | Anchor |
+|---|---|
+| 110 members, ordinals 0–109, and the full name table | read directly off the live switch body at `0x2d5bf0` in `libBIR.so`; the case count was re-counted independently as 110 string-emit calls, and the out-of-range arm names its own source file and line |
+| Opcode field at `+0x58` | the identical read appears in `InstructionType2string`'s callers, in `sameInst`, and in every `isXxx` predicate |
+| `sameInst` dispatch shape and the four family-predicate encodings | decompiled bodies of `0x2db7b0` and the `0x30e9a0–0x315710` predicate block |
+| Decoded mask memberships — RNG `{10*,58,59,60,65,97,98,99}`, SRDMA `{19,22,32,68–72}`, generic `{0–3}` | arithmetic on the literal immediates `0x38000000085` and `0xFFC1FFFFFFFFDFF6` |
+| `isAxiInstruction`'s full set | the 49-byte `byte_786480` table dumped byte-for-byte from `.rodata`: within `[19, 67]` it admits `{19, 22, 32, 41, 42, 43, 44, 45, 46, 67}`, plus the `== 18` test and the `75..76` / `68..72` tails |
 
-The `sameInst` dispatch shape and the family-predicate encodings are **CONFIRMED** from the decompiled bodies; the *exact field offsets* inside the larger overrides (e.g. the deep attribute chain in `InstActivation::sameInst`) are **STRONG** rather than certain, because Hex-Rays' struct recovery for `bir::Instruction` is partial and some offsets are reported as raw `+N` rather than named members — the relative comparison logic is exact, the absolute offsets should be re-confirmed against [7.1 Instruction base](instruction-base.md) before relying on a specific byte.
+## Limits of this reading
 
-The "family" column in the opcode table is **editorial/INFERRED** — it is this page's grouping synthesized from the `sameInst` ranges and `isXxx` sets, not a field the binary stores. The decoded mask memberships (RNG `{58,59,60,65,97,98,99,10*}`, SRDMA `{19,22,32,68–72}`, generic `{0–3}`) are **CONFIRMED** by arithmetic on the literal immediates. The `byte_786480` AXI table has now been **dumped byte-for-byte** from `.rodata`: within `[19, 67]` it admits `{19, 22, 32, 41, 42, 43, 44, 45, 46, 67}`, so `isAxiInstruction`'s full set is **CONFIRMED**, not inferred.
+- The exact field offsets *inside* the larger `sameInst` overrides — for instance the deep attribute chain in `InstActivation::sameInst` — are less firm than the comparison logic around them. Struct recovery for `bir::Instruction` is partial, and some offsets appear as raw `+N` rather than named members. The relative logic is exact; re-check an absolute offset against [7.1 Instruction base](instruction-base.md) before relying on a specific byte.
+- The "family" column in the opcode table is editorial. It is this page's grouping, synthesized from the `sameInst` ranges and the `isXxx` sets, and is not a field the binary stores [INFERRED].

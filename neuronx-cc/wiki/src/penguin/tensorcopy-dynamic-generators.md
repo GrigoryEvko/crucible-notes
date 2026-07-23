@@ -227,15 +227,15 @@ TongaInst / TongaISAInst / NeuronUnaryInst         (penguin/tonga base instructi
   rhs_str "dynamic_copy_src…"  rhs_str "dynamic_copy_dst %s"
 ```
 
-The src-vs-dst distinction is therefore *not* a runtime flag — it is encoded by **(a)** class identity, **(b)** the `rhs_str` label and what it prints, and **(c)** the brewer instruction definition the subclass re-declares (engine hint, instance class, the access-mode polarity of the copy *target*). `TensorCopyDynamicBase` — the non-`Gen` wrapper Src/Dst actually inherit from — is hand-written and lives outside these three `.so`; its exact body is **INFERRED** here.
+The src-vs-dst distinction is therefore *not* a runtime flag — it is encoded by **(a)** class identity, **(b)** the `rhs_str` label and what it prints, and **(c)** the brewer instruction definition the subclass re-declares (engine hint, instance class, the access-mode polarity of the copy *target*). `TensorCopyDynamicBase` — the non-`Gen` wrapper Src/Dst actually inherit from — is hand-written and lives outside these three `.so`, so its body is reconstructed rather than read [INFERRED].
 
-> **NOTE — NeuronEngine (STRONG).** Both Src and Dst `import NeuronEngine` at module level, but it is referenced in *no* method body — it is consumed in the brewer-emitted **class body** as the per-instruction engine hint (e.g. a default-engine or engine-eligibility attribute). This is the attribute the DGE-level / engine-selection logic reads when assigning the dynamic copy to a DMA engine. Both variants carry it; the gather/scatter polarity plus this engine attribute drive engine assignment. The exact member value is a class-body constant, not in any traced method (**INFERRED**).
+> **NOTE —** both Src and Dst `import NeuronEngine` at module level, but it is referenced in *no* method body — it is consumed in the brewer-emitted **class body** as the per-instruction engine hint (a default-engine or engine-eligibility attribute). This is the attribute the DGE-level / engine-selection logic reads when assigning the dynamic copy to a DMA engine. Both variants carry it; the gather/scatter polarity plus this engine attribute drive engine assignment. The exact member value is a class-body constant that appears in no traced method [UNRESOLVED].
 
 ---
 
 ## Lowering — dynamic IR node → indirect DMA
 
-### The producer chain (STRONG, cross-referenced)
+### The producer chain
 
 ```text
 front-end dynamic-shape op (DynamicSlice / DynamicUpdateSlice)
@@ -258,18 +258,24 @@ The on-wire descriptor from `BaseGen.serialize` carries exactly the fields the D
 | `offset_scale` | index→offset scale (element/byte stride on runtime indices) |
 | `shape` / `dtype` | element geometry of the copy |
 
-### src ⇄ gather, dst ⇄ scatter (STRONG)
+### src ⇄ gather, dst ⇄ scatter
 
 - **`TensorCopyDynamicSrcGen`** → the **read** address is runtime → **indirect / gather** DMA. The descriptor's *source* address is `generic_addrs[i] * offset_scale` along `generic_dim`. (This is why Src's `rhs_str` prints `generic_addrs` — the runtime addr is on the read side.)
 - **`TensorCopyDynamicDstGen`** → the **write** address is runtime → **indirect / scatter** DMA. The descriptor's *dest* address is `generic_addrs[i] * offset_scale` along `generic_dim`. (This is why Dst's `rhs_str` does *not* print it — the runtime addr is on the output side.)
 
-The two map to the gather vs. scatter indirect-DMA descriptor variants the backend materializes. The `rhs_str` asymmetry is directly binary-confirmed; the gather/scatter ⇔ src/dst mapping itself is STRONG (an inference from which side carries the runtime address, fully consistent with every observed string and operand fact).
+The two map to the gather vs. scatter indirect-DMA descriptor variants the backend materializes. The `rhs_str` asymmetry is read straight from the binary; the gather/scatter ⇔ src/dst mapping is deduced from which side carries the runtime address, and is consistent with every observed string and operand fact [INFERRED].
 
-### Confidence ladder
+### Evidence summary
 
-- **CONFIRMED** — full Cython bodies for BaseGen `__init__`/`operands`/`loadTensor`/`verify`/`serialize` + the `enumerate_ap_indices` generator; both subclasses' `__init__`/`operands`/`serialize`/`verify`/`rhs_str`/`replaceUseOfWith`; all field names (`generic_addrs`/`generic_dim`/`offset_scale`/`addr_free_indices`); the dual `AccessMode.LOAD` on src + generic_addrs; the brewer source markers; the `rhs_str` label strings.
-- **STRONG** — gather/scatter ⇔ src/dst-dynamic mapping; `NeuronEngine` as the engine-selection hint; `generic_addrs/generic_dim/offset_scale` as the runtime-address triple; `addr_free_indices` as the symbolic-AP register set; the producer→DMA-lowering chain.
-- **INFERRED** — the exact `NeuronEngine` member value (class-body constant, in no method body); the hand-written body of the `TensorCopyDynamicBase` wrapper (outside these three `.so`); the precise `super().__init__` argument splat beyond `self.src` (Cython obscures the `*args`).
+Read directly from the modules: the full Cython bodies of `BaseGen.__init__` / `operands` / `loadTensor` / `verify` / `serialize` and the `enumerate_ap_indices` generator; both subclasses' `__init__` / `operands` / `serialize` / `verify` / `rhs_str` / `replaceUseOfWith`; every field name (`generic_addrs`, `generic_dim`, `offset_scale`, `addr_free_indices`); the dual `AccessMode.LOAD` on `src` plus `generic_addrs`; the brewer source markers; and the `rhs_str` label strings.
+
+Deduced from those readings rather than observed directly: the gather/scatter ⇔ src/dst-dynamic mapping; `NeuronEngine` as the engine-selection hint; `generic_addrs`/`generic_dim`/`offset_scale` as the runtime-address triple; `addr_free_indices` as the symbolic-AP register set; and the producer→DMA-lowering chain.
+
+### Limits of this reading
+
+- The `NeuronEngine` member value is a class-body constant and appears in no method body, so its value is unknown.
+- The `TensorCopyDynamicBase` wrapper is hand-written and lives outside these three `.so`; its body was not read.
+- The precise `super().__init__` argument splat beyond `self.src` is obscured by Cython's `*args` handling.
 
 ---
 

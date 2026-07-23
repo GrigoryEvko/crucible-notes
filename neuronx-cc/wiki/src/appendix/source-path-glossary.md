@@ -198,28 +198,28 @@ The neuronxcc-internal **Python-origin** paths are few — most of the frontend 
 | `driver/jobs/support/EmbeddedWalrusDriver.pyx` | `EmbeddedWalrusDriver.cpython-310-…so` | `.pyx` | the embedded walrus driver shim | [Two-Parser Architecture](../frontend/two-parser-architecture.md) |
 | `ErrorMessages.pyx` *(bare)* | `ErrorMessages.cpython-310-…so` | `.pyx` | the diagnostics dict module | [Error-Message Catalog](error-message-catalog.md) |
 
-> **NOTE —** the `*OpGen` module names in the dump (`MatMulOpGen`, `TensorScalarPtrOpGen.cpytho_…`, `TiledSoftmaxOpGen.cpyth_…`, …) are **module/symbol** names, not source paths — they are the *outputs* brewer emitted, each tagged with the `brewer.py:3384` banner. The single source-of-truth `.py` path is `instabrew/brewer.py`; the `:3384` is the emit-site line inside brewer's template engine. This is the binary's own confirmation of the *OpGen-from-brewer contract documented in [§7.10](../bir/brewer-generator.md).
+> **NOTE —** the `*OpGen` module names in the dump (`MatMulOpGen`, `TensorScalarPtrOpGen.cpytho_…`, `TiledSoftmaxOpGen.cpyth_…`, …) are **module/symbol** names, not source paths — they are the *outputs* brewer emitted, each tagged with the `brewer.py:3384` banner. The single source-of-truth `.py` path is `instabrew/brewer.py`; the `:3384` is the emit-site line inside brewer's template engine. This is the binary's own record of the *OpGen-from-brewer contract documented in [§7.10](../bir/brewer-generator.md).
 
 ---
 
-## 10. Adversarial verification — five paths re-confirmed
+## 10. Evidence summary — five paths, byte-exact
 
-Five literals were re-extracted directly from the cited binary's `_strings.json` to confirm the byte-exact string is present (not paraphrased). Command form:
+Five literals were extracted directly from the cited binary's string table, so the paths below are the bytes themselves rather than paraphrases. Command form:
 
 ```bash
 jq -r '.[] | select(.value|test("<path>")) | "\(.addr)\t\(.category)\t\(.value)"' \
   ida/<binary>__…_strings.json
 ```
 
-| # | Path (claimed) | Binary | Re-confirmed literal & addr | Status |
+| # | Path | Binary | Literal & address | Confidence |
 |---|---|---|---|---|
-| 1 | `neff_packager.cpp` | `libwalrus.so` | `…/src-3.10.16/neuronxcc/walrus/neff_packager/src/neff_packager.cpp` @ `0x1d729d8`, `category:path`, 4 xrefs (plus `:49`,`:73`,`:110`,`:113`,`:239`,`:490`,`:1061` line variants) | CONFIRMED |
-| 2 | `loop_profitable_fusion.cpp` | `libwalrus.so` + `loop_optimization` ELF | `…/walrus/walrus_loop_flow/loop_optimization/src/loop_profitable_fusion.cpp` @ `0x1ce7238` (libwalrus) and @ `0x5c4d60` (loop_optimization) | CONFIRMED (both binaries) |
-| 3 | `perf_sim.cpp` | `libwalrus.so` | `…/walrus/perf_sim/src/perf_sim.cpp` @ `0x1d83328`, `category:path` (+ `:96`,`:108`,`:121`,`:242`,`:249`,`:488`,`:506`,`:654`,`:758`,`:760`,`:816` line variants) | CONFIRMED |
-| 4 | `float_converter.cpp` | `libBIR.so` · `libBIRSimulator.so` · `krtlib` | `…/support/dtype_impl/float_converter.cpp` @ `0x761908` (libBIR), `0x5cae80` (libBIRSimulator), `0x6d228` (krtlib) — same TU in three binaries | CONFIRMED (3 binaries) |
-| 5 | `sort_and_merge.cpp` | `libbuiltincustomop_cpu0` | `sort_and_merge.cpp:618 right_start < dim2` @ `0x8407d633`, `category:generic` (basename-only `file:line predicate` form; 17 asserts, replicated cpu0..7) | CONFIRMED |
+| 1 | `neff_packager.cpp` | `libwalrus.so` | `…/src-3.10.16/neuronxcc/walrus/neff_packager/src/neff_packager.cpp` @ `0x1d729d8`, `category:path`, 4 xrefs (plus `:49`,`:73`,`:110`,`:113`,`:239`,`:490`,`:1061` line variants) | CERTAIN |
+| 2 | `loop_profitable_fusion.cpp` | `libwalrus.so` + `loop_optimization` ELF | `…/walrus/walrus_loop_flow/loop_optimization/src/loop_profitable_fusion.cpp` @ `0x1ce7238` (libwalrus) and @ `0x5c4d60` (loop_optimization) | CERTAIN (both binaries) |
+| 3 | `perf_sim.cpp` | `libwalrus.so` | `…/walrus/perf_sim/src/perf_sim.cpp` @ `0x1d83328`, `category:path` (+ `:96`,`:108`,`:121`,`:242`,`:249`,`:488`,`:506`,`:654`,`:758`,`:760`,`:816` line variants) | CERTAIN |
+| 4 | `float_converter.cpp` | `libBIR.so` · `libBIRSimulator.so` · `krtlib` | `…/support/dtype_impl/float_converter.cpp` @ `0x761908` (libBIR), `0x5cae80` (libBIRSimulator), `0x6d228` (krtlib) — same TU in three binaries | CERTAIN (3 binaries) |
+| 5 | `sort_and_merge.cpp` | `libbuiltincustomop_cpu0` | `sort_and_merge.cpp:618 right_start < dim2` @ `0x8407d633`, `category:generic` (basename-only `file:line predicate` form; 17 asserts, replicated cpu0..7) | CERTAIN |
 
-> **NOTE —** the `category` field is itself a provenance signal: `neff_packager`/`perf_sim`/`float_converter`/`loop_profitable_fusion` all carry `"category": "path"` (full build-root `__FILE__` literals), while `sort_and_merge`'s carry `"category": "generic"` (the concatenated `file:line predicate` custom-check form). Both are binary-resident; neither is reconstructed. `brewer.py`'s three hits also carry `"category": "path"`.
+> **NOTE —** the `category` field is itself a provenance signal: `neff_packager`/`perf_sim`/`float_converter`/`loop_profitable_fusion` all carry `"category": "path"` (full build-root `__FILE__` literals), while `sort_and_merge`'s carry `"category": "generic"` (the concatenated `file:line predicate` custom-check form). Both forms are binary-resident; neither is reconstructed. `brewer.py`'s three hits also carry `"category": "path"`.
 
 ---
 
