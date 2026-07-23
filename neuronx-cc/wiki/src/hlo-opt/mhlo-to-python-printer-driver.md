@@ -8,7 +8,7 @@ This is the last MLIR pass in the hlo2penguin pipeline, and it does something no
 
 The shape is unusual but the rationale is clean. Penguin (the "Starfish" middle-end) is a Python library; `hlo2penguin` is a *front-end transpiler* whose deliverable is the Python program that drives that library. So the terminal pass is a code generator targeting Python text, not a dialect conversion. Every reverse-engineering instinct that expects a `ConversionPattern` rewriting `mhlo.add` into `penguin.add` is wrong here: the pass emits the literal string `m0.NeuronTensorOp(..., np.add, 'mhlo.binary')\n`. Anchors throughout confirm the format strings, the import set, and the op→funcRef table at the byte level.
 
-This is the MLIR→Penguin-Python bridge. Everything Part 5 documents — the `Function`, `Tensor`, `NeuronTensorOp`, `DependencyEdge` objects of the Penguin IR model — is *constructed by the Python text this pass emits*. The driver tier (module skeleton, per-op dispatch, type/tensor/constant serialization, name/scalar/weight helpers) is reconstructed in §1–§5; the elementwise emitter family (unary/binary/ternary/convert/iota and the cbrt/clamp decomposers) is in §6–§8. The ~40 heavyweight per-op emitters (`printDotOp`, `printCollectiveOp<…>`, fusion emitters) share this spine but their bodies are sibling pages (4.44/4.45).
+This is the MLIR→Penguin-Python bridge. Everything Part 5 documents — the `Function`, `Tensor`, `NeuronTensorOp`, `DependencyEdge` objects of the Penguin IR model — is *constructed by the Python text this pass emits*. The driver tier (module skeleton, per-op dispatch, type/tensor/constant serialization, name/scalar/weight helpers) is reconstructed in §1–§5; the elementwise emitter family (unary/binary/ternary/convert/iota and the cbrt/clamp decomposers) is in §6–§8. The ~40 heavyweight per-op emitters (`printDotOp`, `printCollectiveOp<…>`, fusion emitters) share this spine, but their bodies belong to the Dot/Reduce/collective emitter pages.
 
 For reimplementation, the contract is:
 
@@ -36,7 +36,7 @@ For reimplementation, the contract is:
 
 The single most important fact about this pass: **the lowering writes Python source, not an MLIR dialect.** This is provable from the binary three ways.
 
-**1. The emitted format strings are Python.** The `.rodata` string pool of `hlo2penguin` contains the verbatim Python fragments the emitter concatenates. Every one was read back from `*_strings.json` (CONFIRMED):
+**1. The emitted format strings are Python.** The `.rodata` string pool of `hlo2penguin` contains the verbatim Python fragments the emitter concatenates. Each is a verbatim entry in the string pool:
 
 ```text
 "import "                 @ 0x24a562   →  import <module> as <alias>
@@ -63,13 +63,13 @@ There is no `penguin.add`, no `penguin.tensor`, no dialect mnemonic anywhere. Th
 **3. The function references are numpy/scipy symbols.** Elementwise ops do not map to `penguin.*` ops; they map to `np.exp`, `np.add`, `scipy.special.expit`. The emitter calls `getImport("numpy")` → alias `"np"`, then builds the funcRef string `"np" + "." + "exp"`. The Penguin op is `NeuronTensorOp`, and the actual elementwise *operation* is carried as a numpy ufunc reference passed as an argument:
 
 ```python
-# what mhlo.add becomes, verbatim shape (CONFIRMED format strings):
+# what mhlo.add becomes, verbatim shape:
 out = m1.NeuronTensorOp(lhs, rhs, np.add, 'mhlo.binary')
 ```
 
 > **QUIRK —** the operation is not encoded in the constructor *name*. Every elementwise op emits the same constructor, `NeuronTensorOp`; the *which-op* is the numpy/scipy callable passed as a positional argument (`np.add`, `np.exp`, `scipy.special.erf`) together with an op-class tag string (`'mhlo.binary'`). A reimplementer who expects a distinct `penguin.AddOp` per opcode will not find one — the Penguin layer dispatches at runtime on the passed ufunc. This is why the elementwise table (§6) is a *string-rewrite* table from mhlo op → numpy symbol name, not an op→op table.
 
-> **CORRECTION (C14/C15 reconciliation) —** the driver report (D-C14 §3) sketched the generic statement as `m<N>.<OpName>(srcs=[…], dsts=[…], op="<n>", …)`, while the elementwise report (D-C15) showed `NeuronTensorOp(<src>, np.<func>, 'mhlo.<class>')`. The binary resolves both: the literal `.NeuronTensorOp(` exists at `0x...` (CONFIRMED in `_strings.json`), and `OpName` for an elementwise op *is* `NeuronTensorOp`. The two descriptions are the same statement viewed from the assembler (`printOperandsAndAttributes`, which formats `srcs=`/`dsts=`/`op=`/`dl=`) and from the leaf emitter (`printUnaryTensorOp`, which supplies the `NeuronTensorOp` constructor name, the ufunc, and the class tag). The page treats them as one mechanism.
+> **NOTE — one statement, two vantage points.** You will see the emitted line written two ways: as the generic `m<N>.<OpName>(srcs=[…], dsts=[…], op="<n>", dl=…)` skeleton and as the elementwise `NeuronTensorOp(<src>, np.<func>, 'mhlo.<class>')`. These are the same statement. `printOperandsAndAttributes` formats the `srcs=` / `dsts=` / `op=` / `dl=` frame; the leaf emitter (`printUnaryTensorOp` and its siblings) supplies the constructor name — which for every elementwise op *is* `NeuronTensorOp` — plus the ufunc and the class tag.
 
 ---
 
@@ -162,7 +162,7 @@ v0.id=0
 ir=v0
 ```
 
-> **NOTE —** the `tensorizer*` module-name strings are not literals — they are built at static-init (`GLOBAL static_init` @ `0x20b74d0`) by `llvm::Twine::concat` chains over the shared prefix `neuronxcc.starfish.penguin`. Only the prefix and leaf names (`ir`, `DebugInfo`, `APIndex`, `TongaInst`, `TongaISAInst`, `TongaTensor`, `Dependency`) appear as discrete strings; the full paths are assembled at process start. The `.ir.Dependency` path was read back whole from the `.rodata` StringRef global @ `0x41fa70` (→ ptr `0x2c9158`, len 40), CONFIRMED.
+> **NOTE —** the `tensorizer*` module-name strings are not literals — they are built at static-init (`GLOBAL static_init` @ `0x20b74d0`) by `llvm::Twine::concat` chains over the shared prefix `neuronxcc.starfish.penguin`. Only the prefix and leaf names (`ir`, `DebugInfo`, `APIndex`, `TongaInst`, `TongaISAInst`, `TongaTensor`, `Dependency`) appear as discrete strings; the full paths are assembled at process start. The `.ir.Dependency` path can be read back whole from the `.rodata` StringRef global @ `0x41fa70` (→ ptr `0x2c9158`, len 40).
 
 ---
 
@@ -198,7 +198,7 @@ function printOperation(Operation* op):           // 0x20ee320
     if tid == ConvertOp:  printConvert(op)                     // @ 0x20ef455
     if tid == IotaOp:     printIota(op)                        // @ 0x20ef176
     if tid == ConstantOp: printConstant(op)
-    ... // ~40 templated print<X> emitters (Dot, Conv, Reduce, collectives …) — 4.44/4.45
+    ... // ~40 templated print<X> emitters (Dot, Conv, Reduce, collectives …)
 
     // FALLTHROUGH — unsupported op
     NEURON_LOG(ERROR, "hilo/MLIRPasses/Transforms/MhloToPythonPrinter.cc", line)
@@ -209,7 +209,7 @@ The dispatch is a flat TypeID-comparison cascade (279 basic blocks, 60 callees, 
 
 ### The four name families
 
-The driver mints exactly four kinds of Python identifier (CONFIRMED):
+The driver mints exactly four kinds of Python identifier:
 
 | Family | Form | Minter | Counter source |
 |---|---|---|---|
@@ -265,7 +265,7 @@ dst0 = m1.NeuronTensorOp(srcs=[s0, s1], dsts=[d0], op="add",
 
 ### `printType` — MLIR Type → Python dtype string
 
-`printType` (@ `0x20bf2c0`) is the single dtype renderer used by convert/iota/tensor. Probe order (CONFIRMED):
+`printType` (@ `0x20bf2c0`) is the single dtype renderer used by convert/iota/tensor. It probes in this order:
 
 ```c
 function printType(Type t) -> string:             // 0x20bf2c0
@@ -290,7 +290,7 @@ function printType(Type t) -> string:             // 0x20bf2c0
 
 ### `printTensor` — the `Tensor()` constructor
 
-`printTensor` (@ `0x20c0510`, ~5700 bytes) emits the tensor-declaration line. It takes a `NeuronTensorAttribute` (confirmed as a distinct type in the symbol `…printTensor…NS_21NeuronTensorAttributeEb`):
+`printTensor` (@ `0x20c0510`, ~5700 bytes) emits the tensor-declaration line. It takes a `NeuronTensorAttribute`, a distinct type named in the symbol `…printTensor…NS_21NeuronTensorAttributeEb`:
 
 ```python
 <name> = m5.Tensor(name="<n>", shape=(d0,d1,…), parent=…, id=…, dtype=<printType>,
@@ -336,7 +336,7 @@ The elementwise emitters are thin: they pick a numpy/scipy function reference fo
 
 ### The unary router
 
-`printUnary` (@ `0x20f0840`) is a 37-byte trampoline: if the op is `mhlo.cbrt` it tail-jumps to `printCubeRootTensorOp` (decomposer, §8); otherwise it tail-jumps to `printUnaryTensorOp(op, label)`. `printUnaryTensorOp` (@ `0x20c83e0`) pre-resolves `getImport("numpy")`→`"np"` and `getImport("scipy.special")`→`m<N>`, defaults `funcRef = "np." + label`, then applies a **rewrite switch keyed on label length** (CONFIRMED via the `mov edx, offset a<X>` anchors):
+`printUnary` (@ `0x20f0840`) is a 37-byte trampoline: if the op is `mhlo.cbrt` it tail-jumps to `printCubeRootTensorOp` (decomposer, §8); otherwise it tail-jumps to `printUnaryTensorOp(op, label)`. `printUnaryTensorOp` (@ `0x20c83e0`) pre-resolves `getImport("numpy")`→`"np"` and `getImport("scipy.special")`→`m<N>`, defaults `funcRef = "np." + label`, then applies a **rewrite switch keyed on label length**, each arm loading its replacement string:
 
 | Label (len) | Rewrite → funcRef | Anchor |
 |---|---|---|
@@ -383,7 +383,7 @@ Every row is `mhlo op → emit method → emitted NeuronTensorOp(funcRef, class)
 
 ### Compare-direction map
 
-`CompareOp` routes through `mlir::mapXla2PgDir` (a `DenseMap<ComparisonDirection,string>` built at static-init `0x20b74d0`): `EQ→"equal"`, `NE→"not_equal"`, `GE→"greater_equal"`, `GT→"greater"`, `LE→"less_equal"`, `LT→"less"` (all six strings CONFIRMED in `_strings.json`). So `mhlo.compare {GT}` → `np.greater`, emitted as `'mhlo.binary'`.
+`CompareOp` routes through `mlir::mapXla2PgDir` (a `DenseMap<ComparisonDirection,string>` built at static-init `0x20b74d0`): `EQ→"equal"`, `NE→"not_equal"`, `GE→"greater_equal"`, `GT→"greater"`, `LE→"less_equal"`, `LT→"less"` (all six strings are present in the pool). So `mhlo.compare {GT}` → `np.greater`, emitted as `'mhlo.binary'`.
 
 ---
 
@@ -427,7 +427,7 @@ function printCubeRootTensorOp(op):               // 0x20efe20
 
 `print<ClampOp>` (@ `0x20ef830`) decomposes `clamp(lo,x,hi)` → `maximum(lo, minimum(x,hi))`: it `build`s a `MinOp(x,hi)` and a `MaxOp(lo,min)`, then `printOperation`s each → two `np.minimum`/`np.maximum` `NeuronTensorOp('mhlo.binary')` lines.
 
-> **CORRECTION (vs flat-family grouping) —** earlier surveys grouped `cbrt`/`clamp` with the ternary/unary tensor-op emitters. The disasm shows they are **emit-time decomposers**, not direct emissions: `printTernaryTensorOp` is used **only** by `mhlo.select`. `cbrt` → 5 ops (`constant`/`abs`/`power`/`divide`/`multiply`); `clamp` → 2 ops (`maximum`/`minimum`). The `Op::build` + `printOperation`-recursion is observed at the named addresses, and each new op's `RegisteredOperationName::lookup` is guarded by a FATAL ("Building op `mhlo.<X>` … but it isn't known in this MLIRContext"). CERTAIN.
+Neither op ever reaches a tensor-op emitter of its own, and neither belongs to the ternary family despite its arity: `printTernaryTensorOp` is used by `mhlo.select` and nothing else. `cbrt` expands to five ops (`constant`/`abs`/`power`/`divide`/`multiply`), `clamp` to two (`maximum`/`minimum`). Each synthesized op's `RegisteredOperationName::lookup` is guarded by a FATAL — "Building op `mhlo.<X>` … but it isn't known in this MLIRContext" — so a missing registration fails loudly rather than emitting a broken line.
 
 > **QUIRK —** because the decomposers build *real* mhlo ops and recurse, the `1/3` exponent constant in `cbrt` flows through `printConstant` and is **externalized to a `.npy` file** like any other constant — the cube root of a tensor pulls a weight file into the emitted program. The decomposition is opaque to the Penguin layer: it sees five ordinary `NeuronTensorOp`s, not a cbrt.
 
@@ -435,7 +435,7 @@ function printCubeRootTensorOp(op):               // 0x20efe20
 
 ## 9. Diagnostics — the NCC_PYP error catalog
 
-Every failure path routes through `hilo::formatErrorMessage` + `NEURON_LOG(ERROR)` with the source path `hilo/MLIRPasses/Transforms/MhloToPythonPrinter.cc` (@ `0x3cd468`) and a `NCC_PYP###` code. The driver-tier codes (CONFIRMED in `_strings.json`, which holds the full `NCC_PYP001`–`NCC_PYP058` range):
+Every failure path routes through `hilo::formatErrorMessage` + `NEURON_LOG(ERROR)` with the source path `hilo/MLIRPasses/Transforms/MhloToPythonPrinter.cc` (@ `0x3cd468`) and a `NCC_PYP###` code. The string pool holds the full `NCC_PYP001`–`NCC_PYP058` range; the driver-tier codes are:
 
 | Code | Site | Reason |
 |---|---|---|
@@ -482,21 +482,36 @@ The StableHLO twin (`mlir::StableHLOToPythonPrinter`) is byte-parallel — same 
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary and limits of this reading
 
-The five strongest claims, re-challenged against the binary:
+The headline — that this pass emits textual Python rather than an MLIR dialect — rests on
+the string pool, not on interpretation. It holds `def weight_load(p):\n`, `  t = `,
+`.load(p)\n`, `  return t\n`, `import `, `.Function(`, `.Tensor(`, `.NeuronTensorOp(`,
+`.markInput(`, `.add_dep_edge(`, the class tags `'mhlo.unary'` / `'mhlo.binary'` /
+`'mhlo.ternary'` and `xla_op`. Those are Python source fragments, including a literal
+`def`. The targets `neuronxcc.starfish.penguin`, `…penguin.ir.Dependency` and
+`neuronxcc.starfish.support` are dotted Python import paths. No `penguin.*` op mnemonic
+exists anywhere, and there is no `penguin` dialect-registration symbol — while the
+`mlir::Dialect::addOperations<mhlo::…>` symbol for the *input* dialect is present.
 
-1. **Penguin IR is emitted as textual Python, not an MLIR dialect (HEADLINE).** CONFIRMED. `_strings.json` holds `def weight_load(p):\n`, `  t = `, `.load(p)\n`, `  return t\n`, `import `, `.Function(`, `.Tensor(`, `.NeuronTensorOp(`, `.markInput(`, `.add_dep_edge(`, `'mhlo.unary'`/`'mhlo.binary'`/`'mhlo.ternary'`, `xla_op` — these are Python source fragments and a literal `def`. The target paths `neuronxcc.starfish.penguin`, `…penguin.ir.Dependency`, `neuronxcc.starfish.support` are dotted Python imports. No `penguin.*` op mnemonic exists. There is no `penguin` dialect-registration symbol (unlike the `mlir::Dialect::addOperations<mhlo::…>` symbol that *is* present). The finding holds at the byte level.
+The dispatch structure is equally direct. `_ZN4mlir19MhloToPythonPrinter14printOperationEPNS_9OperationE`
+resolves to `0x20ee320` (StableHLO twin `0x218d6b0`), and every emitter it fans out to —
+`printUnaryTensorOp` `0x20c83e0`, `printConvert`, `printIota`, `printCubeRootTensorOp` —
+resolves in the same symbol table. The elementwise funcRefs (`numpy`-derived names,
+`scipy.special`, and the rewrite suffixes `.expit` / `.erf` / `.arctan` / `.rint` /
+`.gelu` / `.silu`) are all present verbatim, as are both `iota_dim` and `iota_dimension`
+as distinct tokens — the keyword shortening is real, not a transcription artifact.
 
-2. **`printOperation` @ `0x20ee320` is a flat TypeID cascade dispatching to per-op emitters.** CONFIRMED. Symbol `_ZN4mlir19MhloToPythonPrinter14printOperationEPNS_9OperationE` resolves to `0x20ee320` in `_function_addresses.json`; the StableHLO twin to `0x218d6b0`. The dispatched-to emitter symbols (`printUnaryTensorOp` `0x20c83e0`, `printConvert`, `printIota`, `printCubeRootTensorOp`, etc.) all resolve in the same table.
-
-3. **Elementwise ops emit `NeuronTensorOp(<ufunc>, '<class>')` with the op carried as a numpy/scipy callable.** CONFIRMED. `.NeuronTensorOp(`, `NeuronTensorOp`, `numpy`/`np`-derived funcRefs, `scipy.special`, and the rewrite suffixes `.expit`/`.erf`/`.arctan`/`.rint`/`.gelu`/`.silu` are all in `_strings.json`; the op-class tags `'mhlo.unary'`/`'mhlo.binary'`/`'mhlo.ternary'`/`xla_op` are present verbatim. The mhlo op set is corroborated by the `addOperations<…>` registration symbol.
-
-4. **`mhlo.iota` emits the shortened keyword `iota_dim`, not the source `iota_dimension`.** CONFIRMED. Both `iota_dim` and `iota_dimension` appear as distinct strings in `_strings.json`; they are not the same token. The shortening is real, not an artifact.
-
-5. **cbrt and clamp are emit-time decomposers (build new mhlo ops + recurse), not direct emissions; `printTernaryTensorOp` serves only `select`.** STRONG→CONFIRMED. `printCubeRootTensorOp` (`0x20efe20`) and `printTernaryTensorOp` (`0x20c5500`) are distinct symbols; the constituent mnemonics `mhlo.constant`/`mhlo.abs`/`mhlo.power`/`mhlo.divide`/`mhlo.multiply` exist as FATAL-guard strings. The `Op::build`+`printOperation`-recursion addresses are from disasm (control-flow MED for this `NVOPEN_IDA_SKIP_DECOMPILE` binary), so the *exact* recursion site offsets are STRONG rather than CERTAIN; the decomposition itself is CERTAIN.
-
-INFERRED / not byte-pinned: the `NeuronTensorAttribute` struct field layout (is_parameter/non_local/transposable/… bitfields) is read off `printTensor`'s `attrs={}` branches, not field-mapped; the `bool` emit-flag at `PassConfig+0x770` → printer `this+0x60` has unverified semantics (likely file-vs-stdout or a verbosity toggle); the penguin-module alias set into `this+0x140` (used by `.iota`/`.gelu`/`.silu`) is established in the ctor/printStart but not fully traced. None of these affect the headline or the op→call table.
+Three things here are reconstructed rather than pinned. This binary is built without
+decompilation, so control flow is read from disassembly: the decomposition of `cbrt` and
+`clamp` is certain (`printCubeRootTensorOp` `0x20efe20` and `printTernaryTensorOp`
+`0x20c5500` are distinct symbols, and the constituent mnemonics survive as FATAL-guard
+strings), but the *exact* offsets of the `Op::build` + `printOperation` recursion sites
+are less firm than the surrounding facts. The `NeuronTensorAttribute` field layout
+(is_parameter / non_local / transposable) is inferred from `printTensor`'s `attrs={}`
+branches rather than mapped field by field. And the `bool` emit-flag threaded from
+`PassConfig+0x770` into printer `this+0x60` has unknown semantics — file-vs-stdout or a
+verbosity toggle are both plausible. None of this touches the op→call table.
 
 ---
 
@@ -504,7 +519,7 @@ INFERRED / not byte-pinned: the `NeuronTensorAttribute` struct field layout (is_
 
 | Name | Relationship |
 |---|---|
-| Elementwise emitters (this page) | the spine; 4.44/4.45 cover Dot/Reduce/collective/fusion emitter bodies that share it |
+| Elementwise emitters (this page) | the spine that the Dot/Reduce/collective/fusion emitter bodies also route through |
 | Control-Dep reification | upstream producer of the `AwsNeuronControlDep` calls `printControlDeps` consumes |
 | Penguin IR model (Part 5) | the `Function`/`Tensor`/`NeuronTensorOp`/`DependencyEdge` objects this Python text constructs |
 | hlo2penguin MLIR pipeline | places `--mhlo-to-py-penguin` as the terminal pass |
