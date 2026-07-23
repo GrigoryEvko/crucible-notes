@@ -9,7 +9,7 @@ The [BIR simulator dispatch](sim-dispatch-state.md) is a `110`-case opcode switc
 1. **Structured control flow** — `Loop` (105), `DynamicForLoop` (106), `DoWhile` (108): the three opcodes [intercepted *before* the switch](sim-dispatch-state.md#11-the-pre-switch-control-flow-interception) (`cmp eax,0x69/0x6A/0x6C` → tail-jump). They recurse the visitor over their region's basic blocks, one pass per trip, threading the induction value into a per-axis affine environment so symbolic addresses over the loop axis resolve.
 2. **Terminators** — `CompareAndBranch` (78), `UnconditionalBranch` (79), `Return` (81), `Exit` (82), `Break` (83), `Call` (84): they don't execute the next block, they *select* it by writing a single "next-BB" slot the CFG driver follows.
 3. **Sync / semaphore ops** — the SyncState two-bank model (one-shot events + counting semaphores), the `needWait`/`actOnWait`/`actOnUpdate` per-instruction engine with cross-core routing, and the per-opcode sync kernels (`GroupResetSemaphores`, `SwitchQueueInstance`, `ResetQueueInstance`). The headline: most sync opcodes have **empty kernel bodies** — their entire meaning is the base `SyncInfo` the scheduler processes.
-4. **Kernel / custom-op stubs** — and here is the decisive correction to the naive "custom op = no-op" assumption: `CustomOp` (53) and `BIRKernel` (54) are **simulated out-of-process** (they serialize tensors to `.npy`, shell out to an external `kernel_sim` executable, and read the result back); `NKIKernel` (55) is **simulated by inline BIR-subfunction expansion** (a synthetic `Call`+`Return`); only `NKIKLIRKernel` (56) and `InlineASMBytes` (93) are genuinely stubbed (a silent "skip + note").
+4. **Kernel / custom-op stubs** — where "custom op = no-op" turns out to be false: `CustomOp` (53) and `BIRKernel` (54) are **simulated out-of-process** (they serialize tensors to `.npy`, shell out to an external `kernel_sim` executable, and read the result back); `NKIKernel` (55) is **simulated by inline BIR-subfunction expansion** (a synthetic `Call`+`Return`); only `NKIKLIRKernel` (56) and `InlineASMBytes` (93) are genuinely stubbed (a silent "skip + note").
 
 For reimplementation, the contract is: the induction-value DenseMap threading, the do-while/dynamic-for register predicate evaluation, the next-BB-slot CFG transfer, the two-bank wait/update state machine, and the three-way custom-op execution split (delegate / inline-expand / stub).
 
@@ -26,17 +26,16 @@ For reimplementation, the contract is: the induction-value DenseMap threading, t
 
 ## 1. Structured control flow — the three pre-switch loop kernels
 
-`Loop`/`DynamicForLoop`/`DoWhile` are pulled out of the dispatch by explicit compares *before* `enterInstruction` and the switch ([dispatch §1.1](sim-dispatch-state.md#11-the-pre-switch-control-flow-interception)). The reason is structural: these three opcodes own an iteration **axis** and must re-execute their region body once per trip — they recurse `visit()` rather than dispatching a single kernel. Each runs its own `enterInst<X>` hook (`enterInstLoop`, `enterInstDynamicForLoop` `@0x1a9c00`, `enterInstDoWhile`) at entry. **[CONFIRMED — the three tail-jumps + per-kernel `enterInst<X>` call as the first instruction of each body.]**
+`Loop`/`DynamicForLoop`/`DoWhile` are pulled out of the dispatch by explicit compares *before* `enterInstruction` and the switch ([dispatch §1.1](sim-dispatch-state.md#11-the-pre-switch-control-flow-interception)). The reason is structural: these three opcodes own an iteration **axis** and must re-execute their region body once per trip — they recurse `visit()` rather than dispatching a single kernel. Each runs its own `enterInst<X>` hook (`enterInstLoop`, `enterInstDynamicForLoop` `@0x1a9c00`, `enterInstDoWhile`) as the first instruction of its body.
 
-The **central runtime datum** these kernels maintain is a `DenseMap<pelican::AffineIdx*, long>` at `InstVisitor+0xE18` (`this[451]` is the bucket array, `*((u32*)this+906)` the bucket count, `*((u32*)this+904)`/`+905` the live/tombstone counters). The map key is the loop's **axis** object; the value is the **current induction value**. Every nested instruction whose access pattern is a `QuasiAffineExpr` over this axis resolves its symbolic address by looking the axis up in this map — so updating the map entry each iteration is what makes the loop body "see" a different index on each pass. The map's full LLVM `DenseMap` rehash/grow machinery is inlined into `visitLoop` (the `"Empty/Tombstone value shouldn't be inserted"`, `"# initial buckets must be a power of two"`, and `moveFromOldBuckets` asserts are all present, instantiated for `DenseMap<pelican::AffineIdx*, long>`). **[CONFIRMED — the inlined DenseMap asserts name the exact `KeyT = pelican::AffineIdx*; ValueT = long int` instantiation.]**
+The **central runtime datum** these kernels maintain is a `DenseMap<pelican::AffineIdx*, long>` at `InstVisitor+0xE18` (`this[451]` is the bucket array, `*((u32*)this+906)` the bucket count, `*((u32*)this+904)`/`+905` the live/tombstone counters). The map key is the loop's **axis** object; the value is the **current induction value**. Every nested instruction whose access pattern is a `QuasiAffineExpr` over this axis resolves its symbolic address by looking the axis up in this map — so updating the map entry each iteration is what makes the loop body "see" a different index on each pass. The map's full LLVM `DenseMap` rehash/grow machinery is inlined into `visitLoop` (the `"Empty/Tombstone value shouldn't be inserted"`, `"# initial buckets must be a power of two"`, and `moveFromOldBuckets` asserts are all present, and they name the exact `KeyT = pelican::AffineIdx*; ValueT = long int` instantiation — which is what pins the map's key and value types.
 
 ### 1.1 `visitLoop` (IT 105) `@0x211010` — static `for` loop
 
 `Loop` carries a **static** axis: integer `lb`/`ub`/`stride`. The axis pointer is `*((_QWORD*)inst + 42)` (`InstLoop+0x150`); its fields are `ub` at axis `+0x28` (`v4[5]`), `stride` at `+0x30` (`v4[6]` = `v52`), `lb` at `+0x20` (`*((int*)v4+8)`, sign-extended). The decompiled core, with the boilerplate DenseMap-grow path elided:
 
 ```c
-// birsim::InstVisitor::visitLoop  @0x211010  (CONFIRMED)
-enterInstLoop();
+// birsim::InstVisitor::visitLoop  @0x211010enterInstLoop();
 if (*((uint8_t*)this + 208))                  // "in-control-flow" mode flag (+0xD0)
     return visitBBHolderInControlFlow(this, inst);   // CFG-driver mode (§2.5)
 
@@ -59,15 +58,16 @@ do {
 } while (ub > i);                              // continue while ub strictly above i
 ```
 
-So the trip count is `ceil((ub - lb) / stride)`, realized by the `i < ub`, `i += stride` loop — matching the static `LoopAxis::getTripcount` ceiling division. The induction value `i` is written into the affine env (`*v15 = v7` in the decompile) keyed by the axis pointer *before* each body pass; that single DenseMap entry is the entire carried state across iterations. There is **no** explicit phi-copy: the loop body's instructions read `i` indirectly through the env when they evaluate their `QuasiAffineExpr` addresses. **[CONFIRMED — body @0x211010: `*v15 = v7` (env write), the `v16 != (char*)a2+8` BB walk, `v7 += v52` step, `v4[5] <= v7` exit test.]**
+So the trip count is `ceil((ub - lb) / stride)`, realized by the `i < ub`, `i += stride` loop — matching the static `LoopAxis::getTripcount` ceiling division. The induction value `i` is written into the affine env (`*v15 = v7` in the decompile) keyed by the axis pointer *before* each body pass; that single DenseMap entry is the entire carried state across iterations. There is **no** explicit phi-copy: the loop body's instructions read `i` indirectly through the env when they evaluate their `QuasiAffineExpr` addresses.
+
+*Anchors: `visitLoop` @ `0x211010` — the env write, the region BB walk, the `stride` step, and the `ub`-vs-induction exit test are all in the one body.*
 
 ### 1.2 `visitDoWhile` (IT 108) `@0x2120c0` — post-tested loop
 
 `DoWhile` is a C-style `do { body } while (reg != 0)`: the body executes at least once, then a runtime register is read and the loop repeats while it is non-zero. Between the body and the predicate it **clears the "written-this-iteration" MemoryLocation set** so each trip's dataflow provenance checks start clean.
 
 ```c
-// birsim::InstVisitor::visitDoWhile  @0x2120c0  (CONFIRMED)
-enterInstDoWhile();
+// birsim::InstVisitor::visitDoWhile  @0x2120c0enterInstDoWhile();
 do {
     for (BB = inst.blocks_head; BB != sentinel; BB = BB->next)
         visit(this, (BasicBlock*)(BB - 9));           // body, >= 1 pass
@@ -78,29 +78,27 @@ do {
 } while ((uint8_t)result);                              // continue while truthy
 ```
 
-The provenance DenseMap is `DenseMap<bir::MemoryLocation*, DenseSetEmpty>` — the IDA-recovered `initEmpty` assert names exactly that instantiation. The empty-key fill broadcasts `xmmword_5F22A0` (`{-4096, -4096}`) across the bucket array. **[CONFIRMED — body @0x2120c0: the `do { ... evaluateDoWhileCondition } while (result)` structure and the `MemoryLocation* -> DenseSetEmpty` reset.]**
+The provenance DenseMap is `DenseMap<bir::MemoryLocation*, DenseSetEmpty>` — the IDA-recovered `initEmpty` assert names exactly that instantiation. The empty-key fill broadcasts `xmmword_5F22A0` (`{-4096, -4096}`) across the bucket array.
 
 #### 1.2.1 `evaluateDoWhileCondition` `@0x1a99b0` — the register predicate
 
 The condition is a `bir::BirIntRuntimeValue` expression at `inst[41]` (`InstDoWhile+0x148`); after a `cast<BirIntRuntimeValue>` (the `isa<>`/`cast<>` guard asserts target `bir::BirIntRuntimeValue`), the predicate reduces to a single scalar register read:
 
 ```c
-// birsim::InstVisitor::evaluateDoWhileCondition  @0x1a99b0  (CONFIRMED)
-cond = inst[41];                                       // InstDoWhile+0x148 (a BirIntRuntimeValue expr)
+// birsim::InstVisitor::evaluateDoWhileCondition  @0x1a99b0cond = inst[41];                                       // InstDoWhile+0x148 (a BirIntRuntimeValue expr)
 //   cast<bir::BirIntRuntimeValue>(cond)  — asserts kind in [6, 6+7]
 reg  = *(bir::Register**)(cond + 64);                  // the runtime predicate register (+0x40)
 return RegState::read((RegState*)(this + 336), reg, 0) != 0;   // TRUE iff reg value != 0
 ```
 
-So the loop exit is decided purely by whether a scalar register (the loop-carried counter/flag, written by the body) is non-zero. The register file is the [`RegState`](sim-dispatch-state.md#51-birsimregstate--per-engine-16-byte-register-entries) at `InstVisitor+0x150` (`+336`). **[CONFIRMED — body @0x1a99b0: `RegState::read(this+336, *(Register**)(cond+64), 0) != 0`.]**
+So the loop exit is decided purely by whether a scalar register (the loop-carried counter/flag, written by the body) is non-zero. The register file is the [`RegState`](sim-dispatch-state.md#51-birsimregstate--per-engine-16-byte-register-entries) at `InstVisitor+0x150` (`+336`).
 
 ### 1.3 `visitDynamicForLoop` (IT 106) `@0x211690` — runtime trip count
 
 `DynamicForLoop` is the runtime-bound counterpart of `Loop`: its axis (`InstDynamicForLoop+0x148`) holds `lb`/`ub`/`stride` as `QuasiAffineExpr` objects, not integers. `lb` and `stride` are evaluated against the affine env (so an *outer* loop's induction value can feed an *inner* loop's bounds — nested dynamic loops); the **upper bound** is constrained to a single-term runtime-register expression and computed by `evaluateUpperBoundExpr`.
 
 ```c
-// birsim::InstVisitor::visitDynamicForLoop  @0x211690  (CONFIRMED)
-enterInstDynamicForLoop();
+// birsim::InstVisitor::visitDynamicForLoop  @0x211690enterInstDynamicForLoop();
 axis   = *((void**)inst + 41);                         // InstDynamicForLoop+0x148
 i      = QuasiAffineExpr::eval(axis->lb_expr   /*+0x68*/, env);   // runtime start
 ub     = evaluateUpperBoundExpr(this, inst);           // runtime bound (register read)  §1.3.1
@@ -112,15 +110,14 @@ for (; i < ub; i += stride) {
 }
 ```
 
-The discriminator versus the static `Loop` is exactly the axis field type (`QuasiAffineExpr` vs `int64`), and the env DenseMap is the variable environment those expressions resolve against. **[CONFIRMED — body @0x211690 calls `evaluateUpperBoundExpr` for `ub`, `QuasiAffineExpr::eval` for `lb`/`stride`, same env-write + body-recurse loop as `visitLoop`.]**
+The discriminator versus the static `Loop` is exactly the axis field type (`QuasiAffineExpr` vs `int64`), and the env DenseMap is the variable environment those expressions resolve against. Apart from the bound evaluation, the body is the same env-write plus region-recurse loop as `visitLoop`.
 
 #### 1.3.1 `evaluateUpperBoundExpr` `@0x1b52c0` — the runtime bound from a register
 
 The upper bound is an `AffineExpr` (`Expr` kind `== 17`) constrained to **one term with a runtime value**. If it has more than one term or no runtime value, the simulator throws `NeuronAssertion` ErrorCode 1910 with `"Only scalar values supported in Dynamic For Loop upper bound expressions currently"` (assert text `"ubExpr->getNumTerms() == 1 && ubExpr->hasRuntimeValue()"`, source `inst_visitor.cpp:697`/`:1910`). The bound is then `constant + coefficient × register`:
 
 ```c
-// birsim::InstVisitor::evaluateUpperBoundExpr  @0x1b52c0  (CONFIRMED)
-ubExpr = *(void**)(*(void**)(inst + 328) + 136);       // axis(+0x148)->ub_expr  (+0x88)
+// birsim::InstVisitor::evaluateUpperBoundExpr  @0x1b52c0ubExpr = *(void**)(*(void**)(inst + 328) + 136);       // axis(+0x148)->ub_expr  (+0x88)
 //   cast<pelican::AffineExpr>(ubExpr)  — asserts Expr kind == 17
 //   assert ubExpr->getNumTerms() == 1 && ubExpr->hasRuntimeValue()   (else throw 1910)
 term  = ubExpr.terms[0];                                // a single BirIntRuntimeValue term
@@ -130,11 +127,11 @@ constOff = *(int32_t*)(ubExpr + 56);                   // ubExpr.constant
 return constOff + RegState::read((RegState*)(this + 336), reg, 0) * coef;
 ```
 
-This is *why* a `DynamicForLoop`'s trip count is unknown until execution: the bound is a scalar register read (`RegState::read`), scaled by a static coefficient and offset by a static constant. Only the `ub` is so constrained; `lb`/`stride` go through general `QuasiAffineExpr::eval`. **[CONFIRMED — body @0x1b52c0: `*(int*)(ubExpr+56) + RegState::read(this+336, *(Register**)(term+64), 0) * coef`; the 1910/`getNumTerms()==1` assert in the same body.]**
+This is *why* a `DynamicForLoop`'s trip count is unknown until execution: the bound is a scalar register read (`RegState::read`), scaled by a static coefficient and offset by a static constant. Only the `ub` is so constrained; `lb`/`stride` go through general `QuasiAffineExpr::eval`.
 
 ### 1.4 Parallel loops — `visitInstLoopParallel` `@0x20cc60`
 
-When `InstLoop.isParallel` (`+0x148`) is set, `visitLoop` tail-calls `visitInstLoopParallel` instead of the sequential walk. It pushes the loop's axis onto a carried `SmallVector<LoopAxis*>`, recurses over the body collecting nested parallel axes, and the leaf executor `visitInstInParallelLoop` `@0x20c940` runs each instruction once across the whole axis range (parallel semantics) rather than iterating. **[STRONG — entry + structure; the per-element parallel AP indexing is a separate per-op concern.]**
+When `InstLoop.isParallel` (`+0x148`) is set, `visitLoop` tail-calls `visitInstLoopParallel` instead of the sequential walk. It pushes the loop's axis onto a carried `SmallVector<LoopAxis*>`, recurses over the body collecting nested parallel axes, and the leaf executor `visitInstInParallelLoop` `@0x20c940` runs each instruction once across the whole axis range (parallel semantics) rather than iterating. The per-element parallel AP indexing inside that leaf executor is a separate per-op concern and is not pinned here.
 
 ---
 
@@ -157,7 +154,7 @@ The terminator kernels do not execute a successor block; they **name** it by wri
 Hex-Rays failed on this body; read from disassembly (99 bytes). It evaluates a [`BranchCompareOp`](aluop-modes.md) predicate over two scalar operands and selects one of two successors:
 
 ```c
-// visitInstCompareAndBranch  @0x1bffb0  (CONFIRMED — disasm)
+// visitInstCompareAndBranch  @0x1bffb0  (from disasm)
 lhs   = Instruction::getArgument(inst, 0);             // compared scalar
 rhs   = sub_1BE610(inst);                              // rhs operand (immediate or register)
 op    = *(uint32_t*)(inst + 0xF0);                     // BranchCompareOp (comp_op)
@@ -166,23 +163,24 @@ this[450] /*+0xE10*/ = taken ? *(void**)(inst + 0xF8)  // on_true successor BB
                              : *(void**)(inst + 0x100); // on_false successor BB
 ```
 
-The `comp_op@+0xF0`, `on_true@+0xF8`, `on_false@+0x100` field layout matches the static `InstCompareAndBranch` struct byte-exact. **[CONFIRMED — disasm; the immediate-vs-register split of the rhs lives in `sub_1BE610@0x1be610`, read at call-site only — INFERRED that the IMM block reads a baked `Argument` and the REG block reads `RegState`.]**
+The `comp_op@+0xF0`, `on_true@+0xF8`, `on_false@+0x100` field layout matches the static `InstCompareAndBranch` struct byte-exact.
+
+The rhs operand's immediate-versus-register split lives in `sub_1BE610` `@0x1be610`, which is read only at the call site. [INFERRED] the IMM block reads a baked `Argument` and the REG block reads `RegState`.
 
 ### 2.2 `compareScalarArgs` `@0x1bce50` — the per-dtype comparator
 
-The predicate is applied at the `lhs` Dtype width through a per-dtype comparator map. The dtype must be `≤ 0x10` (the scalar widths: `u8`/`s8`/`u16`/`s16`/`u32`/`s32`/`f32`) else a FATAL (`inst_visitor.cpp:1468`). The map is `std::map<BranchCompareOp, std::function<bool(T,T)>>` (tables at `unk_2296C48..2297248`), keyed by the comparison op, yielding the standard `LT`/`LE`/`EQ`/`NE`/`GE`/`GT` relations. **[CONFIRMED at dispatch level; the per-comparator function bodies not individually transcribed — INFERRED standard relational identity from the `BranchCompareOp` key.]**
+The predicate is applied at the `lhs` Dtype width through a per-dtype comparator map. The dtype must be `≤ 0x10` (the scalar widths: `u8`/`s8`/`u16`/`s16`/`u32`/`s32`/`f32`) else a FATAL (`inst_visitor.cpp:1468`). The map is `std::map<BranchCompareOp, std::function<bool(T,T)>>` (tables at `unk_2296C48..2297248`), keyed by the comparison op. The dispatch through that map is pinned; the individual comparator function bodies are not transcribed, so [INFERRED] each realizes the standard `LT`/`LE`/`EQ`/`NE`/`GE`/`GT` relation named by its `BranchCompareOp` key.
 
 ### 2.3 The pure-successor & no-op terminators
 
-`UnconditionalBranch` is a 15-byte body: `slot ← *(void**)(inst+0xF0)` then `ret`. `Break` is 12 bytes: `qword[this+0xE10] = 0; ret` — nulling the slot signals "no successor", which the loop region walk / CFG driver reads as "exit the enclosing region" (early loop exit / break out of a structured loop). `BranchHint` (a `LikelyTaken`/`LikelyNotTaken` static-prediction annotation) and `TensorCompletion` (a production-complete marker) are both literally `ret` — pure no-ops with no simulation effect. **[CONFIRMED — all four bodies read.]**
+`UnconditionalBranch` is a 15-byte body: `slot ← *(void**)(inst+0xF0)` then `ret`. `Break` is 12 bytes: `qword[this+0xE10] = 0; ret` — nulling the slot signals "no successor", which the loop region walk / CFG driver reads as "exit the enclosing region" (early loop exit / break out of a structured loop). `BranchHint` (a `LikelyTaken`/`LikelyNotTaken` static-prediction annotation) and `TensorCompletion` (a production-complete marker) are both literally `ret` — pure no-ops with no simulation effect.
 
 ### 2.4 `visitInstCall` (IT 84) `@0x26bc90` — push frame & recurse
 
 `Call` is `bir::ControlFlowIRVisitor<birsim::InstVisitor>::visitInstCall`. It pushes the callsite and caller-`Function` onto two `std::deque` call-stacks held inline in the visitor, sets the callsite memloc-binding context, then **recurses** `visit()` over the entire callee region (its basic blocks run through the same dispatcher / CFG driver), and pops on return:
 
 ```c
-// ControlFlowIRVisitor<birsim::InstVisitor>::visitInstCall  @0x26bc90  (CONFIRMED)
-callee = *((void**)inst + 30);                         // InstCall+0xF0 = callee region (BasicBlockHolder*)
+// ControlFlowIRVisitor<birsim::InstVisitor>::visitInstCall  @0x26bc90callee = *((void**)inst + 30);                         // InstCall+0xF0 = callee region (BasicBlockHolder*)
 if (!callee) return;                                   // null call = no-op
 assert(CurrentCallsites.size() == 0);                  // IRVisitor.h:227 — one frame at a time
 assert(CurrentCallers.size()   == 0);                  // IRVisitor.h:230
@@ -193,15 +191,14 @@ visit(this, callee);                                   // RECURSE over the calle
 *(void**)this = 0;                                     // pop the binding context
 ```
 
-The asserts guarantee a single call frame at a time (no re-entrant callsite). The callee's formal memlocs are resolved relative to `inst+0xF8` (the call-site physical-memloc map) so the callee reads/writes the caller's tensors. **[CONFIRMED — body @0x26bc90.]** This same path is re-used by `NKIKernel` (§5.2).
+The asserts guarantee a single call frame at a time (no re-entrant callsite). The callee's formal memlocs are resolved relative to `inst+0xF8` (the call-site physical-memloc map) so the callee reads/writes the caller's tensors. This same path is re-used by `NKIKernel` (§5.2).
 
 ### 2.5 `visitBBHolderInControlFlow` `@0x20f820` — the CFG driver
 
 When the "in-control-flow" flag (`InstVisitor+0xD0`) is set — by `visitLoop` (§1.1) and by `Call` — block visitation follows the next-BB slot rather than static list order. It builds (and caches per `bir::Function` in a `DenseMap<const bir::Function*, unique_ptr<const CFG>>`) a `neuronxcc::backend::CFG`, starts at the entry block, and after each block reads the slot:
 
 ```c
-// visitBBHolderInControlFlow  @0x20f820  (CONFIRMED structure)
-BB = entry;
+// visitBBHolderInControlFlow  @0x20f820BB = entry;
 while (BB) {
     visit(this, BB);                                   // BB body -> a terminator sets +0xE10
     next = this[450] /*+0xE10*/;                       // pending-successor slot
@@ -210,7 +207,7 @@ while (BB) {
 }
 ```
 
-**[CONFIRMED structure; the `CFG` node/edge internal layout read at the `DenseMap<Function*, unique_ptr<CFG>>` + follow-loop level, not transcribed.]**
+The follow-loop and the per-`Function` `DenseMap<Function*, unique_ptr<CFG>>` cache are pinned; the `neuronxcc::backend::CFG` node/edge layout the driver builds inside that cache is not transcribed here.
 
 ---
 
@@ -223,14 +220,14 @@ The simulator models cross-engine and cross-core ordering with **two primitive b
 | `birsim::Events` | `+0x00` | 256-bit one-shot event bitset + a touched-id RB-tree. Set-then-clear rendezvous. |
 | `birsim::Semaphores` | `+0x58` | dense `uint32[256]` counter array + touched-id RB-tree. add/sub/inc/dec/write-imm; wait until `value ≥ threshold`. |
 
-The bank ctor (`Semaphores::Semaphores @0x19d8b0`) does `operator new(0x400)` (1024 bytes = 256 `uint32`, all zero) with `end = begin + 256` and a self-rooted RB-tree at `this+0x28`. The `Events` ctor (`@0x19f8f0`) allocates a 256-bit `vector<bool>` and a touched-id RB-tree. **[CONFIRMED — ctor field writes.]**
+The bank ctor (`Semaphores::Semaphores @0x19d8b0`) does `operator new(0x400)` (1024 bytes = 256 `uint32`, all zero) with `end = begin + 256` and a self-rooted RB-tree at `this+0x28`. The `Events` ctor (`@0x19f8f0`) allocates a 256-bit `vector<bool>` and a touched-id RB-tree.
 
 ### 3.1 Counting semaphores — wait & update modes
 
 The wait side (`Semaphores::needWait @0x19e4b0`) is a pure poll — a semaphore wait does **not** mutate the bank on consume; the value comparison is the whole story:
 
 ```c
-// Semaphores::needWait(Wait&)  @0x19e4b0  (CONFIRMED)   — true means "must keep waiting"
+// Semaphores::needWait(Wait&)  @0x19e4b0   — true means "must keep waiting"
 mode 1 (sem-ge-imm): return values[Wait.id] <  Wait.getValue();
 mode 2 (sem-ge-reg): return values[Wait.id] <  RegState::read(Wait.getReg());
 else (0, 3):         assert("Unhandled semaphore wait command");   // SyncState.cpp:0x56
@@ -239,7 +236,7 @@ else (0, 3):         assert("Unhandled semaphore wait command");   // SyncState.
 The update side (`Semaphores::actOn(Update&) @0x19e300`) maps the [`UpdateMode`](instruction-base.md) enum directly onto bank mutations — values are `uint32` modular (inc/dec wrap):
 
 ```c
-// Semaphores::actOn(Update&)  @0x19e300  (CONFIRMED) — five update modes
+// Semaphores::actOn(Update&)  @0x19e300 — five update modes
 mode 5 (sem-wr-imm):  set(id, Update.getValue());
 mode 1 (sem-add-imm): inc(id, Update.getValue());
 mode 2 (sem-sub-imm): dec(id, Update.getValue());
@@ -248,23 +245,21 @@ mode 4 (sem-dec):     assert(value == 1, "Semaphore dec value must be 1"); dec(i
 mode 0 (evt-set) / else: assert("Unhandled semaphore update command");   // evt-set routes to Events
 ```
 
-`set`/`inc`/`dec` each first insert `id` into the touched RB-tree (so `checkEventsAllClear` can flag a dangling counter at BB end), then index `values[id]` with an `id < 256` range-check. **[CONFIRMED — `needWait`/`actOn` decompiled bodies.]**
+`set`/`inc`/`dec` each first insert `id` into the touched RB-tree (so `checkEventsAllClear` can flag a dangling counter at BB end), then index `values[id]` with an `id < 256` range-check.
 
 ### 3.2 Events — one-shot set-then-clear
 
 An event is a strict one-shot edge with protocol asserts on both ends:
 
 ```c
-// Events  (CONFIRMED)
-Events::needWait(Wait&) @0x19d850:  assert(mode == 0); return bit[id] == 0;   // wait while NOT set
+// EventsEvents::needWait(Wait&) @0x19d850:  assert(mode == 0); return bit[id] == 0;   // wait while NOT set
 Events::actOn(Wait&)    @0x1a1650:  clear(id);    // CONSUME: the waiter clears the now-set event
 Events::actOn(Update&)  @0x19fd00:  assert(mode == 0); set(id);   // PRODUCE: set the event
 Events::set(id)         @0x19fc60:  if (bit[id]) throw runtime_error;  // FATAL double-fire
 Events::clear(id)       @0x1a0410:  if (!bit[id]) NeuronAssertion "events.at(id)";  // FATAL clear-before-set
 ```
 
-The double-fire and clear-before-set FATALs are the simulator's protocol checker for the synchronizer-generated event graph. **[CONFIRMED.]**
-
+The double-fire and clear-before-set FATALs are the simulator's protocol checker for the synchronizer-generated event graph.
 ### 3.3 The per-instruction sync engine
 
 The per-BB driver (`simulateWithSyncs @0x20cd60`) calls three SyncState entry points around every `visit()`, all driven by the instruction's `SyncInfo` (waits = `SmallVector<Wait,1>` stride 40, updates = `SmallVector<Update,1>` stride 32):
@@ -291,7 +286,7 @@ for (u in I.SyncInfo.updates) {
 }
 ```
 
-The schedule model is **poll, not spin**: the multi-engine ready-selector (`getNextInstruction @0x14f520`) round-robins per-engine queues and skips any engine whose head still has an unsatisfied wait; an instruction runs only when `needWait == false`. A fully-stalled BB across all physical cores is a global deadlock (FATAL `m_waitingCores.count() != getNumPhysicalCores()`). **[CONFIRMED — see [dispatch §2.1](sim-dispatch-state.md#21-the-per-bb-driver-is-semaphore-ordered-not-a-linear-walk) for the driver loop.]**
+The schedule model is **poll, not spin**: the multi-engine ready-selector (`getNextInstruction @0x14f520`) round-robins per-engine queues and skips any engine whose head still has an unsatisfied wait; an instruction runs only when `needWait == false`. A fully-stalled BB across all physical cores is a global deadlock (FATAL `m_waitingCores.count() != getNumPhysicalCores()`). See [dispatch §2.1](sim-dispatch-state.md#21-the-per-bb-driver-is-semaphore-ordered-not-a-linear-walk) for the driver loop.
 
 ---
 
@@ -306,18 +301,17 @@ The schedule model is **poll, not spin**: the multi-engine ready-selector (`getN
 `Return` pops both deque frames, clears the function's entire local sync state, and nulls the next-BB slot so the callee region walk terminates:
 
 ```c
-// birsim::InstVisitor::visitInstReturn  @0x1aa560  (CONFIRMED)
-pop callsites_deque (this[7..10]);    // frees a 0x200 node on block boundary, advances cursors
+// birsim::InstVisitor::visitInstReturn  @0x1aa560pop callsites_deque (this[7..10]);    // frees a 0x200 node on block boundary, advances cursors
 pop callers_deque   (this[17..20]);   // ditto
 SyncState::clearAllSemaphores((SyncState*)(this + 416 /*52 qwords = +0x1A0*/));   // wipe sem bank
 this[450] /*+0xE10*/ = 0;             // next-BB slot -> 0 (return = no successor in callee CFG)
 ```
 
-Clearing all semaphores on return discards the callee's local synchronization state before control unwinds back to the caller's recursion level (the `visit()` in §2.4 returns). **[CONFIRMED — body @0x1aa560: deque pops + `clearAllSemaphores(this+416)` + `this[450]=0`.]**
+Clearing all semaphores on return discards the callee's local synchronization state before control unwinds back to the caller's recursion level (the `visit()` in §2.4 returns).
 
 ### 4.3 `visitInstExit` (IT 82) `@0x1af7b0`
 
-`Exit` logs `"InstExit Instruction encountered, exiting..."` then, on a **single-core** (non-LNC) run, throws `neuronxcc::backend::InstExitException` (via `__cxa_throw`) which unwinds the whole simulation; on **LNC** (multi-core) it returns plainly, and the multi-engine exit join (`fetchAllEngineInst<InstExit> @0x16af90`, a counted scheduler rendezvous) collects all engines' `Exit` before stopping. **[CONFIRMED — body @0x1af7b0: `isLNC` branch, the throw on the non-LNC arm.]**
+`Exit` logs `"InstExit Instruction encountered, exiting..."` then, on a **single-core** (non-LNC) run, throws `neuronxcc::backend::InstExitException` (via `__cxa_throw`) which unwinds the whole simulation; on **LNC** (multi-core) it returns plainly, and the multi-engine exit join (`fetchAllEngineInst<InstExit> @0x16af90`, a counted scheduler rendezvous) collects all engines' `Exit` before stopping.
 
 ---
 
@@ -330,19 +324,17 @@ The architectural result: most sync *opcodes* carry their entire meaning in the 
 Bulk write-zero of a named semaphore group, all local. It ignores the `mode` field (`InstGroupResetSemaphores+0xF0`, an `EventSemaphoreClearMode` that is a codegen/HW concern) and unconditionally writes 0 to each id:
 
 ```c
-// visitInstGroupResetSemaphores  @0x1aa140  -> clearGroupSemaphores @0x19e750  (CONFIRMED)
-for (id in InstGroupResetSemaphores.sema_group /*+0xF8 = inst+248*/)
+// visitInstGroupResetSemaphores  @0x1aa140  -> clearGroupSemaphores @0x19e750for (id in InstGroupResetSemaphores.sema_group /*+0xF8 = inst+248*/)
     Semaphores::actOn(Update{ type=1 /*semaphore*/, id, mode=5 /*sem-wr-imm*/, value=0, no_core });  // = set(id, 0)
 ```
 
-The `Update` ctor args are pinned in the asm (`esi=1, edx=id, ecx=5, r8d=0, r9=0`). **[CONFIRMED.]**
-
+The `Update` ctor args are pinned in the asm (`esi=1, edx=id, ecx=5, r8d=0, r9=0`).
 ### 5.2 `visitInstSwitchQueueInstance` (IT 85) `@0x1aa210` / `visitInstResetQueueInstance` (IT 86) `@0x1aa350`
 
 Both rewind a DMA queue's round-robin descriptor cursor by tombstoning the owning [`DMATrigger`](sim-elementwise-datamove.md)'s entry in the `fireCount` DenseMap (`InstVisitor+0xE60`/`+0xE68`/`+0xE70` — the same map `visitInstDMATrigger` advances per fire; tombstone sentinels `-8192` empty / `-4096` tombstone, live count `+0xE68`). `Switch` additionally clears two queue-instance semaphore groups and honours a `no_rearm` flag:
 
 ```c
-// visitInstSwitchQueueInstance  @0x1aa210  (CONFIRMED — disasm)
+// visitInstSwitchQueueInstance  @0x1aa210  (from disasm)
 queue = *(void**)(inst + 0xF0);
 clearGroupSemaphores(SyncState, queue + 0xB8);         // queue.use_special_sema group -> set 0
 clearGroupSemaphores(SyncState, queue + 0xD0);         // queue.semaphores group        -> set 0
@@ -354,18 +346,19 @@ for (blk in InstSwitchQueueInstance.instance /*+0xF8*/) {
     }
 }
 
-// visitInstResetQueueInstance  @0x1aa350  (CONFIRMED) — cursor rewind only, NO sema clears
+// visitInstResetQueueInstance  @0x1aa350 — cursor rewind only, NO sema clears
 for (blk in InstResetQueueInstance.instance /*+0xF8*/)
     if (InstDMABlock::classof(blk)) fireCount.erase(InstDMABlock::getTrigger(blk));
 ```
 
-So `SwitchQueueInstance` = reset the queue's two semaphore groups (so the new instance's completion signalling starts fresh) **and** (unless `no_rearm`) rewind every owning trigger's block cursor to 0. `ResetQueueInstance` is the cursor-only subset. The two `clearGroupSemaphores` calls and the `InstDMABlock::classof`/`getTrigger` loop are visible in the disasm at `0x1aa232`/`0x1aa248`/`0x1aa284`/`0x1aa291`. **[CONFIRMED.]**
-
+So `SwitchQueueInstance` = reset the queue's two semaphore groups (so the new instance's completion signalling starts fresh) **and** (unless `no_rearm`) rewind every owning trigger's block cursor to 0. `ResetQueueInstance` is the cursor-only subset. The two `clearGroupSemaphores` calls and the `InstDMABlock::classof`/`getTrigger` loop are visible in the disasm at `0x1aa232`/`0x1aa248`/`0x1aa284`/`0x1aa291`.
 ---
 
 ## 6. Kernel & custom-op stubs — the three execution models
 
-This is the high-value correction. The naive expectation — "a custom op is opaque, so the simulator stubs it" — is **wrong**. The dispatch routes the kernel/custom-op family to three distinct execution models, and only two leaves are genuinely stubbed. (The `sameInst` "Not Implemented" asserts that some pages associate with these opcodes are strictly a structural-equality/CSE limitation on `{55,56,84}` — they do **not** imply the simulator skips the op.)
+The dispatch routes the kernel/custom-op family to three distinct execution models, and only two leaves are genuinely stubbed.
+
+> **GOTCHA — "a custom op is opaque, so the simulator stubs it" is wrong.** Three of the five opcodes in this family really execute: two by shelling out to an external reference implementation, one by expanding its embedded BIR in place. Separately, the `sameInst` "Not Implemented" asserts on `{55, 56, 84}` are a structural-equality/CSE limitation only — they say nothing about whether the simulator runs the op.
 
 | IT | Op | Model | Body | Simulated? |
 |---:|----|-------|-----:|-----------|
@@ -380,8 +373,7 @@ This is the high-value correction. The naive expectation — "a custom op is opa
 Both kernels are thin marshallers around the shared delegate `simulateKernel`. `visitInstCustomOp` builds the dst-shape list from `inst[54..55]` (`CustomOp.dstsShape @+0x1B0`) and src-shape list from `inst[51..52]` (`srcsShape @+0x198`), passes the kernel name at `inst+30` (byte `+0xF0` = `CustomOp.opFunctionName`), then calls the delegate:
 
 ```c
-// visitInstCustomOp  @0x1abbd0  (CONFIRMED)
-dsts = build_shape_list(inst[54], inst[55]);           // per-elem ctor sub_1A2CA0
+// visitInstCustomOp  @0x1abbd0dsts = build_shape_list(inst[54], inst[55]);           // per-elem ctor sub_1A2CA0
 srcs = build_shape_list(inst[51], inst[52]);
 simulateKernel(this, inst, inst + 30 /*kernel name string @+0xF0*/, srcs, dsts);
 // then free both temp shape vectors — ALL simulation is inside simulateKernel.
@@ -390,8 +382,7 @@ simulateKernel(this, inst, inst + 30 /*kernel name string @+0xF0*/, srcs, dsts);
 `visitInstBIRKernel @0x1abf50` is structurally identical with the BIRKernel operand offsets (`dsts_shape @+0x128 = inst[37..38]`, `srcs_shape @+0x110 = inst[34..35]`, `kernel_name @+0xF0`). The delegate runs the external CPU reference implementation:
 
 ```c
-// birsim::InstVisitor::simulateKernel  @0x26ecd0  (CONFIRMED)
-runId = dword_2297380++;                                // global monotonic counter for unique filenames
+// birsim::InstVisitor::simulateKernel  @0x26ecd0runId = dword_2297380++;                                // global monotonic counter for unique filenames
 print("Running kernel_sim for <kernelName>");
 for (idx in [0, numInputs)) {                          // INPUT MARSHALLING
     pap = getInOutPhysicalAP(this, inst, idx, /*isOut=*/0);
@@ -412,15 +403,16 @@ for (idx in [0, numOutputs)) {                         // OUTPUT UNMARSHALLING
 }
 ```
 
-The simulator itself does **not** model the kernel math — it serializes the I/O tensors to disk, runs the external `kernel_sim`, and reads the result back. Dispatch to a specific custom op is by **name** (`CustomOp.opFunctionName`) carried in the JSON config; the CPU builtin library `libbuiltincustomop_cpu0.stripped.so` (a sibling IDA target) is the inferred resolver `kernel_sim` links. **[CONFIRMED for the model — `system("kernel_sim")` @0x26fc14, the `inst.IT == 54` branch at decompile line 616, the npy save/load and `getInOutPhysicalAP`/`Memory` calls; INFERRED for the exact argv beyond the static `"kernel_sim"` string and the name→entry binding inside `kernel_sim`.]**
+The simulator itself does **not** model the kernel math — it serializes the I/O tensors to disk, runs the external `kernel_sim`, and reads the result back. Dispatch to a specific custom op is by **name** (`CustomOp.opFunctionName`) carried in the JSON config; [INFERRED] the CPU builtin library `libbuiltincustomop_cpu0.stripped.so` (a sibling IDA target) is the resolver `kernel_sim` links against. The argv beyond the static `"kernel_sim"` string, and the name→entry binding inside that external executable, are outside this binary and unpinned.
+
+*Anchors: `simulateKernel` @ `0x26ecd0` — `system("kernel_sim")` @ `0x26fc14`, the `inst.IT == 54` gate on `kernelInst2KernelConfig`, and the `.npy` save/load bracketing `getInOutPhysicalAP` / `Memory` calls.*
 
 ### 6.2 Model B — `NKIKernel` inline BIR-subfunction expansion
 
 `NKIKernel` is far from a stub: it **expands** the kernel's embedded BIR `Function` in place by synthesizing a `Call` to it and a matching `Return`, dispatching both through the visitor's own machinery (§2.4):
 
 ```c
-// birsim::InstVisitor::visitInstNKIKernel  @0x212930  (CONFIRMED)
-if (!*(void**)(inst + 240 /*+0xF0 = NKIKernel.func*/))
+// birsim::InstVisitor::visitInstNKIKernel  @0x212930if (!*(void**)(inst + 240 /*+0xF0 = NKIKernel.func*/))
     throw NeuronAssertion("I.getFunc() != nullptr");   // inst_visitor.cpp:7721, ErrorCode 250
 callInst = buildInstCall(this, inst);                  // synthesize bir::InstCall to the embedded Function (§6.2.1)
 if (this[37]) (*vtable+16)(this[37], callInst);        // progress/printer callback hook
@@ -434,26 +426,25 @@ BasicBlock::removeInstruction(funcBB, callInst);
 this[449] /*+0xE08*/ = inst;                           // current-NKI-inst slot
 ```
 
-So the NKI kernel's BIR sub-function is executed by the simulator's region-recursion machinery — **not** shelled out, **not** stubbed. **[CONFIRMED — body @0x212930: the `getFunc()` guard, `buildInstCall`, the two `visit()` calls, the two `removeInstruction` teardowns.]**
+So the NKI kernel's BIR sub-function is executed by the simulator's region-recursion machinery — **not** shelled out, **not** stubbed.
 
 #### 6.2.1 `buildInstCall` `@0x1c2b70`
 
-(Hex-Rays failed; from disasm.) Creates the `InstCall` node (`NamedObjectContainer<BasicBlock,Instruction>::insertElement<InstCall>`), builds a `bir::FunctionArgumentMap`, and wires the NKIKernel's src/dst `MemoryLocationSet`s to the callee `Function`'s parameters via `FunctionArgumentMap::setMapping(MemoryLocationSet*, MemoryLocationSet*)` — threading the kernel's tensors into the synthetic call's argument map. **[CONFIRMED — disasm call sequence.]**
+(Hex-Rays failed; from disasm.) Creates the `InstCall` node (`NamedObjectContainer<BasicBlock,Instruction>::insertElement<InstCall>`), builds a `bir::FunctionArgumentMap`, and wires the NKIKernel's src/dst `MemoryLocationSet`s to the callee `Function`'s parameters via `FunctionArgumentMap::setMapping(MemoryLocationSet*, MemoryLocationSet*)` — threading the kernel's tensors into the synthetic call's argument map.
 
 ### 6.3 Model C — base "skip + note" (the genuine stubs)
 
 The base handler `visitInstruction @0x1aa750` ([dispatch base class](sim-dispatch-state.md#12-the-four-routing-classes-sums-to-110)) records the opcode name into the visitor's diagnostic buffer (`InstVisitor+0xA8`) and skips — **no** numeric effect, **no** FATAL:
 
 ```c
-// base visitInstruction  @0x1aa750  (CONFIRMED)
-s = bir::InstructionType2string(I.IT);
+// base visitInstruction  @0x1aa750s = bir::InstructionType2string(I.IT);
 if (s.size() == SENTINEL) throw length_error;
 s.append(";");                                         // asc_58FBA8 = ";"
 diagBuf(this + 0xA8).append(s);                        // "<OpcodeName>;" into the diag string
 goto leaveInstruction;                                 // loc_F7FDC — silent skip
 ```
 
-`NKIKLIRKernel` (56) routes here → `"NKIKLIRKernel;"` note; its `klir_binary` blob (`+0xF0`) is never executed. `InlineASMBytes` (93) routes here → `"InlineASMBytes;"` note; its raw `asm_bytes` blob is never interpreted by the functional simulator. (Neither has a dedicated `visitInst` body — only `bir::Hwm::getLatency*<…>` timing-model bodies exist for them.) The standalone `nki_klr_sim` CLI is the tool that *does* run KLIR-lowered kernels, but via the `kernel_sim`/external path — not in this in-process interpreter. **[CONFIRMED — base handler body; the absence of `visitInstNKIKLIRKernel`/`visitInstInlineASMBytes` symbols.]**
+`NKIKLIRKernel` (56) routes here → `"NKIKLIRKernel;"` note; its `klir_binary` blob (`+0xF0`) is never executed. `InlineASMBytes` (93) routes here → `"InlineASMBytes;"` note; its raw `asm_bytes` blob is never interpreted by the functional simulator. (Neither has a dedicated `visitInst` body — only `bir::Hwm::getLatency*<…>` timing-model bodies exist for them.) The standalone `nki_klr_sim` CLI is the tool that *does* run KLIR-lowered kernels, but via the `kernel_sim`/external path — not in this in-process interpreter.
 
 ---
 
@@ -494,19 +485,19 @@ goto leaveInstruction;                                 // loc_F7FDC — silent s
 
 ---
 
-## 8. Adversarial self-verification
+## 8. Confidence & limits
 
-The five strongest claims were re-checked against the decompiled/disassembled bodies:
+The three loop kernels' carried-state / predicate / bound logic, the terminator next-BB-slot effects, the `Return` frame-pop plus semaphore clear, the two-bank SyncState wait/update state machine, the three queue/group sync kernels, and the three custom-op execution models each come off a decompiled or disassembled body at the addresses cited above. So does the pre-switch interception: each of `Loop`/`DynamicForLoop`/`DoWhile` begins with its own `enterInst<X>` hook and is reached only via the `cmp eax,0x69/0x6A/0x6C` tail-jumps, never the switch table's dead slots.
 
-1. **Loop carried-state threading.** `visitLoop @0x211010` writes the induction value into a `DenseMap<pelican::AffineIdx*, long>` at `InstVisitor+0xE18` keyed by the axis pointer (`*((_QWORD*)inst+42)` = `+0x150`), walks the region BB list, increments by `stride` (`v52` = axis `+0x30`), and continues while `ub` (axis `+0x28`) exceeds the induction. The inlined DenseMap asserts name the exact `KeyT=pelican::AffineIdx*; ValueT=long int` instantiation. **VERIFIED. [CONFIRMED.]**
-2. **Do-while register predicate.** `evaluateDoWhileCondition @0x1a99b0` ends in `RegState::read((RegState*)(this+336), *(Register**)(cond+64), 0) != 0`, where `cond = inst[41]` (`+0x148`) cast to `bir::BirIntRuntimeValue`; `visitDoWhile @0x2120c0` loops `while ((uint8_t)result)`. **VERIFIED. [CONFIRMED.]**
-3. **Dynamic-for runtime upper bound.** `evaluateUpperBoundExpr @0x1b52c0` returns `*(int*)(ubExpr+56) + RegState::read(this+336, *(Register**)(term+64), 0) * coef`, gated by the `ubExpr->getNumTerms()==1 && ubExpr->hasRuntimeValue()` assert (ErrorCode 1910, `"Only scalar values supported in Dynamic For Loop upper bound"`). **VERIFIED. [CONFIRMED.]**
-4. **Custom-op `kernel_sim` shell-out.** `simulateKernel @0x26ecd0` contains a literal `system("kernel_sim")` (decompile line 836) with `std::cerr << "kernel_sim failed"; exit(1)` on non-zero return, preceded by `.npy` input marshalling and followed by `load_npy_to_object` + `Memory::write` output unmarshalling; the `inst.IT == 54` branch (line 616) gates `kernelInst2KernelConfig`. **VERIFIED. [CONFIRMED.]**
-5. **NKIKernel inline expansion.** `visitInstNKIKernel @0x212930` guards `getFunc() != nullptr` (cp:7721, EC 250), calls `buildInstCall`, then `visit(callInst)` → `insertElement<InstReturn>` → `visit(retInst)` → two `removeInstruction` teardowns. It dispatches through the same `Call` path (IT 84 `@0x26bc90`) any `Call` uses. **VERIFIED. [CONFIRMED.]**
+Five things on this page fall short of that and are marked in place:
 
-The intercept claim from [dispatch §1.1](sim-dispatch-state.md#11-the-pre-switch-control-flow-interception) (105/106/108 pulled out before the switch via `cmp eax,0x69/0x6A/0x6C` tail-jumps) holds: each of the three bodies begins with its own `enterInst<X>` hook and is reached only via those tail-jumps, never the switch table's dead slots.
+- the rhs immediate-vs-register split in `CompareAndBranch` — `sub_1BE610` is read at its call site only;
+- the per-`BranchCompareOp` comparator function identities;
+- the `kernel_sim` argv beyond the static `"kernel_sim"` string, and the name→entry resolution inside that external executable;
+- the `neuronxcc::backend::CFG` node/edge layout the CFG driver builds;
+- the per-element parallel-loop AP indexing in `visitInstInParallelLoop`.
 
-**Honest re-verify ceiling.** Pinned at the strongest level: all three loop kernels' carried-state/predicate/bound logic, the terminator next-BB-slot effects, the Return frame-pop + sem-clear, the two-bank SyncState wait/update state machine, the three queue/group sync kernels, and the three custom-op execution models (delegate / inline-expand / stub) — each read off a decompiled or disassembled body. **Not** fully pinned: the `sub_1BE610` rhs immediate-vs-register split in `CompareAndBranch` (read at call-site only — INFERRED from the dual-arg comparator); the per-`BranchCompareOp` comparator function identities (INFERRED standard relational); the exact `kernel_sim` argv beyond the static `"kernel_sim"` string and the name→entry resolution inside the external executable; the `neuronxcc::backend::CFG` node/edge layout the CFG driver builds; and the per-element parallel-loop AP indexing in `visitInstInParallelLoop`. No `birsim::*` types exist in the IDA `structures.json` — the field offsets are reconstructed from constructor writes, accessor bodies, and the inlined LLVM `DenseMap`/`cast<>` assert instantiations, which name the exact key/value types and so anchor the offsets unambiguously.
+> **NOTE — no `birsim::*` types exist in the IDA `structures.json`.** Every field offset on this page is reconstructed from constructor writes, accessor bodies, and inlined LLVM `DenseMap`/`cast<>` assert instantiations. Those asserts name the exact key and value types, which is what makes the reconstruction unambiguous rather than guessed.
 
 ---
 

@@ -9,53 +9,46 @@
 > call — back out as text. It is a round-tripper (Penguin IR → NKI source), not a lowering
 > path. Everything below is grounded on the cp310 shared object
 > `NkiCodegen.cpython-310-x86_64-linux-gnu.so` and its recovered symbols/strings.
->
-> > **CORRECTION (input/output IR — binary-verified).** `NkiCodegen.so` consumes
-> > **Penguin IR**, not BIR, and emits NKI text — it never touches BIR. The `.so`
-> > imports its IR types exclusively from `neuronxcc.starfish.penguin.ir`
-> > (`AffineExpr`, `Operator`, `TileAccess`) and walks `NeuronInst` nodes
-> > (`codegenNeuronOperand` / `codegenNeuronInstResult`); a `strings` sweep finds
-> > **zero** `bir`/`birpy` tokens — in sharp contrast to the sibling
-> > `BirCodeGenLoop.so`, which is full of `birpy.Instruction`/`Opcodes`/
-> > `MemoryLocation` (it is the module that actually produces BIR). Per the
-> > [architecture overview](architecture-overview.md), Penguin IR and BIR are
-> > *different* IR levels (Penguin IR → BIR is a separate codegen crossing); the
-> > forward builder `NeuronCodegen` also produces Penguin IR, not BIR. Earlier
-> > "Penguin/BIR" / "BIR → NKI" phrasings on this page conflated the two and are
-> > corrected to **Penguin IR** throughout. [CONFIRMED — `strings`/imports on the `.so`]
+
+The IR on both ends of this printer is **Penguin IR** — it never touches BIR. The
+`.so` imports its IR types exclusively from `neuronxcc.starfish.penguin.ir`
+(`AffineExpr`, `Operator`, `TileAccess`) and walks `NeuronInst` nodes via
+`codegenNeuronOperand` / `codegenNeuronInstResult`; a `strings` sweep finds **zero**
+`bir`/`birpy` tokens. The contrast with its sibling is sharp: `BirCodeGenLoop.so` is
+full of `birpy.Instruction` / `Opcodes` / `MemoryLocation`, because *that* is the
+module which actually produces BIR.
+
+> **GOTCHA — Penguin IR and BIR are different IR levels.** Penguin IR → BIR is its own
+> separate codegen crossing (see the [architecture overview](architecture-overview.md)).
+> The forward builder `NeuronCodegen` also produces Penguin IR, not BIR, so both halves
+> of this round-trip sit *above* the BIR boundary. Reading "codegen" here as "lowering
+> to BIR" mis-places the whole page by one IR level.
 
 ---
 
 ## 0. Where it lives — and where it does *not*
 
-> **CORRECTION (binary attribution).** The harness task and an early note placed the
-> re-emit printer in `…/targets/sunda/NKICodeGenFlow.cpython-310-…so`. That is
-> **wrong** and is corrected here in place. `NKICodeGenFlow.so` carries **no**
-> `codegen<Op>` printer and **no** `NkiCodegen` class. Its only public symbols
-> (`nm -C`) are pass-orchestration entry points:
-> `optimize_nki_kernel`, `optimize_native_nki_kernel`, `construct_nki_opt_passes`,
-> `codegen_nki_opt`, `codegen_nki_opt_allocated` — i.e. it *constructs and runs the
-> NKI optimisation-pass pipeline*, it does not emit NKI text. The verbatim module
-> qualnames recovered from it are
-> `neuronxcc.starfish.penguin.targets.sunda.NKICodeGenFlow.{optimize_nki_kernel,
-> construct_nki_opt_passes,codegen_nki_opt,…}` — no `codegen<Op>`/`opcode`/
-> `reduce_cmd`/`write_line` strings are present. [CONFIRMED — `nm`/`strings` on the
-> `.so`]
->
-> The actual printer is in a **different** shared object:
-> `…/starfish/penguin/targets/codegen/NkiCodegen.cpython-310-x86_64-linux-gnu.so`
-> (4,891,928 B), class
-> `neuronxcc.starfish.penguin.targets.codegen.NkiCodegen.NkiCodegen`. The
-> `targets/codegen/` directory is the home of the per-op text codegen; siblings in
-> the same dir are `CodeGenBase.so`, `BirCodeGenLoop.so` (the macro/loop half of the
-> P-strand), and the package `__init__`. [CONFIRMED — directory listing +
-> recovered qualnames]
+The printer is
+`…/starfish/penguin/targets/codegen/NkiCodegen.cpython-310-x86_64-linux-gnu.so`
+(4,891,928 B), class
+`neuronxcc.starfish.penguin.targets.codegen.NkiCodegen.NkiCodegen`. The
+`targets/codegen/` directory is the home of the per-op text codegen; its siblings are
+`CodeGenBase.so`, `BirCodeGenLoop.so` (the macro/loop half of the P-strand), and the
+package `__init__`.
+
+> **GOTCHA — the printer is *not* in `NKICodeGenFlow.so`.** The name invites the
+> mistake, but `…/targets/sunda/NKICodeGenFlow.cpython-310-…so` carries no
+> `codegen<Op>` method and no `NkiCodegen` class. Its entire public surface is
+> pass orchestration — `optimize_nki_kernel`, `optimize_native_nki_kernel`,
+> `construct_nki_opt_passes`, `codegen_nki_opt`, `codegen_nki_opt_allocated` — and
+> none of the `codegen<Op>` / `opcode` / `reduce_cmd` / `write_line` strings appear
+> in it. It builds and runs the NKI optimisation-pass pipeline; it emits no text.
 
 **Why two classes named almost the same?** `NeuronCodegen` (the forward builder, in
 `nki/compiler/backends/neuron/KernelBuilder.so`) and `NkiCodegen` (this printer, in
-`targets/codegen/NkiCodegen.so`) are *inverse halves of a round-trip*. Prior pages
-6.0.1 and 6.5.1 correctly reported **no printer class inside `KernelBuilder.so`** —
-that is expected; the printer was never there. It is here, in its own `.so`.
+`targets/codegen/NkiCodegen.so`) are *inverse halves of a round-trip*. There is no
+printer class inside `KernelBuilder.so` at all — the forward half is genuinely
+build-only, and the print half lives here in its own `.so`.
 
 | Property | Forward builder (6.5.1) | This page — re-emit printer |
 |---|---|---|
@@ -84,7 +77,7 @@ function whose body is the printed instruction stream. This is what makes it a
 straight back through the trace path to rebuild the graph.
 
 `codegenImports` emits the preamble verbatim (every line is a recovered string
-literal in the `.so`): [CONFIRMED]
+literal in the `.so`):
 
 ```python
 import neuronxcc.nki as nki
@@ -110,14 +103,14 @@ def {name}():
 > `codegenFunctionBegin` wrapping the body in `@trace` + `def {name}():` plus the
 > `from neuronxcc.nki import trace` import — there is **no symbol or string literal
 > spelled `_trace_internal_kernel`** in `NkiCodegen.so`. Treat that label as a
-> conceptual handle for the `@trace`-wrapped re-emit, not a recovered symbol.
-> [INFERRED — name; CONFIRMED — the `@trace`/`def {name}():`/`trace` mechanism]
+> conceptual handle for the `@trace`-wrapped re-emit, not a recovered symbol. The
+> mechanism is pinned; only the [INFERRED] *name* is not.
 
 ### 1.1 `write_line` — the single output primitive
 
 Every emitter ultimately funnels its filled template through one method,
 `NkiCodegen.write_line` (qualname + Cython wrapper
-`__pyx_pw_…_10NkiCodegen_3write_line` both recovered). [CONFIRMED] This is the
+`__pyx_pw_…_10NkiCodegen_3write_line` both recovered). This is the
 `printf` of the printer: an emitter assembles a Python source string (LHS binding +
 `nisa.*`/`nl.*` call + tail kwargs) and pushes it as one indented line. The master
 walk is:
@@ -134,7 +127,7 @@ PyObject *codegen(self, inst) {
 
 The qualnames `NkiCodegen.codegen`, `NkiCodegen.codegenBasicBlock`,
 `NkiCodegen.codegenFunctionBegin`, `NkiCodegen.codegenFunctionEnd`,
-`NkiCodegen.write_line` are all confirmed present. [CONFIRMED]
+`NkiCodegen.write_line` are all confirmed present.
 
 ### 1.2 Shared sub-emitters (the operand/result/index plumbing)
 
@@ -148,7 +141,7 @@ fragments — all confirmed as recovered qualnames:
 - **`codegenNeuronAP`** — an AccessPattern → the `[i,j,…]` slice/index text.
 - Buffer declarations: `codegenNeuronSBTensor`, `codegenNeuronWeightTensor`,
   `codegenIdentityWeightTensor` → `nl.ndarray(shape=…, dtype=…)` (the literals
-  `nl.ndarray(shape=` and `nl.par_dim(` are present). [CONFIRMED]
+  `nl.ndarray(shape=` and `nl.par_dim(` are present).
 - **`codegenScalarValue`** — marshals an immediate/scalar payload (used e.g. by
   `memset`'s `value=`).
 
@@ -156,7 +149,6 @@ Common tail kwargs shared by nearly every emitter: `dtype=`, `mask=` (a predicat
 list), and where legal `engine=nki.isa.engine.<E>`, `perf_mode=`,
 `oob_mode=nki.isa.oob_mode.<m>` (the prefixes `nki.isa.engine.`,
 `nki.isa.oob_mode.`, `nki.isa.reduce_cmd.` are all recovered string literals).
-[CONFIRMED]
 
 ---
 
@@ -178,8 +170,9 @@ DWARF `addr2line`). It
 tests the enum member name and rewrites a fixed allow-list; everything else passes
 through as the bare member name. The recovered marker strings (`expit`, `erf`,
 `act_identity`, `abs`, `max`, `min`, `copy`, `sigmoid`, `scipy.special`,
-`np.multiply`, `np.sum`) pin the table:
-[CONFIRMED — address + strings; STRONG — exact branch mapping]
+`np.multiply`, `np.sum`) pin the table. The address and the string set are read off
+the binary; the exact *branch ordering* below is HIGH, reconstructed from string
+proximity rather than a decompiled control-flow dump.
 
 | `op.name` | emitted expression | source |
 |---|---|---|
@@ -203,8 +196,8 @@ build-side `codegenAluOp` / act-func remap tables (cross-ref the I-strand
 Body @ `0x75170` (symbol `…NkiCodegen_10NkiCodegen_45reduce_cmd`). It iterates the
 `EngineAccumulationType` enum `members.items()` keyed by `accum_type`/`value` and
 emits the member name after the prefix `nki.isa.reduce_cmd.` (the prefix + `accum_type`,
-`members`, `items`, `value` are recovered strings).
-[CONFIRMED — address + prefix string; STRONG — iteration body]
+`members`, `items`, `value` are recovered strings). The address and the prefix are
+read off the binary; the iteration body itself is HIGH.
 The result feeds `reduce_cmd=nki.isa.reduce_cmd.<m>` into `activation_reduce`,
 `tensor_scalar_reduce`, `tensor_scalar_cumulative`, `select_reduce`, and
 `range_select`.
@@ -214,7 +207,7 @@ The result feeds `reduce_cmd=nki.isa.reduce_cmd.<m>` into `activation_reduce`,
 `NkiCodegen.dtype` and `NkiCodegen.np_dtype`
 (wrapper `__pyx_pw_…_10NkiCodegen_181np_dtype`) emit `np.dtype(...)`/`np.float16`/
 `np.float32`/`np.void` and the NKI-extended dtypes `nl.float8_e4m3`,
-`nl.float8_e5m2`, `nl.tfloat32` (all recovered literals). [CONFIRMED]
+`nl.float8_e5m2`, `nl.tfloat32` (all recovered literals).
 
 ---
 
@@ -223,9 +216,8 @@ The result feeds `reduce_cmd=nki.isa.reduce_cmd.<m>` into `activation_reduce`,
 ~33 `codegen<Op>` methods, one per Penguin op family. Every `nisa.<x>` / `nl.<x>`
 template below is a **verbatim string literal recovered from the `.so`** (the full
 set was dumped with `strings | rg '^(nisa|nl)\.'` and is reproduced faithfully).
-[CONFIRMED] Addresses in parentheses resolve to symbols recovered directly from the
-cp310 `NkiCodegen.so` with `nm`/`strings` — see §5. (There is no IDA-exported sidecar
-DB for this particular `.so`; the binary itself is the grounding artifact.)
+Addresses in parentheses resolve to symbols recovered directly from the
+cp310 `NkiCodegen.so` with `nm`/`strings` — see §5.
 
 ### 3.1 Activation family
 
@@ -244,10 +236,9 @@ dst = nisa.activation_reduce(op=<opcode(func)>, data=<src>, bias=…, scale=…,
 The literals `nisa.activation(op=`, `nisa.activation_reduce(op=`, `bias=`,
 `reduce_op` (with `np.sum`), `reduce_res`, and `ActivationAccumulationOp` are
 present. The `scale` slot has two forms — a second `isinstance` test on `scale_ptr`
-selects pointer-scale vs immediate-scale. [CONFIRMED strings]
-
+selects pointer-scale vs immediate-scale.
 - `codegenReciprocalOp` → `dst = nisa.reciprocal(data=<src>, dtype=…, mask=…)`.
-  [CONFIRMED]
+ 
 
 ### 3.2 Tensor-scalar / tensor-tensor family
 
@@ -263,15 +254,14 @@ nisa.scalar_tensor_tensor(data=<src>, op0=…, operand0=…, op1=…, operand1=�
 
 Two ALU ops (`op0`/`op1`, each via `opcode()`→`nl.<fn>`), two operands
 (`operand0`/`operand1`), and the operand-swap flags `reverse0`/`reverse1` are all
-recovered literals. [CONFIRMED] `codegenTensorScalarGEPOp` **delegates** to
+recovered literals. `codegenTensorScalarGEPOp` **delegates** to
 `codegenTensorScalarPtrOp` (a GEP-resolved operand reuses the same emit path).
-[CONFIRMED]
 
 - `codegenTensorScalarCacheReduce` → `nisa.tensor_scalar_reduce(data=…, op0=nl.<o>,
-  operand0=…, reduce_op=nl.<r>, reduce_res=…, reverse0=…)`. [CONFIRMED]
+  operand0=…, reduce_op=nl.<r>, reduce_res=…, reverse0=…)`.
 - `codegenTensorScalarCacheCumulative` → `nisa.tensor_scalar_cumulative(src=…,
   op0=…, op1=…, imm0=…, imm1=…, reduce_cmd=nki.isa.reduce_cmd.<m>)` — the scan/
-  cumulative form. [CONFIRMED]
+  cumulative form.
 
 ### 3.3 Reduce family
 
@@ -283,26 +273,26 @@ dst = nisa.tensor_partition_reduce(nl.<reduce-op>, data=<src>, dtype=…, mask=�
 
 `codegenTensorReduceOp` and `codegenPartitionReduceOp` both take the reduce-op as the
 first **positional** `nl.<fn>` arg via `opcode()`. The literals `nisa.tensor_reduce(nl.`,
-`nisa.tensor_partition_reduce(nl.`, `axis=`, `negate` are present. [CONFIRMED]
+`nisa.tensor_partition_reduce(nl.`, `axis=`, `negate` are present.
 `codegenNeuronReduceMacro` expands cross-tile reductions to `nl.loop_reduce(…)` /
-`nl.all_reduce(…)` (literals `nl.loop_reduce(`, `nl.all_reduce(`). [CONFIRMED]
+`nl.all_reduce(…)` (literals `nl.loop_reduce(`, `nl.all_reduce(`).
 
 ### 3.4 Select / range-select family
 
 - `codegenTensorSelect` → `dst = nl.where(pred, on_true, on_false)`
-  (literal `nl.where(`). [CONFIRMED]
+  (literal `nl.where(`).
 - `codegenTensorCopyPredicated` → `nisa.tensor_copy_predicated(src=…)` with a
   `simple_predicates` genexpr building the `[AffinePredicate(...)]` mask list (the
-  type hint string `Iterable[AffinePredicate]` is recovered). [CONFIRMED]
+  type hint string `Iterable[AffinePredicate]` is recovered).
 - `codegenAffSelTensorScalarOp` → `nisa.affine_select(…)` with `cmp_str`,
   `index_expr`, `fill_value` (all recovered) — an **affine** index predicate, not a
-  runtime tensor mask. [CONFIRMED]
+  runtime tensor mask.
 - `codegenRangeSelect` → `nisa.range_select(on_true_tile=…, comp_op0=np.<c0>,
   bound0=…, comp_op1=np.<c1>, bound1=…, range_start=…, on_false_value=…,
   fill_value=…)`, plus a `RangeSelectReduce` variant adding `reduce_op`/`reduce_cmd`/
-  `reduce_res`. Two compare ops + two bounds form an interval predicate. [CONFIRMED]
+  `reduce_res`. Two compare ops + two bounds form an interval predicate.
 - `codegenSelectReduce` → `nisa.select_reduce(dst=…, …, reverse_pred=…, reduce_op=…,
-  reduce_cmd=…, reduce_res=…)`. [CONFIRMED]
+  reduce_cmd=…, reduce_res=…)`.
 
 ### 3.5 Top-K / index primitives (DVE)
 
@@ -315,7 +305,6 @@ nisa.nc_match_replace8(dst_idx=…, vals=…, imm=…)        # codegenMaxIndexA
 
 The two `nc_match_replace8(...` literals (`data=` and the fused `dst_idx=`) are both
 present — the fused index+match-replace variant emits the `dst_idx` kwarg.
-[CONFIRMED]
 
 ### 3.6 BN (Welford) + dropout
 
@@ -325,26 +314,25 @@ dst = nisa.bn_aggr(data=<src>, dtype=…, mask=…)    # codegenSundaBNAggr
 dst = nisa.dropout(data=<src>, prob=<p>, …)        # codegenDropoutMaskInst
 ```
 
-[CONFIRMED — literals `nisa.bn_stats(data=`, `nisa.bn_aggr(data=`,
-`nisa.dropout(data=`.]
+*Anchors: literals `nisa.bn_stats(data=`, `nisa.bn_aggr(data=`, `nisa.dropout(data=`.*
 
 ### 3.7 Data-move / memset / iota / misc
 
 - `codegenTensorCopyOp` → `nisa.tensor_copy(…)` **or** `nl.copy(…)`, chosen by
-  engine. [CONFIRMED]
+  engine.
 - `codegenDMACopyOp` → `nisa.dma_copy(dst=…/src=…)`; `codegenDMATransposeCopy` →
-  `nisa.dma_transpose(…)`. [CONFIRMED]
+  `nisa.dma_transpose(…)`.
 - `codegenTensorCopyDynamicSrc` / `…DynamicDst` →
-  `nisa.tensor_copy_dynamic_src(src=)` / `…_dynamic_dst(dst=)`. [CONFIRMED]
+  `nisa.tensor_copy_dynamic_src(src=)` / `…_dynamic_dst(dst=)`.
 - `codegenBroadcastPartition` → `np.broadcast_to(…)`;
   `codegenStreamShuffleInst` → `nisa.nc_stream_shuffle(src=)`;
   `codegenPoolGather` → `nl.gather_flattened(data=)`;
-  `codegenGetSequenceBounds` → `nisa.sequence_bounds(segment_ids=)`. [CONFIRMED]
+  `codegenGetSequenceBounds` → `nisa.sequence_bounds(segment_ids=)`.
 - `codegenMemsetOp` → `nisa.memset(shape=…, value=<codegenScalarValue>)` —
-  random fill can route to `nl.rand`. [CONFIRMED]
-- `codegenIndexValueInst` → `nisa.iota(…)`. [CONFIRMED]
+  random fill can route to `nl.rand`.
+- `codegenIndexValueInst` → `nisa.iota(…)`.
 - Matmul/transpose (`nisa.nc_matmul(`, `nisa.nc_transpose(`) are present as the
-  `codegenMatMulOp` / `codegenTransposeOp` emitters. [CONFIRMED]
+  `codegenMatMulOp` / `codegenTransposeOp` emitters.
 
 > **GOTCHA — FATAL guards on a None destination.** Three emit guards are recovered
 > verbatim and will abort code generation rather than print a malformed line:
@@ -352,11 +340,11 @@ dst = nisa.dropout(data=<src>, prob=<p>, …)        # codegenDropoutMaskInst
 > `"destination of DMATransposeStore cannot be None for code generation"`,
 > `"destination of SBAtomStore cannot be None for code generation"`. The printer
 > refuses to emit a `dst = …` line for an instruction whose result slot was never
-> bound. [CONFIRMED strings]
+> bound.
 
 > **NOTE — `quantize_mx` is *not* here.** The MX-quantize macro emit lives in the
 > sibling `BirCodeGenLoop.so` (the macro/loop half of the P-strand), not in this
-> per-op printer. [CONFIRMED — by directory + absence of the symbol in this `.so`]
+> per-op printer — the symbol is absent from this `.so` entirely.
 
 ---
 
@@ -376,57 +364,31 @@ graph as a runnable `@trace` NKI kernel that 6.6.3 can re-trace.
 
 ---
 
-## 5. Adversarial self-verification
+## 5. Grounding & limits
 
-The five strongest claims, re-challenged against the binary:
+The cp310 `.so` retains `.debug_info`/`.debug_line`, so the two enum-marshalling
+addresses come with source lines. `opcode @0xbe630` is symbol
+`…NkiCodegen_10NkiCodegen_221opcode`, which `addr2line` maps to `NkiCodegen.py:1261`
+— the `expit` / `act_identity` / `sigmoid` allow-list strings sit in that body.
+`reduce_cmd @0x75170` is `…NkiCodegen_10NkiCodegen_45reduce_cmd`, mapping to
+`NkiCodegen.py:309`, with the `accum_type` / `members` / `items` iteration strings.
+Both are the Cython `__pyx_pw_` entry symbols; no separate `__pyx_pf_` body symbol is
+emitted for either.
 
-1. **"The printer class is `NkiCodegen` in `targets/codegen/NkiCodegen.so`, not
-   `NKICodeGenFlow`."** — Re-checked both `.so`s. `NKICodeGenFlow.so` qualnames are
-   only `optimize_nki_kernel`/`construct_nki_opt_passes`/`codegen_nki_opt` (no
-   `codegen<Op>`, no `opcode`, no `write_line`). `NkiCodegen.so` carries the full
-   `NkiCodegen.NkiCodegen.codegen<Op>` roster + `opcode`/`reduce_cmd`/`write_line`.
-   **HOLDS — task's binary attribution corrected.** [CONFIRMED]
-2. **"It prints `nisa.*`/`nl.*` source via a `printf`-style `write_line`."** —
-   `NkiCodegen.write_line` qualname + wrapper recovered; the full `nisa.*`/`nl.*`
-   template-literal set dumped directly. **HOLDS.** [CONFIRMED]
-3. **"Output is a `@trace`-decorated kernel module with a fixed import preamble."**
-   — `@trace`, `def {name}():`, the seven import lines, and
-   `from neuronxcc.nki import trace` are all recovered. **HOLDS.** [CONFIRMED]
-4. **"`opcode()` name-maps `sigmoid`→`expit`, `erf`→`erf`, `abs`→`np.abs`, else the
-   member name."** — `expit`, `erf`, `act_identity`, `abs`/`max`/`min`, `copy`,
-   `sigmoid`, `scipy.special`, `np.multiply` strings present; exact branch mapping
-   in the `opcode` body (`@0xbe630`, `NkiCodegen.py:1261`). **HOLDS** (string-confirmed;
-   branch order STRONG — the per-branch ordering is inferred from string proximity, not
-   a decompiled control-flow dump, since no IDA DB exists for this `.so`).
-5. **"There is no `_trace_internal_kernel` symbol."** — `rg` over strings finds
-   none. **HOLDS — tagged INFERRED** as a conceptual handle for the `@trace`
-   wrapping, not a recovered name.
+Every string, qualname, and class-name claim on this page comes off the `.so` itself.
+Two things do not reach that standard:
 
-The two enum-marshalling **addresses** are now directly grounded in this checkout via
-`nm` + DWARF `addr2line` on the cp310 `.so` (it retains `.debug_info`/`.debug_line`):
-`opcode @0xbe630` is symbol `…NkiCodegen_10NkiCodegen_221opcode`, which `addr2line`
-maps to `NkiCodegen.py:1261` (the `expit`/`act_identity`/`sigmoid` allow-list strings
-sit in the body), and `reduce_cmd @0x75170` is `…NkiCodegen_10NkiCodegen_45reduce_cmd`,
-mapping to `NkiCodegen.py:309` (with the `accum_type`/`members`/`items` iteration
-strings). Both `…_221opcode`/`…_45reduce_cmd` are the Cython `__pyx_pw_` entry symbols
-(no separate `__pyx_pf_` body symbol is emitted for either). **CONFIRMED** — grounded
-directly against the `.so` (DWARF + `nm`/`strings`), not via an IDA sidecar.
-The remaining per-method `codegen<Op>` body offsets are still sourced from the D-P02
-IDA pass [report-sourced]; every **string/qualname/class-name** claim was independently
-re-verified here against the `.so`.
+- the **branch ordering** inside `opcode()` — the allow-list membership is pinned by
+  the string set, but the order of the tests is reconstructed from string proximity;
+- the per-method `codegen<Op>` **body offsets**, which are carried over from an IDA
+  pass rather than re-derived here.
 
-> **CORRECTION (cp311/cp312 ARE extracted).** An earlier note here said the
-> `targets/codegen/NkiCodegen.cpython-31{1,2}.so` twins were "not extracted in this
-> checkout." That is **wrong** and is corrected in place. All three wheels ship the
-> `.so` under `…/penguin/targets/codegen/`:
-> `NkiCodegen.cpython-310-x86_64-linux-gnu.so` (4,891,928 B — the grounded artifact
-> above), `…cpython-311….so` (5,818,104 B), and `…cpython-312….so` (5,885,376 B). What
-> is *missing* is an IDA-exported sidecar **DB** for the cp310 `NkiCodegen.so`
-> specifically (IDA exported `BirCodeGenLoop`/`CodeGenBase`/`DumpGraphAndMetadata` in
-> that directory but not `NkiCodegen`); the binary itself is present and every address
-> /string/symbol claim on this page was re-grounded directly against it with
-> `nm`/`strings`. cp310 remains the artifact the prose is keyed to, but the cp311/cp312
-> binaries are available for cross-checking. [CONFIRMED — `stat`/`ls` on the three `.so`]
+> **NOTE — no IDA sidecar DB exists for `NkiCodegen.so`.** IDA exported
+> `BirCodeGenLoop`, `CodeGenBase`, and `DumpGraphAndMetadata` from `targets/codegen/`
+> but not this one, so the binary itself is the grounding artifact throughout. All
+> three wheels do ship the `.so`: cp310 at 4,891,928 B (the artifact the prose is
+> keyed to), cp311 at 5,818,104 B, cp312 at 5,885,376 B — the twins are available for
+> cross-checking.
 
 ---
 
