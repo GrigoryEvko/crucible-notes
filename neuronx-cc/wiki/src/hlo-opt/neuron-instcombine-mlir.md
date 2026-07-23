@@ -218,14 +218,14 @@ The slice may be hoisted below the merged reduce **only if every dimension it tr
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, re-challenged against the binary:
+The central claims and where each is anchored:
 
-1. **Single pattern, benefit 1, root `mhlo.reduce`.** `addImpl` symbol @0x20f9330 confirmed; the only pattern symbol in the binary is `SimplifyReduceSliceReducePattern`; `mhlo.reduce` confirmed byte-exact at fileoff 0x5e533 (`6d 68 6c 6f 2e 72 65 64 75 63 65`). CONFIRMED.
-2. **Two `any_of` lambdas distinguished by operand type.** Both mangled symbols recovered verbatim: `…UllE_` over `SmallVector<long,6>&` (@0x20f7360), `…UllE0_` over `ElementsAttrRange<…ElementIterator<long>>` (@0x20f7520). The `_` vs `0_` suffix proves distinct closures from the same enclosing function. CONFIRMED.
-3. **Module-level pass over getMainFunction.** `_ZN4hilo15getMainFunctionERN4mlir8ModuleOpE` @0x21c1e70 confirmed; pass typeinfo is `PassWrapper<…OperationPass<ModuleOp>>` (`_ZTSN4mlir11PassWrapperIN4hilo17NeuronInstCombineENS_13OperationPassINS_8ModuleOpEEEEE`). CONFIRMED.
-4. **Rewritten ops `mhlo.slice` / `mhlo.reshape`.** Both strings confirmed byte-exact (0x2222ac, 0x23e451); `is_contained` and `matchAndRewrite` symbols confirmed. CONFIRMED.
+1. **Single pattern, benefit 1, root `mhlo.reduce`.** `addImpl` symbol @0x20f9330; the only pattern symbol in the binary is `SimplifyReduceSliceReducePattern`; `mhlo.reduce` is byte-exact at fileoff 0x5e533 (`6d 68 6c 6f 2e 72 65 64 75 63 65`).
+2. **Two `any_of` lambdas distinguished by operand type.** Both mangled symbols recovered verbatim: `…UllE_` over `SmallVector<long,6>&` (@0x20f7360), `…UllE0_` over `ElementsAttrRange<…ElementIterator<long>>` (@0x20f7520). The `_` vs `0_` suffix marks distinct closures from the same enclosing function.
+3. **Module-level pass over getMainFunction.** `_ZN4hilo15getMainFunctionERN4mlir8ModuleOpE` @0x21c1e70; pass typeinfo is `PassWrapper<…OperationPass<ModuleOp>>` (`_ZTSN4mlir11PassWrapperIN4hilo17NeuronInstCombineENS_13OperationPassINS_8ModuleOpEEEEE`).
+4. **Rewritten ops `mhlo.slice` / `mhlo.reshape`.** Both strings are byte-exact (0x2222ac, 0x23e451); `is_contained` and `matchAndRewrite` symbols present.
 5. **Outer reduce is the replaced op; slice hoisted below the merged reduce.** R6 replaces `op` (the root = outer reduce) via vtable slot 0; the rebuilt slice runs over `X`. The replace-outer/hoist-slice shape is read off the rewrite; the exact union-dim mechanism (R2 geometry vs explicit attr mutation) is **[INFERRED]**.
 
 Also **[INFERRED]**: the `GreedyRewriteConfig` field *names* — the bit-pattern `{10, -1, topDown}` is read from the inline construction, but the leading discriminator's semantics are reconstructed; lambda#2's element semantics; and the union-dim realization.

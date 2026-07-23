@@ -94,7 +94,7 @@ function BuildPredMap(module):                          // [module@rdx] computat
     predMap = MapVector<HloInstruction*, SmallVector<HloInstruction*,6>>()   // operator[] @0x1f5b6d0
     for comp in module.computations():                  // stride 0x10
         for inst in comp.instructions():                // node->inst at +8
-            if inst.flags[0x15] & 0x8:  continue        // test byte ptr[rdx+15h],8 @0x1f5c1df — skip (MED)
+            if inst.flags[0x15] & 0x8:  continue        // test byte ptr[rdx+15h],8 @0x1f5c1df — skip [INFERRED]
             preds = inst.rare[0x30].control_predecessors()   // kEmptyRare sentinel if null
             filtered = []
             for p in preds:

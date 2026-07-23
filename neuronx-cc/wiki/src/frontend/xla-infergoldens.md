@@ -461,7 +461,7 @@ CLI flags the job passes to the binary (verbatim): `--module`, `--module-type pr
 
 ```cpp
 namespace hilo {
-  struct XlaInfergoldensOptions {        // dtor @0x1faec00; field offsets not recovered (MED)
+  struct XlaInfergoldensOptions {        // dtor @0x1faec00; field offsets not recovered [INFERRED]
     std::string module;        // -m
     int         moduleType;    // -t  {proto, text, snapshot}  (enum order MED)
     std::vector<std::string> inputs, outputs;   // -i, -o (repeatable)

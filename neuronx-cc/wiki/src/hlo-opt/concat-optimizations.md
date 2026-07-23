@@ -351,7 +351,7 @@ void GroupedDusToConcat(map):                                 // 0x1fce130 (5127
     for (base, dus_group) in map:
         keyed = [(ParseIterationIdx(dus), dus) for dus in dus_group]
         introsort keyed by vector<int> key                    // __introsort_loop 0x1fca2f0
-        axis = component of the DUS start-index that varies across the chain   // (MED)
+        axis = component of the DUS start-index that varies across the chain   // [INFERRED]
         concat = CreateConcatFromGroup([dus for _,dus in keyed], axis, comp, base)  // 0x1fcdaf0
         if concat == nullptr:                                  // shape mismatch
             VLOG("Skipping group due to shape mismatch returned by CreateConcatFromGroup. ")

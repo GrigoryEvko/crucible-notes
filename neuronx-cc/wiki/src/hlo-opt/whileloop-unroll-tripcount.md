@@ -452,19 +452,19 @@ function ExpandInstruction(inst):                              // 0x1fd7cc0
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims on this page, each re-challenged against the binary:
+Where each central claim is anchored in the binary:
 
-1. **"#112's budget defaults are 1000 / 800000 / 100000."** Re-checked the factory disasm `…RegisterNeuronWhileLoopUnroller…_M_invoke` @ `0x1e70200`: `mov [rax+18h],3E8h` (1000), `mov [rax+20h],0C3500h` (800000), `mov [rax+28h],186A0h` (100000) at `0x1e7023e`/`0x1e70246`/`0x1e7024e`. **CONFIRMED** (immediates read off the constructor).
+1. **#112's budget defaults are 1000 / 800000 / 100000.** The factory disasm `…RegisterNeuronWhileLoopUnroller…_M_invoke` @ `0x1e70200` writes the immediates off the constructor: `mov [rax+18h],3E8h` (1000), `mov [rax+20h],0C3500h` (800000), `mov [rax+28h],186A0h` (100000) at `0x1e7023e`/`0x1e70246`/`0x1e7024e`.
 
-2. **"#25 caps the trip-count engine at 128 and gates on kWhile."** `mov esi,80h` (@ `0x1f734a7`) precedes the `ComputeWhileLoopTripCount` call; `cmp byte ptr [r12+14h],79h` at `0x1f73458` and `0x1f7349f` is the `kWhile` opcode gate. **CONFIRMED**.
+2. **#25 caps the trip-count engine at 128 and gates on kWhile.** `mov esi,80h` (@ `0x1f734a7`) precedes the `ComputeWhileLoopTripCount` call; `cmp byte ptr [r12+14h],79h` at `0x1f73458` and `0x1f7349f` is the `kWhile` opcode gate.
 
-3. **"#25 renumbers channels and replaces the while with a Call chain."** The disasm shows `NextChannelId` (@ `0x1f73a1d`), two `CreateCall` sites, `AddEmbeddedComputation`, and `ReplaceInstruction` (@ `0x1f73c45`) immediately followed by the `mov esi, offset aWhileOpParentReplaceinstruction…` CHECK string. **CONFIRMED** (call set + verbatim CHECK).
+3. **#25 renumbers channels and replaces the while with a Call chain.** The disasm shows `NextChannelId` (@ `0x1f73a1d`), two `CreateCall` sites, `AddEmbeddedComputation`, and `ReplaceInstruction` (@ `0x1f73c45`) immediately followed by the `mov esi, offset aWhileOpParentReplaceinstruction…` CHECK string.
 
-4. **"#111 reuses the AG channel-id and reads gather-dim @+0x258."** Expander disasm: `mov rax,[r14+258h]` (ag_dim), `mov rax,[r14+48h]` (channel_id), `movzx …[r14+250h]` (constrain), `movzx …[r14+260h]` (use_gdi), then `CreateAllGather(…, std::optional<long>, bool)` @ `0x1fd7f8c` consuming the `[+0x48]` value. The signature's `std::optional<long>` channel arg is the reuse path. **CONFIRMED**.
+4. **#111 reuses the AG channel-id and reads gather-dim @+0x258.** Expander disasm: `mov rax,[r14+258h]` (ag_dim), `mov rax,[r14+48h]` (channel_id), `movzx …[r14+250h]` (constrain), `movzx …[r14+260h]` (use_gdi), then `CreateAllGather(…, std::optional<long>, bool)` @ `0x1fd7f8c` consuming the `[+0x48]` value. The signature's `std::optional<long>` channel arg is the reuse path.
 
-5. **"The two unrollers are distinct passes sharing only the analysis engine."** Distinct name strings (`unroll-while-loop` len 17 vs `while_loop_unroller` len 19, both present once/twice in the string table), distinct `Run` addresses, and only #112 carries `NEURON_DISABLE_BOUNDARY_MARKER` / `GetUnrollableLoops` / `CallInliner` / `NeuronAddBoundaryMarker` calls — #25 has none of these. Both call `ComputeWhileLoopTripCount` (@ `0x8aaee70`). **CONFIRMED**.
+5. **The two unrollers are distinct passes sharing only the analysis engine.** Distinct name strings (`unroll-while-loop` len 17 vs `while_loop_unroller` len 19, both present in the string table), distinct `Run` addresses, and only #112 carries `NEURON_DISABLE_BOUNDARY_MARKER` / `GetUnrollableLoops` / `CallInliner` / `NeuronAddBoundaryMarker` calls — #25 has none of these. Both call `ComputeWhileLoopTripCount` (@ `0x8aaee70`).
 
 All 13 diagnostic/name string literals cited on this page were confirmed present (exactly once each, except `while_loop_unroller` twice) in the `hlo-opt` string table. Residual gaps, marked in place and all **[INFERRED]**: the partial-unroll factor arithmetic (`UnrollInternalWrappedAndReturnReplacement`), the `[obj+0x08]`/`[obj+0x10]` registrar fields, and the exact clone-wire data-flow in #25 / §"Per-Iteration Substitution" / #111 new-dim arithmetic (no Hex-Rays for any of them).
 

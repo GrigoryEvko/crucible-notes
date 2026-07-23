@@ -324,19 +324,19 @@ function BufferDonationToAlias::Run(module):       // 0x200d0b0  (4027 B)
 
 ---
 
-## Adversarial Self-Verification
+## Evidence summary
 
-The five strongest claims, each re-challenged against the binary:
+Where each central claim is anchored in the binary:
 
-1. **All seven passes exist and are thin drivers over one upstream config.** Re-checked: the demangled symbol names for all seven `Run` bodies are present in `disasm/` (`RemoveAliases`, `AddMust/MayAliases`, `FlipMust/MayAliases`, `AliasToMustAlias`, `BufferDonationToAlias`), and Add/Flip `Run` bodies are 45–48 B thunks that `call` the shared helpers. **CONFIRMED.**
+1. **All seven passes exist and are thin drivers over one upstream config.** The demangled symbol names for all seven `Run` bodies are present in `disasm/` (`RemoveAliases`, `AddMust/MayAliases`, `FlipMust/MayAliases`, `AliasToMustAlias`, `BufferDonationToAlias`), and Add/Flip `Run` bodies are 45–48 B thunks that `call` the shared helpers.
 
-2. **AliasKind constants: Add/Flip pass a bool, FlipAliases inverts it, donation forces may, promote forces must.** Re-checked in disasm: `mov esi,1`/`xor esi,esi` in the four Add/Flip thunks; `xor esi,1` @`0x1ea5e11` in `FlipAliases`; `xor r9d,r9d` @`0x200dbe1` then `SetUpAlias` @`0x200dbff` in `BufferDonationToAlias`; `mov r9d,1` @`0x2009f15` in the `AliasToMustAlias` lambda. **CONFIRMED** — including the counter-intuitive Flip direction.
+2. **AliasKind constants: Add/Flip pass a bool, FlipAliases inverts it, donation forces may, promote forces must.** In disasm: `mov esi,1`/`xor esi,esi` in the four Add/Flip thunks; `xor esi,1` @`0x1ea5e11` in `FlipAliases`; `xor r9d,r9d` @`0x200dbe1` then `SetUpAlias` @`0x200dbff` in `BufferDonationToAlias`; `mov r9d,1` @`0x2009f15` in the `AliasToMustAlias` lambda — including the counter-intuitive Flip direction.
 
-3. **The kind reaches MHLO via `ConvertInputOutputAlias` → `ArgResultAliasAttr`.** Re-checked: `referenced_by_functions` on `may_alias` @`0x21e9eb` and `must_alias` @`0x288162` both name the `ConvertInputOutputAlias(const HloInputOutputAliasConfig&, mlir::Builder*)` per-alias lambda; `must_alias` @`0xbd9380` is referenced by `ArgResultAliasAttr::{parse,print}`. The bridge symbol `ConvertInputOutputAlias` @`0x75a93a0` exists in `context/`. **CONFIRMED.**
+3. **The kind reaches MHLO via `ConvertInputOutputAlias` → `ArgResultAliasAttr`.** `referenced_by_functions` on `may_alias` @`0x21e9eb` and `must_alias` @`0x288162` both name the `ConvertInputOutputAlias(const HloInputOutputAliasConfig&, mlir::Builder*)` per-alias lambda; `must_alias` @`0xbd9380` is referenced by `ArgResultAliasAttr::{parse,print}`. The bridge symbol `ConvertInputOutputAlias` @`0x75a93a0` exists in `context/`.
 
-4. **The `Alias` struct is `{param_number @+0, param_index @+8, kind}`.** Re-checked: the `AliasToMustAlias` lambda @`0x2009f10` does `mov rcx,[rcx]` (param_number @+0) and `lea r8,[rcx+8]` (param_index @+8) before `SetUpAlias`. The `ShapeTree<optional<Alias>>` storage type appears verbatim in the `RemoveAliases` callee demangling. **CONFIRMED** on offsets; the exact `kind` byte position inside the struct is not separately pinned and is **INFERRED** from the must_alias-bool semantics (the SetUpAlias kind arg).
+4. **The `Alias` struct is `{param_number @+0, param_index @+8, kind}`.** The `AliasToMustAlias` lambda @`0x2009f10` does `mov rcx,[rcx]` (param_number @+0) and `lea r8,[rcx+8]` (param_index @+8) before `SetUpAlias`. The `ShapeTree<optional<Alias>>` storage type appears verbatim in the `RemoveAliases` callee demangling. The exact `kind` byte position inside the struct is not separately pinned and is **[INFERRED]** from the must_alias-bool semantics (the SetUpAlias kind arg).
 
-5. **#73 produces a may-alias because donation is a permission, and removes the donor.** Re-checked: `xor r9d,r9d` (kMayAlias) feeds `SetUpAlias`, immediately followed by `RemoveBufferDonor` @`0x200dc2d`; the `HloBufferDonorConfig::Verify` string @`0x39e6d8` confirms a donor and an alias for the same input is an error state, motivating the removal. The *rationale* ("permission not contract") is **[INFERRED]** — consistent with the may-kind plus the Verify invariant, but no string spells out the design intent.
+5. **#73 produces a may-alias because donation is a permission, and removes the donor.** `xor r9d,r9d` (kMayAlias) feeds `SetUpAlias`, immediately followed by `RemoveBufferDonor` @`0x200dc2d`; the `HloBufferDonorConfig::Verify` string @`0x39e6d8` shows a donor and an alias for the same input is an error state, motivating the removal. The *rationale* ("permission not contract") is **[INFERRED]** — consistent with the may-kind plus the Verify invariant, but no string spells out the design intent.
 
 Residual gaps: which passes actually run, and in what order, is driver-supplied (Python / `HLOToTensorizer.so`), not fixed by registration order; the 44–48 pre-layout / 72–73 post-layout adjacency is the strong proxy. Who *populates* `HloBufferDonorConfig` (`AddBufferDonor`) upstream of #73 is the frontend annotation path, not traced in `hlo-opt`. The Add* tie-break when multiple params share a shape is multimap-iteration order — **[INFERRED]** on edge cases.
 
