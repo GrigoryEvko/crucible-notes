@@ -77,11 +77,11 @@ StatusOr<bool> Run(HloModule* module, ExecThreads exec_threads):
             return InvalidArgumentError(StrFormat(
                 "LegalizeAwsNeuronArgMax: invalid backend_config: %s", raw))  // str 0x2fba90
 
-        // --- dtype gate: elem_type must be a retNames key ---
-        if elem_type not in retNames:
-            msg = hilo::formatErrorMessage<PrimitiveType,PrimitiveType>(  // 0x1eed7da
-                      ErrorCode::EUDT001, elem_type, elem_type)
-            emit "[ERROR] [" "NCC_EUDT001" "] " msg          // banner 0x27a6d3, code 0x214b51 @ 0x1eedc6d
+        // --- diagnostic arm: NCC_EUDT001, reached from the cold blocks at 0x1eed75e.. ---
+        //     (formatErrorMessage 0x1eed7da; banner 0x27a6d3; code str 0x214b51 @ 0x1eedc6d)
+        msg = hilo::formatErrorMessage<PrimitiveType,PrimitiveType>(
+                  ErrorCode::EUDT001, elem_type, elem_type)
+        emit "[ERROR] [" "NCC_EUDT001" "] " msg
 
         iota    = HloInstruction::CreateConstant(lit)        // 0x1eed175 / 0x9668610
         newInst = HloInstruction::CreateCustomCall(          // 0x1eed4bf / 0x964eac0
@@ -131,7 +131,7 @@ Both are function-static `llvm::DenseMap<xla::PrimitiveType, std::string>` built
 | 9 | U64 | `"_u64"` | `0x3436755f` | `0x1eede8b` |
 | 8 | U32 | `"_u32"` | `0x3233755f` | `0x1eedebf` |
 
-The supported element dtypes for arg-min/max are therefore exactly **{F16, BF16, F32, S32, S64, U32, U64}**. Any other type falls into the `NCC_EUDT001` "unsupported dtype" path. The `fnames` width code (`"2"`/`"4"`) exists only for the four integer types — it selects the index-arithmetic width and is irrelevant for the three float value types (which still index in S32, see below).
+The supported element dtypes for arg-min/max are therefore exactly **{F16, BF16, F32, S32, S64, U32, U64}** — the same seven codes the `0x1eece42` accept mask lets through, which is the independent confirmation that the mask and the map encode one dtype contract. The `NCC_EUDT001` "unsupported dtype" diagnostic is emitted from the cold blocks around `0x1eed75e`–`0x1eedc94`; the mask gate itself is a silent `continue`, so which of the two arms fires for a given rejected type is not pinned by this trace. The `fnames` width code (`"2"`/`"4"`) exists only for the four integer types — it selects the index-arithmetic width and is irrelevant for the three float value types (which still index in S32, see below).
 
 > **GOTCHA —** `fnames` and `retNames` share the same ctor (`0x1eec220`) but are **two distinct maps with different key sets**. `fnames` has 4 keys (int only); `retNames` has 7 (int + float). Treating them as one map — or assuming the float types have a width code — is wrong: floats are absent from `fnames` by design.
 
@@ -386,6 +386,8 @@ The structured NCC diagnostics route through `hilo::formatErrorMessage<…>(Erro
 | The expansion is subtract/multiply/subtract with no `kSelect` | `mov edx,0x72` @ `0x1f0603e` and `0x1f06559` (kSubtract), `mov edx,0x45` @ `0x1f06114` (kMultiply); no `kSelect` immediate occurs anywhere in the engine |
 | Two reduces, two comparators, same direction | `CreateReduce` @ `0x1f0595c` and `0x1f06357` (both `r9d=1`, single dim); `addReduceMinMaxComputation` called twice, the second loading `esi=0x43` @ `0x1f061f0` — the same `kMaximum` the dispatcher used for the value comparator on the ArgMax path |
 | Supported dtype set `{F16,BF16,F32,S32,S64,U32,U64}` | all seven `retNames` dword stores at `0x1eeddbf`..`0x1eedebf`; the four `fnames` byte stores (`4`/`2`) at `0x1eed9c8`..`0x1eeda40` |
+| The forward gate is a dtype whitelist on `operand(0)`, not a `TUPLE` assert | operand fetch `test BYTE PTR [r15+0x18],0x1` / `cmovne` @ `0x1eece28`, `HloInstruction::shape` @ `0x1eece35`, `element_type = [Shape+0]` @ `0x1eece3a`; bound `cmp eax,0x10` @ `0x1eece42`; mask `mov rcx,0xfffffffffffef0cf` / `bt rcx,rax` @ `0x1eece4b`; clear bits ≤ `0x10` are `{4,5,8,9,10,11,16}` |
+| `TUPLE` is `0x0D`, not `0x10` | `cmp DWORD PTR [rax],0xd` @ `0x1e9f81e` (`DecomposeCCOps`) and `0x1f852e3` (`EnsureDescendingLayoutInRoot`), both immediately after `xla::HloInstruction::shape` @ `0x9650370`; `BF16 = 0x10` from the `retNames` key set above |
 | Sentinel direction: ArgMax → `GetMinNonInfValue`, ArgMin → `GetMaxNonInfValue` | `GetMaxNonInfValue` call @ `0x1f0582d` (ArgMin branch), `GetMinNonInfValue` @ `0x1f06820` (ArgMax branch), branch keyed on `opcode == 0x43` |
 
 ## Limits of this reading
