@@ -58,10 +58,10 @@ For reimplementation, the contract is:
 > **NOTE —** the IDA export for `hlo-opt` was produced with decompilation skipped
 > (`decompiled/*.c` are stubs). Every offset below was read from the leaf-accessor
 > and converter `disasm/*.asm` listings and cross-checked against the `context/*.md`
-> callee sidecars — not statement-level decompilation. Confidence tags: **CONFIRMED**
-> = the exact `mov`/`cmp`/`call` instruction was read in the disasm; **STRONG** =
-> callgraph + strings + upstream-Shardy contract imply it; **INFERRED** = upstream
-> knowledge filling a gap the evidence is consistent with.
+> callee sidecars — not statement-level decompilation. Where a claim rests on the
+> callgraph plus strings plus the upstream Shardy contract rather than on a read
+> instruction, the text says so; gaps filled from upstream knowledge are tagged
+> [INFERRED].
 
 ---
 
@@ -96,7 +96,7 @@ MeshAttr                      the named device mesh
 
 ### Storage Layouts
 
-Every offset CONFIRMED from the named leaf accessor's `mov` displacement. The
+Every offset is read from the named leaf accessor's `mov` displacement. The
 "Accessor" column gives the symbol whose disasm was read.
 
 **`MeshAxisAttr`** — one named mesh axis (`get` @ `0x2c83b40`):
@@ -123,7 +123,7 @@ Every offset CONFIRMED from the named leaf accessor's `mov` displacement. The
 > device → `HloSharding::AssignDevice` / `MAXIMAL`. `getMaximalDeviceId` @ `0x2c70530`
 > then dereferences `[+0x18]` (deviceIds ptr) to read that one device id.
 
-`MeshAttr` derived helpers (CONFIRMED symbols): `getAxisSize(StringRef)` @ `0x2c70480`
+`MeshAttr` derived helpers: `getAxisSize(StringRef)` @ `0x2c70480`
 (linear scan of `axes` comparing name length `[+0x10]` then `memcmp` of name ptr `[+0x08]`,
 returning size `[+0x18]`; falls to `report_fatal_error("unknown axis name")` on miss),
 `getTotalSize` @ `0x2c70500` (product of axis sizes, tail-calls `getTotalAxesSize`).
@@ -148,8 +148,7 @@ two factors is `(pre=1,size=2)` + `(pre=2,size=4)`. Printed `"x":(2)4`.
 | `subAxisInfo` | `+0x18` | `SubAxisInfoAttr` (ptr; `0` = full axis) | `getSubAxisInfo` @ `0x2c722c0` → `[+0x18]` |
 
 The discriminator function `getSize(mesh)` @ `0x2c70a60` is the per-axis **tile
-multiplier** used by the export — "how many device-ways does this ref shard". CONFIRMED
-disasm:
+multiplier** used by the export — "how many device-ways does this ref shard":
 
 ```c
 long AxisRefAttr::getSize(MeshAttr mesh):           // 0x2c70a60
@@ -182,7 +181,7 @@ of their `getSize(mesh)` is how many ways the dim is split. `isClosed` is the `}
 > both words (`{value @+0x20, engaged-flag @+0x28}`) with no branch. The engaged-flag
 > semantics live in whatever wraps the two words, not in this accessor. A reimplementer
 > who models `priority` as a tagged optional must remember the tag is the second word,
-> stored at `+0x28`, not folded into the value. (CONFIRMED disasm.)
+> stored at `+0x28`, not folded into the value.
 
 **`TensorShardingAttr`** — the full per-tensor sharding (`get` @ `0x2c9df40`; overloads @ `0x2c9e060` / `0x2c9eb60`):
 
@@ -194,7 +193,7 @@ of their `getSize(mesh)` is how many ways the dim is split. `isClosed` is the `}
 | `unreducedAxes` ptr / len | `+0x30` / `+0x38` | `ArrayRef<AxisRefAttr>` | `getUnreducedAxes` @ `0x2c72560` |
 
 `verifyInvariantsImpl` @ `0x2c86750` takes exactly `(meshOrRef, dimShardings[],
-replicatedAxes[], unreducedAxes[])` — an independent CONFIRM of the four-field shape.
+replicatedAxes[], unreducedAxes[])` — an independent check on the four-field shape.
 `meshOrRef` is resolved to a concrete `MeshAttr` by `getMesh(SymbolTable)` @ `0x2c71120`
 (the named `sdy.mesh` op lookup) — and *that* is exactly the `getMesh` callback passed
 into `convertToHloSharding`. The semantic split of the four fields:
@@ -223,7 +222,7 @@ Printed: `#sdy.sharding<@mesh, [{"x"}, {"y", ?}], replicated={"z"}>`.
 `convertToHloSharding` @ `0x2bc58f0` is the export half of the bijection: it lowers one
 tensor's `TensorShardingAttr` into an XLA `HloSharding` (the in-memory form that
 `ToProto`, §D.3, then serializes to an `OpSharding`). It is **stock `xla::sdy`**
-(`xla/service/spmd/shardy/...`). Signature CONFIRMED demangled:
+(`xla/service/spmd/shardy/...`). The demangled signature:
 
 ```c
 xla::HloSharding convertToHloSharding(            // 0x2bc58f0  — sret in rdi
@@ -232,7 +231,7 @@ xla::HloSharding convertToHloSharding(            // 0x2bc58f0  — sret in rdi
     llvm::ArrayRef<mlir::StringAttr> manualAxes);  // r8/r9
 ```
 
-Callers (CONFIRMED from the context sidecar): `ExportStablehloShardingsPass::runOnOperation`
+Callers, from the context sidecar: `ExportStablehloShardingsPass::runOnOperation`
 and `setHloShardingAttr`.
 
 ### Entry Point
@@ -247,8 +246,8 @@ ExportStablehloShardingsPass::runOnOperation       ── per-op driver
 
 ### Algorithm
 
-Control-flow skeleton CONFIRMED from the `0x2bc58f0..0x2bc6e57` disasm; the flattening
-arithmetic (B.2) is STRONG (callee graph + upstream contract).
+The control-flow skeleton is read from the `0x2bc58f0..0x2bc6e57` disassembly; the
+flattening arithmetic in B.2 rests on the callee graph plus the upstream contract.
 
 ```c
 function convertToHloSharding(sharding, getMesh, manualAxes):    // 0x2bc58f0
@@ -291,8 +290,9 @@ function convertToHloSharding(sharding, getMesh, manualAxes):    // 0x2bc58f0
 
 ### B.2 — The axis → tile-dim flattening
 
-This is the change of basis, and the part a reimplementer most needs to get right
-(STRONG — callee set CONFIRMED, exact perm arithmetic not traced bb-by-bb):
+This is the change of basis, and the part a reimplementer most needs to get right. The
+callee set is exact; the permutation arithmetic below is reconstructed from it rather
+than traced block by block.
 
 1. **Tile dims.** For each tensor dim `d`, the tile size along `d` is the product of
    `a.getSize(mesh)` over the refs `a` in `dimShardings[d].axes`. A dim with no axes
@@ -325,7 +325,7 @@ result selection:
 
 ### B.3 — The `HloSharding` in-memory layout
 
-`convertToHloSharding` fills this object; `ToProto` (§D.3) reads it. Offsets CONFIRMED
+`convertToHloSharding` fills this object; `ToProto` (§D.3) reads it. Offsets are read
 from the `(bool,bool,bool, Span<OpMetadata>)` ctor @ `0x28e95d0`:
 
 | Field | Offset | Notes |
@@ -337,7 +337,7 @@ from the `(bool,bool,bool, Span<OpMetadata>)` ctor @ `0x28e95d0`:
 | `subgroup_types_` len | `+0x90` | 16-bit length word of the `Span<OpSharding_Type>` trailing-tile kinds |
 | `metadata_` | (after) | `vector<OpMetadata>`, each `0x78` bytes |
 
-The ctor disasm CONFIRMS each of these stores: the flags byte is a read-modify-write
+The ctor disassembly shows each of these stores: the flags byte is a read-modify-write
 `movzx edx,[r12+80h]` … `and edx,0xFFFFFFC0` (clear low 6) … `mov [r12+80h],al` — i.e.
 the three ctor bools pack into bits of a 6-bit field; the `-1` sentinel is a literal
 `mov qword [r12+88h], 0FFFFFFFFFFFFFFFFh`; the subgroup length is a 16-bit `mov [r12+90h],ax`
@@ -347,7 +347,7 @@ after `xor eax,eax`; and metadata is copied in a `add rbx,78h` stride loop.
 > The ctor packs three bools into the low 6 bits with mask `0x3F`, and `ToProto`
 > (§D.3) `test`s individual bits to branch — but the precise bit→field mapping is named
 > by role (`replicated_`/`manual_`/`unknown_`/`replicate_on_last_tile_dim_`), following
-> the upstream `HloSharding` bitfield, not by traced bit index. (STRONG, not CONFIRMED.)
+> the upstream `HloSharding` bitfield, not by traced bit index. [INFERRED]
 
 ---
 
@@ -357,8 +357,8 @@ after `xor eax,eax`; and metadata is copied in a `add rbx,78h` stride loop.
 
 `convertToSdySharding` @ `0x2bd7b00` is the import inverse: it reads an `HloSharding`
 (already parsed from an `OpSharding`/HLO string by `FromProto`, §D.2) and rebuilds a
-Shardy `TensorShardingAttr` against a known `MeshAttr`. **Stock `xla::sdy`.** Signature
-CONFIRMED demangled:
+Shardy `TensorShardingAttr` against a known `MeshAttr`. **Stock `xla::sdy`.** The
+demangled signature:
 
 ```c
 mlir::sdy::TensorShardingAttr convertToSdySharding(   // 0x2bd7b00  — sret
@@ -368,7 +368,7 @@ mlir::sdy::TensorShardingAttr convertToSdySharding(   // 0x2bd7b00  — sret
     long base, bool openDims);                          // r8, r9b
 ```
 
-Callers (CONFIRMED): `ImportShardingsPass::runOnOperation` and the `importShardings`
+Callers: `ImportShardingsPass::runOnOperation` and the `importShardings`
 lambda. This is the counterpart of the `kImportMhloShardings` pass.
 
 ### Entry Point
@@ -381,7 +381,7 @@ ImportShardingsPass::runOnOperation
 
 ### Algorithm
 
-STRONG (callee set CONFIRMED; the inverse of §B):
+Reconstructed from the callee set as the inverse of §B:
 
 ```c
 function convertToSdySharding(hlo, mesh, devMap, base, openDims):   // 0x2bd7b00
@@ -412,12 +412,11 @@ function convertToSdySharding(hlo, mesh, devMap, base, openDims):   // 0x2bd7b00
                                    replicatedAxes, unreducedAxes={});
 ```
 
-> **CORRECTION (AB06-1) —** the backing analysis listed `shortestCommonFactorization`
-> @ `0x2bd6a60` as a *direct* callee of `convertToSdySharding`. The disasm shows it is
-> **not** called directly; it is reached transitively through `analyzeTileAssignment`
-> @ `0x2bd7010` (`call` @ `0x2bd70eb`). The factorization still runs, one frame deeper.
+`shortestCommonFactorization` @ `0x2bd6a60` is not a direct callee of
+`convertToSdySharding`; it runs one frame deeper, reached through `analyzeTileAssignment`
+@ `0x2bd7010` (`call` @ `0x2bd70eb`).
 
-`shortestCommonFactorization` is the inverse of B.2's "product of axis sizes": it finds
+It is the inverse of B.2's "product of axis sizes": it finds
 the minimal factorization mapping each tile-dim to whole axes or sub-axis slices. A tile
 dim of size 8 over a mesh `(x=2,y=4)` becomes axes `{x,y}`; a tile dim of size 2 over an
 axis `x=8` becomes the sub-axis `x:(1)2`. `deviceIdToAxisName` (the inverse of the mesh
@@ -440,7 +439,7 @@ convertToSdySharding(convertToHloSharding(T, getMesh, {}), mesh, devMap, .., ope
 > `openDims` argument (which sets `isClosed = !openDims` uniformly). This is the single
 > non-bijective point of the entire bridge — every other attr field survives the
 > round-trip. A reimplementation that assumes a clean bijection will silently flip
-> open dims to closed (or vice-versa) on every import. (STRONG.)
+> open dims to closed (or vice-versa) on every import.
 
 ---
 
@@ -456,12 +455,12 @@ are **stock XLA** (`xla/hlo/ir/hlo_sharding.cc`).
 
 ### D.1 — `OpSharding` proto field offsets
 
-These are offsets into the generated protobuf message object, CONFIRMED from the
-`FromProto` disasm. The proto base enters in `rsi` and is aliased to `r14` at
+These are offsets into the generated protobuf message object, read from the
+`FromProto` disassembly. The proto base enters in `rsi` and is aliased to `r14` at
 `0x979d606` (`mov r14, rsi`); the two early reads at `0x979d5a1`/`0x979d5e0` are
 pre-alias against the same object.
 
-| Field | Offset | Read instruction (CONFIRMED) |
+| Field | Offset | Read instruction |
 |---|---|---|
 | `replicate_on_last_tile_dim` | `+0x28` | `movsxd rsi,[r14+28h]` @ `0x979d802`, `cmp esi,1` |
 | `tuple_shardings` count / ptr | `+0x48` / `+0x50` | `movsxd rsi,[r14+48h]` / `mov rax,[r14+50h]` |
@@ -474,18 +473,14 @@ pre-alias against the same object.
 | iota data ptr | `+0xC8` | `mov rcx,[r14+0C8h]` |
 | iota marker (dword) | `+0xD0` | `cmp dword [r14+0D0h], 1` (19 sites) |
 
-The proto field names are CONFIRMED present verbatim in the binary string pool:
+The proto field names appear verbatim in the binary string pool:
 `"tile_assignment_dimensions"`, `"tile_assignment_devices"`, `"iota_reshape_dims"`,
 `"iota_transpose_perm"`, `"replicate_on_last_tile_dim"`, `"last_tile_dims"`,
 `"tuple_shardings"`, plus the descriptor `".xla.OpSharding.Type"`. The V2 iota invariant
 is enforced by the string `"proto.iota_reshape_dims().size() == proto.iota_transpose_perm().size()"`
-and the device-list path by `"proto.tile_assignment_devices().size() > 1"` (both CONFIRMED
-verbatim) — i.e. exactly the upstream `xla_data.proto` `OpSharding` shape.
-
-> **CORRECTION (AB06-2) —** the backing analysis quoted the invariant string as
-> `"iota_reshape_dims().size() == iota_transpose_perm().size()"`. The binary's actual
-> string carries the `proto.` prefix on *both* operands:
-> `"proto.iota_reshape_dims().size() == proto.iota_transpose_perm().size()"`.
+— note the `proto.` prefix on *both* operands — and the device-list path by
+`"proto.tile_assignment_devices().size() > 1"`. That is exactly the upstream
+`xla_data.proto` `OpSharding` shape.
 
 ### D.2 — `FromProto(OpSharding const&)` @ `0x979d580` and the type-enum ladder
 
@@ -493,10 +488,10 @@ verbatim) — i.e. exactly the upstream `xla_data.proto` `OpSharding` shape.
 via `RET_CHECK`). It copies `metadata` (`0x78`-byte `OpMetadata` each) and
 `tile_assignment_dimensions` into locals, then switches on `type = [r14+0xC0]`.
 
-The dispatch ladder is CONFIRMED instruction-by-instruction. The `OpSharding_Type`
+The dispatch ladder is traced instruction-by-instruction. The `OpSharding_Type`
 values follow upstream `xla_data.proto`:
 
-| Value | Type | Top-ladder test (CONFIRMED) | Result ctor |
+| Value | Type | Top-ladder test | Result ctor |
 |---|---|---|---|
 | 0 | REPLICATED | `test edx,edx; jz` @ `0x979d7e8` | `HloSharding(true,false,false,md)` @ `0x28e95d0` |
 | 1 | MAXIMAL | (tail; `[r14+28h]==1` → `loc_979E704`) | `HloSharding(device, md)` @ `0x9796e40` |
@@ -530,18 +525,17 @@ absl::StatusOr<HloSharding> FromProto(op):           // 0x979d580
           return HloSharding(tileAssign, /*replicate_on_last=*/false, md);  // 0x2a9ea70
 ```
 
-> **CORRECTION (AB06-3) —** the backing analysis described the ladder as
-> `cmp edx,2 / 0 / 4 / 5 / 1`, implying MAXIMAL(1) has its own top-level `cmp edx,1`.
-> The disasm shows the **top ladder tests only 2, 0, 4, 5**; MAXIMAL(1) and OTHER(3)
-> fall through to a *shared tail* and are disambiguated there by the
-> `[r14+0x28]==1` test plus a downstream `cmp edx,1` (`0x979d88d`/`0x979e090`). A
-> reimplementation that adds a fifth top-level branch for MAXIMAL will mis-route OTHER.
+> **GOTCHA — MAXIMAL has no top-level branch.** The ladder tests only `2, 0, 4, 5`;
+> MAXIMAL(1) and OTHER(3) both fall through to a *shared tail* and are disambiguated
+> there by the `[r14+0x28]==1` test plus a downstream `cmp edx,1`
+> (`0x979d88d`/`0x979e090`). Adding a fifth top-level branch for MAXIMAL — the natural
+> reading of a six-valued enum — will mis-route OTHER.
 
 ### D.3 — `ToProto() const` @ `0x97a0600`
 
 `ToProto` is the exact inverse. It allocates an `OpSharding` (`OpSharding(Arena*, bool)`
 @ `0x984f2b0`), reads the packed flags byte `[this+0x80]` to pick the type, and emits the
-tile assignment. Callees CONFIRMED: `RepeatedField<long>::Reserve`, `c_copy(Span<long>,
+tile assignment. Its callees: `RepeatedField<long>::Reserve`, `c_copy(Span<long>,
 RepeatedFieldBackInserter)`, `TileAssignment::dimensions`/`num_dimensions`/`array`,
 `OpMetadata::CopyFrom`, `Arena::CreateMaybeMessage<OpMetadata>`/`<OpSharding>`. Callers
 include `ConvertSharding`, `HloInstruction::ToProto`, `HloModule::ToProto`,
@@ -617,19 +611,19 @@ sharding code is elsewhere — the propagation driver wiring ([13.2](sharding-pr
 the LNC (Logical-NeuronCore) constraint that enters only via `MeshAttr` axis sizes and
 device order, and the downstream lowering of the resulting `HloSharding` into Penguin/BIR.
 
-## Confidence and Residual Unknowns
+## Evidence Anchors and Limits
 
-| Claim | Confidence |
+| Claim | Grounding |
 |---|---|
-| All five sdy attr storage offsets (§A) | **CONFIRMED** — every offset from leaf-accessor disasm |
-| `convertToHloSharding` control flow + callee set + result selection | **CONFIRMED** |
-| `HloSharding` object layout `+0x80`/`+0x88`/`+0x90` + `0x78` metadata stride | **CONFIRMED** |
-| `OpSharding` proto field offsets + `FromProto` type-enum ladder | **CONFIRMED** |
-| `ToProto` field emission order + iota-vs-explicit branch | **CONFIRMED** |
-| Exact `+0x80` flags-byte bit positions; `+0xC5`/`+0xD0` named by role not bit index | **STRONG / not byte-verified** |
-| `shortestCommonFactorization` re-merge behavior (transitive via `analyzeTileAssignment`) | **STRONG** |
-| The precise `(dims, reshape_dims, transpose_perm)` perm arithmetic in `convertToHloSharding` | **INFERRED** — call order CONFIRMED, perm vector not traced bb-by-bb |
-| Whether `manualAxes` (3rd convert arg) is ever non-empty in the Neuron pipeline | **INFERRED** — the manual path exists; its activation in Neuron is unverified |
+| All five sdy attr storage offsets (§A) | every offset read from its leaf-accessor disassembly |
+| `convertToHloSharding` control flow + callee set + result selection | traced in the disassembly |
+| `HloSharding` object layout `+0x80`/`+0x88`/`+0x90` + `0x78` metadata stride | read from the ctor's stores |
+| `OpSharding` proto field offsets + `FromProto` type-enum ladder | read instruction-by-instruction |
+| `ToProto` field emission order + iota-vs-explicit branch | traced in the disassembly |
+| Exact `+0x80` flags-byte bit positions; `+0xC5`/`+0xD0` | named by role, not by traced bit index — not byte-verified |
+| `shortestCommonFactorization` re-merge behavior | reached transitively via `analyzeTileAssignment`; behavior from the upstream contract |
+| The precise `(dims, reshape_dims, transpose_perm)` perm arithmetic in `convertToHloSharding` | [INFERRED] — call order is traced, the permutation vector is not |
+| Whether `manualAxes` (3rd convert arg) is ever non-empty in the Neuron pipeline | [INFERRED] — the manual path exists; its activation in Neuron is unverified |
 
 ## Related Components
 

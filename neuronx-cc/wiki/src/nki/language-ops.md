@@ -17,7 +17,7 @@ The whole of `math_ops` reduces to **four module-global dispatchers** plus a han
 
 Everything else is either a **1:1 `nisa` passthrough** (`reciprocal`→`nisa.reciprocal`, `transpose`→`nisa.nc_transpose`, `matmul`→`nc_transpose`+`nc_matmul`, `dropout`→`nisa.n_dropout`), a **`nki_ctx` build-context call** (creation/memory ops mint memref/DMA nodes, never compute), or a **traced composite** (`softmax`, `rms_norm`, `var`) that expands into several `nl` ops.
 
-Because every dispatch is a Python attribute/global lookup resolved at runtime, **the native call-graph shows no `nl`→`nisa` edges** — they are all indirect through `tp_getattro`/`tp_call`. The mapping on this page is recovered from the interned `__pyx_n_s_*` names referenced in each wrapper, which is CONFIRMED-grade for *which* global/attr is fetched.
+Because every dispatch is a Python attribute/global lookup resolved at runtime, **the native call-graph shows no `nl`→`nisa` edges** — they are all indirect through `tp_getattro`/`tp_call`. The mapping on this page is recovered from the interned `__pyx_n_s_*` names referenced in each wrapper, which pins exactly *which* global or attribute each op fetches.
 
 | | |
 |---|---|
@@ -86,11 +86,11 @@ PyObject *op_fn = getattr(np, "exp");
 return unary_op(x, op=op_fn, dtype=dtype, mask=mask);
 ```
 
-**CONFIRMED op→ufunc** (verbatim `__pyx_n_s_<name>` in each body): `exp`→`np.exp`, `log`→`np.log`, `cos`→`np.cos`, `sin`→`np.sin`, `tan`→`np.tan`, `tanh`→`np.tanh`, `sqrt`→`np.sqrt`, `abs`→`np.abs`, `negative`→`np.negative`, `floor`→`np.floor`, `ceil`→`np.ceil`, `trunc`→`np.trunc`. `arctan`/`sign` follow the same path. `logical_not`(141) and `invert`(33) also route through `unary_op` with `op=np.logical_not`/`np.invert`.
+**Op → ufunc** (verbatim `__pyx_n_s_<name>` in each body): `exp`→`np.exp`, `log`→`np.log`, `cos`→`np.cos`, `sin`→`np.sin`, `tan`→`np.tan`, `tanh`→`np.tanh`, `sqrt`→`np.sqrt`, `abs`→`np.abs`, `negative`→`np.negative`, `floor`→`np.floor`, `ceil`→`np.ceil`, `trunc`→`np.trunc`. `arctan`/`sign` follow the same path. `logical_not`(141) and `invert`(33) also route through `unary_op` with `op=np.logical_not`/`np.invert`.
 
-> **QUIRK — `square` is *not* unary_op.** `square`(97) is a hybrid: its body fetches **both** `np.square` *and* the `activation` global (`__pyx_n_s_activation` + `__pyx_n_s_np` + `__pyx_n_s_square`). It lowers to `activation(op=square, data=x)` — the Scalar-engine **square activation** — **not** `tensor_tensor(x, x)` and not `tensor_scalar`. This keeps `x²` on the ACT unit (one instruction) rather than spending a Vector multiply. CONFIRMED.
+> **QUIRK — `square` is *not* unary_op.** `square`(97) is a hybrid: its body fetches **both** `np.square` *and* the `activation` global (`__pyx_n_s_activation` + `__pyx_n_s_np` + `__pyx_n_s_square`). It lowers to `activation(op=square, data=x)` — the Scalar-engine **square activation** — **not** `tensor_tensor(x, x)` and not `tensor_scalar`. This keeps `x²` on the ACT unit (one instruction) rather than spending a Vector multiply.
 
-> **STRONG — the op-table is not here.** The exact ufunc→(Scalar-activation vs Vector-tensor_scalar) routing lives in `compiler.backends.neuron.tensor` (the `Tile` dunder-op machinery), only partially read. The op-*token* fetched by each `nl` body is CONFIRMED; the builder's internal routing is STRONG.
+> **NOTE —** the op-table is not in `math_ops`. Each `nl` body pins only the op-*token* it forwards; the ufunc→(Scalar-activation vs Vector-`tensor_scalar`) routing decision lives in `compiler.backends.neuron.tensor`, in the `Tile` dunder-op machinery.
 
 ---
 
@@ -102,15 +102,15 @@ PyObject *op_fn = getattr(np, "add");
 return binary_op(x, y, op=op_fn, dtype=dtype, mask=mask);   // → nisa.tensor_tensor
 ```
 
-**Arithmetic** (CONFIRMED `binary_op_2` + `np` + `<name>`): `add`→`np.add`, `subtract`→`np.subtract`, `multiply`→`np.multiply`, `maximum`→`np.maximum`, `minimum`→`np.minimum`, `power`→`np.power`, `fmod`→`np.fmod`, `mod`→`np.mod`. All lower to `nisa.tensor_tensor(data1=x, data2=y, op=op_fn)` on the **Vector** engine (`power`/int-arith may route to GpSimd per the [6.4.1](./isa-compute-intrinsics.md) engine table).
+**Arithmetic** (each body interns `binary_op_2` + `np` + `<name>`): `add`→`np.add`, `subtract`→`np.subtract`, `multiply`→`np.multiply`, `maximum`→`np.maximum`, `minimum`→`np.minimum`, `power`→`np.power`, `fmod`→`np.fmod`, `mod`→`np.mod`. All lower to `nisa.tensor_tensor(data1=x, data2=y, op=op_fn)` on the **Vector** engine (`power`/int-arith may route to GpSimd per the [6.4.1](./isa-compute-intrinsics.md) engine table).
 
 **Compare / logical** (`equal`…`less_equal` 123–133, `logical_and`…`logical_xor` 135–139): same `binary_op` path with `op=np.<cmp>`; verified `equal` fetches `binary_op_2` + `np` + `equal`. Output dtype defaults to `bool`.
 
 **Bitwise** (`bitwise_and`/`or`/`xor` 27–31, `left`/`right_shift` 35–37): route through the dedicated `bitwise_op` global. Verified `bitwise_and`'s body fetches `bitwise_op` + `np` + `bitwise_and`.
 
-> **CORRECTION — the integer-dtype assert is *inside* `bitwise_op`, not the wrapper.** The backing report (§2.2) states the bitwise wrappers "assert integer dtype via the shared `_is_integer`(5) predicate (`n_s_is_integer` in the bitwise bodies)." This is wrong at the wrapper level: `bitwise_and`(27)'s interned-name set is exactly `{bitwise_op, np, bitwise_and, x, y, dtype, mask}` — **no `is_integer`**. The integer-dtype gate (→ `err_bitvec_operand_must_be_integer`, cf. [6.4.1](./isa-compute-intrinsics.md) `_check_tensor_scalar_bitvec_dtype`) is enforced one layer down inside the `bitwise_op` global / `tensor_tensor` legality, not in the per-op `pw` body.
+The integer-dtype gate on the bitwise family is enforced **one layer down**, not in the `nl` wrapper. `bitwise_and`(27)'s interned-name set is exactly `{bitwise_op, np, bitwise_and, x, y, dtype, mask}` — no `is_integer` predicate. The check (→ `err_bitvec_operand_must_be_integer`, cf. [6.4.1](./isa-compute-intrinsics.md) `_check_tensor_scalar_bitvec_dtype`) lives inside the `bitwise_op` global and the `tensor_tensor` legality layer.
 
-> **GOTCHA — `divide` carries an extra tile-validity assert.** `divide`(15) is special: its body references `binop` + `np` + `divide` + `sema` + `nki_assert` + `tile` (CONFIRMED). It calls `binop(x, y, op=np.divide, …)` (a `tensor_tensor` variant) **and** runs a `sema.nki_assert` tile-legality check on the operands. It is a Vector `tensor_tensor` divide with a guard — **not** a HW reciprocal-multiply.
+> **GOTCHA — `divide` carries an extra tile-validity assert.** `divide`(15) is special: its body references `binop` + `np` + `divide` + `sema` + `nki_assert` + `tile`. It calls `binop(x, y, op=np.divide, …)` (a `tensor_tensor` variant) **and** runs a `sema.nki_assert` tile-legality check on the operands. It is a Vector `tensor_tensor` divide with a guard — **not** a HW reciprocal-multiply.
 
 ---
 
@@ -124,7 +124,7 @@ PyObject *af = getattr(native_maths, "gelu");
 return activation(op=af, data=x, dtype=dtype, mask=mask);
 ```
 
-**CONFIRMED** (`activation` + `native_maths` + `<name>` in each body): `gelu`→`native_maths.gelu`, `silu`→`native_maths.silu`, `relu`→`native_maths.relu`, `erf`→`native_maths.erf`, `softplus`→`native_maths.softplus`, `mish`→`native_maths.mish`, `rsqrt`→`native_maths.rsqrt`. The approximation/derivative variants `gelu_apprx_tanh`(77), `gelu_apprx_sigmoid`(79), `gelu_apprx_sigmoid_dx`(81), `gelu_dx`(83), `silu_dx`(87), `erf_dx`(91) all take `native_maths.<that exact name>` — all six are present as `native_maths` `pw` exports.
+Each body interns `activation` + `native_maths` + `<name>`: `gelu`→`native_maths.gelu`, `silu`→`native_maths.silu`, `relu`→`native_maths.relu`, `erf`→`native_maths.erf`, `softplus`→`native_maths.softplus`, `mish`→`native_maths.mish`, `rsqrt`→`native_maths.rsqrt`. The approximation/derivative variants `gelu_apprx_tanh`(77), `gelu_apprx_sigmoid`(79), `gelu_apprx_sigmoid_dx`(81), `gelu_dx`(83), `silu_dx`(87), `erf_dx`(91) all take `native_maths.<that exact name>` — all six are present as `native_maths` `pw` exports.
 
 > **QUIRK — `sigmoid` uses SciPy `expit`, not `native_maths.sigmoid`.** `sigmoid`(71)'s body fetches `__pyx_n_s_expit` (verified: interned set `{activation, expit, x, dtype, mask}` — no `native_maths`). It calls `activation(op=expit, data=x)`, mapping the SciPy `expit` identity to the HW sigmoid ACT_FN. There is no `native_maths.sigmoid` token in the path.
 
@@ -147,7 +147,7 @@ Each `native_maths.<fn>` is a NumPy/NKI reference that (a) keys HW ACT_FN select
 
 `native_maths` also exports `softmax`(39), `softmax_exp`(41), `softmax_rsum`(43), `softmax_dx`(45), `rms_norm`(47), `rms_norm_multidim`(49), and the full shift/conv/attention reference family — these back the composites in §8.
 
-> **NOTE — `dropout` is its own `nisa` intrinsic.** `dropout`(143)'s body = `{n_dropout, rate, x, dtype, mask}` → `nisa.n_dropout(x, rate=…)`, the HW PRNG drop intrinsic. It is **not** a `native_maths` decomposition. (The backing report's claim that `dropout` references `n_s_numpy`/`n_s_add` does not hold — its interned set is exactly the four names above plus `x`.)
+> **NOTE — `dropout` is its own `nisa` intrinsic.** `dropout`(143)'s body = `{n_dropout, rate, x, dtype, mask}` → `nisa.n_dropout(x, rate=…)`, the HW PRNG drop intrinsic. It is **not** a `native_maths` decomposition — its interned set is exactly the four names above plus `x`, with no NumPy token in sight.
 
 ---
 
@@ -161,19 +161,21 @@ return tensor_reduce(x, op=rf, axis=axis, keepdims=keepdims, dtype=dtype, mask=m
 
 `tensor_reduce` is the module-global → `nisa.tensor_reduce` (IR node `tensorreduce`, [6.4.2](./isa-reduce-dve-dma.md)) on the **Vector** engine, reducing over the **free axis only** — partition dim 0 cannot be reduced, and the axis must be the last contiguous dim(s).
 
-**CONFIRMED op→ufunc**: `max`→`np.max`, `min`→`np.min`, `sum`→`np.add`, `prod`→`np.multiply`, `mean`→`np.mean`, `all`→`np.all` (logical reduce). `keepdims` (default False) is forwarded in every body.
+**Op → ufunc**: `max`→`np.max`, `min`→`np.min`, `sum`→`np.add`, `prod`→`np.multiply`, `mean`→`np.mean`, `all`→`np.all` (logical reduce). `keepdims` (default False) is forwarded in every body.
 
-> **CORRECTION — only `mean` promotes integer accumulators in its own body.** The backing report (§2.4) states "sum/prod/mean call `_is_integer`(5) … and, if the input dtype is integer, FORCE the accumulator to `np.float32`." Direct check of the three `pw` bodies disproves this for two of them:
->
-> | op | `is_integer` in body? | `float32` in body? |
-> |---|---|---|
-> | `sum`(109) | **no** | no |
-> | `prod`(111) | **no** | no |
-> | `mean`(113) | **yes** | **yes** |
->
-> Only **`mean`(113)** carries the explicit `is_integer`→`np.float32` accumulator promotion in its wrapper (its interned set includes both `is_integer` and `float32`). `sum`/`prod` forward the raw ufunc with no fp32 forcing at the `nl` layer; any integer-overflow accumulation policy for them is decided inside the `tensor_reduce` builder / the reduce instruction, not the `nl` wrapper. `mean`'s divide-by-N is the reduce instruction's **mean reduce-command**, not a separate `nl.divide`.
+### Integer-accumulator promotion is `mean`-only
 
-> **GOTCHA — `var` is a four-op composite.** `var`(115)'s body fetches `mean` + `subtract` + `power` (CONFIRMED — no single HW variance instruction). It expands to:
+Only **`mean`(113)** carries an explicit `is_integer`→`np.float32` accumulator promotion in its own wrapper; its interned set includes both names. `sum` and `prod` forward the raw ufunc with no fp32 forcing at the `nl` layer:
+
+| op | `is_integer` in body? | `float32` in body? |
+|---|---|---|
+| `sum`(109) | no | no |
+| `prod`(111) | no | no |
+| `mean`(113) | **yes** | **yes** |
+
+Any integer-overflow accumulation policy for `sum`/`prod` is therefore decided inside the `tensor_reduce` builder or the reduce instruction itself, not in the `nl` wrapper. `mean`'s divide-by-N is likewise the reduce instruction's **mean reduce-command**, not a separate `nl.divide`.
+
+> **GOTCHA — `var` is a four-op composite.** `var`(115)'s body fetches `mean` + `subtract` + `power` — there is no single HW variance instruction. It expands to:
 > ```python
 > m   = mean(x, axis)        # tensor_reduce(np.mean)
 > d   = subtract(x, m)       # binary_op(np.subtract), broadcast
@@ -193,7 +195,7 @@ return nki_ctx.loopreduce(x, op, program_reduce_axes=program_axes,
 return nki_ctx.loopreduce(x, op, loop_indices=loop_indices, dtype=dtype, mask=mask);
 ```
 
-`all_reduce`(119) reduces a tile across multiple SPMD program instances (the `program_axes`); `loop_reduce`(121) accumulates a reduction across loop-carried iterations (e.g. `nl.loop_reduce(a, op=np.add, loop_indices=[k_i])` for a perf reduce-over-k). Both bind the **same** `nki_ctx.loopreduce` build-context method, differing only in whether the reduce axis is a program axis (SPMD, gated by `parallel_reduce` default True / `asynchronous` default False) or a Python loop index (sequential). CONFIRMED.
+`all_reduce`(119) reduces a tile across multiple SPMD program instances (the `program_axes`); `loop_reduce`(121) accumulates a reduction across loop-carried iterations (e.g. `nl.loop_reduce(a, op=np.add, loop_indices=[k_i])` for a perf reduce-over-k). Both bind the **same** `nki_ctx.loopreduce` build-context method, differing only in whether the reduce axis is a program axis (SPMD, gated by `parallel_reduce` default True / `asynchronous` default False) or a Python loop index (sequential).
 
 ---
 
@@ -265,7 +267,7 @@ out = x * expand_dims(inv) * w         # normalize, then scale by weight w
 
 `rms_norm_multidim`(49) handles >1 reduce axis.
 
-> **CORRECTION — `native_maths.rms_norm`'s body keys on `axis`, not a free-standing `n`.** The backing report (§2.6) cites the `native_maths.rms_norm` interned set as including `n_s_n`. The actual `pw`(47) interned set is `{power, mean, epsilon, sqrt, expand_dims, w, shape, x, axis, np}` — it has **`axis`**, not a separate `n`. (The `n` argument is on the `nl.rms_norm`(101) *wrapper* signature, where it pairs with `axis`; it does not appear as an interned op-name inside the `native_maths` reference body, which derives the reduce extent from `shape`/`axis`.)
+> **GOTCHA —** the `n` argument on the `nl.rms_norm`(101) wrapper signature does **not** reach the reference body. `native_maths.rms_norm`'s `pw`(47) interned set is `{power, mean, epsilon, sqrt, expand_dims, w, shape, x, axis, np}` — it derives the reduce extent from `shape`/`axis`, never from a free-standing `n`.
 
 ---
 
@@ -291,7 +293,7 @@ return scope.buffer(shape, dtype, init=fill_value, ...); // lowering emits memse
 
 **Buffer defaults:** all alloc ops default `buffer=SBUF` (valid: `sbuf` / `psum` / `hbm`(dram)); `name` defaults `""`; `dtype` is required positionally for `zeros`/`ones`/`full`/`ndarray`, inherited for `*_like`. `sema` partition/free-dim asserts (par≤128, per-partition byte budget) fire at allocation.
 
-> **NOTE — scope correction vs the report.** The backing report's creation-ops list includes `iota`. There is **no** `iota` `pw` in `creation_ops` — `iota` is `native_maths.iota`(51). Creation_ops' ten public `pw` symbols are exactly those above.
+> **GOTCHA —** `iota` is *not* a creation op. There is no `iota` `pw` symbol in `creation_ops`; the iota generator is `native_maths.iota`(51). The ten public `pw` symbols listed above are the whole of `creation_ops`.
 
 ---
 
@@ -326,7 +328,7 @@ return nki_ctx.<store-with-atomic-add-flag>(dst, value, op);   // scatter-add vi
 
 > **GOTCHA — `atomic_rmw` is add-only and index-restricted.** Verified verbatim in the body: `err_atomic_rmw_add_only` (op must be `np.add`) and `err_atomic_rmw_dynamic_index` (`dst` must be an `IndirectMemrefTileND` with dynamic index values). The RMW reuses the `store` path with an atomic-add flag. Any non-add op or a statically-indexed `dst` is rejected at trace time.
 
-`broadcast_to`(11) → a view/broadcast op producing a tile of `shape` from `src` by 0-stride broadcasting (no data movement; sets up a broadcast access pattern for a subsequent compute op). It lives in `memory_ops` because it produces a memref view, not a compute result. (STRONG — the exact `nki_ctx` method is obscured; the `shape`-only broadcast is confirmed from the interned set.)
+`broadcast_to`(11) → a view/broadcast op producing a tile of `shape` from `src` by 0-stride broadcasting (no data movement; sets up a broadcast access pattern for a subsequent compute op). It lives in `memory_ops` because it produces a memref view, not a compute result. The interned set pins the `shape`-only broadcast; the exact `nki_ctx` method it lands on is [INFERRED].
 
 ---
 
@@ -373,19 +375,17 @@ return nki_ctx.select(condition, x, y);   // HW predicated-select (masked tensor
 
 ---
 
-## Adversarial self-verification
+## Evidence Anchors and Limits
 
-The five strongest claims, re-challenged against the binary:
+The page's dispatch claims rest on the interned-name set of each `__pyx_pw_*` body:
 
-1. **Four dispatchers + op-tokens.** ✅ Verified by interned-name sets: `exp`→`{unary_op_2, np, exp}`, `add`/`equal`→`{binary_op_2, np, …}`, `gelu`→`{activation, native_maths, gelu}`, `sum`→`{tensor_reduce, np, add}`. The dispatchers have no `pw` symbol in `math_ops` (confirmed by absence from the symbol enumeration).
-2. **`sigmoid` uses `expit`, `square` uses `activation`, `divide` carries `nki_assert`.** ✅ All three interned sets verified verbatim (`expit`; `activation`+`np`+`square`; `binop`+`sema`+`nki_assert`+`tile`).
-3. **softmax/rms_norm composite lowering.** ✅ `native_maths.softmax`(39) = `{amax, maximum, exp, reduce, add, reciprocal, zero_max_mode, return_max_reduce, mixed_precision, float32, astype}`; `native_maths.rms_norm`(47) = `{power, mean, epsilon, sqrt, expand_dims, w, shape, axis}`. Both match the documented chains.
-4. **`matmul` inserts a VECTOR-engine transpose.** ✅ `matmul`(145) = `{nisa, nc_transpose, nc_matmul, vector, engine, transpose_x}` — the `vector`+`engine` pair confirms the default transpose is on the Vector engine, not the PE array.
-5. **`atomic_rmw` is add-only / dynamic-index-only.** ✅ Body contains `err_atomic_rmw_add_only`, `err_atomic_rmw_dynamic_index`, `IndirectMemrefTileND` verbatim.
+- **Four dispatchers + op-tokens.** `exp`→`{unary_op_2, np, exp}`, `add`/`equal`→`{binary_op_2, np, …}`, `gelu`→`{activation, native_maths, gelu}`, `sum`→`{tensor_reduce, np, add}`. None of the four dispatchers has a `pw` symbol in `math_ops`, so all four are import-bound module globals.
+- **The three special cases.** `sigmoid` interns `expit`; `square` interns `activation`+`np`+`square`; `divide` interns `binop`+`sema`+`nki_assert`+`tile`.
+- **Composite lowering.** `native_maths.softmax`(39) = `{amax, maximum, exp, reduce, add, reciprocal, zero_max_mode, return_max_reduce, mixed_precision, float32, astype}`; `native_maths.rms_norm`(47) = `{power, mean, epsilon, sqrt, expand_dims, w, shape, axis}`.
+- **`matmul`'s transpose engine.** `matmul`(145) = `{nisa, nc_transpose, nc_matmul, vector, engine, transpose_x}` — the `vector`+`engine` pair places the default transpose on the Vector engine, not the PE array.
+- **`atomic_rmw` restrictions.** The body contains `err_atomic_rmw_add_only`, `err_atomic_rmw_dynamic_index`, and `IndirectMemrefTileND` verbatim.
 
-**Failures caught and corrected** (issued as in-place CORRECTION callouts): the report's claim that bitwise wrappers call `_is_integer` directly (§4 — it's inside `bitwise_op`); that `sum`/`prod` promote integer accumulators in-body (§6 — only `mean` does, table-verified); that `native_maths.rms_norm` interns `n` (§8 — it interns `axis`); that `dropout` references `numpy`/`add` (§5 — its set is `{n_dropout, rate}`); and that `iota` is a `creation_ops` op (§9 — it is `native_maths.iota`(51)).
-
-**Tagged uncertain:** the ufunc→engine routing inside `compiler.backends.neuron.tensor` (STRONG, builder not fully read); the exact `@trace` tiling wrapper `softmax_kernel`/`rmsnorm_kernel` add over the `native_maths` reference (STRONG); positional-vs-keyword arg order into each dispatcher (Cython merges all named args into one kwargs dict before the call — CONFIRMED names, STRONG order).
+**Limits.** Three things are pinned only to the `nl` layer and remain [INFERRED] below it: the ufunc→engine routing inside `compiler.backends.neuron.tensor` (that builder is only partially read); what the `@trace` tiling wrappers `softmax_kernel`/`rmsnorm_kernel` add over the plain `native_maths` reference; and the positional-vs-keyword argument order into each dispatcher, since Cython merges all named arguments into one kwargs dict before the call — the argument *names* are exact, their order is not.
 
 ## Cross-references
 

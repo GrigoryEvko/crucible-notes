@@ -64,9 +64,9 @@ All symbols are local (`l F .text`) in `Arguments…so` — present, not strippe
 | `_AddArgumentCallInterceptor.add_mutually_exclusive_group` | `0x13a10` | nested mutex-group proxy | CERTAIN |
 | `_AddArgumentCallInterceptor.set_context` | `0xe760` | context-thread for group-added flags | CERTAIN |
 
-`ArgKind` is an `enum.Enum` whose three fully-wired members `PUBLIC`, `HIDDEN`, `INTERNAL` appear as interned *name* constants (`__pyx_n_s_*`, plus `__pyx_k_INTERNAL`, `__pyx_n_s_ArgKind`). [CONFIRMED]
+`ArgKind` is an `enum.Enum` with **five** members: `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}`. The three fully-wired ones — `PUBLIC`, `HIDDEN`, `INTERNAL` — appear as interned *name* constants (`__pyx_n_s_*`, plus `__pyx_k_INTERNAL`, `__pyx_n_s_ArgKind`), and they are the only three this lane references as live enum identifiers. The remaining two sit in the `.rodata` pool in weaker forms: `EARG`, the experimental tier (help-suppressed, listed by `--help-hidden`), interned as the unicode *value* `__pyx_n_u_EARG`; and `Harg`, also help-suppressed, present only as a bare string. [3.9 Flag Visibility Taxonomy](flag-visibility-argkind.md) is authoritative on the full five-member enum.
 
-> **CORRECTION —** the `.rodata` string pool carries **two more** member tokens beyond these three: `EARG` (interned as the unicode *value* `__pyx_n_u_EARG`, HIGH) and `Harg` (a bare string, LOW). The full member set is `{PUBLIC, HIDDEN, INTERNAL, EARG, Harg}`; this lane only references the first three as live enum identifiers, but the experimental `EARG` (help-suppressed, listed by `--help-hidden`) and the help-suppressed `Harg` are also members. See [3.9 Flag Visibility Taxonomy](flag-visibility-argkind.md), which is authoritative on the five-member enum.
+> **GOTCHA —** enumerating `ArgKind` from this lane's live references yields three members and looks complete. It is not — two more tiers exist and are only visible in the string pool.
 
 ### Algorithm
 

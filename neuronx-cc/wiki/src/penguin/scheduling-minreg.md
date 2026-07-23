@@ -43,13 +43,13 @@ Before the algorithm, fix the vocabulary. A *scheduling unit* (SU) is the atom t
 
 | Symbol | Type annotation (verbatim string) | Meaning | Confidence |
 |---|---|---|---|
-| `SUType` | `Union[NeuronInst, Block]` | A scheduling unit is an instruction **or** a block | CONFIRMED |
-| DDG / successors | `Dict[SUType, Set[SUType]]` | SU → set of successor SUs (the forward edges) | CONFIRMED |
-| predecessors/successors maps | `Optional[Dict[SUType, Set[SUType]]]` | mirror maps; built/copied by `build_ddg`/`_copy_edges` | CONFIRMED |
-| `priority_map` | `Optional[Dict[SUType, int]]` | SU → integer priority | CONFIRMED |
-| `heuristic_func` | `Callable[[SUType], Any]` | the sort key applied to ready SUs | CONFIRMED |
-| ready-set ops | `Iterable[SUType]` / `List[SUType]` / `Optional[List[SUType]]` | ready-list element types | CONFIRMED |
-| `LiveVariableT` | (live-variable type alias) | the live-bytes pricing element | CONFIRMED |
+| `SUType` | `Union[NeuronInst, Block]` | A scheduling unit is an instruction **or** a block | CERTAIN |
+| DDG / successors | `Dict[SUType, Set[SUType]]` | SU → set of successor SUs (the forward edges) | CERTAIN |
+| predecessors/successors maps | `Optional[Dict[SUType, Set[SUType]]]` | mirror maps; built/copied by `build_ddg`/`_copy_edges` | CERTAIN |
+| `priority_map` | `Optional[Dict[SUType, int]]` | SU → integer priority | CERTAIN |
+| `heuristic_func` | `Callable[[SUType], Any]` | the sort key applied to ready SUs | CERTAIN |
+| ready-set ops | `Iterable[SUType]` / `List[SUType]` / `Optional[List[SUType]]` | ready-list element types | CERTAIN |
+| `LiveVariableT` | (live-variable type alias) | the live-bytes pricing element | CERTAIN |
 
 > **NOTE —** that an SU can be a whole `Block`, not only a leaf `NeuronInst`, is the structural reason a `no_reorder` opt-out exists at the *scope-region* level (see [§Logical-vs-Physical Boundary](#the-logical-vs-physical-boundary)). The scheduler moves blocks, so a region must be able to say "treat my contents as a fixed unit."
 
@@ -121,7 +121,7 @@ function build_ddg(scope):
 
 > **GOTCHA —** weight buffers must be filtered out of the *pressure* accounting but **not** out of the *dependency* graph. `is_static` / `is_weight_buffer` gate the live-bytes delta (a static weight that is always live contributes zero to the dynamic peak), yet a read of that weight still imposes a FLOW edge ordering. Conflating the two — dropping weight edges to "save" pressure — produces an illegal schedule.
 
-The edge *kinds* themselves (FLOW / ANTI / OUTPUT / ORDERED) are not invented here — they are the same four-kind model the dependency object carries; see [§The Dependency Substrate](#the-dependency-substrate). The pseudocode above is the standard last-writer/last-readers construction (STRONG: method names `build_ddg`/`enumerate_dependencies`/`_copy_edges` and the `enumerate_*` Dataflow helpers are CONFIRMED in the pool; the precise edge-insertion order is the standard list-scheduler contract, INFERRED).
+The edge *kinds* themselves (FLOW / ANTI / OUTPUT / ORDERED) are not invented here — they are the same four-kind model the dependency object carries; see [§The Dependency Substrate](#the-dependency-substrate). The pseudocode above is the standard last-writer/last-readers construction: the method names `build_ddg`/`enumerate_dependencies`/`_copy_edges` and the `enumerate_*` Dataflow helpers are all present in the interned-name pool, while the precise edge-insertion order follows the standard list-scheduler contract [INFERRED].
 
 ---
 
@@ -147,7 +147,7 @@ function enumerate_ready(ref_count):
     return filter_num_preds(all_sus, want_preds=0)   // filter_readys wraps this
 ```
 
-`in_degree(su) == |predecessors(su)| == su.num_preds`. The three counter views (`num_ready_succs`, `num_not_ready_succs`, `num_preds`) exist because the heuristic needs both directions: how many predecessors still block this SU (readiness), and how many of an SU's successors are/aren't yet ready (used to estimate whether scheduling this SU *frees* a value, i.e. whether it is a last use). All four names — `in_degree`, `out_degree`, `num_ready_succs`, `num_not_ready_succs` — are CONFIRMED in the pool.
+`in_degree(su) == |predecessors(su)| == su.num_preds`. The three counter views (`num_ready_succs`, `num_not_ready_succs`, `num_preds`) exist because the heuristic needs both directions: how many predecessors still block this SU (readiness), and how many of an SU's successors are/aren't yet ready (used to estimate whether scheduling this SU *frees* a value, i.e. whether it is a last use). All four names — `in_degree`, `out_degree`, `num_ready_succs`, `num_not_ready_succs` — appear in the pool.
 
 ---
 
@@ -175,7 +175,9 @@ function update_priority(state):
         recompute_priority(su)                   // feeds heuristic_func
 ```
 
-> **QUIRK —** the priority flows *up* the DAG (to predecessors), which is the opposite of a latency/critical-path scheduler that pushes priority *down* toward sinks. The objective is not "finish the long chain early" but "keep the live set small" — so the scheduler rewards scheduling the *producers* of values that are about to be consumed, collapsing their live window. A reimplementer who copies a latency-list-scheduler priority will get ILP-friendly but pressure-hostile schedules and miss the entire point of the pass. (STRONG: derived from `bump_preds_priority`'s direction + the `MinBufPressure` docstring.)
+> **QUIRK —** the priority flows *up* the DAG (to predecessors), which is the opposite of a latency/critical-path scheduler that pushes priority *down* toward sinks. The objective is not "finish the long chain early" but "keep the live set small" — so the scheduler rewards scheduling the *producers* of values that are about to be consumed, collapsing their live window. A reimplementer who copies a latency-list-scheduler priority will get ILP-friendly but pressure-hostile schedules and miss the entire point of the pass.
+
+*Anchors: `bump_preds_priority` (edge direction) and the `MinBufPressure` docstring in `Scheduler.so`.*
 
 ---
 
@@ -211,11 +213,11 @@ function pick_n_candidates(ready, n):
     return n_smallest(ready, key=heuristic_func, n=n)
 ```
 
-The pressure delta is `def_bytes(su) − kill_bytes(su)`: `def_bytes` is the bytes su's outputs make newly live, `kill_bytes` is the bytes freed when su consumes the last use of an input. `alloc_size_in_bytes` converts a tensor's shape/dtype to a byte count; `TongaLiveInterval` supplies the live-interval bookkeeping. All three pricing names plus the four `pick_*` candidate selectors are CONFIRMED.
+The pressure delta is `def_bytes(su) − kill_bytes(su)`: `def_bytes` is the bytes su's outputs make newly live, `kill_bytes` is the bytes freed when su consumes the last use of an input. `alloc_size_in_bytes` converts a tensor's shape/dtype to a byte count; `TongaLiveInterval` supplies the live-interval bookkeeping. All three pricing names plus the four `pick_*` candidate selectors appear verbatim in the pool.
 
-> **NOTE —** the docstring carries a literal `"Non-deterministic heuristics"` token, indicating an *alternate* heuristic mode distinct from the deterministic primary key above. The deterministic mode terminates the key with `static_lex_order` so equal-pressure ready SUs schedule in original program order; the non-deterministic mode presumably randomizes among equal-cost candidates (useful for autotuning / breaking pathological tie patterns). The exact non-deterministic key is INFERRED — only the mode's existence is CONFIRMED.
+> **NOTE —** the docstring carries a literal `"Non-deterministic heuristics"` token, indicating an *alternate* heuristic mode distinct from the deterministic primary key above. The deterministic mode terminates the key with `static_lex_order` so equal-pressure ready SUs schedule in original program order; the non-deterministic mode presumably randomizes among equal-cost candidates (useful for autotuning / breaking pathological tie patterns). Only the mode's existence is pinned; the exact non-deterministic key is [INFERRED].
 
-`static_lex_order` as the final tie-break is what makes the whole pass deterministic and minimally-perturbing: when two ready SUs cost the same, the one earlier in the original program wins, so the scheduler never gratuitously reorders. The attribute is pervasive — it appears in **53** Penguin `.so` modules (CONFIRMED by string sweep), establishing it as the IR's canonical "position in original program order" anchor, not a scheduler-local invention.
+`static_lex_order` as the final tie-break is what makes the whole pass deterministic and minimally-perturbing: when two ready SUs cost the same, the one earlier in the original program wins, so the scheduler never gratuitously reorders. The attribute is pervasive — it appears in **53** Penguin `.so` modules, establishing it as the IR's canonical "position in original program order" anchor, not a scheduler-local invention.
 
 ---
 
@@ -268,7 +270,7 @@ cross-engine sync (semaphore) insertion       backend order_constraints/synchron
 physical (post-allocation) FLOW/ANTI edges    backend build_fdeps/anti_dep_analyzer
 ```
 
-The Penguin scheduler's *single* objective is buffer-pressure minimization. It has no notion of which engine an instruction runs on, how many cycles it takes, or how two engines synchronize. (STRONG — the absence of any reservation-table / cycle / latency vocabulary in the `Scheduler.so` pool, cross-checked against the backend's exclusive ownership of those concepts.)
+The Penguin scheduler's *single* objective is buffer-pressure minimization. It has no notion of which engine an instruction runs on, how many cycles it takes, or how two engines synchronize. No reservation-table, cycle, or latency vocabulary appears anywhere in the `Scheduler.so` pool; every one of those concepts is owned exclusively by the backend.
 
 ---
 
@@ -297,7 +299,7 @@ function analyzeFunction(func):                  // AGOrderingAnalysisPass
     emit "GLOBAL AG ORDERING (low to high):" total
 ```
 
-The edge classes each carry `.cost`, `.is_forced`, and `.priority` (CONFIRMED via `AGForcedOrderingEdge.cost` / `AGRemovableOrderingEdge.cost` / `.is_forced` qualnames). This is a **second**, collective-specific Penguin ordering decision: it fixes the relative order of global all-gathers so they fuse and overlap well downstream. The comm/compute *overlap reschedule* itself was already set up at the HLO level (the MLIR `ScheduleFusion` pass, see cross-refs) and is finalized by the backend synchronizer; `AGOrderingAnalysis` decides the order *among* the resulting global AGs. (All CONFIRMED.)
+The edge classes each carry `.cost`, `.is_forced`, and `.priority`, visible as the qualnames `AGForcedOrderingEdge.cost`, `AGRemovableOrderingEdge.cost`, and `.is_forced`. This is a **second**, collective-specific Penguin ordering decision: it fixes the relative order of global all-gathers so they fuse and overlap well downstream. The comm/compute *overlap reschedule* itself was already set up at the HLO level (the MLIR `ScheduleFusion` pass, see cross-refs) and is finalized by the backend synchronizer; `AGOrderingAnalysis` decides the order *among* the resulting global AGs.
 
 ### SoftwarePipelineCodeGen — Annotation-Driven Modulo Pipeline
 
@@ -321,7 +323,7 @@ function schedule_software_pipeline(loop):
     insert_prologue_epilogue_predicates(loop)
 ```
 
-> **NOTE —** this is the *order-materializing lowering* of a pipeline, not the *scheduling decision*. The stage assignment and intra-iteration order are computed elsewhere and arrive as annotations; if no `execution_order` annotation is present the pass explicitly *keeps original order* (CONFIRMED docstring *"No execution_order specified, keeping original stage order"*). It is a **third** Penguin reorder site, distinct from MinReg and `AGOrderingAnalysis`. See the dedicated software-pipelining page in cross-refs.
+> **NOTE —** this is the *order-materializing lowering* of a pipeline, not the *scheduling decision*. The stage assignment and intra-iteration order are computed elsewhere and arrive as annotations; if no `execution_order` annotation is present the pass explicitly *keeps original order*, per the docstring *"No execution_order specified, keeping original stage order"*. It is a **third** Penguin reorder site, distinct from MinReg and `AGOrderingAnalysis`. See the dedicated software-pipelining page in cross-refs.
 
 ---
 
@@ -331,9 +333,9 @@ All three reorder passes schedule over the same dependency machinery, which also
 
 ### `ir/Dependency` — the Typed Edge Object
 
-`ir/Dependency.py` defines `DependencyEdge(src, dst, kind)` with `kind ∈ {FLOW, ANTI, OUTPUT, ORDERED}` and a `.serialize()` method (json fields `kind` / `src` / `dst`). All seven tokens — `DependencyEdge`, `FLOW`, `ANTI`, `OUTPUT`, `ORDERED`, `serialize`, plus the `kind`/`src`/`dst` field names — are CONFIRMED in the module's string pool.
+`ir/Dependency.py` defines `DependencyEdge(src, dst, kind)` with `kind ∈ {FLOW, ANTI, OUTPUT, ORDERED}` and a `.serialize()` method (json fields `kind` / `src` / `dst`). All seven tokens — `DependencyEdge`, `FLOW`, `ANTI`, `OUTPUT`, `ORDERED`, `serialize`, plus the `kind`/`src`/`dst` field names — are present in the module's string pool.
 
-> **QUIRK —** this four-kind edge set is byte-for-byte the same model the backend's `libBIR` uses (`bir::EdgeKind`, with the ordering `Invalid < Ordered < Anti < Output < Flow`). `DependencyEdge.serialize` is therefore the **explicit Penguin→BIR dependency hand-off**: Penguin emits typed logical edges and BIR receives them rather than recomputing the logical set from scratch. A reimplementer who recomputes dependencies on the BIR side from program order alone will lose the global-widening and alias-induced edges Penguin already discovered. (CONFIRMED, cross-binary.)
+> **QUIRK —** this four-kind edge set is byte-for-byte the same model the backend's `libBIR` uses (`bir::EdgeKind`, with the ordering `Invalid < Ordered < Anti < Output < Flow`). `DependencyEdge.serialize` is therefore the **explicit Penguin→BIR dependency hand-off**: Penguin emits typed logical edges and BIR receives them rather than recomputing the logical set from scratch. A reimplementer who recomputes dependencies on the BIR side from program order alone will lose the global-widening and alias-induced edges Penguin already discovered.
 
 ### `LoadStoreDependencyAnalysis` — the Instruction DAG
 
@@ -365,35 +367,39 @@ The `AliasDependency{Induction,Elimination,Reset,Verifier,VerificationPass}` fam
                              → synchronizer → lower_sync
 ```
 
-Pipeline position is triangulated (STRONG): the scheduler **imports `TongaISAInst`**, so it operates on ISA-mapped engine instructions and therefore runs *after* ISel and loop-nest formation; `GlobalLayoutOpt`'s own docstring says verbatim *"(due to elementwise SSA inherited from tensorflow, and no inst reordering before this pass)"* (CONFIRMED), explicitly marking a point before which no reordering has happened.
+Pipeline position is triangulated from two independent signals. The scheduler **imports `TongaISAInst`**, so it operates on ISA-mapped engine instructions and therefore runs *after* ISel and loop-nest formation; and `GlobalLayoutOpt`'s own docstring says verbatim *"(due to elementwise SSA inherited from tensorflow, and no inst reordering before this pass)"*, explicitly marking a point before which no reordering has happened.
 
 ### `BirCodeGenLoop` Does Not Schedule
 
-`BirCodeGenLoop` is a structural lowering walk: its roster is `runOnModule` / `runOnFunction` / `transformInstruction` / `transformScopeRegion` / `codegen<Op>` (`codegenAllGatherOp`, `codegenDMACopyOp`, `codegenLoop`, …) / `addInstToBir` (all CONFIRMED). It contains **none** of the ready-list vocabulary (`build_ddg`, `pick_candidate`, …). Its only ordering token is `no_reorder`, which it *reads* — the flag is *defined* in `ir/ScopeRegion` and *read* in `BirCodeGenLoop`, and in no other Penguin module (CONFIRMED by string sweep: exactly those two `.so` files contain `no_reorder`). So `BirCodeGenLoop` emits whatever order the scheduler left, honoring only a per-region "don't move my contents" opt-out.
+`BirCodeGenLoop` is a structural lowering walk: its roster is `runOnModule` / `runOnFunction` / `transformInstruction` / `transformScopeRegion` / `codegen<Op>` (`codegenAllGatherOp`, `codegenDMACopyOp`, `codegenLoop`, …) / `addInstToBir`. It contains **none** of the ready-list vocabulary (`build_ddg`, `pick_candidate`, …). Its only ordering token is `no_reorder`, which it *reads* — the flag is *defined* in `ir/ScopeRegion` and *read* in `BirCodeGenLoop`, and in no other Penguin module: exactly those two `.so` files contain the string. So `BirCodeGenLoop` emits whatever order the scheduler left, honoring only a per-region "don't move my contents" opt-out.
 
 ### What Crosses Into BIR vs. What the Backend Re-Derives
 
 | Crosses Penguin → BIR | Re-derived / owned by backend (`libwalrus`) |
 |---|---|
-| Typed `DependencyEdge` set {FLOW,ANTI,OUTPUT,ORDERED} via `.serialize()` (CONFIRMED) | Physical FLOW/ANTI edges over real addresses, rebuilt *post-allocation* (STRONG) |
-| The post-schedule SU order (MinReg + AG + SW-pipeline), emitted verbatim (STRONG) | The resource/latency/cycle-accurate schedule (PreSched/PostSched/TimeAware) |
-| `no_reorder` scope-region flags as IR attributes (CONFIRMED) | Cross-engine semaphore sync (`order_constraints`/`synchronizer`/`lower_sync`) |
+| Typed `DependencyEdge` set {FLOW,ANTI,OUTPUT,ORDERED} via `.serialize()` | Physical FLOW/ANTI edges over real addresses, rebuilt *post-allocation* |
+| The post-schedule SU order (MinReg + AG + SW-pipeline), emitted verbatim | The resource/latency/cycle-accurate schedule (PreSched/PostSched/TimeAware) |
+| `no_reorder` scope-region flags as IR attributes | Cross-engine semaphore sync (`order_constraints`/`synchronizer`/`lower_sync`) |
 
-> **CORRECTION (SCHED-DYNDISPATCH) —** an earlier reading treated the *absence* of the literal substring `"Scheduler"` from every other `.so` as evidence the scheduler is dead code. It is not. `penguin/PassConstructor.PassConstructorBuilder` loads passes by string name via `__import__`, and dynamically-built module names leave no static literal in the caller's pool. Liveness is corroborated by the `compatible_mode` option (*"Compatible mode for the old scheduler"*, CONFIRMED — an old-vs-new scheduler split shipped as a user-facing flag) and the `no_reorder` opt-out (which is meaningless unless a scheduler can reorder). The exact `PassConstructor` registration call site and option gate remain INFERRED (built via dynamic import); the scheduler's existence and behavior are CONFIRMED.
+### How the Pass Is Registered
+
+`Scheduler` is reached through dynamic dispatch, not a static call edge: `penguin/PassConstructor.PassConstructorBuilder` loads passes by string name via `__import__`, so a dynamically-built module name leaves no literal in the caller's string pool. Two independently-shipped artifacts confirm the pass is live rather than dead code — the `compatible_mode` option (*"Compatible mode for the old scheduler"*, an old-vs-new scheduler split exposed as a user-facing flag), and the `no_reorder` opt-out, which is meaningless unless something can reorder. The exact `PassConstructor` registration call site remains [INFERRED] precisely because it is built by dynamic import.
+
+> **GOTCHA —** searching every other `.so` for the literal substring `"Scheduler"` finds nothing, which looks like evidence the pass is unreachable. It is an artifact of the dynamic-import registration above, not a liveness signal.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Anchors and Limits
 
-The five strongest claims on this page, re-challenged against the binary:
+The page's structural claims trace to these artifacts in the shipped `.so` files:
 
-1. **"Scheduler is a `GCNMinRegStrategy` re-implementation."** Re-verified: `strings Scheduler.so` yields verbatim `MinBufPressure - Minimize memory pressure by moving loopnest around`, the `github.com/llvm/llvm-project/.../GCNMinRegStrategy.cpp` URL, `Current implementation is based on`, the LLVM license line, and `Copyright (C) 2020, Amazon.com`. **CONFIRMED.**
-2. **"The five-phase method roster exists."** Re-verified: an exact-match `rg -x` over the pool returns all of `build_ddg`, `enumerate_ready`, `pick_candidate{,_from,_from_list}`, `pick_n_candidates`, `schedule_ready_su`, `release_successors`/`release_sus`, `bump_preds_priority`, `update_priority`, `init_ref_counts`, `all_scheduled`, `def_bytes`/`kill_bytes`/`alloc_size_in_bytes`, `static_lex_order`. **CONFIRMED** as names; the *bodies* are Cython (not decompilable), so the phase logic is tagged STRONG/INFERRED in place.
-3. **"Edge model is {FLOW,ANTI,OUTPUT,ORDERED} + serialize."** Re-verified: `Dependency.so` pool contains exactly `FLOW`, `ANTI`, `OUTPUT`, `ORDERED`, `DependencyEdge`, `serialize`, `kind`, `src`, `dst`. **CONFIRMED.**
-4. **"`no_reorder` is defined in `ScopeRegion`, read in `BirCodeGenLoop`, nowhere else."** Re-verified by a per-`.so` string sweep across the whole penguin tree: exactly those two modules match. **CONFIRMED.**
-5. **"Runs post-ISel on `TongaISAInst`, priced by `TongaLiveInterval`."** Re-verified: the import strings `…targets.tonga.TongaISAInst` and `…targets.transforms.TongaLiveInterval` are present in `Scheduler.so`; `TongaLiveInterval.so` exposes `alloc_size`. **CONFIRMED** (import edges); the exact pressure formula `def_bytes − kill_bytes` is STRONG (names CONFIRMED, arithmetic is the GCNMinReg contract).
+- **LLVM provenance.** `Scheduler.so` carries verbatim `MinBufPressure - Minimize memory pressure by moving loopnest around`, the `github.com/llvm/llvm-project/.../GCNMinRegStrategy.cpp` URL, `Current implementation is based on`, the LLVM license line, and `Copyright (C) 2020, Amazon.com`.
+- **The five-phase method roster.** An exact-match sweep over the pool returns all of `build_ddg`, `enumerate_ready`, `pick_candidate{,_from,_from_list}`, `pick_n_candidates`, `schedule_ready_su`, `release_successors`/`release_sus`, `bump_preds_priority`, `update_priority`, `init_ref_counts`, `all_scheduled`, `def_bytes`/`kill_bytes`/`alloc_size_in_bytes`, `static_lex_order`.
+- **Edge model.** The `Dependency.so` pool contains exactly `FLOW`, `ANTI`, `OUTPUT`, `ORDERED`, `DependencyEdge`, `serialize`, `kind`, `src`, `dst`.
+- **`no_reorder` scope.** A per-`.so` sweep across the whole penguin tree matches exactly two modules: `ir/ScopeRegion` (definition) and `BirCodeGenLoop` (read).
+- **Pipeline position and pricing.** The import strings `…targets.tonga.TongaISAInst` and `…targets.transforms.TongaLiveInterval` are present in `Scheduler.so`; `TongaLiveInterval.so` exposes `alloc_size`.
 
-Anything not pinnable to a string/symbol is tagged INFERRED inline: the precise edge-insertion order in `build_ddg`, the non-deterministic heuristic key, and the dynamic-import registration site.
+**Limits.** The method *bodies* are Cython and are not decompilable, so the phase logic is reconstructed from the name roster plus the GCNMinReg contract rather than read out of instructions. Three specifics remain [INFERRED]: the precise edge-insertion order inside `build_ddg`, the non-deterministic heuristic key, and the dynamic-import registration site. The pressure formula `def_bytes − kill_bytes` rests on the pricing names plus the GCNMinReg arithmetic, not on a decompiled expression.
 
 ---
 

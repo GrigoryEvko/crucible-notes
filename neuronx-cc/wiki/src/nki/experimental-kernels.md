@@ -26,7 +26,7 @@ For reimplementation, the contract per section is the *distinguishing mechanism*
 
 ## 0. No Production Callers — the cross-cutting fact
 
-The single property all four families share is that **no kernel here is imported or called from outside its own file, its torch reference, or its `__init__.py`**. This is proven by grepping the entire `nkilib` tree (with `--no-ignore`, because `nkilib/` is in `.gitignore` and a plain `rg` silently returns nothing). The matrix below is the audit; each row's only references are the kernel's own definition site and its `*_torch.py` oracle.
+The single property all four families share is that **no kernel here is imported or called from outside its own file, its torch reference, or its `__init__.py`**. Establishing this requires grepping the entire `nkilib` tree with `--no-ignore`, because `nkilib/` is in `.gitignore` and a plain `rg` silently returns nothing. In the matrix below, each row's only references are the kernel's own definition site and its `*_torch.py` oracle.
 
 | Symbol | Defined in | External caller? | Evidence |
 |---|---|---|---|
@@ -44,13 +44,11 @@ The single property all four families share is that **no kernel here is imported
 
 > **GOTCHA — the gitignore trap.** `nkilib/` is gitignored. A reviewer who runs `rg blockwise_mm_bwd` from the repo root gets **zero hits** and may wrongly conclude the symbol does not exist. Every grep on this tree must pass `--no-ignore` (`rg`) or `--no-ignore` (`fd`). There are also two divergent `common_types.py` (the full `core/utils/` copy vs a truncated `_pre_prod` copy); always follow the actual `import` line, not the first match.
 
-> **NOTE — the compiled twins are the production path.** `fgcc.py`'s nested-function names (`launch_collective_permutes`, `load_into_lhs_sbuf_use_sb_to_sb`, `run_matmul_sb_to_sb`, `write_to_output`) and its docstring "*Kernel is double buffered and supports multi channel cc permute*" appear verbatim in the compiled `neuronxcc/nki/_private_kernels/collective_matmul.so` symbol table. So `fgcc.py` is the *readable refactor* of a kernel that **does** ship — but only the `.so` is wired into production; this `.py` is the spec, not the binary on the critical path. [CONFIRMED via `strings` of the `.so`.]
+> **NOTE — the compiled twins are the production path.** `fgcc.py`'s nested-function names (`launch_collective_permutes`, `load_into_lhs_sbuf_use_sb_to_sb`, `run_matmul_sb_to_sb`, `write_to_output`) and its docstring "*Kernel is double buffered and supports multi channel cc permute*" appear verbatim in the compiled `neuronxcc/nki/_private_kernels/collective_matmul.so` symbol table. So `fgcc.py` is the *readable refactor* of a kernel that **does** ship — but only the `.so` is wired into production; this `.py` is the spec, not the binary on the critical path.
 
 ---
 
 ## 1. MoE Backward — checkpoint-not-recompute, H-sharded
-
-> Backing report: D-O25.
 
 This section is the **gradient** of the shipped blockwise expert-FFN forward documented in [MoE CTE/Prefill §bwmm shard variants](moe-cte-prefill.md). It is structurally three distinct kernels, not three variants: a thin dispatcher, the 2300-line backward math, and a *forward* (`bwmm_shard_on_H`) that exists here only because it is the **producer of the two checkpoints** the backward consumes.
 
@@ -113,9 +111,9 @@ function _compute_gate_up_projection_output_grad(...):   // bwmm_bwd_dropless.py
 
 > **QUIRK — the activation derivative is a hardware primitive.** `nl.silu_dx` (and `nl.gelu_apprx_sigmoid_dx`) is a *hardware* activation op that computes the SiLU/Swish derivative directly (`bwmm_bwd_dropless.py:1186`). The kernel does **not** hand-roll `sigmoid(g)·(1+g·(1−sigmoid(g)))`. These `_dx` ops appear *only* in this backward tree (grep-confirmed); `get_activation_ops` in `moe_bwd_parameters.py` maps `SiLU → (nl.silu, nl.silu_dx)` and `Swish → (gelu_apprx_sigmoid, gelu_apprx_sigmoid_dx)`. A reimplementation that lacks a HW `silu_dx` must substitute the analytic derivative.
 
-### The distinguishing mechanism — proven
+### The distinguishing mechanism
 
-Two things make this kernel what it is, and both are confirmed verbatim against source.
+Two things make this kernel what it is.
 
 **(1) Store-not-recompute checkpoint.** Unlike the attention backward ([§attention-bwd](attention-bwd.md)), which stores only the LSE and *recomputes* `P = exp(QKᵀ − LSE)`, this MoE backward **stores the full forward activations** and replays them. Two checkpoint tensors are saved by the forward: `gate_up_proj_act_checkpoint_T[N,2,I_TP,B]` (the gate/up *pre-activation* projections, transposed) and `down_proj_act_checkpoint[N,B,H]` (the down-proj *output* y, pre-affinity). In the backward only the **cheap** ops re-run — one `nisa.activation(silu)` and one multiply (STEP 2a) — while the expensive gate/up and down matmuls are *not* recomputed; their results flow through the checkpoints and the dgrad matmuls. This is classic gradient checkpointing in the *store* regime (memory↑, compute↓), the exact opposite of attention's *recompute* regime.
 
@@ -171,7 +169,7 @@ function compute_gate_and_up_projections_shard(...):  // bwmm_shard_on_H.py:285
 
 When H is the **output** dim (down projection) each core writes its *own* disjoint H columns — a pure layout gather, **no collective at all**. (A naive `rg sendrecv` returns 7 hits in this file; six are the `import`, docstrings, and `# LNC sendrecv` comments — only line 351 is a call.)
 
-> **QUIRK — the `ShardOption` / `KernelTypeOption` enums are vestigial.** `moe_bwd_parameters.py` defines `KernelTypeOption {DROPPING=0, DROPLESS=1}` (`:121-122`) and `ShardOption {AUTO, SHARD_ON_HIDDEN=1, SHARD_ON_INTERMEDIATE=2, BASELINE_LNC1}`, and the dispatcher accepts both — but **neither is read** in the dispatch body. `blockwise_mm_bwd` *always* calls `blockwise_mm_bwd_dropless`, and the H-shard is hardcoded inside it. `affinity_option` and `block_tile_size` are likewise accepted and unused. They are extension points, dead today. [CONFIRMED — same dead-knob smell as the shipped forward's `HI_LO` / `n_block_per_iter`.]
+> **QUIRK — the `ShardOption` / `KernelTypeOption` enums are vestigial.** `moe_bwd_parameters.py` defines `KernelTypeOption {DROPPING=0, DROPLESS=1}` (`:121-122`) and `ShardOption {AUTO, SHARD_ON_HIDDEN=1, SHARD_ON_INTERMEDIATE=2, BASELINE_LNC1}`, and the dispatcher accepts both — but **neither is read** in the dispatch body. `blockwise_mm_bwd` *always* calls `blockwise_mm_bwd_dropless`, and the H-shard is hardcoded inside it. `affinity_option` and `block_tile_size` are likewise accepted and unused. They are extension points, dead today — the same pattern as the shipped forward's unused `HI_LO` / `n_block_per_iter` knobs.
 
 > **NOTE — "Beta 3: dma_copy cannot read from psum directly."** Both checkpoint writers stage the PSUM result through SBUF before the DMA (`bwmm_shard_on_H.py:506`). This is a HW/SW limitation of the beta3 [BirCodeGenLoop](bircodegenloop.md) path, worth reproducing: a PSUM→SBUF `tensor_copy` hop precedes any `dma_copy` of a matmul result to HBM.
 
@@ -179,7 +177,7 @@ When H is the **output** dim (down projection) each core writes its *own* disjoi
 
 ## 2. Fine-Grained Collectives — the double-buffered all-gather ring
 
-> Backing report: D-O26. Relates to the planned collective lowering in [Part 13]; the BIR-level codegen is in [BirCodeGenLoop Collectives](bircodegen-collective.md).
+> The BIR-level codegen for these collectives is in [BirCodeGenLoop Collectives](bircodegen-collective.md).
 
 Three files, three distinct things — and despite the naming, `fg_allgather` *depends on* `fgcc`, not the reverse (`fg_allgather.py:24` is `from . import fgcc`).
 
@@ -249,13 +247,15 @@ function allgather_sb2sb(inp[H,W], replica_groups, tp_degree):   // sb2sb_allgat
 
 The "SB2SB" is that both the collective's source and destination are **SBUF** (`in_buf → out_buf`), which is what *enables* the compiler to lower the cross-core exchange onto the GPSIMD on-die SB2SB copy and skip an HBM round-trip. `allgather_sb2sb_tiled` (`:94-167`) adds M-tiling (`TILE_M = min(M,128)`) and LNC sharding over `affine_range` per-core tiles.
 
-> **CORRECTION (O26-H7) — `sb2sb`'s `all_gather` is NOT directly the GPSIMD SB2SB op.** The BIR lowering pass `LowerLocalCollectives` only decomposes `CollectiveKind` 0/1/2 (`SendRecv` / `SendRecvCCE` / `AllReduce`) locally; `AllGather` is **kind 4 ≥ 3 → fence-only / remote-ICI**, *not* auto-rewritten to `GPSIMDSB2SB`. The on-chip fast path is reached only if the `ncc.all_gather` front-end first decomposes the gather into per-neighbour `SendRecv` (kind 0) micro-ops, which *can* lower to `GPSIMDSB2SB` (when `isCompatible` ∧ ≤ 1024 B/partition). The SBUF-resident buffers **enable** the on-chip path; they do not pin it. The actual transport-kind is decided downstream, not in this `.py`. [STRONG / INFERRED — boundary not visible in source.]
+What SBUF residency buys is *eligibility*, not the transport itself. The BIR lowering pass `LowerLocalCollectives` decomposes only `CollectiveKind` 0/1/2 (`SendRecv` / `SendRecvCCE` / `AllReduce`) locally; `AllGather` is kind 4, and everything ≥ 3 takes the fence-only / remote-ICI route rather than being rewritten to `GPSIMDSB2SB`. The on-chip fast path is reached only when the `ncc.all_gather` front-end first decomposes the gather into per-neighbour `SendRecv` (kind 0) micro-ops, which *can* lower to `GPSIMDSB2SB` — subject to `isCompatible` and a ≤ 1024 B/partition limit. Which transport a given `(H, W, tp_degree)` actually gets is therefore decided downstream of this `.py` and is [INFERRED] here.
+
+> **GOTCHA —** the name `allgather_sb2sb` reads as "this call *is* the GPSIMD SB2SB op." It is not. The SBUF-resident buffers make the on-chip path *reachable*; they do not pin it.
 
 ---
 
 ## 3. Transformer Decode Composer — `transformer_tkg`, `attention_block_tkg`, `topk_reduce`
 
-> Backing report: D-O28. The dense full-block analog of the MoE megakernel in [MoE Decode TKG](moe-decode-tkg.md).
+> The dense full-block analog of the MoE megakernel in [MoE Decode TKG](moe-decode-tkg.md).
 
 ### Purpose
 
@@ -263,8 +263,12 @@ The "SB2SB" is that both the collective's source and destination are **SBUF** (`
 
 ### Algorithm — the multi-layer composer
 
+`transformer_tkg` is **not** itself a `@nki.jit` kernel. Its decorator is commented out at `transformer_tkg.py:90`, with the reason inline: `# @nki.jit  # Commented out - use nki.jit() at call site to avoid double-jit stack overflow`. It is a plain Python trace-time composer, and a caller must apply `nki.jit()` at the call site.
+
+> **GOTCHA —** re-decorating `transformer_tkg` with `@nki.jit` hits the double-jit stack overflow it was un-decorated to avoid. The jit belongs at the call site.
+
 ```c
-// transformer_tkg.py — @nki.jit COMMENTED OUT (:90), a trace-time composer
+// transformer_tkg.py — a trace-time composer (@nki.jit deliberately absent, :90)
 function transformer_tkg(X, W_qkvs[], W_outs[], ..., num_layers, replica_groups,
                          sbuf_residual_and_cc=False):
     n_prgs = get_verified_program_sharding_info(..., 2)   // LNC-2 forced
@@ -282,11 +286,9 @@ function transformer_tkg(X, W_qkvs[], W_outs[], ..., num_layers, replica_groups,
 
 So "megakernel" here means the **whole layer stack traced into one BIR graph** (the loop is unrolled at trace time), *not* one jit'd leaf. Two residuals and two all-reduces per layer; the pre-attn RMSNorm is fused inside `qkv` (`fused_norm_type=RMS_NORM`) and the pre-MLP RMSNorm inside `mlp` — there is no standalone norm call. This contrasts with the MoE megakernel ([moe-decode-tkg](moe-decode-tkg.md)), which *is* one `@nki.jit` fusing one block's stages.
 
-> **CORRECTION (O28-F1) — `transformer_tkg` is not a `@nki.jit` kernel.** Its decorator is commented out: `transformer_tkg.py:90` reads `# @nki.jit  # Commented out - use nki.jit() at call site to avoid double-jit stack overflow`. It is a plain Python trace-time composer; a caller must wrap `nki.jit()` at the call site. A reimplementer who decorates it directly hits the double-jit stack overflow it was un-decorated to avoid.
-
 The default **HBM path** (`sbuf_residual_and_cc=False`) round-trips `current` through HBM each layer; the **SBUF-residual path** keeps the residual and all-reduce in SBUF (`_sb2sb_all_reduce_gather`: `nccl.all_reduce` on the H1-shard slice, then `nisa.sendrecv` to swap the other core's H-shard, then re-layout), so a layer touches HBM only for its single output. The SBUF path is the latency-optimal decode route — but it is broken as shipped:
 
-> **GOTCHA — real `NameError` bug in the SBUF-residual path.** At `transformer_tkg.py:257`, the attention call passes `attention_mask=mask` — but `mask` is **undefined** in scope. The signature has `mask_cache` and `mask_active` (verified: lines 104-105), no `mask`. The HBM branch (`:355`) correctly passes `mask_cache`. This branch raises `NameError` at trace time, confirming the SBUF-residual path is untested in this shipped copy. The `mask_active` parameter is *never consumed* anywhere — a dead signature param. Both facts corroborate §0's "no caller". [CONFIRMED — independently verified against the file.]
+> **GOTCHA — real `NameError` bug in the SBUF-residual path.** At `transformer_tkg.py:257`, the attention call passes `attention_mask=mask` — but `mask` is **undefined** in scope. The signature has `mask_cache` and `mask_active` (verified: lines 104-105), no `mask`. The HBM branch (`:355`) correctly passes `mask_cache`. This branch raises `NameError` at trace time, confirming the SBUF-residual path is untested in this shipped copy. The `mask_active` parameter is *never consumed* anywhere — a dead signature param. Both facts corroborate §0's "no caller".
 
 ### `attention_block_tkg` — the genuinely-fused sub-block
 
@@ -301,7 +303,13 @@ RMSNorm-X (inside qkv) → QKV projection → split/transpose Q,K → [pre-RoPE 
 
 The fusion win: `QKV_out`, `Q_sb`, `K_sb`, the per-head transpose PSUM, RoPE buffers, RMSNorm scratch are **all SBUF**. The only HBM touches are X-in (if HBM), the weights, the V round-trip (`attention_tkg` loads V tile-by-tile in the P·V matmul), the KV-cache scatter (the caches *are* HBM state), and the final output. Q/K never leave SBUF until the cache scatter. It ships its own `_rms_norm_inplace` (`:1093` — `x²` summed via `nc_matmul` with an all-ones operand, the matmul-as-reduction trick, then `activation(rsqrt, bias=eps)`), distinct from the `qkv`/`mlp` fused norms. FP8 KV-cache quant clips to ±240 (`_quantize_to_fp8` at `:1694`; the ±240 bound is the E4M3 max, applied via the symbolic `get_max_positive_value_for_dtype(float8_e4m3)` constant — saturating, lossy). RoPE is a fused site here (`RoPE_sbuf` inside `_process_head_group`), with `fuse_rope=False` passed to `attention_tkg` precisely *because* RoPE is already applied upstream. See [RoPE Kernels](rope-kernels.md), [Flash-Attention Decode](attention-tkg.md).
 
-### `topk_reduce` — a misnomer (gather + K-way reduce, not top-K select)
+### `topk_reduce` — gather + K-way reduce, not top-K select
+
+Despite the name, `topk_reduce` performs **no top-K selection**. It is the MoE **combine** step: for each token it gathers the (up to K) already-routed expert-output rows out of a sparse `all_to_all_v` buffer and sums them. The "topK" refers to the K experts a token was *already* routed to upstream by [router_topk](router-topk.md).
+
+The subtlety worth lifting is the reuse of `nc_find_index8` as an **index-equality match** — finding the first-occurrence rows where `packed_index == t` — rather than as a value comparator. That is the same DVE silicon op [scan-reduce-topk](scan-reduce-topk.md) and `router_topk` drive on *values* to obtain the largest K. One op, two idioms. Consistent with that, the file contains no `max8` and no `match_replace8` strike-out anywhere, and `subkernels/__init__.py` does not export `topk_reduce` at all.
+
+> **GOTCHA —** `topk_reduce` is a MoE-dispatch sibling, not a member of the value-top-K family, despite sharing `nc_find_index8` with it.
 
 ```c
 function topk_reduce(input[TK_padded, H+2], T, K, ...):   // subkernels/topk_reduce.py
@@ -320,8 +328,6 @@ function topk_reduce(input[TK_padded, H+2], T, K, ...):   // subkernels/topk_red
     dma_copy(output_hbm[:, H_local_slice] <- reduced_sb)     // :144  each core its H shard
 ```
 
-> **CORRECTION (O28-F4) — `topk_reduce` does NO top-K selection.** It is the MoE **combine** step: for each token it gathers the (up to K) already-routed expert-output rows from a sparse `all_to_all_v` buffer and *sums* them. The "topK" is the K experts a token was *already routed to* upstream by [router_topk](router-topk.md); no top-K is computed here. Crucially it reuses `nc_find_index8` as an **index-equality match** (find the first-occurrence rows where `packed_index == t`) — the *same* DVE silicon op that [scan-reduce-topk](scan-reduce-topk.md) / `router_topk` drive on *values* to get the largest-K. One op, two idioms; `topk_reduce` is a MoE-dispatch sibling, **not** a member of the value-top-K family. There is no `max8` and no `match_replace8` strike-out anywhere in the file (grep-confirmed), and `subkernels/__init__.py` does not even export `topk_reduce`.
-
 ### Why fuse the decode block
 
 Decode is **latency-bound** — `attention_block_tkg` asserts `B*S_tkg*q_heads <= pmax` (≈ 1 token/seq, B≤16, S_tkg≤8). With so few tokens there is no block to amortize per-stage HBM round-trips over, so per-stage HBM traffic would dominate. Fusing norm→QKV→RoPE→attn→o_proj into one SBUF-resident kernel reads the token's H-vector from HBM once; the SBUF-residual `transformer_tkg` extends this across the attn/MLP boundary and the residual/all-reduce (SB2SB), so a layer touches HBM only for its output. Both force LNC-2 with H split across cores, `core_barrier` at each cross-core hand-off, and `sendrecv` for the SB2SB exchange. The same `BufferManager(0, 200*1024)` is threaded through attention and MLP, with `while sbm.heap: sbm.pop_heap()` between them to free attention's allocations for the MLP. Identical rationale to the MoE decode megakernel.
@@ -330,7 +336,7 @@ Decode is **latency-bound** — `attention_block_tkg` asserts `B*S_tkg*q_heads <
 
 ## 4. Experimental Conv & Cross-Entropy Loss
 
-> Backing report: D-O27. Conv frontend canonicalization is a *separate layer* — see [Cross-References].
+> Conv frontend canonicalization is a *separate layer* — see [Cross-References].
 
 ### Purpose
 
@@ -413,23 +419,23 @@ function cross_entropy_backward(logits, targets, lse_state, reduction="mean",
 
 `grad_logits[i,j] = grad_scale·(softmax(logits[i,j]) − 1{j == target[i]})`, with softmax **reconstructed** from the saved LSE (`exp(logit − lse)`, no re-derivation of max/sum). The onehot is built **densely** with `iota + equal` (cheaper than a scatter for large P; the mask buffer is fp32 to avoid bf16 index-precision loss for vocab > 256). `inplace=True` (default, `:316`) overwrites `logits_hbm` with the gradient, saving `num_pos·V·dtype_bytes`. Reduction lives *here* via `grad_scale`, not in the forward.
 
-> **GOTCHA — neither CE kernel implements `ignore_index`.** Grep for `ignore_index` across `loss/` returns **zero** hits. PyTorch's `ignore_index` semantics are unsupported, and the `mean` reduction divides by the *full* `num_positions` (no ignored-token exclusion). A reimplementer porting PyTorch CE must not assume ignore-index masking. [CONFIRMED.]
+> **GOTCHA — neither CE kernel implements `ignore_index`.** Grep for `ignore_index` across `loss/` returns **zero** hits. PyTorch's `ignore_index` semantics are unsupported, and the `mean` reduction divides by the *full* `num_positions` (no ignored-token exclusion). A reimplementer porting PyTorch CE must not assume ignore-index masking.
 
 > **NOTE — these conv kernels are not the lowering target of `mhlo.convolution`.** The host-side `CanonicalizeConv` pass only normalizes the HLO conv into zero-pad/unit-stride form; it performs **no** conv→matmul or im2col rewrite. The im2col-by-scatter / implicit-GEMM lowering here is *this device kernel's own logic*, a different layer. Likewise the CE kernels reimplement log-softmax on-device from primitives and emit no `AwsNeuronSoftmax` custom-call. Do not conflate the conv/softmax *frontend legalization* with these *device kernels*.
 
 ---
 
-## Adversarial Self-Verification
+## Evidence Anchors and Limits
 
-Five strongest claims, re-challenged against the binary-derived source:
+The kernel bodies here are plain `.py`, so every line-numbered claim reads directly off source. The anchors worth restating:
 
-1. **"No production caller for any kernel"** — re-grepped each symbol with `rg --no-ignore` across all of `nkilib`. Confirmed: every reference is the kernel's own def, its `*_torch.py` oracle, or (for `attention_block_tkg`) its sharding/torch siblings. `topk_reduce` is not even in its own `__init__.py` (exports only `find_nonzero_indices` / `indexed_flatten`). **HOLDS.**
-2. **"MoE backward has zero `sendrecv`; combine is disjoint HBM writes"** — `rg --no-ignore -c sendrecv bwmm_bwd_dropless.py` = 0. The per-expert RMW triplet (`scalar_offset=expert_idx` load → `tensor_tensor add` → store) is verbatim at `:1461-1490`. **HOLDS.**
-3. **"`bwmm_shard_on_H` has exactly one real `sendrecv` call"** — a naive grep gives 7 hits; six are the `import` (`:22`), docstrings (`:292/301`), and comments (`:349/607/608`). The single call is `:351`. **HOLDS — the over-count was the trap; corrected.**
-4. **"`transformer_tkg.py:257` is a live `NameError`"** — read both the line (`attention_mask=mask`) and the signature (`mask_cache`/`mask_active` at `:104-105`, no `mask`). The HBM branch (`:355`) uses `mask_cache`. **HOLDS — independently verified.**
-5. **"`topk_reduce` does index-match, not value top-K"** — `nc_find_index8(data=token-index-list, vals=arange)` at `:112` feeds *target token ids* as `vals`, not values; the result drives a `dma_compute(reduce_op=add)` gather-sum at `:136`. No `max8`/`match_replace8` in the file. **HOLDS.**
+- **No production caller.** Grepping each symbol with `rg --no-ignore` across all of `nkilib` yields only the kernel's own definition, its `*_torch.py` oracle, and — for `attention_block_tkg` alone — its sharding/torch siblings. `topk_reduce` is absent even from its own `__init__.py`, which exports only `find_nonzero_indices` / `indexed_flatten`.
+- **MoE backward has zero `sendrecv`.** `rg --no-ignore -c sendrecv bwmm_bwd_dropless.py` returns 0; the per-expert RMW triplet (`scalar_offset=expert_idx` load → `tensor_tensor add` → store) sits verbatim at `:1461-1490`.
+- **`bwmm_shard_on_H` has exactly one `sendrecv` call site**, at `:351`. A naive grep gives seven hits; the other six are the `import` (`:22`), docstrings (`:292/301`), and comments (`:349/607/608`).
+- **The `NameError`.** `transformer_tkg.py:257` passes `attention_mask=mask` while the signature declares `mask_cache`/`mask_active` at `:104-105` and no `mask`; the HBM branch at `:355` correctly uses `mask_cache`.
+- **`topk_reduce` does index-match.** `nc_find_index8(data=token-index-list, vals=arange)` at `:112` feeds target token ids as `vals`, and the result drives a `dma_compute(reduce_op=add)` gather-sum at `:136`.
 
-**Re-verification ceiling.** Three boundaries are not pinned by this source and are marked accordingly: (a) whether `sb2sb_allgather` *actually* reaches `GPSIMDSB2SB` for a given `(H,W,tp_degree)` depends on the compiled `ncc.all_gather` front-end + the BIR `LowerLocalCollectives` pass, not this `.py` (§2 CORRECTION, STRONG/INFERRED). (b) The exact numeric values of `gemm_stationary_fmax`/`gemm_moving_fmax` (assumed 128/512 TRN2) are not dumped from the ISA `.so` here (STRONG). (c) `collective_permute_implicit_current_processing_rank_id`'s rank-rotation formula lives in compiled `nki.nccl`, treated as an opaque runtime resolver. Everything in the `.py` bodies is CONFIRMED verbatim; the compiled-boundary claims are honestly downgraded.
+**Limits.** Three boundaries lie outside this source. Whether `sb2sb_allgather` reaches `GPSIMDSB2SB` for a given `(H, W, tp_degree)` is decided by the compiled `ncc.all_gather` front-end and the BIR `LowerLocalCollectives` pass, not by the `.py` [INFERRED]. The numeric values of `gemm_stationary_fmax`/`gemm_moving_fmax` (taken as 128/512 on TRN2) are not read out of the ISA `.so` here. And `collective_permute_implicit_current_processing_rank_id`'s rank-rotation formula lives in compiled `nki.nccl`; it is treated as an opaque runtime resolver.
 
 ---
 

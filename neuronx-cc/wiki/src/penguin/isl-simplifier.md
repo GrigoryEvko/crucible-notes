@@ -6,7 +6,7 @@
 
 `IslSimplifier` is Penguin's polyhedral guard-and-domain simplifier. Given a predicated loop-nest statement, it pushes the statement's iteration domain and its conjunction of affine guard predicates into the [Integer Set Library (ISL)](https://libisl.sourceforge.io/), runs an ISL **gist** against the loop-nest/parameter context to drop every predicate that the loop bounds already imply, and either re-installs the surviving (smaller) predicate set on the instruction or rewrites the loop bounds outright. It is the pass that turns a runtime mask like `if (0 <= i < 10 && i < 7)` into a tightened loop `for i in 0..7` with no guard at all.
 
-The single most important fact for a reimplementer — and the first correction to the backing analysis — is that the predicate/domain simplifier exists in **two coexisting layers**: a native C++ class **`islwrapper::IslSimplifier` in `libBIR.so`** (the authoritative implementation, with parameter-typed symbols) **and** a Cython driver/wrapper module **`neuronxcc/starfish/penguin/IslSimplifier.cpython-310…so`** (which exists in the corpus — see [the Y04-01 super-correction below](#correction-y04-01-superseded)). The native methods carry fully demangled, type-bearing symbols (`simplify_predicate(bir::Instruction*)`, `gist_convex_hull(bir::Instruction*)`, `predicates_over_loopnest(bir::Instruction*, isl::set)`, `predicates_over_loopnest_convex_hull(bir::Instruction*, isl::set, bool)`, `shrink_domain(bir::InstLoop*, isl::set)`). The actual ISL↔Penguin codecs live one class up the hierarchy, in the base `islwrapper::IntegerSetAnalysis` (also native C++ in `libBIR.so`), whose methods `predicated_domain`, `convex_hull`, `apply_predicates`, `enumerate_affine_predicates`, `exract_cst_bounds`, and `simplify` are likewise confirmed by mangled symbol. The Python pass `SimplifyPredicates` is only the driver that instantiates `IslSimplifier` and calls `simplify_predicate` / `shrink_domain` on predicated instructions.
+The single most important fact for a reimplementer is that the predicate/domain simplifier exists in **two coexisting layers**: a native C++ class **`islwrapper::IslSimplifier` in `libBIR.so`** — the authoritative implementation, carrying parameter-typed symbols — **and** a Cython driver/wrapper module **`neuronxcc/starfish/penguin/IslSimplifier.cpython-310-x86_64-linux-gnu.so`**, which supplies the CPython C-API glue that drives it. The native methods carry fully demangled, type-bearing symbols (`simplify_predicate(bir::Instruction*)`, `gist_convex_hull(bir::Instruction*)`, `predicates_over_loopnest(bir::Instruction*, isl::set)`, `predicates_over_loopnest_convex_hull(bir::Instruction*, isl::set, bool)`, `shrink_domain(bir::InstLoop*, isl::set)`). The actual ISL↔Penguin codecs live one class up the hierarchy, in the base `islwrapper::IntegerSetAnalysis` (also native C++ in `libBIR.so`), whose methods `predicated_domain`, `convex_hull`, `apply_predicates`, `enumerate_affine_predicates`, `exract_cst_bounds`, and `simplify` are likewise confirmed by mangled symbol. The Python pass `SimplifyPredicates` is only the driver that instantiates `IslSimplifier` and calls `simplify_predicate` / `shrink_domain` on predicated instructions.
 
 Conceptually this is the ISL-`gist` pattern familiar from Polly and the isl tutorial: *simplify set `S` given that context set `C` holds*. `gist(S, C)` returns a set equal to `S` inside `C` but with all constraints already entailed by `C` stripped. Here `S` is `domain ∩ predicates`, `C` is the convex hull of the loop-nest domain (or, in the shrink path, a rebuilt loop "box"), and what survives the gist is exactly the non-redundant guards. The page covers both paths: the **predicate path** (`gist_convex_hull` → `predicates_over_loopnest` → `predicates_over_loopnest_convex_hull`) and the **domain-shrink path** (`shrink_domain` / `shrink_domain_convex_hull`).
 
@@ -28,10 +28,17 @@ For reimplementation, the contract is:
 | **Core ISL op** | `isl::set::gist(context)` — redundant-constraint elimination |
 | **Statistics** | `eliminated_predicates`, `eliminated_loops`, `eliminated_iterations`, `strided_axes` |
 
-> **CORRECTION (Y04-01) —** the backing analysis frames the subject as a Cython module `…/penguin/IslSimplifier.cpython-310…so` and reconstructs every method from CPython C-API call sequences. No such `.so` exists in the corpus, and the qualname strings `gist_convex_hull` / `eliminated_predicates` appear in *no* `strings.json`. The binary truth is a native C++ class `islwrapper::IslSimplifier` in `libBIR.so` with all five methods present as **demangled, parameter-typed mangled symbols** (verified with `c++filt`). The Cython call-sequence reconstruction is still a faithful description of the *algorithm* — Cython simply emits C-API glue that drives these native methods — so the control flow below is sound, but the "Cython module" provenance is wrong and the native signatures (with `bir::Instruction*` / `isl::set` / `bir::InstLoop*` operands) are the authoritative ones.
+### The Two Layers, Concretely
 
-<a id="correction-y04-01-superseded"></a>
-> **CORRECTION (Y04-01 SUPERSEDED — Wave-2 audit) — Y04-01 over-corrected; the Cython module *does* exist.** Re-checked against the disasm/decompile sidecars: the Cython module **`neuronxcc/starfish/penguin/IslSimplifier.cpython-310-x86_64-linux-gnu.so` is present** (top-level `.so` sidecars plus 64 per-function sidecars under qualname `__pyx_…_9neuronxcc_8starfish_7penguin_13IslSimplifier`), and its `__Pyx_CreateStringTabAndInitStrings` table **interns the very qualnames Y04-01 said were absent**: `gist_convex_hull` (×4), `eliminated_predicates` / `eliminated_loops` / `eliminated_iterations` (×2 each), `strided_axes` (×3), `simplify_predicate` (×4), `shrink_domain` (×14). The page's own "(cython)" addresses resolve in exactly this module — `predicate_access_range @0x11600` → `…13IslSimplifier_5predicate_access_rang_0x11600`, `shrink_domain_convex_hull @0x12c40` → `…13IslSimplifier_1shrink_domain_convex__0x12c40`, `shrink_domain @0x18f20`. **Both layers coexist:** the Cython `penguin/IslSimplifier` module (driver + C-API glue) *and* the native `islwrapper::IslSimplifier` in `libBIR.so` (the authoritative typed implementation). The native-symbol content of this page (and the §Native-class table) is correct and stays; what was wrong is the absolute *"no such `.so` exists"* / *"appear in no `strings.json`"* — disregard those two clauses of Y04-01. (Y04-02, on the *display-string wording* being INFERRED, is unaffected and remains valid.)
+Both implementation layers ship, and a reimplementer needs to know which one owns what.
+
+The **native layer** is `islwrapper::IslSimplifier` in `libBIR.so`. All five methods are present as parameter-typed mangled symbols, so the operand types (`bir::Instruction*`, `isl::set`, `bir::InstLoop*`) are authoritative and are what the tables on this page cite.
+
+The **Cython layer** is `neuronxcc/starfish/penguin/IslSimplifier.cpython-310-x86_64-linux-gnu.so`: a top-level `.so` plus 64 per-function sidecars under the qualname prefix `__pyx_…_9neuronxcc_8starfish_7penguin_13IslSimplifier`. Its `__Pyx_CreateStringTabAndInitStrings` table interns the Python-visible method and counter names — `gist_convex_hull` (×4), `eliminated_predicates` / `eliminated_loops` / `eliminated_iterations` (×2 each), `strided_axes` (×3), `simplify_predicate` (×4), `shrink_domain` (×14). Every address on this page marked "(cython)" resolves inside this module: `predicate_access_range @0x11600` → `…13IslSimplifier_5predicate_access_rang_0x11600`, `shrink_domain_convex_hull @0x12c40` → `…13IslSimplifier_1shrink_domain_convex__0x12c40`, and `shrink_domain @0x18f20`.
+
+The relationship is glue-over-implementation: Cython emits C-API sequences that drive the native methods, so a control-flow reconstruction from either side describes the same algorithm.
+
+> **GOTCHA —** the Cython qualnames (`gist_convex_hull`, `eliminated_predicates`, …) live only in that module's Cython string table, not in the general string pools, so a corpus-wide string grep for them comes back empty. That is a search artifact, not evidence the names are absent.
 
 ---
 
@@ -43,26 +50,26 @@ For reimplementation, the contract is:
 
 ### Base class `islwrapper::IntegerSetAnalysis` — the codecs
 
-Every method below is a confirmed mangled symbol in `libBIR.so` (addresses are the export-thunk addresses in the cp310 build). The bodies themselves are imported (these per-symbol files are 6-byte PLT jumps), so signatures are CONFIRMED but line-level bodies are not individually traced here.
+Every method below is a mangled symbol in `libBIR.so`; the addresses are export-thunk addresses in the cp310 build. The bodies themselves are imported — these per-symbol files are 6-byte PLT jumps — so the signatures are exact while the line-level bodies are not individually traced here.
 
 | Method | Signature (demangled) | Role | Confidence |
 |---|---|---|---|
-| `predicated_domain` | `(bir::Instruction*, isl::set)` @ `0x17e4d0` | forward: build `domain ∩ predicates` as an `isl::set` | CONFIRMED |
-| `combine_predicated_domain` | `(bir::Instruction*, isl::set)` @ `0x17e8b0` | merge a predicated domain into an existing set | CONFIRMED |
-| `convex_hull` | `(std::vector<bir::LoopAxis*>&, isl::space)` @ `0x17b5a0` | build the **gist context**: convex hull of the loop-nest domain in a space | CONFIRMED |
-| `enumerate_affine_predicates` | `(pelican::PelicanContext*, …)` @ `0x17c400` | back: `isl::constraint` list → `[AffinePredicate]` | CONFIRMED |
-| `enumerate_predicates` | `(isl::local_space, std::vector<bir::…>&)` @ `0x17c680` | lower-level constraint→predicate enumeration | CONFIRMED |
-| `apply_predicates` | `(pelican::PelicanContext*, vector<bir::Instruction*>&, vector<isl::constraint>&, vector<bir::LoopAxis*>, bool)` @ `0x175180` | intersect a box/set with a predicate set (narrowing) | CONFIRMED |
-| `exract_cst_bounds` | `(isl::set, int, int, int, int)` @ `0x17a180` | read tightened constant `lb/ub` per axis | CONFIRMED |
-| `extract_cst_floor` / `extract_cst_ceil` / `extract_cst_val` | `(isl::pw_aff)` @ `0x17e1a0` / `0x176ab0` / `0x17bf30` | scalar bound extraction from piecewise-affines | CONFIRMED |
-| `add_loop_bounds` | `(isl::set, vector<bir::LoopAxis*>&)` @ `0x17a050`; `(isl::basic_set, vector<Bound*>&)` @ `0x175630` | inject IV bounds into a (basic) set | CONFIRMED |
-| `intersect_bound` | `(isl::set, int,int,int,int, vector<bir::LoopAxis*>&)` @ `0x17ee50` | clip a set on one axis | CONFIRMED |
-| `build_aff` / `build_linear_expr` / `quasi_affine_expr` | over `bir::QuasiAffineExpr` + `isl::aff` | Penguin expr → `isl::aff` | CONFIRMED |
-| `domain` / `domain_space` / `create_domain_space` | `(bir::Instruction*, …)` | build the iteration `isl::set` / its `isl::space` | CONFIRMED |
-| `simplify` | `(isl::set)` @ `0x17e0c0` | generic set simplify | CONFIRMED |
-| `extract_int` | `(isl::val)` @ `0x17d450` | `isl::val` → C++ int | CONFIRMED |
+| `predicated_domain` | `(bir::Instruction*, isl::set)` @ `0x17e4d0` | forward: build `domain ∩ predicates` as an `isl::set` | CERTAIN |
+| `combine_predicated_domain` | `(bir::Instruction*, isl::set)` @ `0x17e8b0` | merge a predicated domain into an existing set | CERTAIN |
+| `convex_hull` | `(std::vector<bir::LoopAxis*>&, isl::space)` @ `0x17b5a0` | build the **gist context**: convex hull of the loop-nest domain in a space | CERTAIN |
+| `enumerate_affine_predicates` | `(pelican::PelicanContext*, …)` @ `0x17c400` | back: `isl::constraint` list → `[AffinePredicate]` | CERTAIN |
+| `enumerate_predicates` | `(isl::local_space, std::vector<bir::…>&)` @ `0x17c680` | lower-level constraint→predicate enumeration | CERTAIN |
+| `apply_predicates` | `(pelican::PelicanContext*, vector<bir::Instruction*>&, vector<isl::constraint>&, vector<bir::LoopAxis*>, bool)` @ `0x175180` | intersect a box/set with a predicate set (narrowing) | CERTAIN |
+| `exract_cst_bounds` | `(isl::set, int, int, int, int)` @ `0x17a180` | read tightened constant `lb/ub` per axis | CERTAIN |
+| `extract_cst_floor` / `extract_cst_ceil` / `extract_cst_val` | `(isl::pw_aff)` @ `0x17e1a0` / `0x176ab0` / `0x17bf30` | scalar bound extraction from piecewise-affines | CERTAIN |
+| `add_loop_bounds` | `(isl::set, vector<bir::LoopAxis*>&)` @ `0x17a050`; `(isl::basic_set, vector<Bound*>&)` @ `0x175630` | inject IV bounds into a (basic) set | CERTAIN |
+| `intersect_bound` | `(isl::set, int,int,int,int, vector<bir::LoopAxis*>&)` @ `0x17ee50` | clip a set on one axis | CERTAIN |
+| `build_aff` / `build_linear_expr` / `quasi_affine_expr` | over `bir::QuasiAffineExpr` + `isl::aff` | Penguin expr → `isl::aff` | CERTAIN |
+| `domain` / `domain_space` / `create_domain_space` | `(bir::Instruction*, …)` | build the iteration `isl::set` / its `isl::space` | CERTAIN |
+| `simplify` | `(isl::set)` @ `0x17e0c0` | generic set simplify | CERTAIN |
+| `extract_int` | `(isl::val)` @ `0x17d450` | `isl::val` → C++ int | CERTAIN |
 
-> **NOTE —** the base-class name is `exract_cst_bounds` — the binary symbol is misspelled (missing the second `t`). The backing analysis writes `extract_cst_bounds`; a reimplementer matching symbols must use the misspelled form. The neighbours `extract_cst_floor`/`extract_cst_ceil`/`extract_cst_val` are spelled correctly, so this is a one-off typo baked into the shipped `libBIR.so`.
+> **NOTE —** the base-class name is `exract_cst_bounds` — the binary symbol is misspelled, missing the second `t`. A reimplementer matching symbols must use the misspelled form, not the natural `extract_cst_bounds`. The neighbours `extract_cst_floor`/`extract_cst_ceil`/`extract_cst_val` are spelled correctly, so this is a one-off typo baked into the shipped `libBIR.so`.
 
 > **NOTE —** `pelican::PelicanContext*` threads through `enumerate_affine_predicates` and `apply_predicates`. Pelican is Penguin's compilation-context/codename layer; it resolves IV and SPMD-parameter names when turning an `isl::constraint` back into a named `AffinePredicate`. The Cython-level analysis calls this `cu` (compilation unit) with `cu.spmd_ids`; the native operand is the `PelicanContext`.
 
@@ -213,17 +220,17 @@ List? IslSimplifier::predicates_over_loopnest_convex_hull(       // sym @0x18165
 
 | ISL op | Site | Purpose | Confidence |
 |---|---|---|---|
-| `convex_hull(space)` | worker @127 | build the gist **context** (hull of loop-nest domain in predicate space) | STRONG |
-| `set::gist(context)` | worker @129 | **the core simplifier** — strip guards entailed by the loop/param context | STRONG |
-| `compute_divs()` → `remove_divs()` | worker @134 (overapprox only) | materialise then project existential floor/mod divs → div-free over-approx | STRONG |
-| `get_basic_sets()` | worker @140 | decompose; expect a single convex piece after gist+hull | STRONG |
-| `get_constraints()` | worker @141 | extract the `isl::constraint` list of the convex result | STRONG |
-| `get_space()` | worker @126 | the space for the context / universe | STRONG |
-| `set::gist(box)` → `coalesce()` | `shrink_domain` @51 | **second, distinct** gist against a rebuilt box, then fuse pieces | STRONG |
-| `set::convex_hull()` | `shrink_domain_convex_hull` @24 | convexify a non-convex union before shrink | STRONG |
-| `is_empty()` | `shrink_domain` @32 | early-out: drop a fully-empty (gisted) domain | STRONG |
-| `BasicSet::universe(space)` | `shrink_domain` @47 | fresh full set to rebuild the loop box | STRONG |
-| `intersect_range(valid)` | `predicate_access_range` @97 | clip an access map's range to the valid address window | STRONG |
+| `convex_hull(space)` | worker @127 | build the gist **context** (hull of loop-nest domain in predicate space) | HIGH |
+| `set::gist(context)` | worker @129 | **the core simplifier** — strip guards entailed by the loop/param context | HIGH |
+| `compute_divs()` → `remove_divs()` | worker @134 (overapprox only) | materialise then project existential floor/mod divs → div-free over-approx | HIGH |
+| `get_basic_sets()` | worker @140 | decompose; expect a single convex piece after gist+hull | HIGH |
+| `get_constraints()` | worker @141 | extract the `isl::constraint` list of the convex result | HIGH |
+| `get_space()` | worker @126 | the space for the context / universe | HIGH |
+| `set::gist(box)` → `coalesce()` | `shrink_domain` @51 | **second, distinct** gist against a rebuilt box, then fuse pieces | HIGH |
+| `set::convex_hull()` | `shrink_domain_convex_hull` @24 | convexify a non-convex union before shrink | HIGH |
+| `is_empty()` | `shrink_domain` @32 | early-out: drop a fully-empty (gisted) domain | HIGH |
+| `BasicSet::universe(space)` | `shrink_domain` @47 | fresh full set to rebuild the loop box | HIGH |
+| `intersect_range(valid)` | `predicate_access_range` @97 | clip an access map's range to the valid address window | HIGH |
 
 > **QUIRK —** `gist` appears **twice** in the module (predicate path @129 against the convex hull, shrink path @51 against the rebuilt box), and `coalesce` appears **exactly once** (chained on the shrink-path gist). `detect_equalities` — the canonical ISL normalizer one would expect before reading constraints — is **never called by name**; equality detection is folded into ISL's own `get_constraints` normalization. A reimplementer porting to a fresh `isl` binding does not need an explicit `detect_equalities` call to match behavior.
 
@@ -334,12 +341,12 @@ Four class-level (static) counters, registered with Penguin's `Statistics` subsy
 
 | Counter | Display string | Bumped in | Confidence |
 |---|---|---|---|
-| `eliminated_predicates` | "Number of predicate eliminated" | `simplify_predicate` (§ public entry) | STRONG |
-| `eliminated_loops` | "Number of loops eliminated" | `shrink_domain` (fully removed axis) | STRONG |
-| `eliminated_iterations` | "Number of iteration eliminated" | `shrink_domain` (tripcount drop) | STRONG |
-| `strided_axes` | "Number of strided axes" | `shrink_domain` (axis becomes strided) | STRONG |
+| `eliminated_predicates` | "Number of predicate eliminated" | `simplify_predicate` (§ public entry) | HIGH |
+| `eliminated_loops` | "Number of loops eliminated" | `shrink_domain` (fully removed axis) | HIGH |
+| `eliminated_iterations` | "Number of iteration eliminated" | `shrink_domain` (tripcount drop) | HIGH |
+| `strided_axes` | "Number of strided axes" | `shrink_domain` (axis becomes strided) | HIGH |
 
-> **CORRECTION (Y04-02) —** the exact display strings ("Number of predicate eliminated", etc.) and the `eliminated_predicates` qualname could **not** be located in any `strings.json` in the corpus (the strings that *do* match, e.g. in `DeadStoreElimination`, belong to unrelated counters). They are reported as STRONG on the strength of the consistent counter-bump pattern in the call sequences, but a reimplementer should treat the precise display wording as INFERRED, not verbatim-confirmed.
+The counters themselves are pinned by the Cython string table and by the consistent bump pattern at each site. The **display wording** in column two is [INFERRED]: those exact phrasings are not recoverable from the general string pools, and the superficially-similar strings that do appear elsewhere (in `DeadStoreElimination`, for instance) belong to unrelated counters. Match on the counter name, not on the rendered text.
 
 ---
 
@@ -349,7 +356,7 @@ Four class-level (static) counters, registered with Penguin's `Statistics` subsy
 |---|---|
 | `islwrapper::IntegerSetAnalysis` (libBIR.so) | Base class — owns every `AffinePredicate`↔`isl` codec and domain builder that `IslSimplifier` orchestrates |
 | `SimplifyPredicates.cpython-310` | Python pass that instantiates `IslSimplifier` and calls `simplify_predicate` / `shrink_domain` on predicated instructions |
-| `TongaIslSimplifier` / `TongaSimplifyPredicate` | Tonga-target-specialized siblings (access→address rewrite) — see § 5.20 |
+| `TongaIslSimplifier` / `TongaSimplifyPredicate` | Tonga-target-specialized siblings (access→address rewrite) |
 | `pelican::PelicanContext` | name/parameter resolution context threaded through the back-conversion |
 
 ## Cross-References
