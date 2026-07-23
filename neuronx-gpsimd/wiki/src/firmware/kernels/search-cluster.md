@@ -34,8 +34,8 @@
 | 4 | **`FindIndex8`** scans the src stream and, per key, emits the **flat index of its first exact-equality match** — exactly **8 indices** out, `uint16`/`uint32` only, `>= 32768` sentinel if a key never matches. | `s4d2_bn.h:171–235`, `has_find_index8_dst_type:469` | HIGH/OBSERVED |
 | 5 | **`Max8`** is a **top‑8 reduction**: it keeps the **8 largest values** seen across `≤16384` src elements and writes them smallest→largest. Output is **8 VALUES** (any compute dtype incl. FP32R), not indices. | `s4d2_bn.h:157–167`, `is_valid_max8:336` | HIGH/OBSERVED |
 | 6 | **`MatchReplace8`** runs the **same first-match core** as FindIndex8 but emits a **1:1 stream**: each first-match element becomes the instruction's **fp32 `immediate`** (`@off 40`); everything else passes through (in→fp32→out). | `s4d4_mr.h:23–43`, struct `:84–94` | HIGH/OBSERVED |
-| 7 | **No software body.** `0x6c/0x6d/0x6e/0x6f` are absent from the carved SUNDA(18-entry) and CAYMAN(17-entry) `kernel_info_table`s. The DVE datapath does the work; firmware only emits/arms. | SX‑FW‑18 table dump; struct map | HIGH/OBSERVED |
-| 8 | **`Max8` has NO in-corpus emitter.** `MatchValueLoad`/`MatchReplace`/`FindIndex8` each carry a 4-copy `"S: <Name>\n"` SEQ dispatch token; `"S: Max8"` has **0 copies** anywhere in the nrtucode libs. | `rg -ao` over `libnrtucode_internal.so` (this task) | HIGH/OBSERVED |
+| 7 | **No software body.** `0x6c/0x6d/0x6e/0x6f` are absent from the carved SUNDA(18-entry) and CAYMAN(17-entry) `kernel_info_table`s. The DVE datapath does the work; firmware only emits/arms. | FW‑18 table dump; struct map | HIGH/OBSERVED |
+| 8 | **`Max8` has NO in-corpus emitter.** `MatchValueLoad`/`MatchReplace`/`FindIndex8` each carry a 4-copy `"S: <Name>\n"` SEQ dispatch token; `"S: Max8"` has **0 copies** anywhere in the nrtucode libs. | `rg -ao` over `libnrtucode_internal.so` | HIGH/OBSERVED |
 | 9 | **CORRECTION.** These are NOT "first appearing at MARIANA". The SUNDA and CAYMAN headers ALREADY define all four (`// Y` + struct map). ISA-defined from **SUNDA (NC‑v2)**; the MAVERICK event is a DVE **PROF re-arm** (runtime dispatch enable), a different layer. | per-gen `common.h` + `instruction_mapping.json` | HIGH/OBSERVED |
 
 ---
@@ -57,7 +57,7 @@ device-firmware **`kernel_info_table` data** read via the Cadence `xtensa-elf-re
 | Value cores (ncore2gp) | `…/gpsimd_tools/tools/ncore2gp/config/libfiss-base.so` (the `opcode__ivp_*` / `module__xdref_*` ISS primitives) |
 | `xtensa-elf-readelf` | `gpsimd_tools/tools/XtensaTools/bin/`, `XTENSA_CORE=ncore2gp` |
 | Carved POOL images | `extisa_{SUNDA,CAYMAN}_POOL_PERF_EXTISA_0.so` — `kernel_info_table` SUNDA `@file 0xb260/0x90`, CAYMAN `@0x7400/0x88` |
-| Backing reports | SX‑FW‑44 (FindIndex8) + GX‑OP‑01 (Max8/MVL/MatchReplace8); IMG‑27 (per-gen PROF); FW‑18 (kernel_info format) |
+| Backing findings | FW‑44 (FindIndex8); IMG‑27 (per-gen PROF); FW‑18 (kernel_info format) |
 
 > **NOTE (no FLIX desync surface).** This decode never crosses the Q7 Vision FLIX bundle
 > decoder. The operand structs come from C headers + `gcc` compile-verify; the
@@ -259,13 +259,13 @@ void dve_match_value_load(const S2_BN *I) {              // opcode 0x6d
 }
 ```
 
-> **GOTCHA (the reversal is load-bearing for beam search).** Because `Max8` writes its 8
+> **GOTCHA (the reversal is decisive for beam search).** Because `Max8` writes its 8
 > values **smallest→largest** (§6.2) and `MatchValueLoad` reverses on load
 > (`src[k]→mv[7-k]`), feeding `Max8`'s output straight into `MatchValueLoad` makes
 > **`mv[0]` = the LARGEST score**. The two reversals compose so the lowest key index holds
 > the top score — consistent with the lowest-`n`-first arbitration in the consumers (§6.3).
-> [HIGH/OBSERVED for both reversals; the *composition* INFERRED — the headers do not
-> spell out the `Max8→MatchValueLoad` handoff as a fixed pipeline]
+> The headers do not spell out the `Max8→MatchValueLoad` handoff as a fixed pipeline.
+> [HIGH/OBSERVED; INFERRED composition]
 
 ### 6.2 `Max8` (0x6c) — the top‑8 value reducer
 
@@ -304,9 +304,9 @@ The reduction primitive is byte-pinned in `libfiss-base.so`: the **reduction-max
 `opcode__ivp_maxn_2xf32__stage_5` (`@0x585020`) / IEEE-`maxNum`-quieting
 `opcode__ivp_maxnumn_2xf32__stage_5` (`@0x589040`); the fp16 path is
 `opcode__ivp_maxnumnxf16__stage_5` (`@0x223910`). The `maxnum`/`rmaxnum` naming pins the
-NaN-quieting semantics (IEEE `maxNum`: NaN operand → the non-NaN operand wins).
-[HIGH/OBSERVED for the primitive names; the top‑8 *micro-architecture* (sort network vs
-heap) is MED/INFERRED — not byte-decoded]
+NaN-quieting semantics (IEEE `maxNum`: NaN operand → the non-NaN operand wins). The top‑8
+*micro-architecture* (sort network vs heap) is not byte-decoded.
+[HIGH names; MED micro-arch]
 
 > **QUIRK (Max8 is ISA-resident but un-emittable in-corpus).** `Max8` is fully
 > ISA-defined, struct-mapped, and PROF-arm-listed at MAVERICK — yet it has **zero**
@@ -372,7 +372,7 @@ The compare core is the ordered-fp-equal primitive `opcode__ivp_oeqn_2xf32__stag
 `oeq → vbool` predicate the software predicate-scan siblings use. The "emit index on
 first-set predicate" step is the engine's select/move family
 (`opcode__ivp_seln_2x32__stage_5 @0x4cd1c0`, `opcode__ivp_selnx16__stage_5 @0x264980`).
-[primitive names HIGH/OBSERVED; the exact DVE lane-parallel scan MED/INFERRED]
+[HIGH names; MED lane-parallel scan]
 
 > **GOTCHA (`out_dtype` is hard-restricted to indices).** Unlike `Max8` (which shares the
 > struct), `FindIndex8` calls `has_find_index8_dst_type` (`s4d2_bn.h:469–472`) requiring
@@ -380,7 +380,7 @@ first-set predicate" step is the engine's select/move family
 > only `is_valid_dtype(out, FP32R::True)` and emits values; `FindIndex8` ANDs the
 > index-type restriction. A u16 dst can only address `< 65536` positions, but the
 > `≤16384` src cap (and the `≥32768` sentinel reservation) keep real indices below the
-> sentinel band. [HIGH/OBSERVED]
+> sentinel band.
 
 ### 6.4 `MatchReplace8` (0x6f) — the first-match replacer
 
@@ -418,8 +418,7 @@ void dve_match_replace8(const S4D4_MR *I) {              // opcode 0x6f
 > replacement. It is NOT a per-key replacement vector. In beam search this is the
 > "blank out the already-selected top‑8" step: set `immediate = -INFINITY` so the *next*
 > `Max8` pass finds the following 8 without re-picking the winners — extending top‑8 to
-> top‑16/24/… (use-note `s4d4_mr.h:44–48`). [replace mechanics HIGH/OBSERVED; the exact
-> beam-extension wiring MED/INFERRED]
+> top‑16/24/… (use-note `s4d4_mr.h:44–48`). [HIGH mechanics; MED beam-extension]
 
 ---
 
@@ -436,7 +435,7 @@ FW‑18/FW‑64 established the GPSIMD front-end has **two** dispatch surfaces i
 
 The search cluster is **entirely surface (A)**. Three independent confirmations:
 
-**(1) SEQ-token multiplicity (measured this task, `rg -ao "S: <name>" libnrtucode_internal.so | wc -l`):**
+**(1) SEQ-token multiplicity (`rg -ao "S: <name>" libnrtucode_internal.so | wc -l`):**
 
 | token | copies | class |
 |-------|-------:|-------|
@@ -447,11 +446,11 @@ The search cluster is **entirely surface (A)**. Three independent confirmations:
 | `S: TensorLoad` / `S: TensorStore` | 16 / 16 | iTPB sequencer (reference) |
 | `S: Pool` | 10 | Q7_POOL codec (reference) |
 
-The 4‑copy DVE-class signature for MVL/MatchReplace/FindIndex8 vs the 0 for Max8 was
-verified directly. [HIGH/OBSERVED]
+The 4‑copy DVE-class signature for MVL/MatchReplace/FindIndex8 contrasts with the 0 for
+Max8. [HIGH/OBSERVED]
 
 **(2) Struct membership** — the cluster maps to `S2_BN`/`S4D2_BN`/`S4D4_MR` (DVE family),
-not `S4D4_PL` (POOL) (§4). [HIGH/OBSERVED]
+not `S4D4_PL` (POOL) (§4).
 
 **(3) Carved `kernel_info_table` absence** — reading the carved SUNDA and CAYMAN POOL
 images with the shipped `xtensa-elf-readelf`:
@@ -468,13 +467,12 @@ None of `0x6c/0x6d/0x6e/0x6f` is a `Q7_POOL` software kernel in any read image. 
 search/select cluster therefore has **no funcVA, no kernel body** — the work is in the DVE
 datapath. This is the cleanest contrast with the POOL-codec kernels (NonzeroWithCount,
 Sort, SparsityCompress) which *do* carry a `kernel_info_table` funcVA.
-[HIGH/OBSERVED — `0x6c..0x6f` absent in both carved tables]
 
 > **GOTCHA (`MatchReplace` vs `MatchReplace8`).** The SEQ dispatch token is literally
 > `"S: MatchReplace\n"` (no `8`), even though the ISA mnemonic is `MATCH_REPLACE8` and the
 > validator is `is_valid_match_replace8`. A name-based reimplementation that searches for
 > `"MatchReplace8"` in the rodata will miss the dispatch token. The opcode byte `0x6f` is
-> the stable join key, not the string. [HIGH/OBSERVED]
+> the stable join key, not the string.
 
 ---
 
@@ -486,12 +484,12 @@ IMG‑27's `"+10 PROF arm"` carve lists `0x6c/0x6d/0x6e/0x6f` among DVE opcodes
 against the ISA-header layer decoded here:
 
 - **CONFIRMED:** the opcode bytes are stable across all four gens; the engine is DVE; the
-  MAVERICK event is a DVE PROF **re-arm** (runtime), not a new opcode. [HIGH/OBSERVED for
-  bytes + engine; PROF carve CARRIED from IMG‑27]
+  MAVERICK event is a DVE PROF **re-arm** (runtime), not a new opcode.
+  [HIGH/OBSERVED bytes; CARRIED from IMG‑27]
 - **CORRECTED:** the "pre-existing MARIANA / first appears at MARIANA" sub-claim is
   inaccurate at the ISA layer — SUNDA and CAYMAN headers already define all four
   (`// Y` + struct map). ISA-DEFINED from SUNDA; only the DVE PROF arming changes at
-  MARIANA/MAVERICK. The two are different layers (§3 CORRECTION). [HIGH/OBSERVED]
+  MARIANA/MAVERICK. The two are different layers (§3 CORRECTION).
 
 > **NOTE (what "PROF arming" means for a reimplementation).** Because there is no software
 > kernel body, "arming" an op like `FindIndex8` for a generation is not loading a
@@ -499,8 +497,8 @@ against the ISA-header layer decoded here:
 > into the DVE search datapath. A from-scratch DVE that already decodes the four opcodes
 > needs no per-gen kernel; the per-gen variation is purely the dispatch-enable table the
 > firmware programs. The ISA contract (structs, validators, semantics) is **identical**
-> across all four gens (`gcc` compile-verify: byte-identical 64 B structs). [HIGH for the
-> struct identity; PROF-table mechanism CARRIED/INFERRED from IMG‑27]
+> across all four gens (`gcc` compile-verify: byte-identical 64 B structs).
+> [HIGH struct identity; CARRIED from IMG‑27]
 
 ---
 
@@ -541,12 +539,12 @@ Element-count and zero-field requirements:
 | `FIND_INDEX8` | `≥ 8` and `≤ 16384` | **== 8** (indices) | `even_count==odd_count==0`, reserved |
 | `MATCH_REPLACE8` | `≤ 16384` | **== src count** (1:1) | `reserved0[5]==0` (`immediate` is live) |
 
-> **CORRECTION (vs GX‑OP‑01 §4c wording).** GX‑OP‑01 lists the MatchReplace8 `in_dtype`
-> 7-list as `FP16/BF16/UINT8/UINT16/UINT32/FP32/INT32`. The header `match_replace_dtypes`
-> body (`s4d4_mr.h:134–149`) confirms `UINT32` **is** in both the in and out list — so the
-> 7-dtype set is the same for input and output. The SX‑FW‑44 dtype-contrast line (its §9)
-> dropped `UINT32` from the in-list shorthand; the authoritative set is the 7-list above
-> for **both** directions. [HIGH/OBSERVED — read from the validator body]
+> **CORRECTION (vs an earlier report's wording).** That report lists the MatchReplace8
+> `in_dtype` 7-list as `FP16/BF16/UINT8/UINT16/UINT32/FP32/INT32`. The header
+> `match_replace_dtypes` body (`s4d4_mr.h:134–149`) confirms `UINT32` **is** in both the in
+> and out list — so the 7-dtype set is the same for input and output. The FW‑44
+> dtype-contrast line dropped `UINT32` from the in-list shorthand; the authoritative set is
+> the 7-list above for **both** directions. [HIGH/OBSERVED]
 
 ---
 
@@ -581,9 +579,9 @@ beam-search to more than 8 values"* and *"bubble-sort"* todo-notes (`s4d2_bn.h:2
 lowest-`n`-arbitration) is identical between `FindIndex8` and `MatchReplace8`; they differ
 only in the **output** (8 indices vs a 1:1 replaced stream). `Max8` is the reduction
 sibling on the same struct as `FindIndex8`; `MatchValueLoad` is the loader sibling,
-structurally the FW‑57 ImmLd loader. [per-op semantics HIGH/OBSERVED; family being a
-beam-search cluster HIGH (named in spec); the exact `Max8→MatchValueLoad` and
-`Index→gather` wiring MED/INFERRED — the headers imply but do not fix it as a pipeline]
+structurally the FW‑57 ImmLd loader. The headers imply but do not fix the exact
+`Max8→MatchValueLoad` and `Index→gather` wiring as a pipeline.
+[HIGH semantics; MED pipeline wiring]
 
 ---
 
@@ -610,7 +608,7 @@ beam-search cluster HIGH (named in spec); the exact `Max8→MatchValueLoad` and
   tracks; a live drive of these ISS modules requires the ncore2gp engine-state context
   (a bare `ctypes` call returns no result without it), so this page anchors the value
   semantics to the **symbol naming + ISA header text**, not a standalone live result.
-  [primitive presence HIGH/OBSERVED via `nm`; standalone live-drive LOW/not-established]
+  [HIGH presence; LOW live-drive]
 
 ---
 
@@ -628,8 +626,8 @@ beam-search cluster HIGH (named in spec); the exact `Max8→MatchValueLoad` and
   MatchReplace8 = first-match → fp32 immediate, else pass-through, 1:1
 - DVE-engine, **no software body**: cluster absent from carved SUNDA(18)/CAYMAN(17)
   `kernel_info_table`; struct group is DVE family not POOL
-- SEQ-token multiplicity: MVL/MatchReplace/FindIndex8 = **4** each; **Max8 = 0** (verified
-  `rg -ao` this task) — Max8 ISA-present everywhere, in-corpus-emittable nowhere
+- SEQ-token multiplicity: MVL/MatchReplace/FindIndex8 = **4** each; **Max8 = 0** (`rg -ao`)
+  — Max8 ISA-present everywhere, in-corpus-emittable nowhere
 - ISA-present + maintained in all 4 gens SUNDA(NC‑v2)..MAVERICK(NC‑v5)
 
 **MED/INFERRED**
@@ -654,5 +652,5 @@ beam-search cluster HIGH (named in spec); the exact `Max8→MatchValueLoad` and
   refuted at the ISA layer: all four are ISA-defined + maintained from **SUNDA**; the
   MARIANA/MAVERICK event is DVE **PROF arming** (runtime), a different layer.
 - MatchReplace8's `in_dtype` 7-list includes `UINT32` (per the validator body), matching
-  its `out_dtype` list — the SX‑FW‑44 §9 shorthand that dropped `UINT32` from the in-list
+  its `out_dtype` list — the FW‑44 §9 shorthand that dropped `UINT32` from the in-list
   is corrected here.

@@ -26,15 +26,15 @@ in the [select/shuffle ISA batch](../../isa/ref/b21-select-shuffle.md).
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**. Every host-ISA fact is read out of the public
-`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and was
-re-compile-verified this session; every device fact is byte-pinned to a carve from
+`aws_neuron_isa_tpb_*.h` headers shipped in the customop-lib package and is
+compile-verified; every device fact is byte-pinned to a carve from
 `libnrtucode_internal.so`.
 
-> **NOTE — what was carved this session, and the exact objects used.** The firmware
+> **NOTE — the carved objects.** The firmware
 > container is
 > `…/custom_op/c10/lib/libnrtucode_internal.so`
 > (`sha256 b7c67e898a116454…`, `10,276,288 B`, ELF64 x86-64 DYN — the FW-47/60/73
-> anchor, re-verified in-task). The POOL images are reached via the host x86 accessors
+> anchor). The POOL images are reached via the host x86 accessors
 > `<ARCH>_<NX|Q7>_POOL_<BUILD>_<IRAM|DRAM>_get` (each `lea` gives the blob's file
 > pointer, the `movq` immediate its size; the blobs live in `.rodata` where VMA == file
 > offset) and disassembled with the native `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`,
@@ -51,8 +51,8 @@ re-compile-verified this session; every device fact is byte-pinned to a carve fr
 > | `SUNDA  NX_POOL RELEASE IRAM` | `SUNDA_NX_POOL_RELEASE_IRAM_get` | `0x2be10` / `0xd040` | **body-deep**; primitives present; RELEASE strips DEBUG strings |
 > | `SUNDA  Q7_POOL RELEASE IRAM` | `SUNDA_Q7_POOL_RELEASE_IRAM_get` | `0x48bf0` / `0x42d0` | minimal stub (4 primitive hits — body NOT here) |
 >
-> The four Sort DEBUG strings reproduce against the binary in-task (28 hits across the
-> image-pool copies): `decode_sort`, `"P%i: DECODE_SORT : num_items = %d,
+> The four Sort DEBUG strings appear 28 times across the
+> image-pool copies: `decode_sort`, `"P%i: DECODE_SORT : num_items = %d,
 > num_active_channels = %d, is_ascending = %d"`, `"P%i: Error, unsupported data type for
 > sort : 0x%x"`, and `"S: Sort"`. `[HIGH/OBSERVED]`
 
@@ -69,41 +69,39 @@ self-named on-device kernel. Eight facts pin it:
    `struct2opcode` binding `NEURON_ISA_TPB_S1D2_SORT_STRUCT →
    [NEURON_ISA_TPB_OPCODE_SORT]`, and `debug_assert.h:243` (`case
    NEURON_ISA_TPB_OPCODE_SORT: check = dbg_is_valid_s1d2_sort(i);`). The struct
-   compile-verifies `sizeof == 64` on cayman/mariana/maverick/sunda. `[HIGH/OBSERVED]`
+   compile-verifies `sizeof == 64` on cayman/mariana/maverick/sunda.
 
 2. **It is a key+VALUE sort, the value being the original position.** Output is a 2-D
    tensor: `dst[X=0,Y=k]` is the k-th **sorted value**, `dst[X=1,Y=k]` is the **original
    index** (plus `index_offset`) of that value. So Sort carries *both* the keys (the
-   values) and a payload (where each value came from). `[HIGH/OBSERVED — header verbatim
-   + worked example]`
+   values) and a payload (where each value came from).
 
 3. **Direction is the `comparison` AluOp, restricted to two values.**
    `IsLT (0x16) = ASCENDING`, `IsGT (0x13) = DESCENDING`. These are the *only* two legal
    AluOps (`sort_valid_aluop`); the decode log's `is_ascending` field is exactly the
-   `IsLT`-vs-`IsGT` discriminator. `[HIGH/OBSERVED]`
+   `IsLT`-vs-`IsGT` discriminator.
 
 4. **Stable is a 1-bit flag.** `stable == 1` preserves equal elements' relative order;
    `stable == 0` "might be faster" per the header. Both legal (`sort_valid_stable`).
-   `[HIGH/OBSERVED]`
 
 5. **dtype is gated to 16-bit and 32-bit, in == out, integer index.** `fp16/bf16/u16/i16`
    → u16 index; `fp32/u32/i32` → u32 index. `in_dtype` must equal `out_dtype`; any other
-   dtype is rejected with `"unsupported data type for sort : 0x%x"`. `[HIGH/OBSERVED]`
+   dtype is rejected with `"unsupported data type for sort : 0x%x"`.
 
 6. **Top-K is built in.** The output may be *shorter* along Y than the input; with a
    descending sort this yields the top-K largest `{value, index}` pairs — Sort subsumes
-   top-K (and, via the index payload, top-K arg-max). `[HIGH/OBSERVED — header note]`
+   top-K (and, via the index payload, top-K arg-max).
 
 7. **The algorithm is an in-register SIMD compare-exchange sorting network.** A
    data-parallel min/max network (bitonic / odd-even-merge family), *not* a scalar
    insertion sort — recovered from the carved POOL IRAM as ordered-compare→`vbool` driving
-   a dual-select swap, with the index payload permuted by the same stage. `[atom
-   HIGH/OBSERVED; network family MED/INFERRED through the FLIX desync]`
+   a dual-select swap, with the index payload permuted by the same stage.
+   `[HIGH atom; MED/INFERRED network family]`
 
 8. **Present on all four generations, with no nc-version gate.** SUNDA (NC-v2), CAYMAN
    (NC-v3), MARIANA (NC-v4), MAVERICK (NC-v5) all ship the struct, the validity
    predicate, opcode `0x96`, and `SORT_MAX_SIZE = 8192`, byte-identical. Sort is *older
-   / more universal* than the codec ops added later. `[HIGH/OBSERVED]`
+   / more universal* than the codec ops added later.
 
 > **CORRECTION — `SortMerge` (`0x97`) is a PHANTOM.** The header repeatedly mentions a
 > *SortMerge* companion that would merge separately-sorted subtensors ("…then the sorted
@@ -115,8 +113,7 @@ self-named on-device kernel. Eight facts pin it:
 > `SortMerge` struct, **no** `SortMerge` opcode value, and **no** `SortMerge` DEBUG string
 > in any carved image. Do **not** treat `0x97` as Sort, as SortMerge, or as any real
 > instruction; do not "discover" it. In v0.21.2.0 only the single-block Sort (`0x96`)
-> ships; cross-block / cross-partition merge is host-side or future. `[HIGH/OBSERVED — the
-> "wip 0x97" comment + the absent struct/opcode/string]`
+> ships; cross-block / cross-partition merge is host-side or future. `[HIGH/OBSERVED]`
 
 ---
 
@@ -151,8 +148,6 @@ case NEURON_ISA_TPB_OPCODE_SORT:
     break;
 ```
 
-`[HIGH/OBSERVED]`
-
 **Engine = POOL.** Three independent signals converge. (a) The header's own
 "Pool working RAM" statement (§5). (b) The `decode_sort` / `"S: Sort"` /
 `"DECODE_SORT … is_ascending"` / `"unsupported data type for sort"` DEBUG strings live
@@ -164,7 +159,7 @@ Note the POOL engine exists in *two* image flavours — `NX_POOL` (the NeuronCor
 unit) and `Q7_POOL` (the Vision-Q7 pooling path) — and the Sort body is carried by the
 **NX_POOL** image on every generation (the `Q7_POOL` image is the body home on CAYMAN but
 a minimal stub on SUNDA; §7). See [decode_pool](./decode-pool.md) for the POOL kernel
-disambiguation. `[HIGH/OBSERVED]`
+disambiguation.
 
 ---
 
@@ -194,7 +189,7 @@ ISA_STATIC_ASSERT(sizeof(NEURON_ISA_TPB_S1D2_SORT_STRUCT) == 64,
                   "Error: NEURON_ISA_TPB_S1D2_SORT_STRUCT is NOT 64B.");
 ```
 
-**Compile-verify output (this session, gcc, all four gens identical):**
+**Compile-verify output (gcc, all four gens identical):**
 
 ```
 sizeof(S1D2_SORT)=64
@@ -205,8 +200,7 @@ FP16=0x7 BF16=0x6 U16=0x5 I16=0x4 FP32=0xa U32=0x9 I32=0x8
 sizeof TENSOR1D=8 TENSOR2D=12 DTYPE_PAIR=1 IMM_VAL=4 ALU_OP=1 HEADER=4 EVENTS=8
 ```
 
-`[HIGH/OBSERVED — ISA_STATIC_ASSERT(==64) passes; offsetof/sizeof reproduced for
-cayman, sunda, mariana, maverick — bit-identical]`
+`[HIGH/OBSERVED — all 4 gens bit-identical]`
 
 ### 3.1 Field census
 
@@ -235,7 +229,7 @@ typedef struct NEURON_ISA_TPB_DTYPE_PAIR {
 
 Sort does **not** convert dtype: `sort_dtypes_ok` requires `dtype_lo == dtype_hi`
 (§4). (Contrast [NonzeroWithCount](./nonzero-with-count.md), whose output is always
-INT32.) `[HIGH/OBSERVED]`
+INT32.)
 
 **`index_offset_src` selects the immediate-delivery mode** (`NEURON_ISA_TPB_IMM_SRC`):
 
@@ -248,13 +242,12 @@ NEURON_ISA_TPB_IMM_SRC_REG_PTR_IMMEDIATE     = 2,    // pointer to u32 from a re
 This matches the header verbatim — `index_offset` "can be any of: a pointer to u32
 values; a u32 instruction immediate; a reg num." Its purpose is to **sort pieces of a
 larger array with correct global indices** (each tile carries the right `index_offset`).
-`[HIGH/OBSERVED]`
 
 > **NOTE — the struct is mostly reserved tail.** Sort needs few fields, so bytes 41–63
 > are `reserved1[23]` and must be zero. The whole control surface is the 4 small scalar
 > fields at offsets 12–15 plus the three tensor/immediate fields. There is no
 > "algorithm" field, no "network-stage count" field — the network is fixed by the dtype
-> and the element count, not parameterised in the instruction word. `[HIGH/OBSERVED]`
+> and the element count, not parameterised in the instruction word.
 
 ---
 
@@ -303,10 +296,7 @@ fn sort_dtypes_ok(i)    -> bool { sort_dtype_ok(lo(i)) && lo(i)==hi(i) }
 
 Any dtype that fails the gate triggers the device error path:
 `"P%i: Error, unsupported data type for sort : 0x%x"`, logging the rejected
-`in_dtype` byte. `[HIGH/OBSERVED — gate read verbatim; the per-class compare op OBSERVED
-in the POOL IRAM primitive census; the u16/u32 index split OBSERVED as the `nx16t`-vs-
-`_2x32t` gather/dsel duality — 161 `nx16t` vs 42 `_2x32t` forms in the CAYMAN Q7 POOL
-IRAM]`
+`in_dtype` byte. `[HIGH/OBSERVED — gate verbatim + IRAM census]`
 
 > **NOTE — the index dtype is implicit and always integer, sized to the output.** The
 > header is explicit: *"Indices are necessarily the same size as the output dtype, but
@@ -314,7 +304,7 @@ IRAM]`
 > in Y[1] are u16; for i32, f32, etc, the indices are u32."* There is no field for the
 > index dtype — it is fixed at u16 for any 16-b sort and u32 for any 32-b sort. This is
 > exactly the `ivp_dselnx16t` (16-b index permute) vs `ivp_dseln_2x32t` (32-b index
-> permute) split observed in the firmware. `[HIGH/OBSERVED]`
+> permute) split observed in the firmware.
 
 ### 4.2 Direction
 
@@ -327,15 +317,14 @@ only the plain `IsLT`/`IsGT`. The signedness for integer sorts is carried instea
 chosen compare/min/max *primitive* (`ivp_lt2nx8` signed vs `ivp_bminunx16` unsigned, §5).
 In the firmware the asc/desc choice is the **control bit of the fused `ivp_minormax2nx8`
 min-OR-max select** (one op picks min vs max). `is_ascending` in the decode log = the
-`IsLT` case. `[HIGH/OBSERVED — the two legal AluOps + the minormax primitive]`
+`IsLT` case.
 
 ### 4.3 Stable
 
 `stable == 1` preserves equal elements' relative order; `stable == 0` "might be faster"
 (header). Because every sorted value carries its original index, stability is *observable*
 in `dst[:,1]`: for a stable sort, ties resolve in increasing original-index order (the
-index acting as a secondary key). `[HIGH/OBSERVED for the flag + the semantics; the
-firmware's stable-vs-unstable code split is MED through the FLIX desync]`
+index acting as a secondary key). `[HIGH/OBSERVED; MED stable split]`
 
 ### 4.4 FP ordering / NaN
 
@@ -345,7 +334,7 @@ backed by the NaN-suppressing relative-bounded min/max (`ivp_rbminnumnxf16t` /
 operand). So NaN handling follows the GPSIMD ordered-compare convention: an ordered
 compare returns false on NaN, and `minNum`/`maxNum` quiet NaN. The exact placement of NaN
 in the final order is NaN-suppressed by the `num`-min/max, but the precise position
-through the desync is MED. `[compare ops HIGH/OBSERVED; NaN order MED]`
+through the desync is MED. `[HIGH compare ops; MED NaN order]`
 
 ### 4.5 Tensor shapes and the size bound
 
@@ -368,8 +357,6 @@ fn sort_tensor_shapes_ok(i) -> bool {
   `N × num_active_channels ≤ 4096` elements; 32-b dtype ⇒ `≤ 2048`. Larger tensors must be
   tiled and (host-side / future-SortMerge) merged.
 
-`[HIGH/OBSERVED]`
-
 > **GOTCHA — the shapes predicate forbids the very top-K the doc-comment advertises.**
 > `sort_tensor_shapes_ok` *hard-requires* `src.num_elem[0] == dst.num_elem[1]` (a full
 > sort: N inputs → N outputs). But the same header's options note says the output "can
@@ -380,8 +367,7 @@ fn sort_tensor_shapes_ok(i) -> bool {
 > `is_valid_s1d2_sort` does not encode (a common pattern where the host-side static
 > validator is stricter than the device). When emitting a top-K, expect the host
 > assembler to either special-case the shape check or pad. The firmware short-Y early-exit
-> itself is MED through the desync. `[predicate HIGH/OBSERVED; top-K relaxation
-> HIGH/OBSERVED from the header note; their reconciliation MED/INFERRED]`
+> itself is MED through the desync. `[HIGH/OBSERVED; MED reconciliation]`
 
 ---
 
@@ -403,8 +389,7 @@ Read it as: the smallest value `0` came from src position 4 (→ `100 + 4 = 104`
 position 0 (→ `100`). The index column is the **arg-sort permutation** offset by
 `index_offset`. This is the **full-ordering generalization** of
 [SparsityCompress](./sparsity-compress-tag.md)'s top-4 `{value, tag}` reduction: Sort
-keeps *all* N elements and *all* N indices, totally ordered. `[HIGH/OBSERVED — header
-verbatim]`
+keeps *all* N elements and *all* N indices, totally ordered. `[HIGH/OBSERVED]`
 
 ### 5.2 Network type
 
@@ -428,9 +413,7 @@ streaming insertion sort and *not* a single top-K fold. Evidence for the network
 - The header's "up to 7.5× faster" parallel-partition claim and the "unstable may be
   faster" note are both consistent with a fixed (data-oblivious) network.
 
-`[primitives HIGH/OBSERVED; the precise network (bitonic vs odd-even-merge vs Batcher)
-MED/INFERRED — the compare-exchange ATOM is byte-OBSERVED; the stage WIRING is inferred
-through the FLIX desync]`
+`[HIGH atom; MED/INFERRED network]`
 
 ### 5.3 The compare-exchange primitive (the network's atom)
 
@@ -461,7 +444,7 @@ addresses are file offsets in the carved blob):
 So the compare-exchange atom is: **COMPARE** (ordered-fp / signed-int → `vbool`) **THEN**
 `dsel`/`minormax` **SWAP**, with the index vector permuted by the *same* `vbool`. The
 per-stage lane permutation is the `ivp_sel2nx8i_s4` immediate pattern (the fixed network
-wiring). `[HIGH/OBSERVED — the compare + dsel + minormax co-bundling]`
+wiring).
 
 In annotated C pseudocode, naming the real recovered IVP intrinsics:
 
@@ -498,8 +481,7 @@ static void sort_compare_exchange_stage(
 }
 ```
 
-`[network family MED/INFERRED; the compare→dsel→minormax atom + the dual index permute
-HIGH/OBSERVED]`
+`[HIGH atom; MED/INFERRED family]`
 
 ### 5.4 The key/value (index) handling — parallel permutation of the payload
 
@@ -521,7 +503,7 @@ u32 indices; the `gather*` stages assemble the index iota / scatter the result).
 indices originate as an **iota** (positions `0..N-1`, then `+ index_offset`) and ride the
 network as the value's tag — a key+VALUE sort. The width duality is direct binary
 evidence of the header's u16/u32 index rule: **161 `nx16t` vs 42 `_2x32t`** dsel/gather
-forms in the CAYMAN Q7 POOL IRAM. `[HIGH/OBSERVED]`
+forms in the CAYMAN Q7 POOL IRAM.
 
 The index-iota seed in pseudocode:
 
@@ -539,8 +521,7 @@ static void sort_seed_indices(vidx *idx, int N, uint32_t index_offset, int dtype
 }
 ```
 
-`[index-iota init MED/INFERRED through the desync; the gather/dsel index-carry
-HIGH/OBSERVED]`
+`[HIGH index-carry; MED iota init]`
 
 ### 5.5 The streaming / working-RAM model
 
@@ -586,8 +567,7 @@ across partitions. **It is not shipped.** `common.h:231` marks it `// SortMerge 
 and `0x98` was reassigned to `TENSOR_SCALAR_SELECT`. There is no `SortMerge` struct, no
 `SortMerge` opcode value in the enum, and no `SortMerge` DEBUG string in any carved image.
 In v0.21.2.0, large-tensor merging is host-side or future; only the single-block Sort
-(`0x96`) ships. `[HIGH/OBSERVED — the "0x97 wip" comment + the absent
-struct/opcode/string]`
+(`0x96`) ships.
 
 ---
 
@@ -611,9 +591,7 @@ struct/opcode/string]`
   **not** admitted (the gate stays 16/32-b).
 
 ⇒ Sort is a **universal (all-gen) POOL instruction**, older than the codec ops added in
-later generations. It is *not* a MARIANA or CAYMAN addition. `[HIGH/OBSERVED — the header
-absence of an nc clause + the struct/opcode present in the sunda arch_isa + the sunda POOL
-firmware primitive census]`
+later generations. It is *not* a MARIANA or CAYMAN addition. `[HIGH/OBSERVED]`
 
 > **NOTE — the SUNDA body-depth question (the FW-47 / IMG-23 residual), resolved.**
 > Opcode `0x96` SORT is defined in the **SUNDA ISA header set**
@@ -633,8 +611,8 @@ firmware primitive census]`
 > the SUNDA presence is **body-deep, not merely header-deep**. The substantive body is in
 > the **NX** POOL image; the **SUNDA Q7 POOL IRAM is a tiny stub**
 > (`SUNDA_Q7_POOL_RELEASE_IRAM_get` → `0x48bf0`, size `0x42d0`, only 4 primitive hits), so
-> a Q7-specific SUNDA "body present" claim would be LOW. `[NX body presence HIGH/OBSERVED
-> — primitive census; the DEBUG-string absence expected; the Q7 stub OBSERVED]`
+> a Q7-specific SUNDA "body present" claim would be LOW.
+> `[HIGH/OBSERVED — NX body + Q7 stub]`
 
 ---
 
@@ -696,8 +674,7 @@ void decode_sort(const NEURON_ISA_TPB_S1D2_SORT_STRUCT *i)
 }
 ```
 
-`[STRUCTURAL HIGH — opcode/struct/binding/strings; the body shape from the OBSERVED
-primitive census; the exact funcVA MED — see GOTCHA]`
+`[STRUCTURAL HIGH; MED funcVA — see GOTCHA]`
 
 > **GOTCHA — the `decode_sort` funcVA is not byte-pinned; the dispatch is structural.**
 > The POOL `kernel_info` table carries **no** FW-18-format `{0,0,spec,0x96,funcVA}` record
@@ -712,8 +689,8 @@ primitive census; the exact funcVA MED — see GOTCHA]`
 > `common.h` + the `instruction_mapping.json` binding + the `debug_assert.h` case + the
 > named `decode_sort`/`DECODE_SORT`/error strings present in the POOL image + the in-image
 > compare-exchange body — *not* to a single byte-exact funcVA jump. This is the standing
-> GPSIMD POOL FLIX-desync + descriptor-dispatch limitation. `[opcode + names + body
-> presence HIGH/OBSERVED; the exact funcVA + the 0x96-indexed jump-table entry MED]`
+> GPSIMD POOL FLIX-desync + descriptor-dispatch limitation.
+> `[HIGH/OBSERVED names + body; MED funcVA]`
 
 ---
 
@@ -735,21 +712,20 @@ primitive census; the exact funcVA MED — see GOTCHA]`
   the compare→vbool + select + min/max core, but SparsityCompress is a *fixed top-4
   reduction* on the DVE engine (`engine_idx = 3`, MARIANA+), whereas Sort is a *full total
   order* on POOL (`0x96`, all gens). Sort's top-K mode (§6a) is the closest analog to
-  SparsityCompress's bounded reduction — but on POOL and totally ordered. `[HIGH/OBSERVED]`
+  SparsityCompress's bounded reduction — but on POOL and totally ordered.
 - **vs the select/shuffle ISA batch.** The Sort compare-exchange *is* the
   [select/shuffle](../../isa/ref/b21-select-shuffle.md) model exactly: COMPARE = an
   ordered-fp / signed-int compare → `vbool`; EXCHANGE = the dual-output two-source lane
   SELECT (`ivp_dselnx16t`/`ivp_dseln_2x32t`) gated by that `vbool`, with the immediate
   `ivp_sel2nx8i_s4` as the fixed network lane-pairing; MIN/MAX = the bounded
   `bmin`/`bmax`/`minormax2nx8` family; INDEX = the `gather*` machinery carrying the
-  position payload through the same permutation. `[HIGH/OBSERVED — the bundle composition
-  matches the select/shuffle model at the mnemonic level]`
+  position payload through the same permutation.
 
 ---
 
 ## 10. Honesty ledger
 
-**HIGH / OBSERVED** (direct disasm / byte / symtab / header / compile this session):
+**HIGH / OBSERVED** (direct disasm / byte / symtab / header / compile):
 
 - `OPCODE_SORT = 0x96`; struct `NEURON_ISA_TPB_S1D2_SORT_STRUCT` (64 B);
   `instruction_mapping.json` binding (`S1D2_SORT → SORT`); `debug_assert.h` case
@@ -764,7 +740,7 @@ primitive census; the exact funcVA MED — see GOTCHA]`
 - Engine = POOL: the "Pool working RAM" statement + the `decode_sort`/`"S: Sort"`/
   `"DECODE_SORT … is_ascending"`/`"unsupported data type for sort"` strings present *only*
   in the POOL images (28 hits in the binary), carved via the
-  `<ARCH>_<NX|Q7>_POOL_*_get` accessors; sha256 `b7c67e89…` reproduced in-task.
+  `<ARCH>_<NX|Q7>_POOL_*_get` accessors; sha256 `b7c67e89…`.
 - The compare-exchange primitive set in the POOL IRAM with byte-coherent FLIX bundles:
   ordered-fp / signed-int compare → `vbool` + dual-select swap + fused min-or-max + bounded
   min/max + immediate lane-pairing + index gather + stream load-compress; the 16-b

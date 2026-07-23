@@ -58,7 +58,7 @@ extracted/aws-neuronx-gpsimd-customop-lib_0.21.2.0_amd64/opt/aws/neuron/gpsimd/
   size   10,276,288 bytes
 ```
 
-This sha256 and size were re-verified this pass (`sha256sum` / `stat`) and match the
+This sha256 and size match the
 [rng-xorwow-sw.md](rng-xorwow-sw.md) and [dropout.md](dropout.md) anchors **exactly**.
 `[HIGH/OBSERVED]`
 
@@ -78,31 +78,28 @@ the host file offset == device VA per the carve identity):
 | `MARIANA_PLUS` | `0x7adf40` / `0x1ef00` | `0x7cce40` / `0x15d80` | corroborated |
 | `MAVERICK` | *(IRAM nm-aliased to DRAM)* | `0x962860` / `0x15480` | string-confirmed |
 
-`[HIGH/OBSERVED — nm addresses + sizes read directly; the per-gen DEBUG availability
-re-checked this pass.]`
-
 > **GOTCHA — these carve VAs name the `Q7_POOL` variant, *not* `NX_POOL`.** The container
 > ships *two* POOL-core images per generation: the `NX_POOL` sequencer (the `'S:'` SEQ
 > front-end) **and** the `Q7_POOL` compute core (the `'P%i:'` math kernels). The RNG math
 > lives on **Q7_POOL**. The carve below is `MARIANA_Q7_POOL_DEBUG_IRAM_get.data`
 > (`0x4e2440`), which is distinct from `MARIANA_NX_POOL_DEBUG_IRAM` (a different image at
 > a different VA). When reproducing, select the **Q7_POOL** symbol — the hashes below pin
-> it. `[HIGH/OBSERVED — nm symbol names disambiguated this pass.]`
+> it.
 
 > **NOTE — SUNDA ships RELEASE-only.** Unlike CAYMAN/MARIANA/MARIANA_PLUS (which each
 > ship both NX_POOL and Q7_POOL DEBUG images) and MAVERICK (Q7_POOL DEBUG only), SUNDA
 > carries no DEBUG image at all — only a RELEASE Q7_POOL flavor. That, plus the empty
 > string scan below, is why SUNDA's RNG absence is provable rather than merely
-> log-stripped. `[HIGH/OBSERVED]`
+> log-stripped.
 
-**Carved this pass** (`dd if=<container> bs=1 skip=<va> count=<size>`, then native
+**Carved** (`dd if=<container> bs=1 skip=<va> count=<size>`, then native
 disasm `xtensa-elf-objdump -D -b binary -m xtensa --adjust-vma=0x0`):
 
-| object (nm symbol) | va / size | sha256 (first 12) | disasm |
+| object (nm symbol) | va / size | sha256 (first 12) | role |
 |---|---|---|---|
-| `MARIANA_Q7_POOL_DEBUG_IRAM` | `0x4e2440` / `0x1ed40` | `47f766292c90` | 49,136 lines, exit 0, empty stderr |
+| `MARIANA_Q7_POOL_DEBUG_IRAM` | `0x4e2440` / `0x1ed40` | `47f766292c90` | the TIE body decoded here |
 | `MARIANA_Q7_POOL_DEBUG_DRAM` | `0x501180` / `0x15d80` | `02cacff07e19` | (string source) |
-| `CAYMAN_Q7_POOL_DEBUG_IRAM` | `0x249020` / `0x1ea40` | `513a8a22d94b` | 48,807 lines (A/B reference) |
+| `CAYMAN_Q7_POOL_DEBUG_IRAM` | `0x249020` / `0x1ea40` | `513a8a22d94b` | A/B reference |
 | `CAYMAN_Q7_POOL_DEBUG_DRAM` | `0x267a60` / `0x15d00` | `226f4254d475` | (SW string source) |
 
 The `CAYMAN_Q7_POOL_DEBUG_IRAM` sha `513a8a22…` and `…DRAM` sha `226f4254…` reproduce the
@@ -110,7 +107,7 @@ SW-path / IMG anchors **exactly**; the `MARIANA_Q7_POOL_DEBUG_IRAM` sha `47f7662
 (full: `47f766292c90a1057b77f5f32b678750491c1d68f00326dbbe166c75b96ef63e`) is the new
 MARIANA anchor for this page. The carve also re-confirms the SEQ-side `NX_POOL` anchors
 `CAYMAN_NX_POOL_DEBUG_IRAM` (`8e4412b9…`, `116768 B`) and `…DRAM` (`7bdf6ed7…`,
-`28448 B`). `[HIGH/OBSERVED]`
+`28448 B`).
 
 > **NOTE — address model.** For these flat DEBUG images, IRAM file-offset == device IRAM
 > VA. A DEBUG-DRAM string at container offset `F` lies at device VA `0x80000 + (F −
@@ -118,15 +115,15 @@ MARIANA anchor for this page. The carve also re-confirms the SEQ-side `NX_POOL` 
 > `const16 a,8 ; const16 a,0x<rel>`. The MARIANA Q7_POOL DRAM begins at container file
 > offset `0x501180`; the TIE-Init string observed at container offset `0x502a2e` sits at
 > DRAM-relative `0x502a2e − 0x501180 = 0x18ae` — exactly the const16 immediate the IRAM
-> loads at `0x759e`. `[HIGH/OBSERVED]`
+> loads at `0x759e`.
 
 ---
 
 ## 2. The SW-vs-TIE boundary, string-offset-exact
 
 A whole-container string sweep (`strings -t x` / `xtensa-elf-strings -t x`) places every
-RNG log string in its generation container by file offset. Re-run this pass, the raw
-hits (container file offsets):
+RNG log string in its generation container by file offset — the raw hits (container
+file offsets):
 
 | string | offsets (container file off) | count |
 |---|---|---|
@@ -137,7 +134,7 @@ hits (container file offsets):
 | `XorwowSetSeeds(TIE)` / `XorwowGetSeeds(TIE)` | (5 each, co-resident) | 5 / 5 |
 | `LfsrSetSeeds` / `LfsrGetSeeds` | (5 each, co-resident with TIE) | 5 / 5 |
 
-`[HIGH/OBSERVED — every offset read directly from the string sweep this pass.]` The
+`[HIGH/OBSERVED]` The
 two `(SW)` hits land in `CAYMAN_Q7_POOL_DEBUG_DRAM` (`0x26930e`) and the CAYMAN
 dynamic-kernel-load DEBUG variant (`0x2b6adb`); the five `(TIE)` hits span MARIANA,
 MARIANA_PLUS, and MAVERICK Q7_POOL DEBUG (+ their DKL variants), as range-mapped by nm.
@@ -147,9 +144,9 @@ presence**, the answer to *"all generations or only the newer silicon?"*:
 
 | GEN | RNG presence | proof |
 |---|---|---|
-| `SUNDA` | **no RNG handler at all** | no `xorwow`/`lfsr` string anywhere in the SUNDA payload region; **all** Xorwow-family offsets are ≥ `0x1d0960`, the lowest of which lies in `CAYMAN_NX_POOL_DEBUG_DRAM` — none in SUNDA. SUNDA is RELEASE-only. `[HIGH/OBSERVED]` |
-| `CAYMAN` | **SOFTWARE Xorwow only** | both `(SW)` strings (`0x26930e`, `0x2b6adb`) fall in the CAYMAN Q7 DEBUG / DKL-DEBUG DRAM; **no** `(TIE)`, **no** `Lfsr`. `[HIGH/OBSERVED — see rng-xorwow-sw.md]` |
-| `MARIANA` | **Xorwow(TIE) + LFSR** | `(TIE)` Init `0x502a2e`, `XorwowRng(TIE)` `0x5030e6`, plus `LfsrSetSeeds`/`LfsrGetSeeds`. `[HIGH/OBSERVED]` |
+| `SUNDA` | **no RNG handler at all** | no `xorwow`/`lfsr` string anywhere in the SUNDA payload region; **all** Xorwow-family offsets are ≥ `0x1d0960`, the lowest of which lies in `CAYMAN_NX_POOL_DEBUG_DRAM` — none in SUNDA. SUNDA is RELEASE-only. |
+| `CAYMAN` | **SOFTWARE Xorwow only** | both `(SW)` strings (`0x26930e`, `0x2b6adb`) fall in the CAYMAN Q7 DEBUG / DKL-DEBUG DRAM; **no** `(TIE)`, **no** `Lfsr`. |
+| `MARIANA` | **Xorwow(TIE) + LFSR** | `(TIE)` Init `0x502a2e`, `XorwowRng(TIE)` `0x5030e6`, plus `LfsrSetSeeds`/`LfsrGetSeeds`. |
 | `MARIANA_PLUS` | **Xorwow(TIE) + LFSR** | the MPLUS build of MARIANA; same string set at `0x7ce6ee`/`0x7ceda6`/`0x81c39b`/`0x81c81a` (DEBUG + DKL). `[HIGH/OBSERVED strings]` |
 | `MAVERICK` | **Xorwow(TIE) + LFSR** | `(TIE)` Init `0x96400e`, `XorwowRng(TIE)` `0x9646c6`, `Lfsr*` present. **String HIGH; body INFERRED** (IRAM nm-aliased to DRAM `0x962860`). |
 
@@ -157,8 +154,7 @@ presence**, the answer to *"all generations or only the newer silicon?"*:
 > runtime branch.** The `(SW)` and `(TIE)` strings are **never co-resident** in one
 > Q7_POOL image: CAYMAN ships the SW kernel object, MARIANA+ ship the "TIE"-build kernel
 > object. *Within* a TIE image the only runtime RNG branch is the Xorwow-vs-LFSR
-> `rand_algo` select (§8). There is no per-image SW↔TIE runtime fork. `[HIGH/OBSERVED —
-> the strings live in distinct generation containers.]`
+> `rand_algo` select (§8). There is no per-image SW↔TIE runtime fork.
 
 The boundary therefore reads: **`(TIE)` + LFSR appear on MARIANA and newer; CAYMAN is
 SW-only; SUNDA has no RNG.** The newer label is generation+build, not a new RNG opcode.
@@ -185,8 +181,7 @@ DRAM-relative string offset is the const16 immediate loaded at the xref site.
 | `0x1f4a` | `Rng : num_chans = %0d` | `0xbf90` | `0xbf74` (`entry 48`) | Rng top dispatcher |
 | `0x1f66` | `XorwowRng(TIE)` | `0xbd57` | `0xbc78` (`entry a1,0x100`) | **the DRIVER** |
 
-`[HIGH/OBSERVED — every const16 xref + enclosing `entry` read directly from
-MAR_IRAM.dis.]`
+`[HIGH/OBSERVED]`
 
 The call graph (HIGH/OBSERVED at every `call8` edge):
 
@@ -209,11 +204,11 @@ TIE Init 0x7588 --(log 0x18ae)--> 5 seed const16 + 5 broadcast call8
 **Structural deltas vs the CAYMAN SW map** (cf [rng-xorwow-sw.md](rng-xorwow-sw.md) §2):
 
 - **TIE Init frame is LARGER**: `0x7588: entry a1,0x400` (1024 B) vs SW `0x749c: entry
-  a1,0x200` (512 B). Both confirmed by direct read this pass. `[HIGH/OBSERVED]` The larger
+  a1,0x200` (512 B). The larger
   frame is working space, not state (the 6-word state size is inherited — §7).
 - **The Set/Get bodies are now SHARED entries** (`0xb6dc` / `0xb9ec`) that fork
   *internally* to the Lfsr or Xorwow log. On CAYMAN, `XorwowSetSeeds`/`GetSeeds` had their
-  own dedicated entries — the LFSR second algo is what merged them. `[HIGH/OBSERVED]`
+  own dedicated entries — the LFSR second algo is what merged them.
 - **The TIE DRIVER `0xbc78` carries early extra setup** — calls `0x9f40`/`0x9f90` and
   `const16 a0,0x8362` (twice), plus slot-0 bytes the linear sweep renders as
   `break 0,12 / break 0,2 / break 0,0`. These are **not** present in the SW driver. They
@@ -261,19 +256,20 @@ void xorwow_tie_init(state_t *st /* DRAM scratch */) {
 }
 ```
 
-**Arithmetic identity (the smoking gun), all const16 immediates byte-read this pass:**
+**Arithmetic identity (the smoking gun) — all const16 immediates byte-read**
+`[HIGH/OBSERVED]`**:**
 
 | seed | low16 const16 | bytes | value | Marsaglia default | verdict |
 |---|---|---|---|---|---|
-| x | `0xcd15` | `2415cd` | `0x075BCD15` | 123456789 | MATCH `[HIGH/OBSERVED]` |
-| y | `0x55e5` | `24e555` | `0x159A55E5` | 362436069 | MATCH `[HIGH/OBSERVED]` |
-| z | `0x3bb5` | `24b53b` | `0x1F123BB5` | 521288629 | MATCH `[HIGH/OBSERVED]` |
-| w | *(via 0x8864)* | — | `0x05491333` | 88675123 | MATCH (4th broadcast) `[HIGH/OBSERVED]` |
-| v | `0x3f19` | `24193f` | `0x00583F19` | 5783321 | MATCH `[HIGH/OBSERVED]` |
+| x | `0xcd15` | `2415cd` | `0x075BCD15` | 123456789 | MATCH |
+| y | `0x55e5` | `24e555` | `0x159A55E5` | 362436069 | MATCH |
+| z | `0x3bb5` | `24b53b` | `0x1F123BB5` | 521288629 | MATCH |
+| w | *(via 0x8864)* | — | `0x05491333` | 88675123 | MATCH (4th broadcast) |
+| v | `0x3f19` | `24193f` | `0x00583F19` | 5783321 | MATCH |
 
 > **NOTE — the seed VECTOR is unchanged from CAYMAN SW.** These are byte-for-byte the
 > same five canonical Marsaglia Xorwow default seeds the [SW path](rng-xorwow-sw.md) §3
-> loads. The TIE build did **not** re-seed. `[HIGH/OBSERVED]`
+> loads. The TIE build did **not** re-seed.
 
 > **GOTCHA — the `d` (Weyl counter) init constant diverges by one nibble between SW and
 > TIE, and it is MED in *both*.** MARIANA loads `const16 a6,0xc924` (`6424c9` @`0x7617`);
@@ -303,7 +299,7 @@ st->d += 362437;                /* "d += 362437" applied to all lanes        */
 ```
 
 The same `movi.n a2,5 ; const16 a2,0x87c5` pair appears in the CAYMAN SW driver at
-`0xba5d`/`0xba5f`. Both byte-sequences read this pass:
+`0xba5d`/`0xba5f`. Both byte-sequences:
 
 | image | addr | bytes | decode |
 |---|---|---|---|
@@ -321,12 +317,11 @@ The same `movi.n a2,5 ; const16 a2,0x87c5` pair appears in the CAYMAN SW driver 
 The TIE driver's vector setup/core `0xcda8` logs DRAM `0x2092` =
 `TensorTensorArith num_chans = %0d` — it enters the **same** generic parameterized
 tensor_tensor vector-ALU engine the CAYMAN SW path enters (CAYMAN's core `0xc91c` logs
-the identical `TensorTensorArith`; the MARIANA hit was re-confirmed this pass at
+the identical `TensorTensorArith`; the MARIANA hit is at
 container offset `0x503212`, DRAM-relative `0x2092`). The xorshift is therefore
 **composed from the generic int vector ALU primitives** (xor / sll / srl / add — the
 ISS value grid `xor_512 / sll_u / srl_u / add_32`), exactly as on CAYMAN. **No dedicated
-RNG / shift-register instruction is issued.** `[HIGH/OBSERVED — the TensorTensorArith log
-+ the ISA having no RNG opcode, §6.]`
+RNG / shift-register instruction is issued.**
 
 The Marsaglia inner loop the six ALU steps + one Weyl add realize is the textbook form
 (operation count matches the SW page's six-step decomposition):
@@ -356,14 +351,13 @@ uint32_t xorwow_draw(state_t *st) {
 
 ## 6. The ISA / value-oracle boundary — no RNG TIE op exists
 
-This is the decisive negative, proven two independent ways and re-grepped this pass.
+This is the decisive negative, proven two independent ways.
 
 ### 6.1 ISA decode tables (`libisa-core.so`, `ncore2gp` config)
 
 `nm libisa-core.so | rg -i 'xorwow|lfsr|prng'` returns **zero**. There is **no** opcode
 named rng/xorwow/lfsr/prng and **no** rng/seed/xorwow state-register or user-register.
-The only `rand`-stemmed symbols are the **reduce-AND-bool** predicate-reduction family,
-re-read this pass:
+The only `rand`-stemmed symbols are the **reduce-AND-bool** predicate-reduction family:
 
 ```
 Iclass_IVP_RANDBN_args      Iclass_IVP_RANDBN_2_args      Iclass_IVP_RANDBN_stateArgs
@@ -378,20 +372,19 @@ Opcode_ivp_randb2n_Slot_f0_s1_ld_encode   ... (per-FLIX-slot encode functions)
 > reduce-OR-bool. Its iclass is `Iclass_IVP_RANDBN_args`. It operates on a **64-bit vbool
 > predicate register**, not 32-bit data lanes, and has nothing to do with RNG. A
 > reimplementer searching for "the rng op" by the `rand` stem will find this and must
-> *not* mistake it. `[HIGH/OBSERVED — symbol family + iclass names + the fiss body in
-> 6.2.]`
+> *not* mistake it. `[HIGH/OBSERVED]`
 
 > **NOTE — the ISA mnemonic total.** The nm-grounded distinct-opcode count is roughly
 > **1517** (`Opcode_*_args`) / **1432** iclasses; an earlier synthesis cited 1534. The
 > exact roster size is immaterial to this page — what matters is that **none** of the
-> opcodes is an RNG primitive — but the figure is flagged here for the per-Part reconcile.
-> `[HIGH the zero-RNG-opcode finding / the exact roster count is a reconcile item.]`
+> opcodes is an RNG primitive — but the discrepancy is flagged as unresolved.
+> `[HIGH zero-RNG-opcode; count unresolved]`
 
 ### 6.2 The value oracle (`libfiss-base.so`)
 
 `nm libfiss-base.so | rg -i 'xdref.*(xorwow|lfsr|prng|weyl|rng_)'` returns **zero**: no
 RNG datapath primitive is in the value contract. The `randbn` family bodies are the bool
-bit-reductions, at the exact addresses re-read this pass:
+bit-reductions, at these addresses:
 
 | symbol | addr | semantics |
 |---|---|---|
@@ -402,21 +395,20 @@ bit-reductions, at the exact addresses re-read this pass:
 
 > **CORRECTION (vs an earlier synthesis) — the OR-bool reduction body is at `0x81ce30`,
 > not `0x81cc70`.** Address `0x81cc70` actually holds `module__xdref_rorb2n_64_64` (the
-> `rorb2n` sibling); the true `module__xdref_rorbn_64_64` is at `0x81ce30`, re-confirmed
-> this pass. Neither is an RNG primitive. `[HIGH/OBSERVED]`
+> `rorb2n` sibling); the true `module__xdref_rorbn_64_64` is at `0x81ce30`. Neither is an
+> RNG primitive.
 
 > **NOTE — the `xdref` symbol count.** `nm | rg -c 'xdref'` reports **866** symbols
 > bearing the `xdref` stem (an earlier synthesis cited 864). Either way the count is
-> irrelevant to the finding: **none** of them is an RNG primitive. `[HIGH/OBSERVED — the
-> absence is the point, not the exact count.]`
+> irrelevant to the finding: **none** of them is an RNG primitive.
 
 > **WALL — the libtie state-descriptor question is *moot* for RNG.** A future libtie /
 > ISS extraction can only describe a *state descriptor* for an opcode that exists. With no
 > RNG opcode in `libisa-core.so` and no RNG datapath in `libfiss-base.so`, there is **no
 > RNG hardware state for a libtie descriptor to describe**. If a later extraction surfaces
 > a vendor "XorwowRng TIE" descriptor, it would describe this *generic vector-ALU
-> composition*, not a new opcode — cite this boundary. `[HIGH/OBSERVED for the ISA + fiss;
-> the descriptor question is closable-with-license but its answer is bounded.]`
+> composition*, not a new opcode — cite this boundary.
+> `[HIGH/OBSERVED; closable-with-license]`
 
 ---
 
@@ -433,20 +425,19 @@ register. Three independent witnesses:
    `[HIGH/OBSERVED]`
 2. **No RNG state register exists in the ISA** (§6). The only UR/SR ops anywhere near the
    MARIANA POOL RNG band are the standard `wur.fsr` / `wur.fcr` (FP status/control), far
-   from the RNG band. `[HIGH/OBSERVED]`
+   from the RNG band.
 3. **The Set/Get checkpoint interface reads/writes the 6-word state from/to the
    DRAM-scratch operand** exactly as the SW path does (§3, the shared `0xb6dc`/`0xb9ec`
    bodies). If hardware held the state there would be a state-register save/restore op
-   instead — there is none. `[HIGH/OBSERVED]`
+   instead — there is none.
 
 **Conclusion:** only the **mix** (the per-draw xorshift+Weyl compute) is "offloaded", and
 even that mix runs through the **generic `TensorTensorArith`** vector engine, not a
 dedicated RNG datapath. So `(TIE)` here is a build/generation variant of the *same*
 software composition — possibly with a different vector-ALU schedule/mode on the newer
-silicon (the `0x8362` config setup of §3), but **not** a hardware state machine.
-`[HIGH that state is in DRAM + no RNG SR / OBSERVED ; the "different schedule on newer
-silicon" reading is MED/INFERRED — the exact acceleration the build enables is inside the
-FLIX-desync'd driver setup, not byte-pinned.]`
+silicon (the `0x8362` config setup of §3), but **not** a hardware state machine. The
+exact acceleration the build enables is inside the FLIX-desync'd driver setup and is not
+byte-pinned. `[HIGH/OBSERVED state; MED schedule]`
 
 > **GOTCHA — the exact TIE state-buffer byte size is MED here.** On the SW path a clean
 > `movi a12,0x180 ; call8 <memset>` pinned the state buffer at **384 bytes** (= 6 words ×
@@ -454,8 +445,8 @@ FLIX-desync'd driver setup, not byte-pinned.]`
 > *inside* desync'd ivp bundles, not as a clean `movi`, so the exact TIE byte-size is MED.
 > The **6-word model is HIGH-inherited** (the get/set bodies show the 6 unrolled per-word
 > writes); the larger `0x400` Init frame is working space, **not** state. Treat 384 B as
-> the inherited expectation, not a fresh TIE read. `[MED/INFERRED for the exact byte-size;
-> 6-word model HIGH-inherited.]`
+> the inherited expectation, not a fresh TIE read.
+> `[MED byte-size; HIGH 6-word model]`
 
 ---
 
@@ -464,7 +455,7 @@ FLIX-desync'd driver setup, not byte-pinned.]`
 The SEQ front-end is **unchanged** across CAYMAN / MARIANA / MARIANA_PLUS: the NX_POOL
 sequencer still carries `"S: Rng (XORWOW)"` (the decode/log/route front-end) and
 `"S: Rand{Get,Set}State : rand_algorithm(0x%x) not currently supported on POOL"` (the
-unsupported-algo error arm). Re-grepped this pass at container offsets `0x1d0960`
+unsupported-algo error arm), at container offsets `0x1d0960`
 (`Rng (XORWOW)`), `0x1cea91`/`0x1cead9` (CAYMAN not-supported arms), `0x468401`/`0x468449`
 (MARIANA), `0x732881`/`0x7328c9` (MARIANA_PLUS), etc. The SEQ-side `(XORWOW)` label has
 **no** SW/TIE qualifier — the SW/TIE distinction is purely on the Q7 compute-core
@@ -488,12 +479,12 @@ void rand_set_seeds(args_t *a) {
 ```
 
 So `rand_algo` **bit0** selects Xorwow vs LFSR on MARIANA+ (vs CAYMAN, where bit0=Xorwow
-was the *only* wired arm). `[HIGH/OBSERVED the `bbci`/`extui` fork.]`
+was the *only* wired arm).
 
 > **GOTCHA — the exact Lfsr-vs-Xorwow bit polarity is MED.** Both log calls are reached
 > under the FLIX-desync'd selector, so *which* bit0 value selects *which* algorithm is
-> MED. [rng-lfsr-dispatch.md](rng-lfsr-dispatch.md) owns the full decode. `[MED — the fork
-> exists HIGH; the polarity is MED.]`
+> MED. [rng-lfsr-dispatch.md](rng-lfsr-dispatch.md) owns the full decode.
+> `[HIGH fork; MED polarity]`
 
 ---
 
@@ -503,10 +494,9 @@ was the *only* wired arm). `[HIGH/OBSERVED the `bbci`/`extui` fork.]`
 
 The TIE Xorwow draw is a **`uint32` per lane** (`out = v + d`, both 32-bit) — the 32-bit
 state words + the 32-bit Weyl add are inherited from the SW path unchanged.
-`[HIGH/OBSERVED — same 32-bit state, same Weyl add.]`
+`[HIGH/OBSERVED]`
 
-The `0x3F800000` (1.0f) float seam is **present and byte-identical** to CAYMAN, re-read
-this pass:
+The `0x3F800000` (1.0f) float seam is **present and byte-identical** to CAYMAN:
 
 | image | addr | bytes | decode |
 |---|---|---|---|
@@ -514,8 +504,7 @@ this pass:
 | CAYMAN SW | `0xb88d` / `0xb890` | `24803f` / `24803f` | `const16 a2,0x3f80` ×2 |
 
 `0x3f80` is the high half of `0x3F800000`, the IEEE-754 `1.0f` exponent/leading bits —
-the same optional `uint32 → float[0,1)` cast seam. `[HIGH/OBSERVED the constant ; the
-exact mantissa-fill cast is MED through the FLIX desync, as on the SW path.]`
+the same optional `uint32 → float[0,1)` cast seam. `[HIGH constant; MED mantissa cast]`
 
 ### 9.2 The Dropout consumer relationship
 
@@ -537,8 +526,7 @@ constant above points at. Dropout then does `random < p → vbool predicate`
 > choice does **not** change the `uint32` output ABI. Whether CAYMAN's SW kernel or
 > MARIANA+'s "TIE"-build kernel stages the random tensor, the Dropout consumer sees the
 > same `uint32` contract and applies the same `ivp_ufloatn_2x32t` cast. The producer
-> build is invisible to the consumer. `[HIGH the uint32 invariance / OBSERVED ; the
-> staged-tensor cross-engine path is INFERRED-HIGH per the Dropout decode.]`
+> build is invisible to the consumer. `[HIGH/OBSERVED invariance; INFERRED path]`
 
 ---
 
@@ -546,20 +534,20 @@ constant above points at. Dropout then does `random < p → vbool predicate`
 
 | property | CAYMAN SW ([sw](rng-xorwow-sw.md)) | MARIANA+ "TIE" (this page) | verdict |
 |---|---|---|---|
-| algorithm | Marsaglia Xorwow | Marsaglia Xorwow | IDENTICAL `[HIGH]` |
-| default seeds x..v | `cd15`/`55e5`/`3bb5`/`../3f19` | `cd15`/`55e5`/`3bb5`/`../3f19` | IDENTICAL `[HIGH]` |
-| Weyl increment | `362437=0x587C5` (`24c587`) | `362437=0x587C5` (`24c587`) | BYTE-IDENTICAL `[HIGH]` |
-| state location | DRAM scratch, 6-word/lane | DRAM scratch, 6-word/lane | IDENTICAL `[HIGH]` |
-| HW state register | none | none | none `[HIGH]` |
-| mix engine | generic `TensorTensorArith` | generic `TensorTensorArith` | IDENTICAL `[HIGH]` |
-| dedicated RNG opcode | NONE | NONE | NONE `[HIGH]` |
-| RNG fiss primitive | NONE | NONE | NONE `[HIGH]` |
-| output dtype | `uint32` (`+0x3f80` seam) | `uint32` (`+0x3f80` seam) | IDENTICAL `[HIGH]` |
-| second algo (LFSR) | absent | present (`Lfsr Set/GetSeeds`) | TIE-NEW `[HIGH]` |
-| Init frame | `entry a1,0x200` | `entry a1,0x400` | TIE LARGER `[HIGH]` |
+| algorithm | Marsaglia Xorwow | Marsaglia Xorwow | IDENTICAL |
+| default seeds x..v | `cd15`/`55e5`/`3bb5`/`../3f19` | `cd15`/`55e5`/`3bb5`/`../3f19` | IDENTICAL |
+| Weyl increment | `362437=0x587C5` (`24c587`) | `362437=0x587C5` (`24c587`) | BYTE-IDENTICAL |
+| state location | DRAM scratch, 6-word/lane | DRAM scratch, 6-word/lane | IDENTICAL |
+| HW state register | none | none | none |
+| mix engine | generic `TensorTensorArith` | generic `TensorTensorArith` | IDENTICAL |
+| dedicated RNG opcode | NONE | NONE | NONE |
+| RNG fiss primitive | NONE | NONE | NONE |
+| output dtype | `uint32` (`+0x3f80` seam) | `uint32` (`+0x3f80` seam) | IDENTICAL |
+| second algo (LFSR) | absent | present (`Lfsr Set/GetSeeds`) | TIE-NEW |
+| Init frame | `entry a1,0x200` | `entry a1,0x400` | TIE LARGER |
 | driver extra setup | — | `0x9f40`/`0x9f90`, `const16 0x8362` ×2 | TIE-NEW `[MED — desync]` |
-| consumer (Dropout) | reads `uint32` rand tensor → `ivp_ufloatn_2x32t` | SAME `uint32` contract | INVARIANT `[HIGH]` |
-| SW/TIE select | n/a (SW only) | GENERATION/BUILD object | compile-time `[HIGH]` |
+| consumer (Dropout) | reads `uint32` rand tensor → `ivp_ufloatn_2x32t` | SAME `uint32` contract | INVARIANT |
+| SW/TIE select | n/a (SW only) | GENERATION/BUILD object | compile-time |
 
 **The bottom line:** `(TIE)` is a generation/build variant **label** on the *same*
 software Xorwow algorithm — same seeds, same Weyl, same DRAM state, same generic vector
@@ -574,11 +562,10 @@ hook, inside the FLIX-desync'd span.
 
 ## 11. Honesty ledger
 
-**HIGH / OBSERVED** (direct disasm, byte read, symtab read, or arithmetic identity, all
-re-grounded this pass):
+**HIGH / OBSERVED** (direct disasm, byte read, symtab read, or arithmetic identity):
 
 - Container sha256 `b7c67e89…` / 10,276,288 B; MARIANA Q7_POOL DEBUG IRAM carve sha
-  `47f76629…` (49,136 disasm lines, exit 0); CAYMAN Q7_POOL DEBUG IRAM carve sha
+  `47f76629…`; CAYMAN Q7_POOL DEBUG IRAM carve sha
   `513a8a22…` (A/B reference); SEQ-side NX_POOL anchors `8e4412b9…` / `7bdf6ed7…`.
 - The RNG-string sweep placing every `(SW)`/`(TIE)`/`Lfsr` string in its generation
   container by file offset; per-gen presence (SUNDA none / CAYMAN SW-only / MARIANA+

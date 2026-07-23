@@ -20,21 +20,21 @@ a different opcode, a different engine, a different struct, a different RNG doma
 This is the **Cadence Vision-Q7 GPSIMD compute core's** own firmware — windowed-ABI Xtensa
 code on the `ncore2gp` (Cairo) core — together with the **NX/SEQ sequencer** front-end that
 validates the operand before it reaches the compute core. Every device fact below is
-byte-pinned to a carve re-derived this session from `libnrtucode_internal.so`; every host-ISA
+byte-pinned to a carve from `libnrtucode_internal.so`; every host-ISA
 fact is read out of the public `aws_neuron_isa_tpb_*.h` headers shipped in the same
-customop-lib package and **gcc-compiled this session** for offset/sizeof ground truth.
+customop-lib package and **gcc-compiled** for offset/sizeof ground truth.
 Confidence and evidence tags follow the project
 [Confidence & Walls Model](../../reference/confidence-model.md): **HIGH/MED/LOW** ×
 **OBSERVED/INFERRED/CARRIED**.
 
-> **NOTE — what was used, and the exact objects.** The firmware container is
+> **NOTE — the objects used.** The firmware container is
 > `…/custom_op/c10/lib/libnrtucode_internal.so` (`10,276,288 B`, sha256 `b7c67e898a116454…`
-> — the FW-26/FW-27/FW-28/FW-41 anchor, re-verified in-task). The host ISA headers live under
+> — the FW-26/FW-27/FW-28/FW-41 anchor). The host ISA headers live under
 > `…/custom_op/c10/include/neuron_{sunda,cayman,mariana,maverick}_arch_isa/tpb/`
-> (= NeuronCore v2/v3/v4/v5). The two operand structs `S1_RAND` (set) and `D4_RAND` (get) were
-> compiled with `gcc` against the **mariana**, **sunda** and **maverick** headers; all reported
-> `sizeof`/`offsetof` values below are emitted by that compile, not transcribed. The string
-> sweep counts are `strings -a … \| rg -F -c` over the binary. `[HIGH/OBSERVED]`
+> (= NeuronCore v2/v3/v4/v5). The two operand structs `S1_RAND` (set) and `D4_RAND` (get) are
+> compiled with `gcc` against the **mariana**, **sunda** and **maverick** headers; the
+> `sizeof`/`offsetof` values below are emitted by that compile. The string-sweep counts are
+> `strings -a … \| rg -F -c` over the binary.
 
 ---
 
@@ -44,11 +44,11 @@ Confidence and evidence tags follow the project
    `NEURON_ISA_TPB_OPCODE` enum gives
    `RAND_GET_STATE = 0x77` and `RAND_SET_STATE = 0x78`, each flagged `// Y` (maintained) in
    **every** gen's `aws_neuron_isa_tpb_common.h`
-   (sunda L207/208, cayman L210/211, mariana L215/216, maverick L218/219). `[HIGH/OBSERVED]`
+   (sunda L207/208, cayman L210/211, mariana L215/216, maverick L218/219).
 2. **`0x77` is GET (save), `0x78` is SET (restore) — not swapped.** The enum order is explicit
    (`RAND` 0x76 → `RAND_GET_STATE` 0x77 → `RAND_SET_STATE` 0x78), and the struct binding
    confirms the polarity: GET takes the **destination-tensor** struct, SET takes the
-   **source-tensor** struct (§3). `[HIGH/OBSERVED]`
+   **source-tensor** struct (§3).
 3. **The operand structs are compile-verified 64 B.** `0x78 RAND_SET_STATE → S1_RAND_STRUCT`
    (`sizeof==64`, `src_mem_pattern@16` SBUF-only); `0x77 RAND_GET_STATE → D4_RAND_STRUCT`
    (`sizeof==64`, `dst_mem_pattern@44` SBUF+PSUM, shared with the legacy `RAND` 0x76). Both
@@ -56,24 +56,23 @@ Confidence and evidence tags follow the project
 4. **The saved state is the per-lane PRNG state buffer in memory**, not a hardware register.
    The firmware logs *"Initializing XORWOW state in DRAM scratch"*; the ISA register roster has
    **no** RNG/seed/xorwow state SR/UR. The Get/Set interface exists precisely because the state
-   is addressable memory. `[HIGH/OBSERVED]`
+   is addressable memory.
 5. **The state width is a function of `(engine, generator, algorithm)`** and is fixed by the
    host validators' `legal_combinations` table: Pool keeps Xorwow=6 / LFSR=1 / Philox=7 u32
    words; the wider DVE lanes keep Xorwow=24 / LFSR=4; Act keeps LFSR=2. The `dtype` is `UINT32`
-   on every arm. `[HIGH/OBSERVED — s1_rand.h / d4_rand.h verbatim]`
+   on every arm.
 6. **The dispatch is `SEQ → 0xf0 ExtendedInst → per-engine body`.** The NX/SEQ front-end logs
    `S: RandGetState`/`S: RandSetState`; the `0xf0` extended-instruction escape registers
    `ExtendedInstRandGetState`/`ExtendedInstRandSetState`; the per-engine body forks on
    `rand_algorithm` into the shared `Set`/`GetSeeds` bodies (the **same** fork the draw path
-   uses). `[HIGH/OBSERVED]`
+   uses).
 7. **Per-gen handler presence trails the opcode.** The opcode is `// Y` everywhere, but the
    working algo bodies arrive incrementally: SUNDA defines the op but wires **only** Pool+Philox
    (its `rand_algo` enum has no XORWOW); CAYMAN adds software Xorwow; MARIANA adds LFSR and the
    multi-engine (Pool/DVE/Act) surface; **MAVERICK keeps Pool+DVE but drops the Act arm** (§6).
-   `[HIGH/OBSERVED]`
 8. **These two close the datapath-RNG opcode surface** (§8) and are kept distinct from the PE
    stochastic-rounding seed op `0x08 PeManageSeed` (§7) and the one-shot `SET_RNG_SEED` pseudo
-   `0xd0` (§7.3). `[HIGH/OBSERVED]`
+   `0xd0` (§7.3).
 
 ---
 
@@ -102,7 +101,7 @@ generator the kernel selects. `[HIGH/OBSERVED — common.h L163/187/214/223/302]
 > **GOTCHA — do not read `RAND` (0x76, `// n`) as a synonym for the seed-state ops.** `0x76` is
 > the legacy *draw* op (dormant); `0x77`/`0x78` are the *checkpoint* ops (maintained). They
 > share the `D4_RAND` struct on the GET side (§3) but are different opcodes with different
-> semantics. `[HIGH/OBSERVED]`
+> semantics.
 
 ---
 
@@ -149,10 +148,10 @@ Two state-input modes, encoded in `update_state`:
   *restore from a checkpoint tensor* path.
 * `update_state != SRC_TENSOR` (`IMM_SINGLE`/`IMM_LANE`): the state comes inline from
   `imm_state[]`. The only inline-legal generator is Philox, and even then `imm_state[7] == 0`
-  is required (`has_valid_rand_set_state_imm`, `s1_rand.h` L162-175). `[HIGH/OBSERVED]`
+  is required (`has_valid_rand_set_state_imm`, `s1_rand.h` L162-175).
 
 The `src_mem_pattern` is validated `tensor1d_valid(…, WriteTensor::False, AllowedInPSUM::False,
-AllowedInSBUF::True)` — i.e. a **read-only SBUF source** (`s1_rand.h` L128-131). `[HIGH/OBSERVED]`
+AllowedInSBUF::True)` — i.e. a **read-only SBUF source** (`s1_rand.h` L128-131).
 
 ### 3b. `0x77 RAND_GET_STATE` → `D4_RAND_STRUCT` (the DST / save variant, 64 B, shared with `0x76 RAND`)
 
@@ -173,7 +172,7 @@ Compile-verified offsets (`gcc … ; offsetof`; `ISA_STATIC_ASSERT(sizeof==64)`)
 | 35 | `reserved2[9]` | `uint8_t[9]` (9) | must be 0 |
 | 44 | `dst_mem_pattern` | `TENSOR4D` (20) | **the STATE OUTPUT, SBUF+PSUM** |
 
-`sizeof(NEURON_ISA_TPB_D4_RAND_STRUCT) == 64` `[HIGH/OBSERVED — gcc compile, all gens]`.
+`sizeof(NEURON_ISA_TPB_D4_RAND_STRUCT) == 64`.
 
 GET reuses the `RAND` op's 4D struct because it **writes** the state out to a 4D destination.
 The Rand-op-specific fields (`rand_num_steps`, `post_process`, `params`) are all forced to 0 by
@@ -181,13 +180,12 @@ The Rand-op-specific fields (`rand_num_steps`, `post_process`, `params`) are all
 degenerates to *(algorithm, generator, dtype=UINT32, num_active_channels, dst_mem_pattern)*. The
 `dst_mem_pattern` is validated `tensor4d_valid(…, WriteTensor::True, AllowedInPSUM::True,
 AllowedInSBUF::True)` — a **writable** tensor allowed in PSUM **or** SBUF (`d4_rand.h` L213-216).
-`[HIGH/OBSERVED]`
 
 > **QUIRK — the source/destination asymmetry is the whole design.** SET reads from an SBUF-only
 > `TENSOR1D` source (`@16`, read-only); GET writes to an SBUF-or-PSUM `TENSOR4D` destination
 > (`@44`, writable). GET is broader (PSUM allowed) because dumping state to a PSUM bank is cheap;
 > SET is narrower (SBUF-only) because the restore source is a model-supplied tensor. The two are
-> a deliberate checkpoint pair, not symmetric mirror ops. `[HIGH/OBSERVED]`
+> a deliberate checkpoint pair, not symmetric mirror ops.
 
 ### 3c. The element-count contract (the state width is encoded in the tensor shape)
 
@@ -195,7 +193,7 @@ The number of u32 state words is **not** a struct field — it is the element co
 tensor, checked by `rand_set_state_elem_cnt(i, N)` (`src_mem_pattern.num_elem[0] == N`,
 `s1_rand.h` L133-135) and `rand_get_state_elem_cnt(i, N)`
 (`t4d_element_count(dst_mem_pattern) == N`, `d4_rand.h` L249-251). `N` is fixed per
-`(engine, generator, algorithm)` by the `legal_combinations` validators (§4). `[HIGH/OBSERVED]`
+`(engine, generator, algorithm)` by the `legal_combinations` validators (§4).
 
 ---
 
@@ -217,13 +215,12 @@ has a single Philox arm — so **SET has 8 legal arms, GET has 7** on mariana.
 | DVE | `OUTPUT_CVT_LFSR (3)` | `LFSR (0)` | **4** | DVE output-convert LFSR |
 | Act | `OUTPUT_CVT_LFSR (3)` | `LFSR (0)` | **2** | mariana-only (dropped on maverick, §6) |
 
-`[HIGH/OBSERVED — the eight s1_rand.h arms L64-125 / seven d4_rand.h arms L219-247; every arm
-pins `in_dtype/dtype == UINT32`.]`
+`[HIGH/OBSERVED — every arm pins UINT32]`
 
 > **NOTE — `update_state == SRC_TENSOR` on every restore arm.** All eight SET arms except the
 > first Philox arm (`IMM_SINGLE`) require `update_state == SRC_TENSOR`. The lone `IMM_SINGLE`
 > arm is the inline-Philox seed/restore path (`s1_rand.h` L64-69). Every restore from a
-> *checkpoint tensor* uses `SRC_TENSOR`. `[HIGH/OBSERVED]`
+> *checkpoint tensor* uses `SRC_TENSOR`.
 
 ### 4a. Which RNG state (the answer)
 
@@ -231,11 +228,11 @@ pins `in_dtype/dtype == UINT32`.]`
   hardware state register.** The firmware string `Xorwow(SW)/Xorwow(TIE) : Initializing XORWOW
   state in DRAM scratch` is observed in the ucode container; the ISA register roster has **zero**
   rng/seed/xorwow state SR/UR. Get/Set read/write the state from/to the operand mem-pattern
-  precisely because the state lives in addressable memory. `[HIGH/OBSERVED]`
+  precisely because the state lives in addressable memory.
 * **Which generator is selected by the coupled `(rand_generator, rand_algorithm)` pair**, each
   `legal_combinations` arm fixing the coupling (`RNG_XORWOW`↔`XORWOW`,
   `RNG_LFSR`/`OUTPUT_CVT_LFSR`↔`LFSR`, `RNG_PHILOX`↔`PHILOX`). So `0x77`/`0x78` are the
-  **generic** checkpoint op for whichever `rand_algo` the kernel uses. `[HIGH/OBSERVED]`
+  **generic** checkpoint op for whichever `rand_algo` the kernel uses.
 
 **State formats (cross-anchored to the algo kernels):**
 
@@ -243,8 +240,8 @@ pins `in_dtype/dtype == UINT32`.]`
   counter`)`. The [Xorwow SW path](rng-xorwow-sw.md) recovers the Marsaglia default seed vector
   byte-exact (`x=0x075BCD15, y=0x159A55E5, z=0x1F123BB5, w=0x05491333, v=0x00583F19`) with Weyl
   increment `d += 362437 (0x000587C5)`. On Pool the checkpoint width is **6**; on the wider DVE
-  lanes it is **24** (the DVE Xorwow keeps a 4×-wider per-lane state). `[HIGH/OBSERVED — width
-  from validator; seed/Weyl CARRIED from the Xorwow page]`
+  lanes it is **24** (the DVE Xorwow keeps a 4×-wider per-lane state).
+  `[HIGH width; CARRIED seed/Weyl]`
 * **LFSR** — **one** u32 word per lane. `d4_rand.h` states it verbatim: *"LFSR treats each of
   the 128 lanes as an independent random number generator. The lowest u32 word of the rand_state
   (rand_state[0]) for each lane is used as the initial state."* Pool checkpoint width **1**;
@@ -254,10 +251,9 @@ pins `in_dtype/dtype == UINT32`.]`
 * **PHILOX** — counter-based: a 16-byte counter start, an 8-byte key, and a 4-byte counter
   offset, "saved/restored unmodified for model checkpointing" (`d4_rand.h` L73-83). Pool
   checkpoint width **7** (the 7 immediate/state words with the `imm_state[7]==0` constraint).
-  `[HIGH/OBSERVED — the Philox arm + header prose]`
 * `num_active_channels` (`S1_RAND@13` / `D4_RAND@34`) bounds the checkpoint to the live lane
   subset (validated against `POOLING_NUM_CHANNELS`); `has_valid_rand_state_channels` couples the
-  channel count to the algorithm. `[HIGH/OBSERVED — validators]`
+  channel count to the algorithm.
 
 ### 4b. How it ties to the `rand_algo` fork
 
@@ -291,14 +287,12 @@ So `0x77`/`0x78` are **algo-parametric**: the firmware reads `rand_algorithm@12`
 geometry **is** the checkpoint payload. The frame sizes at each arm entry
 (`LfsrSetSeeds entry a1,192`; `XorwowSetSeeds(TIE) entry a1,0x400`;
 `XorwowGetSeeds(TIE) entry a1,0x580`) are the inner per-lane buffers; the operationally relevant
-*checkpoint* width is the validator element count (§4). `[HIGH/OBSERVED — fork instructions,
-entries, logs byte-pinned in rng-lfsr-dispatch.md / rng-xorwow-tie.md; CARRIED here]`
+*checkpoint* width is the validator element count (§4). `[CARRIED from the LFSR + TIE pages]`
 
 > **CORRECTION — `LfsrSetSeeds 0xb700` / `XorwowSetSeeds(TIE) 0xb744` are documented on the
 > [LFSR dispatch page](rng-lfsr-dispatch.md), not the TIE page.** The [TIE-Xorwow page](rng-xorwow-tie.md)
 > maps both SET arms to the *shared* entry `0xb6dc` and lists only the arm log xrefs
 > (`0xb716` LFSR / `0xb75a` Xorwow). Cite the LFSR page for the `0xb700`/`0xb744` arm entries.
-> `[HIGH/OBSERVED]`
 
 ---
 
@@ -308,8 +302,8 @@ entries, logs byte-pinned in rng-lfsr-dispatch.md / rng-xorwow-tie.md; CARRIED h
 
 The dispatch surface is **SEQ** (the NX sequencer front-end), which validates the operand and
 then reaches the per-engine kernel body via the `0xf0` extended-instruction escape — the
-seed-state ops are **not** in the Q7KIT EXTISA table directly. The string sweep over the ucode
-container confirms the chain (counts are `strings -a … \| rg -F -c` over `libnrtucode_internal.so`):
+seed-state ops are **not** in the Q7KIT EXTISA table directly. The string sweep over
+`libnrtucode_internal.so` confirms the chain:
 
 | string | count | role |
 |---|---|---|
@@ -320,7 +314,7 @@ container confirms the chain (counts are `strings -a … \| rg -F -c` over `libn
 | `LfsrGetSeeds` / `LfsrSetSeeds` | 5 / 5 | the LFSR seed bodies (mariana+ only — **zero on sunda/cayman**) |
 | `not currently supported on POOL` | 6 | the `{0,3}` algo gate (§5b) |
 
-`[HIGH/OBSERVED — string sweep this task]`
+`[HIGH/OBSERVED]`
 
 The observed dispatcher log formats are verbatim:
 
@@ -334,8 +328,6 @@ P%i: LfsrGetSeeds
 P%i: Xorwow(TIE) : Initializing XORWOW state in DRAM scratch
 ```
 
-`[HIGH/OBSERVED — strings -a libnrtucode_internal.so]`
-
 ### 5b. The `{0, 3}`-algo POOL gate
 
 The SEQ front-end validates `rand_algo ∈ {0=LFSR, 3=XORWOW}`; the other two enum values
@@ -347,14 +339,13 @@ S: RandSetState : rand_algorithm(0x%x) not currently supported on POOL
 ```
 
 So on **POOL** only LFSR + Xorwow state save/restore is wired; PCG32/Philox are ISA-defined but
-POOL-unsupported. `[HIGH/OBSERVED — gate string + the LFSR-dispatch `{0,3}` gate at `0x301b`]`
+POOL-unsupported. `[HIGH/OBSERVED — gate at `0x301b`]`
 
 > **GOTCHA — the host validator is broader than the wired POOL handler.** Philox *is* a legal
 > arm in both `legal_combinations` validators (the 7-word Pool/Philox arm), yet the POOL firmware
 > gate rejects `rand_algo==2` at runtime with the "not currently supported on POOL" string. The
 > compile-time legal set (host ISA validator) and the runtime-wired handler set (POOL firmware)
 > are **not identical** — Philox is admissible to the validator but dead on the POOL body.
-> `[HIGH/OBSERVED]`
 
 ### 5c. The same opcode has two engine bodies
 
@@ -371,17 +362,16 @@ Exponential — confirmed in [Rand2](rand2.md):
 2346: const16 a2, 0xf698   // handler 0xf698 = "S: Exponential"
 ```
 
-`[HIGH/OBSERVED — the DVE RandSetState stub + name string; the opcode→funcVA descriptor literal
-itself is runtime-bound / out-of-carve, MED for the exact byte edge.]`
+`[HIGH/OBSERVED stub; MED funcVA byte edge]`
 
 > **NOTE — the device-side VAs are device VAs, not host symbols.** The dispatcher/seed VAs
 > (`0xb5f4`, `0xb930`, `0xb6dc`, `0xb9ec`, `0xb744`, `0xba58`, `0xb700`, `0xebe0`) are
 > **Q7/DVE ucode** addresses inside the embedded blob, recovered with the native
 > `xtensa-elf-objdump` (`XTENSA_CORE=ncore2gp`) on the committed Xorwow/LFSR pages. They do **not**
 > appear in the host-x86 IDA function DB of `libnrtucode_internal.so` (host text spans
-> `0x9b01a0–0x9bb600`) — the *strings* for these routines are in `.rodata` (re-confirmed this
-> task), the *VAs* are CARRIED from the device disassembly on the sibling pages. `[VAs CARRIED;
-> strings HIGH/OBSERVED]`
+> `0x9b01a0–0x9bb600`) — the *strings* for these routines are in `.rodata`, the *VAs* are
+> CARRIED from the device disassembly on the sibling pages.
+> `[VAs CARRIED; strings HIGH/OBSERVED]`
 
 ---
 
@@ -389,8 +379,8 @@ itself is runtime-bound / out-of-carve, MED for the exact byte edge.]`
 
 The opcode is `// Y` on all four gens, but two finer surfaces lag it: the **host validator's
 legal-combination set** (which engines/algos are admissible) and the **runtime handler body**
-(which algo seed save/restore code actually ships). Both were re-derived this session — header
-arm-counts + the ucode string sweep agree.
+(which algo seed save/restore code actually ships). Header arm-counts and the ucode string
+sweep agree.
 
 | gen | opcode | validator engine(s) | legal arms (set / get) | `rand_algo` enum | RNG handler bodies present |
 |---|---|---|---|---|---|
@@ -399,8 +389,7 @@ arm-counts + the ucode string sweep agree.
 | MARIANA (v4) | `// Y` | Pool + DVE + Act (`e` arg) | 8 / 7 | full 4-value | `XorwowSet/GetSeeds(TIE)` + `LfsrSet/GetSeeds` + DVE `RandSetState 0xebe0` |
 | MAVERICK (v5) | `// Y` | **Pool + DVE only** (`e` arg) | **7 / 6** | full 4-value | same TIE + LFSR; **Act arm dropped** |
 
-`[HIGH/OBSERVED — per-gen common.h + s1_rand.h/d4_rand.h arm counts (verbatim this session) +
-ucode string sweep]`
+`[HIGH/OBSERVED]`
 
 Two byte-grounded structural facts make this table exact:
 
@@ -409,19 +398,19 @@ Two byte-grounded structural facts make this table exact:
    `RNG_LFSR=0, RNG_PHILOX=2` (no `RNG_XORWOW`, no `OUTPUT_CVT_LFSR`). SUNDA's only legal
    combination is **Pool + Philox** (`d4_rand.h` GET elem_cnt 7; `s1_rand.h` SET 2 Philox arms),
    and there is no wired Xorwow/LFSR POOL body. So on SUNDA the op exists at the ISA/decode layer
-   but has no working save/restore body. `[HIGH/OBSERVED — sunda common.h enums]`
+   but has no working save/restore body.
 2. **The validator call signature encodes the engine surface.** SUNDA/CAYMAN call the validator
    with a *fixed* `NeuronEngine::Pool` argument (`s1_rand.h` L54 / `d4_rand.h` L147); MARIANA/
    MAVERICK take the engine `e` as a parameter (`rand_set_state_legal_combinations(i, e)`), and
    their arms branch on `e == Pool | DVE | Act`. That is the concrete encoding of "Pool-only on
-   sunda/cayman, multi-engine on mariana+." `[HIGH/OBSERVED]`
+   sunda/cayman, multi-engine on mariana+."
 
 > **CORRECTION — MAVERICK is Pool+DVE, not the full Pool+DVE+Act.** Header arm-count
 > (`s1_rand.h` 7 set / `d4_rand.h` 6 get) is exactly one fewer than MARIANA's (8/7). The missing
 > arm is the **Act-engine LFSR** arm (`e == NeuronEngine::Act`, `OUTPUT_CVT_LFSR`, 2 words):
 > present on MARIANA (`s1_rand.h` L118, `d4_rand.h` L243), **absent on MAVERICK** (zero
 > `NeuronEngine::Act` matches in either MAVERICK header). The Act LFSR state-checkpoint arm is a
-> MARIANA-only feature. `[HIGH/OBSERVED — arm grep across all four gens this session]`
+> MARIANA-only feature.
 
 **Tonga (NeuronCore-v1) note.** The V1 (`tonga`) header set ships **no** `s1_rand.h`/`d4_rand.h`
 and **no** `RAND_GET_STATE`/`RAND_SET_STATE` opcodes — this op family begins at SUNDA (v2).
@@ -459,23 +448,21 @@ From [PE Matrix-Multiply Path](pe-matmul.md):
 > **CORRECTION — use the enum, not the prose, for `PE_SEED_MODE`.** The `s2s1d2_pe_seed.h` field
 > comment reads "LoadSeed (value of 0) / SaveSeed (value of 1)", but the authoritative C enum is
 > `NONE=0, LOAD_SEED=1, SAVE_SEED=2`. The prose comment is off by one; trust the enum.
-> `[HIGH/OBSERVED]`
 
 **The decisive distinction:** different opcode (`0x08` vs `0x77`/`0x78`), different engine (PE vs
 Pool/DVE/Act), different struct (`S2S1D2_PE_SEED` vs `D4_RAND`/`S1_RAND`), different state (PSUM
 SR seeds vs the algo PRNG state), different purpose (deterministic stochastic-rounding dither vs
-user-RNG reproducibility). **Do not conflate them.** `[HIGH/OBSERVED]`
+user-RNG reproducibility). **Do not conflate them.**
 
 ### 7.3 The lesser cousin — `SET_RNG_SEED` (pseudo `0xd0`)
 
 `SET_RNG_SEED` is a **pseudo** opcode (`NEURON_ISA_TPB_OPCODE_PSEUDO_SET_RNG_SEED = 0xd0`,
 mariana `common.h` L284; sunda L277), NRT-translated, struct
-`NEURON_ISA_TPB_PSEUDO_SET_RNG_SEED_STRUCT` (`sizeof==64`, compile-verified this session:
-`seed_src@12`, `seed@16`). Its operand is `seed_src` and a **single 4-byte `seed@16`**
-(`IMM_VAL`); the header comment reads *"sets RNG seed for engine; Only DVE supported for now."* It
-**seeds** domain A (one-shot init) and is lowered by NRT into a real op — it is **not** a state
-checkpoint and **not** `0x77`/`0x78`. `[HIGH/OBSERVED — aws_neuron_isa_tpb_pseudo_set_rng_seed.h +
-gcc compile (seed@16, seed_src@12, sizeof 64)]`
+`NEURON_ISA_TPB_PSEUDO_SET_RNG_SEED_STRUCT` (`sizeof==64`, compile-verified:
+`seed_src@12`, `seed@16`, from `aws_neuron_isa_tpb_pseudo_set_rng_seed.h`). Its operand is
+`seed_src` and a **single 4-byte `seed@16`** (`IMM_VAL`); the header comment reads *"sets RNG
+seed for engine; Only DVE supported for now."* It **seeds** domain A (one-shot init) and is
+lowered by NRT into a real op — it is **not** a state checkpoint and **not** `0x77`/`0x78`.
 
 ---
 
