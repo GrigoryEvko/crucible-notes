@@ -2,10 +2,28 @@
 
 The Tree Traversal Unit is NVIDIA's ray-tracing core, exposed in SASS as the
 `TTU*` instruction family. It is a decoupled co-processor with its own internal
-address space: functional-unit class `VQ_TTU` (21), its own `ttu_pipe`, present
-from sm_75 (Turing) onward. The instruction encodings are decoded from CUDA-13
-nvdisasm; the acceleration-structure and ray/hit formats are decoded from the
-RT-core runtime (`libnvidia-rtcore.so`).
+address space and its own dedicated virtual queue (`VQ_TTU`, index 21 — the only
+queue in the enum whose name is withheld from the decoder's name pool, and the
+queue every `TTU*` class selects). The instruction encodings are decoded from
+CUDA-13 nvdisasm; the acceleration-structure and ray/hit formats are decoded from
+the RT-core runtime (`libnvidia-rtcore.so`).
+
+The unit ships only on the consumer/graphics line. Decoding the per-architecture
+instruction tables gives:
+
+| arch | TTU classes |
+|------|-------------|
+| sm_75 (Turing) | 6 — `TTULD` is one class, not yet split on `/CLOSE` |
+| sm_80 (A100) | none |
+| sm_86, sm_87, sm_88, sm_89 | 7 |
+| sm_90 (Hopper) | none |
+| sm_100, sm_103, sm_110 | none |
+| sm_120, sm_121 | 7 |
+
+Every datacenter target omits the unit entirely. From sm_86 onward the class set is
+stable — `TTUOPEN`, `TTUST`, `TTULD` (`/CLOSE` and no-close forms), `TTUGO`,
+`TTUCCTL`, `TTUMACROFUSE` — and is identical on sm_89 and sm_120, so a sequence
+assembled against sm_89 encodes unchanged for consumer Blackwell.
 
 ## Instruction set
 

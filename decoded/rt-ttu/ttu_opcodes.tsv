@@ -1,7 +1,9 @@
 # TTU (Tree Traversal Unit = RT core) instruction set, decoded from the CUDA-13
 # nvdisasm SM89 instruction-class tables and the SASS 128-bit encoding.
 # The opcode field is {bit91, bits[11:0]} (13 bits); all TTU ops have bit91=0.
-# Functional unit VQ_TTU (=21), dedicated ttu_pipe. Present sm_75 (Turing) onward.
+# Dedicated virtual queue VQ_TTU (=21). Consumer/graphics line only: sm_75 (6 classes,
+# TTULD unsplit), sm_86/87/88/89 and sm_120/121 (7 classes); absent on sm_80, sm_90,
+# sm_100, sm_103, sm_110. The sm_89 and sm_120 class sets are identical.
 # Columns: op  opcode_hex  opcode_bits  operands  instruction_type  min_wait  scoreboard_role  note
 op	opcode_hex	opcode_bits	operands	instruction_type	min_wait	scoreboard_role	note
 TTUOPEN	0x3d0	0b1111010000	@Pg /DUAL &REQ=req_bit_set	DECOUPLED_BRU_DEPBAR_RD_SCBD	6	waits on req scoreboard mask	open/initialize a traversal context (after ray+root stored)
